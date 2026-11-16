@@ -32,8 +32,7 @@ describe('DbmnTelemetryService persistence and prompt flush', () => {
         };
         fetchStub = sinon.stub(globalThis, 'fetch' as any).resolves({ ok: true, status: 204 } as any);
         authService = {
-            ensureValidSession: sinon.stub().resolves({ status: 'success', session: { accessToken: 'token' } }),
-            getLicenseStatus: sinon.stub().resolves({ tier: 'free' })
+            ensureValidSession: sinon.stub().resolves({ status: 'success', session: { accessToken: 'token' } })
         };
     });
 
@@ -254,8 +253,7 @@ describe('#419 the telemetry switch', () => {
     let context: any;
     let fetchStub: sinon.SinonStub;
     const authService = {
-        ensureValidSession: sinon.stub().resolves({ status: 'success', session: { accessToken: 'token' } }),
-        getLicenseStatus: sinon.stub().resolves({ tier: 'free' })
+        ensureValidSession: sinon.stub().resolves({ status: 'success', session: { accessToken: 'token' } })
     } as any;
     beforeEach(() => {
         clock = sinon.useFakeTimers({ now: new Date('2026-10-29T11:20:00Z'), toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'] });

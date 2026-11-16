@@ -7,8 +7,7 @@
  * environment: its host. Standard Systems match an environment by it.
  *
  * One function, so every comparison agrees on what "the same environment" is.
- * (It was written when three copies disagreed; the environment licence checks
- * that used it are gone in 0.4.0, and no address is sent to DBMN any more.)
+ * (It was written when three copies disagreed. No address is sent to DBMN.)
  *
  * Deliberately dependency-free (no `vscode` import) so it stays usable off the
  * extension host — see docs/portability/spa-migration.md.

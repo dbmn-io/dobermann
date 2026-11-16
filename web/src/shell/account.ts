@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Flexion Tech Pty Ltd
 /**
- * The Hub's Account section in the web app: the DBMN session and licence, from the same
- * check-license function the extension uses (account-manager pushAuthState).
+ * The Hub's Account section in the web app: the DBMN session and usage, from the same
+ * account function the extension uses (account-manager pushAuthState).
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { HubSection } from '../../../src/screens/hub/hub.ports';
 import { getBackend } from '../../../src/services/dbmn-backend/backend-config';
+import type { DbmnAccountResponse } from '../../../src/types/dbmn-auth';
 import { BadgeService, buildPuppySchoolUrl, earnedMessage, type BadgeStore } from '../../../src/services/badges/badge.service';
 import { fetchMyBadges } from '../../../src/services/badges/badge-api';
 import { forgetAgentIdentity } from './agent-identity';
@@ -61,27 +62,32 @@ export function accountSection(client: SupabaseClient, post: (m: Record<string, 
             isAuthenticated: !!session,
             email: session?.user.email ?? null,
             displayName: (session?.user.user_metadata?.display_name as string | undefined) ?? session?.user.email ?? null,
-            license: null, userLicense: null, usage: null, telemetryStats: null
+            usage: null, telemetryStats: null
         };
         if (!session) {
             post(base);
+            post({ type: 'statsRefreshing', refreshing: false });
             return;
         }
+        // The usage headers spin while the numbers load, and stop when they arrive or fail
+        // (account-manager.refreshStats does the same in VS Code).
+        post({ type: 'statsRefreshing', refreshing: true });
         try {
-            const response = await fetch(`${getBackend().apiUrl}/functions/v1/check-license?include_stats=true`, {
+            const response = await fetch(`${getBackend().apiUrl}/functions/v1/account?include_stats=true`, {
                 headers: { Authorization: `Bearer ${session.access_token}`, apikey: getBackend().anonKey }
             });
-            if (!response.ok) throw new Error(`check-license ${response.status}`);
-            const licence = await response.json() as { license: unknown; usage: unknown; telemetryStats?: unknown; displayName?: string };
+            if (!response.ok) throw new Error(`account ${response.status}`);
+            const account = await response.json() as DbmnAccountResponse;
             post({
                 ...base,
-                displayName: licence.displayName ?? base.displayName,
-                license: licence.license, userLicense: licence.license,
-                usage: licence.usage, telemetryStats: licence.telemetryStats ?? null
+                displayName: account.displayName || base.displayName,
+                usage: { weekStart: account.weekStart }, telemetryStats: account.telemetryStats ?? null
             });
         } catch (error) {
             console.error('[web] account details', error);
             post(base);
+        } finally {
+            post({ type: 'statsRefreshing', refreshing: false });
         }
     };
     return {

@@ -5,7 +5,6 @@ import { describe, it, beforeEach } from 'mocha';
 import * as sinon from 'sinon';
 import {
     DbmnSession,
-    DbmnLicenseStatus,
     DbmnUsageStatus,
     DBMN_STORAGE_KEYS,
     DBMN_CACHE_TTL
@@ -15,7 +14,7 @@ import {
  * Unit tests for DBMN Auth types and error classes (GitHub Issue #208)
  *
  * Tests:
- * - Type shape validation (DbmnSession, DbmnLicenseStatus, DbmnUsageStatus)
+ * - Type shape validation (DbmnSession, DbmnUsageStatus)
  * - Storage key constants
  * - Cache TTL constants
  */
@@ -62,83 +61,10 @@ describe('DBMN Auth Types', () => {
         });
     });
 
-    describe('DbmnLicenseStatus', () => {
-        it('should represent a full-access user license', () => {
-            const license: DbmnLicenseStatus = {
-                licenseType: 'user',
-                accessLevel: 'full',
-                status: 'active',
-                trialEndsAt: null,
-                subscriptionEndsAt: '2027-02-25T00:00:00Z',
-                licensedEnvironmentUrls: [],
-                isLifetime: false,
-                fetchedAt: Date.now()
-            };
-
-            expect(license.licenseType).to.equal('user');
-            expect(license.accessLevel).to.equal('full');
-            expect(license.licensedEnvironmentUrls).to.be.an('array').with.length(0);
-        });
-
-        it('should represent a trial license with expiry', () => {
-            const license: DbmnLicenseStatus = {
-                licenseType: 'trial',
-                accessLevel: 'full',
-                status: 'active',
-                trialEndsAt: '2026-03-27T00:00:00Z',
-                subscriptionEndsAt: null,
-                licensedEnvironmentUrls: [],
-                isLifetime: false,
-                fetchedAt: Date.now()
-            };
-
-            expect(license.licenseType).to.equal('trial');
-            expect(license.trialEndsAt).to.not.be.null;
-        });
-
-        it('should represent a free tier license', () => {
-            const license: DbmnLicenseStatus = {
-                licenseType: 'free',
-                accessLevel: 'limited',
-                status: 'active',
-                trialEndsAt: null,
-                subscriptionEndsAt: null,
-                licensedEnvironmentUrls: [],
-                isLifetime: false,
-                fetchedAt: Date.now()
-            };
-
-            expect(license.licenseType).to.equal('free');
-            expect(license.accessLevel).to.equal('limited');
-        });
-
-        it('should represent an environment license with URLs', () => {
-            const license: DbmnLicenseStatus = {
-                licenseType: 'environment',
-                accessLevel: 'full',
-                status: 'active',
-                trialEndsAt: null,
-                subscriptionEndsAt: '2027-02-25T00:00:00Z',
-                licensedEnvironmentUrls: ['https://prod.samplewms.test', 'https://dev.samplewms.test'],
-                isLifetime: false,
-                fetchedAt: Date.now()
-            };
-
-            expect(license.licensedEnvironmentUrls).to.have.length(2);
-        });
-    });
-
     describe('DbmnUsageStatus', () => {
-        it('should represent weekly usage counters', () => {
-            const usage: DbmnUsageStatus = {
-                weekStart: '2026-02-23',
-                batchCount: 7,
-                exportCount: 3,
-                importCount: 1
-            };
-
+        it('is only the week the usage counts from', () => {
+            const usage: DbmnUsageStatus = { weekStart: '2026-02-23' };
             expect(usage.weekStart).to.match(/^\d{4}-\d{2}-\d{2}$/);
-            expect(usage.batchCount).to.equal(7);
         });
     });
 
@@ -151,12 +77,9 @@ describe('DBMN Auth Types', () => {
     });
 
     describe('Cache TTL Constants', () => {
-        it('should have 15-minute license TTL', () => {
-            expect(DBMN_CACHE_TTL.licenseTtlMs).to.equal(15 * 60 * 1000);
-        });
-
-        it('should have a 4-week offline grace period (issue #396)', () => {
-            expect(DBMN_CACHE_TTL.offlineGracePeriodMs).to.equal(28 * 24 * 60 * 60 * 1000);
+        it('has no licence refresh or grace any more (0.4.1)', () => {
+            expect(DBMN_CACHE_TTL).to.not.have.property('licenseTtlMs');
+            expect(DBMN_CACHE_TTL).to.not.have.property('offlineGracePeriodMs');
         });
 
         it('has no usage sync any more (0.4.0)', () => {
@@ -174,126 +97,6 @@ describe('DBMN Auth Types', () => {
 // with it.
 
 /**
- * Tests for DbmnAuthService.getCachedLicenseStatus() and isLicenseExpired()
- *
- * These test the logic independently since DbmnAuthService requires vscode.ExtensionContext.
- * We validate the cache lookup and expiry logic patterns used by the service.
- */
-describe('DbmnAuthService license caching logic', () => {
-
-    // Helper: simulate the getCachedLicenseStatus logic
-    function getCachedLicenseStatus(
-        licenseCache: DbmnLicenseStatus | null,
-        envLicenseCache: Map<string, DbmnLicenseStatus>,
-        environmentUrl?: string
-    ): DbmnLicenseStatus | null {
-        if (environmentUrl) {
-            return envLicenseCache.get(environmentUrl) ?? null;
-        }
-        return licenseCache;
-    }
-
-    // Helper: simulate the isLicenseExpired logic
-    function isLicenseExpired(license: DbmnLicenseStatus): boolean {
-        const now = new Date().toISOString();
-        if (license.trialEndsAt && license.trialEndsAt < now) { return true; }
-        if (license.subscriptionEndsAt && license.subscriptionEndsAt < now) { return true; }
-        return false;
-    }
-
-    function makeLicense(overrides: Partial<DbmnLicenseStatus> = {}): DbmnLicenseStatus {
-        return {
-            licenseType: 'user',
-            accessLevel: 'full',
-            status: 'active',
-            trialEndsAt: null,
-            subscriptionEndsAt: '2027-12-31T00:00:00Z',
-            licensedEnvironmentUrls: [],
-            isLifetime: false,
-            fetchedAt: Date.now(),
-            ...overrides
-        };
-    }
-
-    describe('getCachedLicenseStatus', () => {
-        it('should return global license cache when no environmentUrl', () => {
-            const license = makeLicense();
-            const result = getCachedLicenseStatus(license, new Map());
-            expect(result).to.equal(license);
-        });
-
-        it('should return null when no global cache and no environmentUrl', () => {
-            const result = getCachedLicenseStatus(null, new Map());
-            expect(result).to.be.null;
-        });
-
-        it('should return env-specific license when environmentUrl matches', () => {
-            const envLicense = makeLicense({ licenseType: 'environment' });
-            const envCache = new Map<string, DbmnLicenseStatus>();
-            envCache.set('https://prod.samplewms.test', envLicense);
-
-            const result = getCachedLicenseStatus(null, envCache, 'https://prod.samplewms.test');
-            expect(result).to.equal(envLicense);
-        });
-
-        it('should return null when environmentUrl has no cached entry', () => {
-            const envCache = new Map<string, DbmnLicenseStatus>();
-            const result = getCachedLicenseStatus(makeLicense(), envCache, 'https://unknown.com');
-            expect(result).to.be.null;
-        });
-    });
-
-    describe('isLicenseExpired', () => {
-        it('should return false for license with future subscription end date', () => {
-            const license = makeLicense({ subscriptionEndsAt: '2027-12-31T00:00:00Z' });
-            expect(isLicenseExpired(license)).to.be.false;
-        });
-
-        it('should return true for license with past subscription end date', () => {
-            const license = makeLicense({ subscriptionEndsAt: '2020-01-01T00:00:00Z' });
-            expect(isLicenseExpired(license)).to.be.true;
-        });
-
-        it('should return false for license with future trial end date', () => {
-            const license = makeLicense({
-                licenseType: 'trial',
-                trialEndsAt: '2027-06-01T00:00:00Z',
-                subscriptionEndsAt: null
-            });
-            expect(isLicenseExpired(license)).to.be.false;
-        });
-
-        it('should return true for license with past trial end date', () => {
-            const license = makeLicense({
-                licenseType: 'trial',
-                trialEndsAt: '2020-01-01T00:00:00Z',
-                subscriptionEndsAt: null
-            });
-            expect(isLicenseExpired(license)).to.be.true;
-        });
-
-        it('should return false for free tier with no end dates', () => {
-            const license = makeLicense({
-                licenseType: 'free',
-                accessLevel: 'limited',
-                trialEndsAt: null,
-                subscriptionEndsAt: null
-            });
-            expect(isLicenseExpired(license)).to.be.false;
-        });
-
-        it('should check trial before subscription when both present', () => {
-            // Trial expired but subscription still valid — should return true (trial takes precedence)
-            const license = makeLicense({
-                trialEndsAt: '2020-01-01T00:00:00Z',
-                subscriptionEndsAt: '2027-12-31T00:00:00Z'
-            });
-            expect(isLicenseExpired(license)).to.be.true;
-        });
-    });
-});
-
-/**
  * Tests for offline/network-failure graceful fallback behaviour.
  *
  * Validates the logic patterns from DbmnAuthService that prevent
@@ -301,99 +104,6 @@ describe('DbmnAuthService license caching logic', () => {
  * logic independently since DbmnAuthService requires vscode.ExtensionContext.
  */
 describe('DbmnAuthService offline fallback logic', () => {
-
-    function makeLicense(overrides: Partial<DbmnLicenseStatus> = {}): DbmnLicenseStatus {
-        return {
-            licenseType: 'user',
-            accessLevel: 'full',
-            status: 'active',
-            trialEndsAt: null,
-            subscriptionEndsAt: '2027-12-31T00:00:00Z',
-            licensedEnvironmentUrls: [],
-            isLifetime: false,
-            fetchedAt: Date.now(),
-            ...overrides
-        };
-    }
-
-    describe('fetchLicenseStatus token refresh fallback', () => {
-        // Simulates the token-refresh-failed path in fetchLicenseStatus()
-        function fetchLicenseOnRefreshFailure(
-            licenseCache: DbmnLicenseStatus | null,
-            envLicenseCache: Map<string, DbmnLicenseStatus>,
-            environmentUrl?: string
-        ): { result: DbmnLicenseStatus | null; signedOut: boolean } {
-            // After fix: return cached license, don't sign out
-            if (environmentUrl) {
-                return { result: envLicenseCache.get(environmentUrl) ?? null, signedOut: false };
-            }
-            return { result: licenseCache, signedOut: false };
-        }
-
-        it('should return global cached license when token refresh fails (no env URL)', () => {
-            const cached = makeLicense();
-            const { result, signedOut } = fetchLicenseOnRefreshFailure(cached, new Map());
-            expect(result).to.equal(cached);
-            expect(signedOut).to.be.false;
-        });
-
-        it('should return env-specific cached license when token refresh fails', () => {
-            const envLicense = makeLicense({ licenseType: 'environment' });
-            const envCache = new Map<string, DbmnLicenseStatus>();
-            envCache.set('https://prod.samplewms.test', envLicense);
-
-            const { result, signedOut } = fetchLicenseOnRefreshFailure(null, envCache, 'https://prod.samplewms.test');
-            expect(result).to.equal(envLicense);
-            expect(signedOut).to.be.false;
-        });
-
-        it('should return null (not sign out) when no cache exists and token refresh fails', () => {
-            const { result, signedOut } = fetchLicenseOnRefreshFailure(null, new Map());
-            expect(result).to.be.null;
-            expect(signedOut).to.be.false;
-        });
-
-        it('should return null for unknown env URL when token refresh fails', () => {
-            const { result, signedOut } = fetchLicenseOnRefreshFailure(
-                makeLicense(), new Map(), 'https://unknown.samplewms.test'
-            );
-            expect(result).to.be.null;
-            expect(signedOut).to.be.false;
-        });
-    });
-
-    describe('getLicenseStatus stale cache fallback', () => {
-        // Simulates the generic (non-env) path in getLicenseStatus()
-        // when fetchLicenseStatus returns null (network failure)
-        function getLicenseStatusGenericPath(
-            licenseCache: DbmnLicenseStatus | null,
-            fetchResult: DbmnLicenseStatus | null
-        ): DbmnLicenseStatus | null {
-            // After fix: fall back to stale cache instead of returning null
-            if (fetchResult) {
-                return fetchResult;
-            }
-            return licenseCache;
-        }
-
-        it('should return fresh license when fetch succeeds', () => {
-            const stale = makeLicense({ fetchedAt: Date.now() - 86400000 });
-            const fresh = makeLicense({ fetchedAt: Date.now() });
-            const result = getLicenseStatusGenericPath(stale, fresh);
-            expect(result).to.equal(fresh);
-        });
-
-        it('should fall back to stale cache when fetch returns null', () => {
-            const stale = makeLicense({ fetchedAt: Date.now() - 86400000 });
-            const result = getLicenseStatusGenericPath(stale, null);
-            expect(result).to.equal(stale);
-        });
-
-        it('should return null only when both fetch and cache are null', () => {
-            const result = getLicenseStatusGenericPath(null, null);
-            expect(result).to.be.null;
-        });
-    });
 
     describe('initialize session preservation on refresh failure', () => {
         // Simulates the session handling in initialize() when token is expired
@@ -406,7 +116,7 @@ describe('DbmnAuthService offline fallback logic', () => {
             if (session.expiresAt < Date.now() / 1000) {
                 if (!refreshSucceeded) {
                     // Before fix: return null (session cleared)
-                    // After fix: return session (kept for cached license serving)
+                    // After fix: return session (still signed in)
                     return session;
                 }
             }
@@ -458,42 +168,6 @@ describe('DbmnAuthService offline fallback logic', () => {
             // isAuthenticated() checks session !== null
             const isAuthenticated = keptSession !== null;
             expect(isAuthenticated).to.be.true;
-        });
-    });
-
-    describe('confirmed 401 still triggers sign-out', () => {
-        // Validates that the 401 sign-out path is preserved (lines 677-684 in service)
-        function handleLicenseCheckResponse(
-            responseStatus: number,
-            licenseCache: DbmnLicenseStatus | null
-        ): { result: DbmnLicenseStatus | null; shouldSignOut: boolean } {
-            if (responseStatus === 401) {
-                // Server confirmed token invalid — sign out
-                return { result: null, shouldSignOut: true };
-            }
-            // Other non-ok status — fall back to cache
-            return { result: licenseCache, shouldSignOut: false };
-        }
-
-        it('should sign out on confirmed 401 from license endpoint', () => {
-            const cached = makeLicense();
-            const { result, shouldSignOut } = handleLicenseCheckResponse(401, cached);
-            expect(shouldSignOut).to.be.true;
-            expect(result).to.be.null;
-        });
-
-        it('should fall back to cache on 500 server error', () => {
-            const cached = makeLicense();
-            const { result, shouldSignOut } = handleLicenseCheckResponse(500, cached);
-            expect(shouldSignOut).to.be.false;
-            expect(result).to.equal(cached);
-        });
-
-        it('should fall back to cache on 503 service unavailable', () => {
-            const cached = makeLicense();
-            const { result, shouldSignOut } = handleLicenseCheckResponse(503, cached);
-            expect(shouldSignOut).to.be.false;
-            expect(result).to.equal(cached);
         });
     });
 });

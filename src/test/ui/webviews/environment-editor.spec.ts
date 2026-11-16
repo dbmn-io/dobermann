@@ -108,7 +108,7 @@ test.describe('Environment editor (standalone)', () => {
         expect((save.message as { environment: { parallelProcessing?: unknown } }).environment.parallelProcessing).toEqual({ enabled: true, maxConcurrency: 8 });
     });
 
-    test('a production environment is the user\'s to change: no lock, no licence section', async ({ dbmn, page }) => {
+    test('a production environment is the user\'s to change: no lock', async ({ dbmn, page }) => {
         await dbmn.openEnvironmentEditor('env-prod-001');
         await dbmn.waitForReceived('environmentLoaded');
 

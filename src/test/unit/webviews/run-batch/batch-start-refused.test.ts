@@ -12,8 +12,7 @@ import {
 /**
  * GitHub Issue #396 — a batch that is refused before it starts must say so. The command that
  * starts a batch catches everything and returns `{ success: false }`; Run Batch reads it.
- * #418: there is no licence gate any more, so a refusal is the user stopping at a prompt or
- * a real failure.
+ * A refusal is the user stopping at a prompt or a real failure.
  */
 function host(panelOpen: boolean) {
     const posted: Array<{ type: string; error?: string }> = [];

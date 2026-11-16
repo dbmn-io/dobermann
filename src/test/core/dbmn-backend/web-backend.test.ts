@@ -13,18 +13,15 @@ import {
 const local = { profile: 'local', apiUrl: 'http://127.0.0.1:54321', anonKey: 'anon-local', siteUrl: 'http://127.0.0.1:4000/' };
 const test = { profile: 'test', apiUrl: 'http://127.0.0.1:54421/', anonKey: ' anon-test ' };
 
-/** Issue #396: how long the last known licence is trusted; every profile carries it. */
-const FOUR_WEEKS_MS = 28 * 24 * 60 * 60 * 1000;
-
 describe('The web app\'s backend (#377)', () => {
     afterEach(() => initBackend(PRODUCTION_BACKEND));
 
     it('the three profiles: a dev server\'s local or test stack, and production with no dev server', () => {
         expect(resolveWebBackend({ hostname: '127.0.0.1', devServer: local })).to.deep.equal({
-            profile: 'local', apiUrl: 'http://127.0.0.1:54321', anonKey: 'anon-local', siteUrl: 'http://127.0.0.1:4000', storageSuffix: '__local', isDevBuild: true, licenseGraceMs: FOUR_WEEKS_MS
+            profile: 'local', apiUrl: 'http://127.0.0.1:54321', anonKey: 'anon-local', siteUrl: 'http://127.0.0.1:4000', storageSuffix: '__local', isDevBuild: true
         });
         expect(resolveWebBackend({ hostname: '127.0.0.1', devServer: test })).to.deep.equal({
-            profile: 'test', apiUrl: 'http://127.0.0.1:54421', anonKey: 'anon-test', siteUrl: LOCAL_DEFAULTS.siteUrl, storageSuffix: '__test', isDevBuild: true, licenseGraceMs: FOUR_WEEKS_MS
+            profile: 'test', apiUrl: 'http://127.0.0.1:54421', anonKey: 'anon-test', siteUrl: LOCAL_DEFAULTS.siteUrl, storageSuffix: '__test', isDevBuild: true
         });
         expect(resolveWebBackend({ hostname: WEB_APP_HOST })).to.equal(PRODUCTION_BACKEND);
     });

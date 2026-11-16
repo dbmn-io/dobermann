@@ -19,10 +19,7 @@
                 "--disable-extension=vscode.merge-conflict"
             ],
             "env": {
-                "DBMN_BACKEND": "local",
-                // Issue #396: the last known licence is trusted for 10 minutes here, not
-                // 4 weeks, so the lapse can be tested. Delete the line for the real period.
-                "DBMN_LICENSE_GRACE_MINUTES": "10"
+                "DBMN_BACKEND": "local"
             },
             "outFiles": [
                 "${workspaceFolder}/out/**/*.js"

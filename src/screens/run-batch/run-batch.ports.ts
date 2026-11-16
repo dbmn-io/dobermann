@@ -23,8 +23,8 @@ export interface RunBatchPorts {
     /** GitHub Issue #396: open the DBMN sign-in, when that is why a batch did not start. */
     promptSignIn?(): Promise<void>;
     /**
-     * GitHub Issue #396: this machine has signed in to DBMN before, so a missing licence is
-     * an expired sign-in ("sign in again"), not a first registration. Assumed when absent.
+     * GitHub Issue #396: this machine has signed in to DBMN before, so a missing sign-in is
+     * an expired one ("sign in again"), not a first registration. Assumed when absent.
      */
     host: {
         close(): void;

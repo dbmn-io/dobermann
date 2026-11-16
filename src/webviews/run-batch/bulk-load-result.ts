@@ -9,7 +9,7 @@
  * has to be a value, not a thrown error: VS Code re-wraps what a command throws, so an
  * `instanceof` check does not survive `executeCommand`.
  *
- * #418: there is no client licence gate any more. A batch is refused only by the user
+ * A batch is refused only by the user
  * stopping at a prompt (the environment's own sign-in) or by a real failure.
  *
  * Portable: no `vscode` import. The webview passes in what it can do (BatchStartFailureHost).

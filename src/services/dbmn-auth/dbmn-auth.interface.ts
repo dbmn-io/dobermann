@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Flexion Tech Pty Ltd
 /**
- * DBMN Authentication & Licensing Service Interfaces (GitHub Issue #208)
+ * DBMN Authentication Service Interfaces (GitHub Issue #208)
  *
- * Interface definitions for DBMN registration, licensing, and telemetry services.
+ * Interface definitions for DBMN registration, account and telemetry services.
  * Following Architecture.md: interface-first design with DI pattern.
  */
 
@@ -11,7 +11,6 @@ import {
     DbmnBatchProgressDelta,
     DbmnTelemetryStats,
     DbmnSession,
-    DbmnLicenseStatus,
     DbmnUsageStatus,
     DbmnAuthState,
     DbmnTelemetryEntry,
@@ -19,12 +18,12 @@ import {
 } from '../../types/dbmn-auth';
 
 // =============================================================================
-// IDbmnAuthService — Main authentication and licensing orchestrator
+// IDbmnAuthService — Main authentication orchestrator
 // =============================================================================
 
 /**
  * Main DBMN authentication service.
- * Handles browser OAuth flow, session storage, license fetching, and usage sync.
+ * Handles browser OAuth flow, session storage, the account summary, and usage sync.
  */
 export interface IDbmnAuthService {
     /**
@@ -89,35 +88,24 @@ export interface IDbmnAuthService {
     ensureValidSession(): Promise<SessionRefreshResult>;
 
     /**
-     * Get the current license status.
-     * Fetches fresh data only when the cached license has expired (trial/subscription end date passed).
-     */
-    getLicenseStatus(): Promise<DbmnLicenseStatus | null>;
-
-    /**
-     * Get cached license status synchronously (no network calls).
-     * Returns whatever is in the in-memory cache (restored from SecretStorage on startup).
-     * Use this for non-blocking UI rendering (e.g., tree views).
-     */
-    getCachedLicenseStatus(): DbmnLicenseStatus | null;
-
-    /**
-     * The week the server counts usage from (labels Weekly Usage). 0.4.0 records nothing
-     * into it: the counts are telemetry's (IDbmnTelemetry).
+     * The week the server counts usage from (labels Weekly Usage). The counts are
+     * telemetry's (IDbmnTelemetry).
      */
     getUsageStatus(): DbmnUsageStatus | null;
 
     /**
-     * Get full auth state (session + license + usage).
+     * Get full auth state (session + usage).
      */
     getAuthState(): DbmnAuthState;
 
     /**
-     * Fetch fresh license status from the server.
-     * Also updates displayName from the user profile. Never sends an environment address.
+     * Fetch the account summary from the server (the account function): the display name
+     * from the user profile, the usage week and, when asked, the usage counts.
+     * A 401 marks the sign-in expired and keeps the session.
      * @param includeStats - When true, fetches telemetry stats (for Account dashboard)
+     * @returns true when the server answered, false when the last known values stand
      */
-    fetchLicenseStatus(includeStats?: boolean): Promise<DbmnLicenseStatus | null>;
+    refreshAccount(includeStats?: boolean): Promise<boolean>;
 
     /**
      * Initialize the service — restore session from SecretStorage, start background timers.
@@ -131,7 +119,7 @@ export interface IDbmnAuthService {
     dispose(): void;
 
     /**
-     * Event fired when auth state changes (login, logout, license update).
+     * Event fired when auth state changes (login, logout, account update).
      * @param listener - Callback receiving the new auth state
      * @returns Disposable to unregister the listener
      */
@@ -157,11 +145,11 @@ export interface IDbmnAuthService {
 }
 
 // =============================================================================
-// IDbmnStatusBar — License status display in VS Code status bar
+// IDbmnStatusBar — Account status display in VS Code status bar
 // =============================================================================
 
 /**
- * Status bar service for DBMN license status display.
+ * Status bar service for DBMN account status display.
  * Shows at priority 110 (leftmost, before environment status at 100).
  */
 export interface IDbmnStatusBar {

@@ -17,9 +17,6 @@
  *     try to refresh the real production token against the local stack, fail, and sign
  *     the real extension out. Production keeps the historical key names (suffix '').
  *   - A dev build tags its telemetry and usage rows: extension_version "<version>-dev".
- *   - Issue #396: how long the last known licence is trusted without confirmation is
- *     4 weeks. A dev build can shorten it with DBMN_LICENSE_GRACE_MINUTES to test the
- *     lapse; a packaged build never reads it.
  *
  * EVERY HOST (#377, Architecture-v2.md 2.2). This file is the one source of truth for VS Code,
  * the web app and the desktop app. Each host's composition root calls `initBackend(...)` before
@@ -31,7 +28,7 @@
  *
  * Portable: no `vscode` import. extension.ts passes in the mode and the environment.
  */
-import { DBMN_CACHE_TTL, DBMN_STORAGE_KEYS } from '../../types/dbmn-auth';
+import { DBMN_STORAGE_KEYS } from '../../types/dbmn-auth';
 
 export type BackendProfile = 'local' | 'test' | 'production';
 
@@ -46,8 +43,6 @@ export interface BackendConfig {
     storageSuffix: string;
     /** A development build: the Extension Development Host, or the web app's dev server. */
     isDevBuild: boolean;
-    /** Issue #396: how long a cached licence is trusted when it cannot be confirmed. */
-    licenseGraceMs: number;
 }
 
 export const PRODUCTION_BACKEND: BackendConfig = {
@@ -56,8 +51,7 @@ export const PRODUCTION_BACKEND: BackendConfig = {
     anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ4cmZscXBraWhleXJxcGlrZmxsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE5ODg3MzgsImV4cCI6MjA4NzU2NDczOH0.-qC5CregIAJwZvR_NsR1Sa6h-DuPICOO3gt55fgbycU', // gitleaks:allow (the anon key is public by design: it ships in every build; row-level security guards the data)
     siteUrl: 'https://dbmn.io',
     storageSuffix: '',
-    isDevBuild: false,
-    licenseGraceMs: DBMN_CACHE_TTL.offlineGracePeriodMs
+    isDevBuild: false
 };
 
 /**
@@ -85,18 +79,6 @@ export interface ResolveBackendInput {
 
 const stripSlash = (url: string): string => url.trim().replace(/\/+$/, '');
 
-/** Issue #396: DBMN_LICENSE_GRACE_MINUTES, dev builds only. Unset = the 4-week default; a bad value throws. */
-function resolveLicenseGraceMs(raw: string | undefined): number {
-    if (raw === undefined || raw.trim() === '') {
-        return DBMN_CACHE_TTL.offlineGracePeriodMs;
-    }
-    const minutes = Number(raw);
-    if (!Number.isFinite(minutes) || minutes <= 0) {
-        throw new Error(`DBMN_LICENSE_GRACE_MINUTES must be a number of minutes greater than 0, not "${raw}"`);
-    }
-    return Math.round(minutes * 60 * 1000);
-}
-
 export function resolveBackend(input: ResolveBackendInput): BackendConfig {
     // A packaged (or test-host) build never reads the environment.
     if (!input.isDevelopment) {
@@ -104,10 +86,9 @@ export function resolveBackend(input: ResolveBackendInput): BackendConfig {
     }
 
     const requested = (input.env.DBMN_BACKEND ?? 'local').trim().toLowerCase();
-    const licenseGraceMs = resolveLicenseGraceMs(input.env.DBMN_LICENSE_GRACE_MINUTES);
 
     if (requested === 'production') {
-        return { ...PRODUCTION_BACKEND, isDevBuild: true, licenseGraceMs };
+        return { ...PRODUCTION_BACKEND, isDevBuild: true };
     }
     if (requested === 'local' || requested === 'test') {
         return {
@@ -116,8 +97,7 @@ export function resolveBackend(input: ResolveBackendInput): BackendConfig {
             anonKey: (input.env.DBMN_BACKEND_ANON_KEY || LOCAL_DEMO_ANON_KEY).trim(),
             siteUrl: stripSlash(input.env.DBMN_SITE_URL || LOCAL_DEFAULTS.siteUrl),
             storageSuffix: `__${requested}`,
-            isDevBuild: true,
-            licenseGraceMs
+            isDevBuild: true
         };
     }
     throw new Error(`DBMN_BACKEND must be "local", "test" or "production", not "${input.env.DBMN_BACKEND}"`);
@@ -162,8 +142,7 @@ export function devStackBackend(input: DevStackInput): BackendConfig {
         anonKey: input.anonKey.trim(),
         siteUrl: stripSlash(typeof input.siteUrl === 'string' && input.siteUrl ? input.siteUrl : LOCAL_DEFAULTS.siteUrl),
         storageSuffix: `__${input.profile}`,
-        isDevBuild: true,
-        licenseGraceMs: DBMN_CACHE_TTL.offlineGracePeriodMs
+        isDevBuild: true
     };
 }
 
@@ -315,13 +294,9 @@ export function devBackendMarkup(config: BackendConfig = active): { DEV_BACKEND_
     const api = escapeHtml(config.apiUrl);
     const site = escapeHtml(config.siteUrl);
     const cls = `hub-dev-backend is-${config.profile}`;
-    // Issue #396: a shortened licence grace changes when sign-in is demanded — say so.
-    const grace = config.licenseGraceMs === DBMN_CACHE_TTL.offlineGracePeriodMs
-        ? ''
-        : ` Licence grace shortened to ${Math.round(config.licenseGraceMs / 60000)} min.`;
     return {
         DEV_BACKEND_PILL: `<span class="${cls}" title="Development build. DBMN backend: ${api}">${label}</span>`,
-        DEV_BACKEND_NOTE: `<p class="hub-dev-backend-note"><span class="${cls}">${label}</span> Backend <code>${api}</code> · site <code>${site}</code>. Sessions are stored separately per backend.${grace}</p>`
+        DEV_BACKEND_NOTE: `<p class="hub-dev-backend-note"><span class="${cls}">${label}</span> Backend <code>${api}</code> · site <code>${site}</code>. Sessions are stored separately per backend.</p>`
     };
 }
 

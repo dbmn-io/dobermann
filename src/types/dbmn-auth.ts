@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Flexion Tech Pty Ltd
 /**
- * DBMN Authentication & Licensing Types (GitHub Issue #208)
+ * DBMN Authentication Types (GitHub Issue #208)
  *
- * Type definitions for DBMN user registration, licensing, and usage tracking.
+ * Type definitions for DBMN user registration, the account and usage tracking.
  * These are separate from the environments' OAuth types — the extension manages two
  * independent auth contexts.
  */
@@ -26,58 +26,18 @@ export interface DbmnSession {
 }
 
 // =============================================================================
-// License Types
-// =============================================================================
-
-/** License tier types matching Supabase user_licenses.license_type */
-export type DbmnLicenseType = 'trial' | 'free' | 'user' | 'environment';
-
-/** License status matching Supabase user_licenses.status */
-export type DbmnLicenseStatusValue = 'active' | 'expired' | 'cancelled' | 'suspended';
-
-/** Access level returned by get_effective_license() */
-export type DbmnAccessLevel = 'full' | 'limited';
-
-/**
- * License status fetched from Supabase (cached locally).
- * NOT embedded in JWT — fetched separately to avoid reissue on license changes.
- */
-export interface DbmnLicenseStatus {
-    licenseType: DbmnLicenseType;
-    accessLevel: DbmnAccessLevel;
-    status: DbmnLicenseStatusValue;
-    trialEndsAt: string | null; // ISO 8601
-    subscriptionEndsAt: string | null; // ISO 8601
-    licensedEnvironmentUrls: string[];
-    isLifetime: boolean;
-    fetchedAt: number; // Unix timestamp (ms) for cache TTL
-}
-
-// =============================================================================
 // Usage Types
 // =============================================================================
 
-/**
- * Current week's usage counters.
- * The week the server counts from (check-license); 0.4.0 records nothing into it.
- */
+/** The week the Account page's weekly numbers count from (the server's week, Monday UTC). */
 export interface DbmnUsageStatus {
     weekStart: string; // ISO date (YYYY-MM-DD)
-    batchCount: number;
-    exportCount: number;
-    importCount: number;
 }
 
 /**
  * Cache TTL constants
  */
 export const DBMN_CACHE_TTL = {
-    licenseTtlMs: 15 * 60 * 1000, // 15 minutes — in-memory license refresh
-    // Issue #396: 4 weeks — how long the last known licence is trusted when it cannot be
-    // confirmed (offline, or the DBMN session can no longer refresh). After that the user
-    // signs in again. This is the default; read `getBackend().licenseGraceMs`, which a dev
-    // build can shorten with DBMN_LICENSE_GRACE_MINUTES to test the lapse.
-    offlineGracePeriodMs: 28 * 24 * 60 * 60 * 1000,
     telemetryFlushIntervalMs: 5 * 60 * 1000 // 5 minutes — telemetry buffer flush
 } as const;
 
@@ -100,23 +60,15 @@ export type SessionRefreshResult =
 
 /**
  * Combined auth state exposed to the extension.
- * Represents the full picture: session + license + usage.
+ * Represents the full picture: session + usage.
  */
 export interface DbmnAuthState {
     isAuthenticated: boolean;
     session: DbmnSession | null;
-    /** The account's licence (0.4.0: no environment licences; nothing is gated on it) */
-    license: DbmnLicenseStatus | null;
-    /** The same: kept for the screens that read it by this name */
-    userLicense: DbmnLicenseStatus | null;
     usage: DbmnUsageStatus | null;
     telemetryStats: { weekly: DbmnTelemetryStats; alltime: DbmnTelemetryStats } | null;
     connectivityStatus?: 'ok' | 'network_error' | 'auth_error';
 }
-
-// =============================================================================
-// License Gate Results
-// =============================================================================
 
 // =============================================================================
 // Telemetry Types
@@ -157,6 +109,8 @@ export interface DbmnTelemetryStats {
 /** Keys used for SecretStorage and globalState */
 export const DBMN_STORAGE_KEYS = {
     session: 'dbmn_session',
+    // Older versions kept the account's licence and each environment's under these keys.
+    // Nothing reads them now; startup deletes them.
     licenseCache: 'dbmn_license_cache',
     envLicenseCache: 'dbmn_env_license_cache',
     usageCounters: 'dbmn_usage_counters',
@@ -181,11 +135,10 @@ export const DBMN_STORAGE_KEYS = {
 // Supabase Edge Function Payloads
 // =============================================================================
 
-/** Response from check-license Edge Function */
-export interface DbmnCheckLicenseResponse {
-    license: DbmnLicenseStatus;
-    usage: DbmnUsageStatus;
+/** Response from the account Edge Function */
+export interface DbmnAccountResponse {
     displayName: string;
+    weekStart: string; // ISO date (YYYY-MM-DD)
     telemetryStats?: { weekly: DbmnTelemetryStats; alltime: DbmnTelemetryStats };
 }
 

@@ -618,8 +618,6 @@
                     isAuthenticated: store.isSignedIn,
                     displayName: store.isSignedIn ? 'Test User' : null,
                     email: store.isSignedIn ? 'test@example.com' : null,
-                    license: null,
-                    userLicense: null,
                     usage: null,
                     telemetryStats: null,
                     connectivityStatus: store.isSignedIn && store.dbmnSessionExpired === true ? 'auth_error' : 'ok'

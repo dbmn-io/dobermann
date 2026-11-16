@@ -140,7 +140,7 @@ export const ServiceTokens = {
     // UI Components
     ExecutionWebviewManager: Symbol('ExecutionWebviewManager'),
 
-    // DBMN Authentication & Licensing (GitHub Issue #208)
+    // DBMN Authentication (GitHub Issue #208)
     // Primary tokens defined in DbmnServiceTokens (src/container/dbmn-services-registry.ts)
     DbmnAuthService: Symbol('DbmnAuthService'),
     DbmnStatusBar: Symbol('DbmnStatusBar'),

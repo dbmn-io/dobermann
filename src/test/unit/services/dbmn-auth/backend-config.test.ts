@@ -9,7 +9,7 @@ import {
     devBackendMarkup, getBackend, initBackend, isAllowedExternalUrl, isBackendReachable, resolveDocsUrl,
     reportedExtensionVersion, resolveBackend
 } from '../../../../services/dbmn-backend/backend-config';
-import { DBMN_CACHE_TTL, DBMN_STORAGE_KEYS } from '../../../../types/dbmn-auth';
+import { DBMN_STORAGE_KEYS } from '../../../../types/dbmn-auth';
 
 describe('backend-config — which DBMN backend a build talks to', () => {
     afterEach(() => initBackend(PRODUCTION_BACKEND));
@@ -72,38 +72,10 @@ describe('backend-config — which DBMN backend a build talks to', () => {
         });
     });
 
-    describe('how long the last known licence is trusted (issue #396)', () => {
-        const FOUR_WEEKS_MS = 28 * 24 * 60 * 60 * 1000;
-
-        it('is four weeks, in a packaged build and in a dev build that does not say otherwise', () => {
-            expect(DBMN_CACHE_TTL.offlineGracePeriodMs).to.equal(FOUR_WEEKS_MS);
-            expect(PRODUCTION_BACKEND.licenseGraceMs).to.equal(FOUR_WEEKS_MS);
-            expect(resolveBackend({ isDevelopment: true, env: {} }).licenseGraceMs).to.equal(FOUR_WEEKS_MS);
-            expect(resolveBackend({ isDevelopment: true, env: { DBMN_BACKEND: 'production' } }).licenseGraceMs).to.equal(FOUR_WEEKS_MS);
-        });
-
-        it('a packaged build never reads DBMN_LICENSE_GRACE_MINUTES', () => {
-            expect(resolveBackend({ isDevelopment: false, env: { DBMN_LICENSE_GRACE_MINUTES: '10' } }).licenseGraceMs).to.equal(FOUR_WEEKS_MS);
-            expect(() => resolveBackend({ isDevelopment: false, env: { DBMN_LICENSE_GRACE_MINUTES: 'nonsense' } })).to.not.throw();
-        });
-
-        it('a dev build can shorten it to test the lapse, on either profile', () => {
-            expect(resolveBackend({ isDevelopment: true, env: { DBMN_LICENSE_GRACE_MINUTES: '10' } }).licenseGraceMs).to.equal(10 * 60 * 1000);
-            expect(resolveBackend({ isDevelopment: true, env: { DBMN_BACKEND: 'production', DBMN_LICENSE_GRACE_MINUTES: ' 0.5 ' } }).licenseGraceMs).to.equal(30 * 1000);
-        });
-
-        it('refuses a value that is not a number of minutes greater than 0', () => {
-            for (const bad of ['ten', '0', '-5', 'Infinity']) {
-                expect(() => resolveBackend({ isDevelopment: true, env: { DBMN_LICENSE_GRACE_MINUTES: bad } }), bad)
-                    .to.throw(/DBMN_LICENSE_GRACE_MINUTES must be a number of minutes greater than 0/);
-            }
-        });
-
-        it('a shortened grace is named in the dev note; the default is not', () => {
-            const short = devBackendMarkup(resolveBackend({ isDevelopment: true, env: { DBMN_LICENSE_GRACE_MINUTES: '10' } }));
-            expect(short.DEV_BACKEND_NOTE).to.contain('Licence grace shortened to 10 min.');
-            expect(devBackendMarkup(resolveBackend({ isDevelopment: true, env: {} })).DEV_BACKEND_NOTE).to.not.contain('Licence grace');
-        });
+    it('no licence grace is left to configure (no licences from 0.4.0)', () => {
+        expect(PRODUCTION_BACKEND).to.not.have.property('licenseGraceMs');
+        expect(resolveBackend({ isDevelopment: true, env: { DBMN_LICENSE_GRACE_MINUTES: '10' } })).to.not.have.property('licenseGraceMs');
+        expect(devBackendMarkup(resolveBackend({ isDevelopment: true, env: {} })).DEV_BACKEND_NOTE).to.not.contain('Licence');
     });
 
     describe('stored sessions are separated per profile', () => {

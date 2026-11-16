@@ -1,30 +1,25 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Flexion Tech Pty Ltd
 /**
- * GitHub Issue #396 — a rejected licence check must not sign the user out.
+ * GitHub Issue #396 — a rejected account check must not sign the user out.
  *
  * The rule: DBMN sign-in is required once; after that it must not get in the way. When the
  * server ended a session (the website presented an old copy of it, Sign Out elsewhere) the
- * extension's access token still looked valid for up to an hour. A licence check in that
- * hour came back 401, and the extension signed out completely and deleted the saved
- * licence: the Hub swapped the environment selector for "Sign in to DBMN" and Run API was
- * blocked as well as batches — worse than the expired sign-in the 4-week grace is for.
+ * extension's access token still looked valid for up to an hour. A check in that hour came
+ * back 401, and the extension used to sign out completely: the Hub swapped the environment
+ * selector for "Sign in to DBMN" and Run API was blocked. It is an expired sign-in instead.
+ * (0.4.1: the check is the account function; there are no licences.)
  */
 import '../../../setup';
 import { expect } from 'chai';
 import { stub, restore, SinonStub } from 'sinon';
 import { DbmnAuthService } from '../../../../services/dbmn-auth/dbmn-auth.service';
-import { DBMN_STORAGE_KEYS, DbmnLicenseStatus } from '../../../../types/dbmn-auth';
+import { DBMN_STORAGE_KEYS } from '../../../../types/dbmn-auth';
 
 function makeJwt(claims: Record<string, unknown>): string {
     const part = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url');
     return `${part({ alg: 'HS256', typ: 'JWT' })}.${part(claims)}.fake-signature`;
 }
-
-const LICENCE: DbmnLicenseStatus = {
-    licenseType: 'user', accessLevel: 'full', status: 'active', trialEndsAt: null, subscriptionEndsAt: null,
-    licensedEnvironmentUrls: [], isLifetime: false, fetchedAt: Date.now()
-};
 
 function signedInContext() {
     const store = new Map<string, unknown>();
@@ -34,7 +29,8 @@ function signedInContext() {
         userId: 'u-1', email: 'user@example.com', displayName: 'User',
         accessToken: makeJwt({ sub: 'u-1', email: 'user@example.com', exp }), refreshToken: 'rt-current', expiresAt: exp
     }));
-    secrets.set(DBMN_STORAGE_KEYS.licenseCache, JSON.stringify(LICENCE));
+    // What an older version left behind
+    secrets.set(DBMN_STORAGE_KEYS.licenseCache, JSON.stringify({ accessLevel: 'full', fetchedAt: Date.now() }));
     const context = {
         globalState: {
             get: <T>(key: string) => store.get(key) as T | undefined,
@@ -52,7 +48,7 @@ function signedInContext() {
     return { context: context as never, secrets };
 }
 
-describe('DbmnAuthService — a rejected licence check does not sign the user out (#396)', () => {
+describe('DbmnAuthService — a rejected account check does not sign the user out (#396)', () => {
     let fetchStub: SinonStub;
     let service: DbmnAuthService;
 
@@ -70,31 +66,51 @@ describe('DbmnAuthService — a rejected licence check does not sign the user ou
 
     const answer = (status: number, body: unknown = {}) => ({ ok: status < 400, status, json: async () => body, text: async () => JSON.stringify(body) }) as Response;
 
-    it('the server says 401: still signed in, the licence is kept, batches are still allowed', async () => {
+    it('the server says 401: still signed in, the session is kept', async () => {
         const { context, secrets } = signedInContext();
-        fetchStub.callsFake(async (url: string) => answer(String(url).includes('/check-license') ? 401 : 200));
+        fetchStub.callsFake(async (url: string) => answer(String(url).includes('/account') ? 401 : 200));
         service = new DbmnAuthService(context);
         await service.initialize();
-        const changes: string[] = [];
-        service.onAuthStateChanged(state => changes.push(String(state.connectivityStatus)));
 
-        const licence = await service.fetchLicenseStatus();
+        const answered = await service.refreshAccount();
 
-        expect(licence?.accessLevel, 'the last known licence is what comes back').to.equal('full');
+        expect(answered, 'the last known values stand').to.equal(false);
         expect(service.isAuthenticated(), 'not signed out').to.equal(true);
         expect(secrets.has(DBMN_STORAGE_KEYS.session), 'the session is kept').to.equal(true);
-        expect(secrets.has(DBMN_STORAGE_KEYS.licenseCache), 'the saved licence is kept').to.equal(true);
+    });
+
+    it('asks the account function, never the old licence check', async () => {
+        const { context } = signedInContext();
+        fetchStub.callsFake(async () => answer(200, { displayName: 'Server Name', weekStart: '2026-11-16' }));
+        service = new DbmnAuthService(context);
+        await service.initialize();
+
+        expect(await service.refreshAccount(true)).to.equal(true);
+
+        const urls = fetchStub.getCalls().map(call => String(call.args[0]));
+        expect(urls.some(url => url.includes('/functions/v1/account?include_stats=true'))).to.equal(true);
+        expect(urls.some(url => url.includes('check-license'))).to.equal(false);
+        expect(service.getUsageStatus()).to.deep.equal({ weekStart: '2026-11-16' });
+        expect(service.getAuthState().session?.displayName).to.equal('Server Name');
+    });
+
+    it('startup deletes the licence an older version saved', async () => {
+        const { context, secrets } = signedInContext();
+        fetchStub.callsFake(async () => answer(200, { displayName: '', weekStart: '2026-11-16' }));
+        service = new DbmnAuthService(context);
+        await service.initialize();
+        expect(secrets.has(DBMN_STORAGE_KEYS.licenseCache)).to.equal(false);
     });
 
     it('and it is shown as an expired sign-in, so the Hub header can say so', async () => {
         const { context } = signedInContext();
-        fetchStub.callsFake(async (url: string) => answer(String(url).includes('/check-license') ? 401 : 200));
+        fetchStub.callsFake(async (url: string) => answer(String(url).includes('/account') ? 401 : 200));
         service = new DbmnAuthService(context);
         await service.initialize();
         const seen: string[] = [];
         service.onAuthStateChanged(state => seen.push(String(state.connectivityStatus)));
 
-        await service.fetchLicenseStatus();
+        await service.refreshAccount();
 
         expect(service.getAuthState().connectivityStatus).to.equal('auth_error');
         expect(seen, 'listeners were told').to.include('auth_error');
@@ -104,16 +120,16 @@ describe('DbmnAuthService — a rejected licence check does not sign the user ou
         const { context } = signedInContext();
         let reject = true;
         fetchStub.callsFake(async (url: string) => {
-            if (!String(url).includes('/check-license')) { return answer(200); }
-            return reject ? answer(401) : answer(200, { license: { ...LICENCE, fetchedAt: Date.now() }, usage: { weekStart: '2026-10-12', batchCount: 0, exportCount: 0, importCount: 0 } });
+            if (!String(url).includes('/account')) { return answer(200); }
+            return reject ? answer(401) : answer(200, { displayName: 'User', weekStart: '2026-10-12' });
         });
         service = new DbmnAuthService(context);
         await service.initialize();
-        await service.fetchLicenseStatus();
+        await service.refreshAccount();
         expect(service.getAuthState().connectivityStatus).to.equal('auth_error');
 
         reject = false;
-        await service.fetchLicenseStatus();
+        await service.refreshAccount();
         expect(service.getAuthState().connectivityStatus).to.equal('ok');
     });
 });

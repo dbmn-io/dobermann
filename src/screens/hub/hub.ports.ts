@@ -92,7 +92,7 @@ export interface HubAuth {
     isSignedIn(): boolean;
     /**
      * GitHub Issue #396: signed in, but the session can no longer refresh. Nothing stops
-     * working yet (the last known licence is trusted for 4 weeks); the header says so, so
+     * working; the header says so, so
      * signing in again happens at a quiet moment and not in the middle of a batch.
      */
     sessionExpired?(): boolean;

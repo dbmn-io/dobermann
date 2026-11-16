@@ -4,25 +4,24 @@
  * DBMN Authentication Service (GitHub Issue #208)
  *
  * Handles DBMN user authentication via browser OAuth-style flow,
- * session management in SecretStorage, license fetching/caching,
+ * session management in SecretStorage, the account summary,
  * and usage counter sync.
  *
  * Following Architecture.md:
  * - Browser OAuth flow pattern from tenant-auth-provider.ts
  * - SecretStorage for tokens (same as oauth-token.service.ts)
- * - globalState for license cache + usage counters
- * - Background timer for usage sync (5min); license refreshed on-demand
+ * - globalState for the usage week + usage stats
+ * - Background timer for usage sync (5min); account summary refreshed on demand
  */
 
 import * as vscode from 'vscode';
 import { buildPuppySchoolUrl } from '../badges/badge.service';
 import {
     DbmnSession,
-    DbmnLicenseStatus,
     DbmnUsageStatus,
     DbmnTelemetryStats,
     DbmnAuthState,
-    DbmnCheckLicenseResponse,
+    DbmnAccountResponse,
     SessionRefreshResult
 } from '../../types/dbmn-auth';
 import { IDbmnAuthService } from './dbmn-auth.interface';
@@ -48,8 +47,7 @@ const PROACTIVE_REFRESH_WHEN_REMAINING_S = 10 * 60;
 
 export class DbmnAuthService implements IDbmnAuthService {
     private session: DbmnSession | null = null;
-    private licenseCache: DbmnLicenseStatus | null = null;
-    /** The week the server counts from (check-license). 0.4.0 records nothing into it. */
+    /** The week the server counts from (the account function). */
     private usageCounters: DbmnUsageStatus | null = null;
     private telemetryStats: { weekly: DbmnTelemetryStats; alltime: DbmnTelemetryStats } | null = null;
 
@@ -103,29 +101,14 @@ export class DbmnAuthService implements IDbmnAuthService {
                 if (this.session) {
                     const result = await this.ensureValidSession();
                     if (result.status !== 'success') {
-                        // Network may be down or token revoked — keep session so isAuthenticated() returns true
-                        // and cached license can serve gate checks.
-                        console.warn(`[DbmnAuth] Token expired and refresh failed on startup (${result.status}) — keeping session with cached license`);
+                        // Network may be down or token revoked — keep session so isAuthenticated() returns true.
+                        console.warn(`[DbmnAuth] Token expired and refresh failed on startup (${result.status}) — keeping session`);
                     }
                 }
             }
         } catch (error) {
             console.error('[DbmnAuth] Failed to restore session:', error);
             this.session = null;
-        }
-
-        // Restore license cache from SecretStorage
-        try {
-            const cachedLicenseJson = await this.context.secrets.get(dbmnStorageKeys().licenseCache);
-            if (cachedLicenseJson) {
-                const cachedLicense: DbmnLicenseStatus = JSON.parse(cachedLicenseJson);
-                const cacheAge = Date.now() - cachedLicense.fetchedAt;
-                if (cacheAge < getBackend().licenseGraceMs) {
-                    this.licenseCache = cachedLicense;
-                }
-            }
-        } catch (error) {
-            console.warn('[DbmnAuth] Failed to restore license cache:', error);
         }
 
         // Restore usage counters from globalState
@@ -144,8 +127,9 @@ export class DbmnAuthService implements IDbmnAuthService {
             this.telemetryStats = cachedTelemetryStats;
         }
 
-        // 0.4.0: no environment licences. An older version kept every environment address it had
-        // checked with the server, and each one's answer: neither is used now, so neither is kept.
+        // No licences from 0.4.0. Older versions kept the account's licence, and every
+        // environment address they had checked with the server and its answer: none is used now.
+        void this.context.secrets.delete(dbmnStorageKeys().licenseCache);
         void this.context.secrets.delete(dbmnStorageKeys().envLicenseCache);
         void this.context.globalState.update(dbmnStorageKeys().verifiedEnvironments, undefined);
 
@@ -168,8 +152,8 @@ export class DbmnAuthService implements IDbmnAuthService {
             this.startBackgroundTimers();
 
             // Always do one fire-and-forget background fetch on startup to ensure fresh data
-            this.fetchLicenseStatus().catch(err => {
-                console.warn('[DbmnAuth] Background license fetch failed:', err);
+            this.refreshAccount().catch(err => {
+                console.warn('[DbmnAuth] Background account fetch failed:', err);
             });
         }
 
@@ -353,7 +337,7 @@ export class DbmnAuthService implements IDbmnAuthService {
 
     /**
      * Establish a freshly-obtained session: persist it, reset auth-error state,
-     * set the auth context, start timers, refresh the license, notify listeners,
+     * set the auth context, start timers, refresh the account, notify listeners,
      * and confirm via the portable toast layer. Shared by the magic-link callback
      * and password sign-in so both paths behave identically.
      */
@@ -366,7 +350,7 @@ export class DbmnAuthService implements IDbmnAuthService {
 
         await vscode.commands.executeCommand('setContext', 'dbmn.isDbmnAuthenticated', true);
         this.startBackgroundTimers();
-        await this.fetchLicenseStatus();
+        await this.refreshAccount();
         this.notifyListeners();
 
         // Confirmation via the portable toast layer (issue #263). The auth
@@ -389,15 +373,12 @@ export class DbmnAuthService implements IDbmnAuthService {
 
         // Clear SecretStorage
         await this.context.secrets.delete(dbmnStorageKeys().session);
-        await this.context.secrets.delete(dbmnStorageKeys().licenseCache);
-
         // Clear globalState caches
         await this.context.globalState.update(dbmnStorageKeys().usageCounters, undefined);
         await this.context.globalState.update(dbmnStorageKeys().telemetryStatsCache, undefined);
 
         // Reset in-memory state
         this.session = null;
-        this.licenseCache = null;
         this.usageCounters = null;
         this.telemetryStats = null;
 
@@ -560,38 +541,8 @@ export class DbmnAuthService implements IDbmnAuthService {
     }
 
     // =========================================================================
-    // License Status
+    // Usage
     // =========================================================================
-
-    async getLicenseStatus(): Promise<DbmnLicenseStatus | null> {
-        // For generic checks, use expiry-based cache validation
-        if (this.licenseCache && !this.isLicenseExpired(this.licenseCache)) {
-            return this.licenseCache;
-        }
-
-        // Fetch fresh from server (missing or expired)
-        const fresh = await this.fetchLicenseStatus();
-        if (fresh) {
-            return fresh;
-        }
-        // Fetch failed — fall back to stale cache instead of returning null
-        return this.licenseCache;
-    }
-
-    getCachedLicenseStatus(): DbmnLicenseStatus | null {
-        return this.licenseCache;
-    }
-
-    /**
-     * Check if a license has expired based on its trial or subscription end dates.
-     * Returns true if the license period has ended and fresh data should be fetched.
-     */
-    private isLicenseExpired(license: DbmnLicenseStatus): boolean {
-        const now = new Date().toISOString();
-        if (license.trialEndsAt && license.trialEndsAt < now) { return true; }
-        if (license.subscriptionEndsAt && license.subscriptionEndsAt < now) { return true; }
-        return false;
-    }
 
     getUsageStatus(): DbmnUsageStatus | null {
         return this.usageCounters;
@@ -605,8 +556,6 @@ export class DbmnAuthService implements IDbmnAuthService {
         return {
             isAuthenticated: this.isAuthenticated(),
             session: this.session,
-            license: this.licenseCache,
-            userLicense: this.licenseCache,
             usage: this.usageCounters,
             telemetryStats: this.telemetryStats,
             connectivityStatus: this.connectivityStatus
@@ -647,26 +596,25 @@ export class DbmnAuthService implements IDbmnAuthService {
     // Private Methods
     // =========================================================================
 
-    async fetchLicenseStatus(includeStats?: boolean): Promise<DbmnLicenseStatus | null> {
+    async refreshAccount(includeStats?: boolean): Promise<boolean> {
         if (!this.session) {
-            return null;
+            return false;
         }
 
         try {
             // Ensure token is fresh
             const refreshResult = await this.ensureValidSession();
             if (refreshResult.status !== 'success') {
-                // Can't refresh — return cached license instead of signing out.
-                return this.licenseCache;
+                // Can't refresh: keep the last known values instead of signing out.
+                return false;
             }
 
             if (!this.session) {
-                return null;
+                return false;
             }
 
-            // 0.4.0: never an environment address; only the account's own answer
             const params = includeStats ? '?include_stats=true' : '';
-            const response = await fetch(`${getBackend().apiUrl}/functions/v1/check-license${params}`, {
+            const response = await fetch(`${getBackend().apiUrl}/functions/v1/account${params}`, {
                 method: 'GET',
                 headers: {
                     'Authorization': `Bearer ${this.session.accessToken}`,
@@ -675,30 +623,27 @@ export class DbmnAuthService implements IDbmnAuthService {
             });
 
             if (!response.ok) {
-                console.error('[DbmnAuth] License check failed:', response.status);
+                console.error('[DbmnAuth] Account fetch failed:', response.status);
                 if (response.status === 401) {
                     // GitHub Issue #396: the server no longer accepts this session (it was
                     // ended elsewhere while the access token still looked valid). That is an
-                    // expired sign-in, not a sign-out: keep the session and the last known
-                    // licence, which is trusted for the grace period, and say so in the Hub.
-                    // This used to sign out and delete the licence, which blocked Run API too.
-                    console.warn('[DbmnAuth] Licence check rejected (401) — sign-in has expired; keeping the last known licence');
+                    // expired sign-in, not a sign-out: keep the session and say so in the Hub.
+                    console.warn('[DbmnAuth] Account fetch rejected (401) — sign-in has expired; keeping the session');
                     this.markSessionRejected();
-                    return this.licenseCache;
                 }
-                return this.licenseCache;
+                return false;
             }
 
-            const data: DbmnCheckLicenseResponse = await response.json();
+            const data: DbmnAccountResponse = await response.json();
 
-            // The server accepted the session: any "expired sign-in" a rejected check raised is over.
+            // The server accepted the session: any "expired sign-in" a rejected fetch raised is over.
             if (this.connectivityStatus === 'auth_error') {
                 this.clearAuthErrorState();
                 this.notifyListeners();
             }
 
             // The week the server counts from (labels Weekly Usage)
-            this.usageCounters = data.usage;
+            this.usageCounters = { weekStart: data.weekStart };
             this.persistUsageCounters();
 
             // Update displayName from server profile (more reliable than JWT metadata)
@@ -715,14 +660,11 @@ export class DbmnAuthService implements IDbmnAuthService {
                 this.persistTelemetryStats();
             }
 
-            this.licenseCache = data.license;
-            await this.context.secrets.store(dbmnStorageKeys().licenseCache, JSON.stringify(this.licenseCache));
             this.notifyListeners();
-
-            return data.license;
+            return true;
         } catch (error) {
-            console.warn('[DbmnAuth] License fetch error (using cache):', error);
-            return this.licenseCache;
+            console.warn('[DbmnAuth] Account fetch error (keeping last known values):', error);
+            return false;
         }
     }
 

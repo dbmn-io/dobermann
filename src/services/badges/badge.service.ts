@@ -6,7 +6,7 @@
  * the last look.
  *
  * READ-ONLY. Lessons live on dbmn.io and the server records every pass; nothing here tracks
- * or writes progress. No licence check either: badges are independent of licence tier.
+ * or writes progress.
  *
  * PORTABLE. No `vscode` import: the session, the HTTP call, the store and the clock are all
  * injected (see extension.ts for the VS Code wiring), so this moves with the product.

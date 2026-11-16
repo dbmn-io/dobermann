@@ -417,10 +417,7 @@ enabled = true
 # Our functions authenticate internally (see CLAUDE.md): the gateway JWT check stays off,
 # exactly as production deploys with --no-verify-jwt.
 
-[functions.check-license]
-verify_jwt = false
-
-[functions.environment-policy]
+[functions.account]
 verify_jwt = false
 
 [functions.sync-usage]

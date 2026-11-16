@@ -437,7 +437,7 @@ export class RunBatchController {
 
             executionPromise.then(async (result: unknown) => {
                 // GitHub Issue #396: the answer is { success: false } when the batch did not
-                // start (licence gate, sign-in not completed, preparation failed). Say why and
+                // start (sign-in not completed, preparation failed). Say why and
                 // keep the tab, so it can be run again. It used to be ignored, and the tab sat
                 // on "Preparing batch execution…" for ever.
                 const failure = this.describeStartFailure(result);
@@ -538,7 +538,7 @@ export class RunBatchController {
             await reportBatchStartFailure(failure, {
                 hasPanel: () => !this.closed,
                 postToPage: pageMessage => { this.session.post(pageMessage); },
-                // The tab is gone: force a native-visible toast so a licence refusal is never lost.
+                // The tab is gone: force a native-visible toast so a refused batch is never lost.
             });
         } catch (error) {
             console.error('[RunBatchWebview] Could not report why the batch did not start:', error);

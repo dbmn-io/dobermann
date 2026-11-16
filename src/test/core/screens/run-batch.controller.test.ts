@@ -44,7 +44,7 @@ async function runBatch(answer: BulkLoadResult | (() => Promise<BulkLoadResult>)
     return { controller, posted, events, of };
 }
 
-describe('RunBatchController — a batch that does not start says why (#396; #418: no licence gate)', () => {
+describe('RunBatchController — a batch that does not start says why (#396)', () => {
     it('the user stopped at a sign-in prompt: Execute comes back, and that is not an error', async () => {
         const h = await runBatch(bulkLoadFailure(new RunCancelledError('Sign-in was not completed')));
         expect(h.of('resetExecuteButton')).to.have.length(1);

@@ -8,7 +8,7 @@ import { IToastService, ToastDelivery, ToastOptions, ToastPayload, TOAST_TARGETS
  *
  * Delivery model (designed with the user — no per-notification native spam):
  *   1. `forceNative` → straight to `vscode.window.show*Message`. For rare,
- *      critical/blocking alerts (auth/licensing) the user must see even if they
+ *      critical/blocking alerts (auth) the user must see even if they
  *      never open DBMN.
  *   2. A DBMN webview is open AND visible → render live in its `DbmnToast`
  *      overlay (the common, real-time case).

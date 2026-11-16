@@ -772,7 +772,7 @@ export class RunOrchestrator {
     /**
      * Run Batch's Execute: its rows (objects keyed by column) and mappings, run as a batch.
      * Moved from the `dbmn.internal.executeBulkLoad` command. Failures come back as a
-     * BulkLoadResult for Run Batch to show: it keeps which licence gate refused the batch,
+     * BulkLoadResult for Run Batch to show: it keeps why the batch did not start,
      * and whether the user simply stopped at a prompt (GitHub Issue #396).
      */
     async executeBulkLoad(request: BulkLoadRequest): Promise<BulkLoadResult> {

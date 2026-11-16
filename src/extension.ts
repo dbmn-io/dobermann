@@ -682,7 +682,7 @@ export async function activate(context: vscode.ExtensionContext) {
     // Command for opening endpoint from tree - fires even when item is already selected
     // This fixes the issue where clicking a closed endpoint doesn't reopen it.
     //
-    // Editing an endpoint doesn't hit any licensed API and doesn't need auth —
+    // Editing an endpoint doesn't call DBMN and doesn't need auth —
     // the user is just looking at / changing config. Issue #208's gate
     // (showInformationMessage "Sign in to DBMN to edit and run endpoints") was
     // dropped because (a) it surfaced an unwanted bottom-right toast for the

@@ -107,7 +107,7 @@ describe('DbmnAuthService — lastEmail persistence (#263)', () => {
             const exp = Math.floor(Date.now() / 1000) + 3600;
             const accessToken = makeJwt({ sub: 'user-1', email: 'callback@example.com', exp });
 
-            // fetchLicenseStatus runs as part of the callback — stub it out.
+            // refreshAccount runs as part of the callback — stub it out.
             fetchStub.resolves({ ok: false, status: 503, json: async () => ({}) } as Response);
 
             const service = new DbmnAuthService(context);

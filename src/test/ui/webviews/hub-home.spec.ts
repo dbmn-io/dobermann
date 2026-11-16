@@ -224,8 +224,8 @@ test.describe('Hub Home', () => {
 
         const weekly = { apiCalls: 142, batchRuns: 3, rowsProcessed: 12480, totalExecutionTimeMs: 252_000 };
         await dbmn.push({ type: 'authStateUpdate', isAuthenticated: true, usage: { weekStart: '2026-10-05' },
-            userLicense: { accessLevel: 'limited' }, telemetryStats: { weekly, alltime: weekly } });
-        // 0.4.0: no weekly limit, so no "/ 5", whatever an older account record says
+            telemetryStats: { weekly, alltime: weekly } });
+        // 0.4.0: no weekly limit, so no "/ 5"
         await expect(card).toBeVisible();
         await expect(page.locator('#hubHomeWeekLabel')).toHaveText('Week of 2026-10-05');
         await expect(page.locator('#hubHomeApiCalls')).toHaveText('142');

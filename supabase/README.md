@@ -1,6 +1,6 @@
 # The public backend (#402)
 
-What the open-source Dobermann ships of DBMN's backend: the tables and the three functions
+What the open-source Dobermann ships of DBMN's backend: the tables and the two functions
 the app needs, and nothing else. **Everything in this folder is generated**; edit the
 allowlist (`supabase/public-baseline.json`) or the private migrations, then regenerate.
 
@@ -13,12 +13,12 @@ npm run test-stack:reset             # back to the full private backend
 
 | Here | What it is |
 |---|---|
-| `migrations/20260101000000_public_baseline.sql` | One migration: the public tables with their policies, grants, triggers and Realtime membership; the public functions with their privileges; the auth trigger that gives a new account its licence row. Replays from scratch with `supabase db reset`. |
+| `migrations/20260101000000_public_baseline.sql` | One migration: the public tables with their policies, grants, triggers and Realtime membership; the public functions with their privileges. Replays from scratch with `supabase db reset`. |
 | `seed.sql` | The sample Standard System for a local stack. |
 | `config.toml` | The private config with only the public functions and no secrets. |
 
-Edge functions are not copied here: the export (#404) takes `check-license`, `sync-usage`,
-`environment-policy` and `_shared/cors.ts` from `supabase/functions/` by allowlist.
+Edge functions are not copied here: the export (#404) takes `account`, `sync-usage` and
+`_shared/cors.ts` from `supabase/functions/` by allowlist.
 
 ## How a schema change reaches both worlds
 

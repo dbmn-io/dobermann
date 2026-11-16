@@ -4,7 +4,7 @@
  * Account Webview Manager (GitHub Issue #211)
  *
  * In-extension account dashboard showing login form (when signed out)
- * or account details, license, usage, and actions (when signed in).
+ * or account details, usage, and actions (when signed in).
  *
  * Following Architecture.md: WebviewBase pattern, message-driven UI,
  * business logic stays in backend services.
@@ -14,7 +14,7 @@ import * as vscode from 'vscode';
 import { WebviewBase } from '../shared/webview-base';
 import { WebviewConfig, WebviewMessage } from '../shared/types';
 import { IDbmnAuthService, IDbmnTelemetry } from '../../services/dbmn-auth/dbmn-auth.interface';
-import { DbmnAuthState, DbmnLicenseStatus, DbmnTelemetryStats } from '../../types/dbmn-auth';
+import { DbmnAuthState, DbmnTelemetryStats } from '../../types/dbmn-auth';
 import { APIEndpointManager } from '../../apiEndpointManager';
 import { EnvironmentManager } from '../../environmentManager';
 import { performFlexionTechMigration, FlexionTechMigrationData } from '../../services/migration/flexiontech-migration.service';
@@ -221,7 +221,7 @@ export class AccountWebviewManager extends WebviewBase {
     }
 
     /**
-     * Flush telemetry, fetch fresh license + stats from the server, and push
+     * Flush telemetry, fetch the account summary + stats from the server, and push
      * the result to the webview. Never fabricates zeros — offline, the auth
      * service serves the last-known cached stats (persisted across reloads),
      * so the view shows real cached numbers or, if nothing was ever cached, a
@@ -246,7 +246,7 @@ export class AccountWebviewManager extends WebviewBase {
             if (this.telemetryService) {
                 await this.telemetryService.flush();
             }
-            const fetched = await this.authService.fetchLicenseStatus(true);
+            const fetched = await this.authService.refreshAccount(true);
             if (fetched) {
                 // The server's numbers now include everything flushed before this point.
                 this.telemetryService?.markStatsSynced?.();
@@ -364,23 +364,11 @@ export class AccountWebviewManager extends WebviewBase {
     }
 
     private pushAuthState(state: DbmnAuthState): void {
-        const serializeLicense = (l: DbmnLicenseStatus) => ({
-            licenseType: l.licenseType,
-            accessLevel: l.accessLevel,
-            status: l.status,
-            trialEndsAt: l.trialEndsAt,
-            subscriptionEndsAt: l.subscriptionEndsAt,
-            licensedEnvironmentUrls: l.licensedEnvironmentUrls,
-            isLifetime: l.isLifetime
-        });
-
         this.postToWebview({
             type: 'authStateUpdate',
             isAuthenticated: state.isAuthenticated,
             displayName: state.session?.displayName ?? null,
             email: state.session?.email ?? null,
-            license: state.license ? serializeLicense(state.license) : null,
-            userLicense: state.userLicense ? serializeLicense(state.userLicense) : null,
             usage: state.usage,
             telemetryStats: this.displayedTelemetryStats(state),
             connectivityStatus: state.connectivityStatus
