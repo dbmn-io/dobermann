@@ -8,6 +8,7 @@ on:
 
 jobs:
   test:
+    name: Build, lint and unit tests
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -22,14 +23,46 @@ jobs:
       - run: npm run spdx:check
       - run: npm run test:core
       - run: npm run test:unit
-      - run: npx playwright install --with-deps chromium
-      - run: npm run test:ui
-      - run: npm run test:e2e:console
-      - run: npm run test:e2e:webview
       - run: npm run package:prod
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: vsix
           path: '*.vsix'
+          if-no-files-found: ignore
+
+  browser:
+    name: Browser tests (Playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # A pinned Playwright image, so the browser and fonts are the same on every run. Screenshots
+    # differ from machine to machine, so CI keeps its own baselines (DBMN_SNAPSHOT_SET=ci), made
+    # inside this same image. Keep the tag in step with @playwright/test.
+    container: mcr.microsoft.com/playwright:v1.63.0-noble
+    env:
+      CI: 'true'
+      DBMN_SNAPSHOT_SET: ci
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm ci
+      - run: npm run build
+      - name: Webview UI tests
+        run: |
+          if [ -d src/test/ui/__snapshots__/ci ]; then
+            npm run test:ui
+          else
+            echo "::notice::No CI screenshot baselines under src/test/ui/__snapshots__/ci, so screenshots are skipped."
+            echo "::notice::Make them with: docker run --rm -v \$PWD:/work -w /work -e DBMN_SNAPSHOT_SET=ci mcr.microsoft.com/playwright:v1.63.0-noble npx playwright test --project=ui --update-snapshots"
+            npx playwright test --project=ui --ignore-snapshots
+          fi
+      - run: npm run test:e2e:console
+      - run: npm run test:e2e:webview
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: browser-test-results
+          path: |
+            test-results
+            .dev-local/playwright-*
+          retention-days: 14
           if-no-files-found: ignore
