@@ -1,0 +1,6 @@
+name,amount,balance,active,date
+"John Doe",18210.50,-5000.25,true,2024-01-15
+"Jane Smith",25000.00,10000.75,false,2024-01-16
+"Bob Wilson",12500.25,2500.00,true,2024-01-17
+"Alice Johnson",30000.00,-1500.50,true,2024-01-18
+"Mike Brown",8750.75,0.00,false,2024-01-19

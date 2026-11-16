@@ -1,0 +1,2430 @@
+/* DBMN buttons and pills: the one place their look is decided. First, as @import must be. */
+@import url("buttons.css");
+
+/* Core styles - Base elements, forms, buttons, inputs, layout */
+
+/* Base body styles */
+body {
+    font-family: var(--vscode-font-family);
+    padding: 20px 20px 80px 20px;
+    color: var(--vscode-foreground);
+    background-color: var(--vscode-editor-background);
+    margin: 0;
+}
+
+/* Heading input styles (for inline editing) */
+.heading-input {
+    font-family: var(--vscode-font-family);
+    font-size: 16px;
+    font-weight: bold;
+    background-color: transparent;
+    color: var(--vscode-input-foreground);
+    border: 1px solid transparent;
+    border-radius: 3px;
+    padding: 8px 12px;
+    min-width: 200px;
+    flex: 1;
+    transition: all 0.2s ease;
+}
+
+.heading-input:hover {
+    background-color: var(--vscode-input-background);
+    border-color: var(--vscode-input-border);
+}
+
+.heading-input:focus {
+    background-color: var(--vscode-input-background);
+    border-color: var(--vscode-focusBorder);
+    outline: none;
+}
+
+.heading-input::placeholder {
+    color: var(--vscode-input-placeholderForeground);
+    font-weight: normal;
+}
+
+/* Section container styles */
+.section {
+    margin-bottom: 15px;
+    padding: 10px;
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 5px;
+}
+
+.section h3 {
+    margin-top: 0;
+    color: var(--vscode-textLink-foreground);
+}
+
+/* Form input styles.
+ * NOTE: `button` is intentionally NOT in this group. It's a form *field* group
+ * (margin/padding/input colours) and buttons are re-styled by the dedicated
+ * `button` rules below. Leaving buttons here meant the `margin: 5px 0` leaked
+ * onto every button (they override everything else here but not margin),
+ * knocking layout-critical buttons — tabs, toolbar/icon buttons — out of
+ * alignment. Buttons keep font/border-radius via the dedicated rule below. */
+input,
+select,
+textarea {
+    font-family: var(--vscode-font-family);
+    font-size: 14px;
+    padding: 8px;
+    margin: 5px 0;
+    border: 1px solid var(--vscode-input-border);
+    background-color: var(--vscode-input-background);
+    color: var(--vscode-input-foreground);
+    border-radius: 3px;
+}
+
+button {
+    text-wrap-mode: nowrap;
+}
+
+input[type="text"],
+input[type="url"],
+textarea {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+/* Button styles.
+ * font-family / font-size / border-radius were previously inherited from the
+ * form-field group above; kept here now that `button` is out of that group.
+ * No `margin` on purpose — that was the layout footgun. */
+button {
+    font-family: var(--vscode-font-family);
+    font-size: 13px;
+    /* An ordinary action (buttons.css). The solid accent is for .btn-primary only. */
+    background-color: var(--dbmn-tile);
+    color: var(--vscode-foreground);
+    /* No border here: many controls are built on a bare <button> and rely on having none */
+    border: none;
+    border-radius: var(--dbmn-radius);
+    cursor: pointer;
+    padding: 6px 14px;
+}
+
+button:hover:not(:disabled) {
+    background-color: var(--dbmn-selected);
+    color: var(--dbmn-on-selected);
+}
+
+/* Form group styles */
+.form-group {
+    margin-bottom: 15px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: bold;
+}
+
+.form-row {
+    display: flex;
+    gap: 12px;
+}
+
+.form-col {
+    flex: 1;
+    min-width: 0;
+}
+
+.form-sublabel {
+    font-weight: normal !important;
+    font-size: 12px;
+    color: var(--vscode-descriptionForeground);
+    margin-bottom: 4px !important;
+}
+
+.form-hint {
+    color: var(--vscode-descriptionForeground);
+    font-size: 11px;
+    font-weight: normal;
+}
+
+/* GitHub Issue #245: note shown in the pagination modal for body-based pagination */
+.pagination-body-note {
+    color: var(--vscode-descriptionForeground);
+    font-size: 12px;
+    line-height: 1.5;
+    margin: 0 0 12px 0;
+}
+
+/* Pagination preview table — read-only param rows */
+.param-preview-container {
+    background: var(--vscode-textCodeBlock-background);
+    border-radius: 4px;
+    padding: 6px 8px;
+}
+
+.param-row-preview {
+    display: flex;
+    gap: 10px;
+    margin: 3px 0;
+    align-items: center;
+}
+
+.param-row-preview .preview-key,
+.param-row-preview .preview-value {
+    flex: 1;
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 12px;
+    padding: 3px 8px;
+    border-radius: 3px;
+    background: var(--vscode-input-background);
+    color: var(--vscode-descriptionForeground);
+    border: 1px solid transparent;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.param-row-preview .preview-key {
+    flex: 0 0 35%;
+}
+
+.param-row-preview.highlight .preview-key,
+.param-row-preview.highlight .preview-value {
+    color: var(--vscode-foreground);
+    border-color: var(--vscode-focusBorder);
+}
+
+.preview-empty {
+    color: var(--vscode-descriptionForeground);
+    font-size: 12px;
+}
+
+/* Token display styles */
+.token-display {
+    font-family: monospace;
+    background-color: var(--vscode-textCodeBlock-background);
+    padding: 10px;
+    border-radius: 3px;
+    margin: 10px 0;
+    word-break: break-all;
+}
+
+/* Status indicators */
+.valid {
+    color: var(--vscode-terminal-ansiGreen);
+    font-weight: bold;
+}
+
+.expired {
+    color: var(--vscode-errorForeground);
+    font-weight: bold;
+}
+
+/* Dynamic form element styles */
+.header-row,
+.param-row {
+    display: flex;
+    gap: 10px;
+    margin: 5px 0;
+    align-items: center;
+}
+
+.header-row input,
+.param-row input {
+    flex: 1;
+}
+
+/* Generic row enable/disable styles (GitHub Issue #101) */
+.header-row input[type="checkbox"],
+.param-row input[type="checkbox"] {
+    flex: 0 0 auto;
+    width: auto;
+    margin-right: 5px;
+}
+
+.header-row.row-disabled,
+.param-row.row-disabled {
+    opacity: 0.6;
+}
+
+.header-row.row-disabled input[type="text"],
+.param-row.row-disabled input[type="text"] {
+    background-color: var(--vscode-input-background);
+    color: var(--vscode-descriptionForeground);
+    text-decoration: line-through;
+}
+
+.header-row input[type="text"],
+.param-row input[type="text"] {
+    transition: all 0.2s ease;
+}
+
+/* Inherited environment header rows (Issue #126) */
+.header-row.inherited {
+    opacity: 0.7;
+    background-color: var(--vscode-list-hoverBackground);
+    border-radius: 3px;
+    padding: 2px 5px;
+    margin-left: 22px; /* Align with editable rows that have checkbox */
+}
+
+.header-row.inherited input {
+    cursor: not-allowed;
+    background-color: transparent;
+    border-color: transparent;
+    color: var(--vscode-descriptionForeground);
+}
+
+.header-row.inherited input:focus {
+    outline: none;
+    border-color: transparent;
+}
+
+.org-status-line {
+    font-size: 13px;
+    color: var(--vscode-descriptionForeground);
+    margin-bottom: 4px;
+}
+
+.org-status-line.has-org {
+    color: var(--vscode-foreground);
+}
+
+.org-status-line.no-org {
+    color: var(--vscode-descriptionForeground);
+    font-style: italic;
+}
+
+.org-headers-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+}
+
+/* Header Badge Styles */
+.org-header-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border: 1px solid;
+    background-color: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+    border-color: var(--vscode-button-border);
+    user-select: none;
+    position: relative;
+}
+
+.org-header-badge:hover {
+    background-color: var(--vscode-button-secondaryHoverBackground);
+}
+
+.org-header-badge.enabled {
+    background-color: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+    border-color: var(--vscode-button-background);
+}
+
+.org-header-badge.enabled:hover {
+    background-color: var(--vscode-button-hoverBackground);
+}
+
+.org-header-badge.suppressed {
+    background-color: transparent;
+    color: var(--vscode-descriptionForeground);
+    border-color: var(--vscode-widget-border);
+    text-decoration: line-through;
+    opacity: 0.6;
+}
+
+.org-header-badge.suppressed:hover {
+    opacity: 0.8;
+}
+
+.org-header-badge.has-conflict {
+    border-color: var(--vscode-editorWarning-foreground);
+    text-decoration: line-through;
+    opacity: 0.7;
+}
+
+.org-header-badge.has-conflict::after {
+    content: '⚠';
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    background-color: var(--vscode-editorWarning-foreground);
+    color: var(--vscode-editor-background);
+    border-radius: 50%;
+    width: 14px;
+    height: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+}
+
+.org-header-badge .badge-check {
+    margin-right: 4px;
+    font-size: 14px;
+}
+
+.org-header-badge.enabled .badge-check::before {
+    content: '✓';
+    color: var(--vscode-terminal-ansiGreen);
+}
+
+.org-header-badge.suppressed .badge-check::before {
+    content: '✗';
+    opacity: 0.5;
+}
+
+.remove-btn {
+    /* Solid, unambiguous danger red — matches the app's "red" semantics used
+     * for stopped/failed states (--vscode-charts-red). --vscode-errorForeground
+     * is a soft, desaturated text-red in many themes and reads as washed-out
+     * pink when used as a button fill, so it's the wrong token here. */
+    background-color: var(--vscode-charts-red, #c4314b);
+    color: #fff;
+    padding: 5px 10px;
+    font-size: 12px;
+    border: 1px solid transparent;
+}
+
+/* Explicit hover, otherwise the generic `button:hover` rule (higher specificity
+ * via its pseudo-class) hijacks the fill to the standard button colour. */
+.remove-btn:hover {
+    background-color: var(--vscode-charts-red, #c4314b);
+    color: #fff;
+    filter: brightness(1.12);
+}
+
+.add-btn {
+    background-color: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+    padding: 5px 10px;
+    font-size: 12px;
+}
+
+/* Footer button layout */
+.footer-button-container {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.footer-button-group {
+    display: flex;
+    gap: 10px;
+}
+
+.footer-spacer {
+    flex-grow: 1;
+}
+
+/* Section description */
+.section-description {
+    color: var(--vscode-descriptionForeground);
+    margin-bottom: 15px;
+    font-style: italic;
+}
+
+/* Form header with label and button */
+.form-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.form-header label {
+    margin-bottom: 0;
+}
+
+/* Checkbox and radio controls */
+.checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-weight: normal;
+    white-space: nowrap;
+}
+
+.checkbox-label input[type="checkbox"] {
+    width: auto;
+    margin: 0;
+}
+
+.radio-group {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 15px;
+}
+
+.radio-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: normal;
+    cursor: pointer;
+}
+
+.radio-label input[type="radio"] {
+    width: auto;
+    margin: 0;
+}
+
+.pagination-grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr 2fr;
+    gap: 4px 12px;
+    align-items: end;
+    margin-bottom: 16px;
+}
+
+.pagination-grid .input-field,
+.pagination-grid select {
+    margin-bottom: 0;
+}
+
+.pagination-grid-header {
+    grid-column: 1 / -1;
+    font-weight: bold;
+    padding-top: 12px;
+    padding-bottom: 2px;
+}
+
+.pagination-grid-header:first-child {
+    padding-top: 0;
+}
+
+.radio-group-inline {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    min-height: 28px;
+}
+
+.radio-group-inline .radio-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: normal;
+    cursor: pointer;
+    font-size: 13px;
+}
+
+/* Button variants: .btn-primary (main action), .btn-secondary and .btn-danger (actions),
+ * with the older .primary-btn / .secondary-btn. Their look is decided in buttons.css. */
+
+.btn {
+    /* The regular size. Colours, border and corners come from buttons.css. */
+    padding: 7px 16px !important;
+    font-size: 13px !important;
+    line-height: 18px;
+    cursor: pointer;
+    outline: none;
+    text-transform: none;
+    letter-spacing: 0.2px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 88px;
+    user-select: none;
+}
+
+/* Leading icon inside a .btn (Issue #260 — editor toolbar). Sits before the
+ * label with a small gap; sized down slightly from the default 16px so it
+ * balances the 14px button text. */
+.btn .btn-icon {
+    /* The icons are drawn with more empty space on their left (the play triangle most), so
+     * an icon + label button looked off-centre to the right; -3px pulls it back. Flex keeps
+     * the icon's box to the svg, so it's the same height as a text-only button. */
+    display: inline-flex;
+    margin-left: -3px;
+    margin-right: 6px;
+    flex-shrink: 0;
+}
+.btn .btn-icon svg {
+    width: 15px;
+    height: 15px;
+}
+
+.btn.hidden {
+    display: none;
+}
+
+/* Issue #312: a Lucide icon in running text (Icons.label(name, text)) — sized to the
+ * text, baseline-aligned, a small gap before the label. */
+.inline-icon {
+    display: inline-flex;
+    align-items: center;
+    margin-right: 5px;
+    vertical-align: -2px;
+}
+.inline-icon svg {
+    width: 13px;
+    height: 13px;
+}
+.inline-icon:last-child {
+    margin-right: 0;
+}
+
+/* Validation results */
+.validation-results {
+    margin-top: 15px;
+    padding: 15px;
+    border-radius: 5px;
+    border: 1px solid var(--vscode-panel-border);
+}
+
+.validation-results.success {
+    background-color: var(--vscode-terminal-ansiGreen);
+    color: var(--vscode-terminal-ansiBlack);
+    border-color: var(--vscode-terminal-ansiGreen);
+}
+
+.validation-results.error {
+    background-color: var(--vscode-errorBackground);
+    color: var(--vscode-errorForeground);
+    border-color: var(--vscode-errorBorder);
+}
+
+.validation-item {
+    margin-bottom: 10px;
+    padding: 8px;
+    border-radius: 3px;
+}
+
+.validation-item.success {
+    background-color: rgba(0, 255, 0, 0.1);
+    border-left: 3px solid var(--vscode-terminal-ansiGreen);
+}
+
+.validation-item.error {
+    background-color: rgba(255, 0, 0, 0.1);
+    border-left: 3px solid var(--vscode-errorForeground);
+}
+
+.validation-item .test-name-label {
+    font-weight: bold;
+    margin-bottom: 5px;
+}
+
+.validation-item .error-message {
+    font-family: var(--vscode-editor-font-family);
+    color: var(--vscode-errorForeground);
+    background-color: var(--vscode-textCodeBlock-background);
+    padding: 5px;
+    border-radius: 3px;
+    margin-top: 5px;
+}
+
+/* Field validation */
+.field-error {
+    border: 1px solid var(--vscode-inputValidation-errorBorder, var(--vscode-errorForeground)) !important;
+}
+
+.field-error:focus {
+    border: 1px solid var(--vscode-inputValidation-errorBorder, var(--vscode-errorForeground)) !important;
+    outline: none;
+    box-shadow: 0 0 0 2px var(--vscode-focusBorder);
+}
+
+/* Error messages */
+.error-message {
+    color: var(--vscode-errorForeground);
+    background-color: var(--vscode-editor-background);
+    border: 1px solid var(--vscode-errorForeground);
+    border-left: 4px solid var(--vscode-errorForeground);
+    border-radius: 4px;
+    padding: 12px 16px;
+    margin: 0 0 16px 0;
+    font-family: var(--vscode-editor-font-family);
+    font-size: 13px;
+    line-height: 1.4;
+    white-space: pre-line;
+    text-align: left;
+}
+
+/* Code styling */
+code {
+    font-family: var(--vscode-editor-font-family);
+    background-color: var(--vscode-textCodeBlock-background);
+    padding: 2px 4px;
+    border-radius: 3px;
+    font-size: 12px;
+}
+
+/* Sticky Footer */
+.webview-footer {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background-color: var(--vscode-editor-background);
+    border-top: 1px solid var(--vscode-panel-border);
+    box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.1);
+    z-index: 1000;
+}
+
+/* GitHub Issue #292: "peek bar" footer while an editor is in full-window
+ * mode (Raw pane in the Console, body editor in the Endpoint editor).
+ * The full-window pane sits at z-index 1001 and would cover the footer,
+ * hiding Send / Save / Reprocess etc. Instead the footer rides above it,
+ * collapsed to a thin always-visible strip with a grip mark, and slides
+ * up on hover or keyboard focus. The strip is what makes it discoverable —
+ * it is painted at all times, never revealed on approach. The fullscreen
+ * panes leave --dbmn-peek-h free at the bottom so the strip never covers
+ * the last line of the editor.
+ *
+ * body.is-footer-peek (#298) is the same strip for a screen's data view: Compare's Results fold
+ * the step bar away this way. */
+:root {
+    --dbmn-peek-h: 9px;
+}
+body.is-editor-fullscreen .webview-footer,
+body.is-footer-peek .webview-footer {
+    z-index: 1002;
+    padding-top: 8px;
+    transform: translateY(calc(100% - var(--dbmn-peek-h)));
+    transition: transform 0.18s ease;
+    box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.25);
+}
+/* Grip mark centred in the visible strip. */
+body.is-editor-fullscreen .webview-footer::before,
+body.is-footer-peek .webview-footer::before {
+    content: '';
+    position: absolute;
+    top: 3px;
+    left: 50%;
+    width: 36px;
+    height: 3px;
+    margin-left: -18px;
+    border-radius: 2px;
+    background: var(--vscode-descriptionForeground);
+    opacity: 0.7;
+}
+/* Invisible hit area above the strip so the mouse doesn't have to land on
+ * a 9px target. */
+body.is-editor-fullscreen .webview-footer::after,
+body.is-footer-peek .webview-footer::after {
+    content: '';
+    position: absolute;
+    top: -12px;
+    left: 0;
+    right: 0;
+    height: 12px;
+}
+body.is-editor-fullscreen .webview-footer:hover,
+body.is-editor-fullscreen .webview-footer:focus-within,
+body.is-footer-peek .webview-footer:hover,
+body.is-footer-peek .webview-footer:focus-within {
+    transform: translateY(0);
+}
+body.is-editor-fullscreen .webview-footer:hover::before,
+body.is-editor-fullscreen .webview-footer:focus-within::before,
+body.is-footer-peek .webview-footer:hover::before,
+body.is-footer-peek .webview-footer:focus-within::before {
+    opacity: 0.35;
+}
+
+.footer-content {
+    padding: 4px 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 20px;
+}
+
+.footer-content .button-group {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+}
+
+.footer-content .execution-button-group {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.footer-content .btn {
+    min-width: 100px;
+    padding: 10px 20px !important;
+    font-size: 13px !important;
+}
+
+.footer-content .btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+/* Progress display */
+.progress-display {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 300px;
+    max-width: 400px;
+}
+
+/* The Console's footer is the progress panel's height whether the panel shows or not, so
+ * reopening a batch from History doesn't squeeze the buttons against the bottom edge */
+.footer-content:has(> .progress-display) {
+    min-height: 48px;
+}
+
+/* #335: the panel is the bar: the fill sweeps behind the text across the whole panel.
+ * #438: drawn as a Console tab's progress is (hub.css .hub-tab-progress): the status colour
+ * (--progress-c, set by the fill's status class below) as a see-through tint as far as the run
+ * has got, and as the panel's outline. The text keeps its own colours over it. */
+.footer-content .progress-display {
+    --progress-c: var(--vscode-progressBar-background);
+    position: relative;
+    gap: 2px;
+    padding: 5px 10px;
+    border: 1px solid var(--progress-c);
+    border-radius: var(--dbmn-radius, 4px);
+    background: var(--vscode-input-background);
+    overflow: hidden;
+    transition: border-color 0.2s ease;
+}
+
+.progress-display .progress-info,
+.progress-display .progress-timing {
+    position: relative;
+    z-index: 1;
+}
+
+.progress-display .progress-bar-container {
+    position: absolute;
+    inset: 0;
+    height: auto;
+    margin: 0;
+    border-radius: 0;
+    background: transparent;
+    z-index: 0;
+}
+
+.progress-display .progress-bar {
+    height: 100%;
+    border-radius: 0;
+    background: transparent;
+}
+
+.progress-display .progress-bar-fill,
+.progress-display .progress-bar-fill.busy::after {
+    border-radius: 0;
+}
+
+.footer-content .progress-display .progress-bar-fill,
+.footer-content .progress-display .progress-bar-fill.busy::after {
+    background: color-mix(in srgb, var(--progress-c) 22%, transparent);
+}
+.footer-content .progress-display .progress-bar-fill.busy {
+    background: transparent;
+}
+
+/* Every line of the panel in the full text colour: the muted one (the count, the time left) fell
+   out of sight on the tint in some themes (tab-tint-contrast.test.ts holds them to 4.5:1) */
+.footer-content .progress-display .progress-phase,
+.footer-content .progress-display .progress-count,
+.footer-content .progress-display .progress-timing,
+.footer-content .progress-display .progress-elapsed,
+.footer-content .progress-display .progress-eta {
+    color: var(--vscode-foreground);
+}
+
+/* The fill's status, one token each: the tabs' colours (hub.css .hub-tab-progress--<status>) */
+.footer-content .progress-display:has(.progress-bar-fill.running),
+.footer-content .progress-display:has(.progress-bar-fill.executing),
+.footer-content .progress-display:has(.progress-bar-fill.loading),
+.footer-content .progress-display:has(.progress-bar-fill.busy),
+.footer-content .progress-display:has(.progress-bar-fill.processing) { --progress-c: var(--vscode-charts-blue); }
+.footer-content .progress-display:has(.progress-bar-fill.preparing) { --progress-c: var(--vscode-textLink-foreground); }
+.footer-content .progress-display:has(.progress-bar-fill.paused) { --progress-c: var(--vscode-charts-yellow); }
+.footer-content .progress-display:has(.progress-bar-fill.queued),
+.footer-content .progress-display:has(.progress-bar-fill.waiting) { --progress-c: var(--vscode-charts-orange); }
+.footer-content .progress-display:has(.progress-bar-fill.completed) { --progress-c: var(--vscode-charts-green); }
+.footer-content .progress-display:has(.progress-bar-fill.error),
+.footer-content .progress-display:has(.progress-bar-fill.failed) { --progress-c: var(--vscode-charts-red); }
+.footer-content .progress-display:has(.progress-bar-fill.cancelled),
+.footer-content .progress-display:has(.progress-bar-fill.stopped) { --progress-c: var(--vscode-descriptionForeground); }
+
+/* Cancelled or stopped: grey, not the running colour */
+.progress-bar-fill.cancelled,
+.progress-bar-fill.stopped {
+    background: var(--vscode-descriptionForeground);
+}
+
+.progress-display.hidden {
+    display: none;
+}
+
+.progress-info {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+/* Classes, not ids: Compare and Run Batch draw the same panel */
+.progress-phase {
+    color: var(--vscode-foreground);
+    font-weight: 600;
+}
+
+.progress-count {
+    color: var(--vscode-descriptionForeground);
+    font-family: var(--vscode-editor-font-family, monospace);
+}
+
+.progress-bar-container {
+    position: relative;
+}
+
+.progress-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg,
+            var(--vscode-progressBar-background) 0%,
+            var(--vscode-button-background) 100%);
+    transition: width 0.3s ease;
+    border-radius: 9px;
+}
+
+.progress-bar-fill.preparing {
+    background: linear-gradient(90deg,
+            var(--vscode-textLink-foreground) 0%,
+            var(--vscode-charts-green) 100%);
+}
+
+.progress-bar-fill.executing,
+.progress-bar-fill.running {
+    background: linear-gradient(90deg,
+            var(--vscode-charts-blue) 0%,
+            var(--vscode-button-background) 100%);
+}
+
+.progress-bar-fill.paused {
+    background: linear-gradient(90deg,
+            var(--vscode-charts-yellow) 0%,
+            var(--vscode-editorWarning-foreground) 100%);
+    animation: pulse-paused 2s infinite;
+}
+
+.progress-bar-fill.completed {
+    background: linear-gradient(90deg,
+            var(--vscode-terminal-ansiGreen) 0%,
+            var(--vscode-charts-green) 100%);
+}
+
+.progress-bar-fill.error,
+.progress-bar-fill.failed {
+    background: linear-gradient(90deg,
+            var(--vscode-errorForeground) 0%,
+            var(--vscode-charts-red) 100%);
+}
+
+/* #344: waiting for VS Code mid-run looks like waiting in the queue */
+.progress-bar-fill.queued,
+.progress-bar-fill.waiting {
+    background: linear-gradient(90deg,
+            var(--vscode-editorWarning-foreground) 0%,
+            var(--vscode-charts-orange) 100%);
+    animation: pulse-queued 3s infinite;
+}
+
+/* Issue #312: a large batch streaming into the Console */
+.progress-bar-fill.loading {
+    background: linear-gradient(90deg,
+            var(--vscode-textLink-foreground) 0%,
+            var(--vscode-charts-blue) 100%);
+}
+
+/* Issue #115: still working with no known end. `busy` (a streamed body, size unknown): a band
+ * sliding along an empty track, never a full bar, which reads as done. `processing` (all in,
+ * now parsing and saving): the full bar as a turning barber pole. Both move by `transform`, so
+ * they keep moving while the page is busy (the web app's Console shares its page's thread);
+ * a `background-position` animation would freeze. Still, with reduced motion. */
+.progress-bar-fill.busy,
+.progress-bar-fill.processing {
+    position: relative;
+    overflow: hidden;
+    transition: none;
+}
+.progress-bar-fill.busy {
+    background: transparent;
+}
+.progress-bar-fill.busy::after,
+.progress-bar-fill.processing::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    will-change: transform;
+}
+.progress-bar-fill.busy::after {
+    width: 35%;
+    border-radius: 9px;
+    background: linear-gradient(90deg,
+            var(--vscode-textLink-foreground) 0%,
+            var(--vscode-charts-blue) 100%);
+    animation: progress-busy 1.4s ease-in-out infinite;
+}
+.progress-bar-fill.processing::after {
+    /* One stripe period wider than the bar, shifted by exactly that period per turn: seamless.
+     * 45° stripes 8px wide repeat every 16px across the stripe, 16 × √2 ≈ 22.63px along the bar. */
+    left: -22.63px;
+    right: 0;
+    background: repeating-linear-gradient(-45deg,
+            rgba(255, 255, 255, 0.28) 0 8px,
+            transparent 8px 16px);
+    animation: progress-barber 0.6s linear infinite;
+}
+
+@keyframes progress-busy {
+    from { transform: translateX(-100%); }
+    to { transform: translateX(286%); }
+}
+@keyframes progress-barber {
+    from { transform: translateX(0); }
+    to { transform: translateX(22.63px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .progress-bar-fill.busy::after,
+    .progress-bar-fill.processing::after {
+        animation: none;
+    }
+    .progress-bar-fill.busy::after {
+        width: 100%;
+        opacity: 0.45;
+    }
+}
+
+
+.progress-percentage {
+    text-align: center;
+    margin-top: 5px;
+    font-weight: bold;
+    color: var(--vscode-foreground);
+}
+
+.progress-timing {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 12px;
+    color: var(--vscode-descriptionForeground);
+}
+
+.progress-elapsed {
+    font-family: var(--vscode-editor-font-family, monospace);
+    color: var(--vscode-foreground);
+}
+
+.progress-eta {
+    font-family: var(--vscode-editor-font-family, monospace);
+    color: var(--vscode-descriptionForeground);
+}
+
+@keyframes pulse-paused {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}
+
+@keyframes pulse-queued {
+    0%, 100% { opacity: 1; }
+    25% { opacity: 0.7; }
+    50% { opacity: 0.5; }
+    75% { opacity: 0.7; }
+}
+
+/* Dropdown menus */
+.add-section-dropdown {
+    position: relative;
+    display: inline-block;
+}
+
+.add-section-dropdown .add-icon {
+    margin-left: 4px;
+}
+
+.add-section-dropdown .add-icon svg {
+    width: 14px;
+    height: 14px;
+}
+
+.dropdown-menu {
+    position: absolute;
+    bottom: 100%;
+    left: 0;
+    min-width: 200px;
+    background-color: var(--vscode-menu-background);
+    border: 1px solid var(--vscode-menu-border);
+    border-radius: 4px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    z-index: 1000;
+    margin-bottom: 8px;
+}
+
+.dropdown-menu.hidden {
+    display: none;
+}
+
+.dropdown-item {
+    display: flex;
+    align-items: center;
+    padding: 10px 15px;
+    cursor: pointer;
+    color: var(--vscode-menu-foreground);
+    border-bottom: 1px solid var(--vscode-menu-separatorBackground);
+    transition: background-color 0.2s ease;
+}
+
+.dropdown-item:last-child {
+    border-bottom: none;
+}
+
+.dropdown-item:hover {
+    background-color: var(--vscode-menu-selectionBackground);
+    color: var(--vscode-menu-selectionForeground);
+}
+
+.dropdown-item:first-child {
+    border-radius: 4px 4px 0 0;
+}
+
+.dropdown-item:last-child {
+    border-radius: 0 0 4px 4px;
+}
+
+.dropdown-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 8px;
+    font-size: 14px;
+}
+
+.dropdown-icon svg {
+    width: 16px;
+    height: 16px;
+    display: block;
+}
+
+/* More Actions Dropdown - GitHub Issue #164 */
+.more-actions-dropdown {
+    position: relative;
+    display: inline-block;
+}
+
+/* Endpoint footer button overflow.
+   Buttons that don't fit get DOM-moved into #more-actions-menu by setupFooterOverflow()
+   (mirrors the body-editor toolbar overflow from Issue #249). Single-row layout —
+   when buttons spill, they appear inside the More menu instead of wrapping. */
+.footer-button-container-overflow {
+    flex-wrap: nowrap;
+    min-width: 0;
+    flex: 1 1 auto; /* grow to fill the footer so .footer-more-overflow's margin-left: auto has room to work */
+}
+
+/* Push the overflow More button to the far right of the footer button row.
+   The arm-of-flex idiom: margin-left: auto on a flex child consumes all remaining
+   space on its left, floating the element to the right of its siblings. */
+.footer-more-overflow {
+    margin-left: auto;
+}
+
+/* Right-align the overflow menu so it grows leftward from the More button's right edge.
+   Default .dropdown-menu uses left: 0 which would push it off-screen on a narrow panel. */
+.footer-more-overflow .dropdown-menu {
+    left: auto;
+    right: 0;
+}
+
+/* Small gap between text and arrow inside a dropdown button. Applies to every
+   button using .dropdown-arrow (Line Variable, Modifier, body-editor More, footer More). */
+.dropdown-arrow {
+    margin-left: 4px;
+}
+
+/* Spilled buttons render as menu rows. Same approach as .toolbar-overflow-menu .btn. */
+#more-actions-menu .btn {
+    display: block !important;
+    width: 100%;
+    text-align: left;
+    padding: 10px 15px !important;
+    border: none !important;
+    background: transparent !important;
+    border-radius: 0 !important;
+    color: var(--vscode-menu-foreground) !important;
+    font-weight: normal !important;
+    min-width: auto !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+}
+
+#more-actions-menu .btn:hover:not(:disabled) {
+    background: var(--vscode-menu-selectionBackground) !important;
+    color: var(--vscode-menu-selectionForeground) !important;
+    transform: none !important;
+}
+
+#more-actions-menu .btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* No top border on spilled menu rows — the menu has no native items so each row sits flush. */
+#more-actions-menu .btn.overflow-spill + .btn.overflow-spill {
+    border-top: 1px solid var(--vscode-menu-separatorBackground) !important;
+}
+
+/* Armed-confirm state for destructive buttons. Mirrors the inline-style pattern from
+   console.html's deleteViewFromEditor (lines ~1010-1019) — red background, contrasting text. */
+.btn.btn-armed,
+.btn.btn-armed:hover {
+    background-color: var(--vscode-errorForeground) !important;
+    color: var(--vscode-editor-background) !important;
+    border-color: var(--vscode-errorForeground) !important;
+}
+
+/* Disabled dropdown items - GitHub Issue #164 */
+.dropdown-item.disabled-item {
+    opacity: 0.5;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+/* Danger dropdown items (delete) - GitHub Issue #164 */
+.dropdown-item-danger {
+    color: var(--vscode-errorForeground) !important;
+}
+
+.dropdown-item-danger:hover {
+    background-color: var(--vscode-menu-selectionBackground);
+    color: var(--vscode-errorForeground) !important;
+}
+
+/* GitHub Issue #230: Section headers within dropdown menus */
+.dropdown-item-header {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--vscode-descriptionForeground);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    cursor: default;
+    padding: 8px 15px 4px;
+    border-bottom: none;
+}
+
+.dropdown-item-header:hover {
+    background-color: transparent;
+    color: var(--vscode-descriptionForeground);
+}
+
+/* Button Spinner - GitHub Issue #106 */
+.btn-spinner {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border: 2px solid transparent;
+    border-top: 2px solid currentColor;
+    border-radius: 50%;
+    animation: btn-spin 0.8s linear infinite;
+    vertical-align: middle;
+    margin-right: 6px;
+}
+
+@keyframes btn-spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Account usage sections — inline spinner shown next to the "Weekly Usage" /
+ * "Total Usage" headers while a stats refresh is in flight. Cached numbers
+ * stay visible underneath; the spinner just signals a live refresh. */
+.ac-header-spinner {
+    display: inline-block;
+    width: 11px;
+    height: 11px;
+    border: 2px solid transparent;
+    border-top: 2px solid currentColor;
+    border-radius: 50%;
+    animation: btn-spin 0.8s linear infinite;
+    vertical-align: middle;
+    margin-left: 6px;
+    opacity: 0.7;
+}
+
+/* Placeholder shown in a usage section only when there's nothing to show yet
+ * (never fetched) and no refresh is running — renders a subtle dash. */
+.ac-stats-placeholder {
+    text-align: center;
+    padding: 10px 0;
+}
+
+/* Help Icons - Contextual Documentation (Using Custom SVG) */
+.help-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-left: 8px;
+    cursor: pointer;
+    vertical-align: middle;
+    position: relative;
+    user-select: none;
+    transition: transform 0.2s ease;
+}
+
+.help-icon svg {
+    color: var(--vscode-descriptionForeground);
+    opacity: 0.7;
+    transition: opacity 0.2s ease, color 0.2s ease;
+    display: block;
+}
+
+.help-icon:hover svg {
+    opacity: 1;
+    color: var(--vscode-textLink-activeForeground);
+}
+
+.help-icon:hover {
+    transform: scale(1.15);
+}
+
+.help-icon:active {
+    transform: scale(1.05);
+}
+
+.help-icon:active svg {
+    opacity: 0.8;
+}
+
+/* Documentation Modal */
+.docs-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+    padding: 20px;
+}
+
+.docs-modal-content {
+    background: var(--vscode-editor-background);
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 8px;
+    max-width: 800px;
+    width: 100%;
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.docs-modal-header {
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--vscode-panel-border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.docs-modal-title {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--vscode-foreground);
+    margin: 0;
+}
+
+.docs-modal-close {
+    background: none;
+    border: none;
+    color: var(--vscode-icon-foreground);
+    cursor: pointer;
+    font-size: 24px;
+    padding: 0;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0.7;
+    transition: opacity 0.2s;
+}
+
+.docs-modal-close:hover {
+    opacity: 1;
+}
+
+.docs-modal-body {
+    padding: 24px;
+    overflow-y: auto;
+    flex: 1;
+}
+
+.docs-modal-footer {
+    padding: 16px 24px;
+    border-top: 1px solid var(--vscode-panel-border);
+    display: flex;
+    gap: 12px;
+    justify-content: flex-end;
+}
+
+/* Markdown content in modal */
+.docs-modal-body h2 {
+    font-size: 20px;
+    margin-top: 0;
+    margin-bottom: 12px;
+}
+
+.docs-modal-body h3 {
+    font-size: 16px;
+    margin-top: 16px;
+    margin-bottom: 8px;
+}
+
+.docs-modal-body p {
+    line-height: 1.6;
+    margin-bottom: 12px;
+}
+
+.docs-modal-body ul, .docs-modal-body ol {
+    margin-bottom: 12px;
+    padding-left: 24px;
+}
+
+.docs-modal-body code {
+    background: var(--vscode-textCodeBlock-background);
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-family: var(--vscode-editor-font-family);
+    font-size: 0.9em;
+}
+
+.docs-modal-body pre {
+    background: var(--vscode-textCodeBlock-background);
+    padding: 12px;
+    border-radius: 4px;
+    overflow-x: auto;
+    margin-bottom: 12px;
+}
+
+.docs-modal-body pre code {
+    background: none;
+    padding: 0;
+}
+
+/* Info Banner - Used for informational messages (GitHub Issue #164) */
+.info-banner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: var(--vscode-inputValidation-infoBackground);
+    border: 1px solid var(--vscode-inputValidation-infoBorder);
+    border-radius: 4px;
+    margin-bottom: 10px;
+    font-size: 12px;
+    color: var(--vscode-inputValidation-infoForeground);
+}
+
+.info-banner.hidden {
+    display: none;
+}
+
+/* A recommendation the user should act on (headers kept on an endpoint) */
+.info-banner.warning {
+    background: var(--vscode-inputValidation-warningBackground);
+    border-color: var(--vscode-inputValidation-warningBorder);
+    color: var(--vscode-inputValidation-warningForeground, var(--vscode-foreground));
+}
+
+.info-banner.warning .info-icon {
+    background: var(--vscode-inputValidation-warningBorder);
+    color: var(--vscode-inputValidation-warningBackground);
+}
+
+/* A docs link inside a banner: the theme's link colour, not the browser's */
+.info-banner a {
+    color: var(--vscode-textLink-foreground);
+}
+
+.info-banner .info-icon {
+    font-size: 14px;
+    font-weight: bold;
+    min-width: 16px;
+    height: 16px;
+    line-height: 16px;
+    text-align: center;
+    border-radius: 50%;
+    background: var(--vscode-inputValidation-infoBorder);
+    color: var(--vscode-inputValidation-infoBackground);
+}
+
+/* New-endpoint start strip — replaces the page heading on a pristine draft (Issue #291) */
+.new-endpoint-start {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 12px 16px;
+    margin-bottom: 24px;
+    border: 1px solid var(--vscode-inputValidation-infoBorder);
+    border-radius: 6px;
+    background: var(--vscode-inputValidation-infoBackground);
+}
+
+.new-endpoint-start.hidden {
+    display: none;
+}
+
+.new-endpoint-start-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex: 1 1 240px;
+    min-width: 0;
+}
+
+.new-endpoint-start-title {
+    font-size: 20px;
+    font-weight: 700;
+    line-height: 1.3;
+    color: var(--vscode-textLink-foreground);
+}
+
+.new-endpoint-start-hint {
+    font-size: 12px;
+    color: var(--vscode-descriptionForeground);
+}
+
+/* Monaco Editor Container - Auto-height up to a viewport-relative cap (Issues #164, #249).
+   For small/medium bodies the editor still grows to fit content; for large bodies it caps
+   and Monaco's own scrollbar handles overflow so find-widget reveal works. */
+#monacoEditorContainer {
+    min-height: 200px;
+    max-height: 60vh;
+    overflow: hidden; /* Outer container never scrolls - Monaco scrolls internally */
+}
+
+/* Issue #249: full-window mode for the body editor. Pins #bodySection to the
+   viewport so users can edit large JSON payloads with maximum vertical room.
+   Esc or the toolbar button restores the inline layout. */
+#bodySection.editor-fullscreen {
+    position: fixed;
+    inset: 0 0 var(--dbmn-peek-h, 0px) 0;
+    z-index: 1001;
+    margin: 0;
+    border: none;
+    border-radius: 0;
+    background: var(--vscode-editor-background);
+    display: flex;
+    flex-direction: column;
+    padding: 8px;
+    overflow: hidden;
+}
+
+/* Hide the "Request Body" section title in fullscreen — toolbar + editor only. */
+#bodySection.editor-fullscreen > h2,
+#bodySection.editor-fullscreen > .flex,
+#bodySection.editor-fullscreen #bodyNotSentIndicator {
+    display: none !important;
+}
+
+/* The remaining wrapper around the toolbar+editor needs to flex-fill */
+#bodySection.editor-fullscreen > .mb-15 {
+    flex: 1 1 auto;
+    margin-bottom: 0;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+#bodySection.editor-fullscreen #monacoEditorContainer {
+    flex: 1 1 auto;
+    max-height: none;
+    height: auto !important;
+    min-height: 0;
+}
+
+#bodySection.editor-fullscreen .editor-toolbar {
+    margin-top: 0;
+}
+
+/* Fullscreen toggle as an overlay icon inside the Monaco editor container.
+   Replaces the toolbar "Full Window" button so the toolbar overflow doesn't have to
+   reserve space for it. The wrapper is positioned so the icon sits on top of the
+   editor at the top-right; it stays clickable in both normal and fullscreen modes. */
+.monaco-editor-wrapper {
+    position: relative;
+}
+
+.editor-fullscreen-icon {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    z-index: 10;
+    width: 26px;
+    height: 26px;
+    padding: 0 !important;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--vscode-editorWidget-background) !important;
+    color: var(--vscode-foreground) !important;
+    border: 1px solid var(--vscode-panel-border) !important;
+    border-radius: 3px !important;
+    cursor: pointer;
+    opacity: 0.55;
+    transition: opacity 0.15s ease;
+    min-width: auto !important;
+}
+
+.editor-fullscreen-icon:hover {
+    opacity: 1;
+    background: var(--vscode-editorWidget-background) !important;
+}
+
+/* Icon swap is purely CSS-driven via the fullscreen class on #bodySection.
+   Default: show enter icon, hide exit icon. */
+.editor-fullscreen-icon .icon-exit {
+    display: none;
+}
+
+#bodySection.editor-fullscreen .editor-fullscreen-icon .icon-enter {
+    display: none;
+}
+
+#bodySection.editor-fullscreen .editor-fullscreen-icon .icon-exit {
+    display: inline-block;
+}
+
+/* In fullscreen mode, the wrapper flex-fills inside the body section. */
+#bodySection.editor-fullscreen .monaco-editor-wrapper {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+/* GitHub Issue #156: Thread control moved to slide-out info panel */
+/* Old +/- thread controls removed - see reports.css for panel styles */
+
+/* ===== KEY-VALUE GRID ===== */
+/* Reusable for any label:value display (JWT claims, environment summary, etc.) */
+.kv-grid {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 4px 12px;
+    font-size: 12px;
+}
+
+.kv-grid .kv-label {
+    color: var(--vscode-descriptionForeground);
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.kv-grid .kv-value {
+    color: var(--vscode-foreground);
+    word-break: break-word;
+}
+
+/* ===== COLLAPSIBLE TOGGLE ===== */
+/* Generic expand/collapse pattern */
+.collapse-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--vscode-textLink-foreground);
+    background: none;
+    border: none;
+    width: 100%;
+    text-align: left;
+}
+
+.collapse-toggle:hover {
+    background: var(--vscode-list-hoverBackground);
+}
+
+/* ===== STATUS PILL (GENERIC) ===== */
+/* Reusable status pills across all webviews */
+.status-pill-generic {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 10px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.status-pill-generic.success {
+    background: var(--vscode-terminal-ansiGreen);
+    color: var(--vscode-editor-background);
+}
+
+.status-pill-generic.error {
+    background: var(--vscode-errorForeground);
+    color: var(--vscode-editor-background);
+}
+
+.status-pill-generic.warning {
+    background: var(--vscode-editorWarning-foreground);
+    color: var(--vscode-editor-background);
+}
+
+/* ===== TOGGLE GROUP ===== */
+/* Segmented control for switching between views (e.g., Encoded/Decoded) */
+.toggle-group {
+    display: inline-flex;
+    border: 1px solid var(--vscode-input-border);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.toggle-btn {
+    padding: 3px 10px !important;
+    font-size: 11px !important;
+    min-width: auto !important;
+    border: none !important;
+    border-radius: 0 !important;
+    background: var(--vscode-input-background) !important;
+    color: var(--vscode-descriptionForeground) !important;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.toggle-btn:hover {
+    background: var(--vscode-list-hoverBackground) !important;
+    color: var(--vscode-foreground) !important;
+}
+
+.toggle-btn.active {
+    background: var(--vscode-button-background) !important;
+    color: var(--vscode-button-foreground) !important;
+}
+
+.toggle-btn + .toggle-btn {
+    border-left: 1px solid var(--vscode-input-border) !important;
+}
+
+/* ===== DROPDOWN MENU COMPONENTS (shared across webviews) ===== */
+/* GitHub Issue #230: Extracted from console.css for reuse in endpoint template export */
+
+.export-menu {
+    position: relative;
+    display: inline-block;
+}
+
+.export-dropdown {
+    display: none;
+    position: absolute;
+    background-color: var(--vscode-menu-background);
+    border: 1px solid var(--vscode-menu-border);
+    border-radius: 4px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+    z-index: 1000;
+    min-width: 120px;
+    top: 100%;
+    right: 0;
+    overflow: hidden;
+}
+
+.export-dropdown.show {
+    display: block;
+}
+
+.export-option {
+    display: block;
+    width: 100%;
+    padding: 8px 12px;
+    text-align: left;
+    background: none;
+    border: none;
+    color: var(--vscode-menu-foreground);
+    font-size: 13px;
+    font-family: var(--vscode-font-family);
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+.export-option:hover {
+    background-color: var(--vscode-menu-selectionBackground);
+    color: var(--vscode-menu-selectionForeground);
+}
+
+.export-option:active {
+    background: var(--vscode-list-activeSelectionBackground);
+    color: var(--vscode-list-activeSelectionForeground);
+}
+
+.export-option-group-label {
+    padding: 6px 12px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--vscode-descriptionForeground);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.export-option-divider {
+    height: 1px;
+    background: var(--vscode-menu-separatorBackground, var(--vscode-menu-border));
+    margin: 4px 0;
+}
+
+/* ===== TOKEN ENCODED VIEW ===== */
+/* Scrollable monospace box for raw token strings */
+.token-encoded-view {
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 12px;
+    background: var(--vscode-textCodeBlock-background);
+    color: var(--vscode-foreground);
+    padding: 10px;
+    border-radius: 4px;
+    word-break: break-all;
+    max-height: 200px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    user-select: all;
+}
+
+/* ===== SYSTEM PICKER =====
+ * Console-styled custom dropdown for choosing a System. Matches the
+ * "+ Create View…" pattern in the console — items in a list, divider, then
+ * the action footer. Used in both endpoint and environment editors.
+ */
+.system-picker {
+    position: relative;
+    display: inline-block;
+}
+
+.system-picker-button {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    width: 100%;
+    padding: 6px 10px;
+    background: var(--vscode-dropdown-background, var(--vscode-input-background));
+    color: var(--vscode-dropdown-foreground, var(--vscode-foreground));
+    border: 1px solid var(--vscode-dropdown-border, var(--vscode-input-border));
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    font-family: var(--vscode-font-family);
+    text-align: left;
+    min-height: 28px;
+}
+
+.system-picker-button:hover {
+    background: var(--vscode-list-hoverBackground);
+}
+
+.system-picker-button:focus {
+    outline: 1px solid var(--vscode-focusBorder);
+    outline-offset: -1px;
+}
+
+.system-picker-caret {
+    font-size: 10px;
+    opacity: 0.7;
+    flex: 0 0 auto;
+}
+
+.system-picker-label {
+    flex: 1 1 auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.system-picker-locked .system-picker-button {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.system-picker-locked .system-picker-button:hover {
+    background: var(--vscode-dropdown-background, var(--vscode-input-background));
+}
+
+/* #415: "System cannot be changed after creation", under a locked System picker */
+/* #415: the System and URL rows, gone once they are the section's heading. `.flex` outranks
+   the browser's own [hidden] rule, so it is restated. */
+.env-identity-row[hidden] {
+    display: none;
+}
+
+/* A System's name and a URL, as typed: not atomic.css's capitalised headings */
+.env-details-heading {
+    overflow-wrap: anywhere;
+    text-transform: none;
+}
+
+/* #424: the heading and the pencil that opens the URL's path again */
+.env-details-heading-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.env-details-heading-edit {
+    flex-shrink: 0;
+    padding: 2px;
+    border: none;
+    background: transparent;
+    color: var(--vscode-descriptionForeground);
+    cursor: pointer;
+}
+.env-details-heading-edit:hover,
+.env-details-heading-edit:focus-visible {
+    color: var(--vscode-foreground);
+}
+.env-details-heading-edit svg {
+    width: 14px;
+    height: 14px;
+}
+
+.env-locked-note:not([hidden]) {
+    display: block;
+    margin-top: 4px;
+}
+
+.system-picker-empty .system-picker-label {
+    opacity: 0.7;
+    font-style: italic;
+}
+
+.system-picker-dropdown {
+    position: absolute;
+    top: calc(100% + 2px);
+    left: 0;
+    min-width: 100%;
+    max-height: 320px;
+    overflow-y: auto;
+    background: var(--vscode-dropdown-background);
+    border: 1px solid var(--vscode-dropdown-border);
+    border-radius: 4px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    z-index: 1000;
+    padding: 4px 0;
+}
+
+.system-picker-item {
+    padding: 8px 12px;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+    border-left: 3px solid transparent;
+}
+
+.system-picker-item:hover {
+    background: var(--vscode-list-hoverBackground);
+}
+
+.system-picker-item.current {
+    background: var(--vscode-list-activeSelectionBackground);
+    color: var(--vscode-list-activeSelectionForeground);
+    border-left-color: var(--vscode-textLink-foreground);
+}
+
+.system-picker-item-name {
+    font-size: 13px;
+}
+
+.system-picker-divider {
+    border-top: 1px solid var(--vscode-panel-border);
+    margin: 4px 0;
+}
+
+/* #415: "Standard Systems" / "Your Systems" headings in the list */
+.system-picker-group {
+    padding: 6px 12px 2px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--vscode-descriptionForeground);
+    cursor: default;
+}
+
+.system-picker-add .system-picker-item-name {
+    color: var(--vscode-textLink-foreground);
+    font-weight: 500;
+}
+
+/* ─── Editor slide-in / slide-out + close button ────────────────────────
+ * VS Code's pane itself snaps when a new editor column opens — outside
+ * our control. We animate the webview's content so the user perceives
+ * the editor sliding in from the right rather than popping.
+ */
+@keyframes editor-slide-in {
+    from { transform: translateX(28px); opacity: 0; }
+    to   { transform: translateX(0);    opacity: 1; }
+}
+
+@keyframes editor-slide-out {
+    from { transform: translateX(0);    opacity: 1; }
+    to   { transform: translateX(28px); opacity: 0; }
+}
+
+body.editor-slide-in {
+    animation: editor-slide-in 0.22s ease-out;
+}
+
+body.editor-slide-out {
+    animation: editor-slide-out 0.22s ease-in forwards;
+}
+
+/* Editor window controls cluster — minimise / maximise / close. Positioned
+ * top-right on every editor body so the shape is consistent across endpoint,
+ * environment, and console webviews. */
+.editor-window-controls {
+    position: fixed;
+    top: 6px;
+    right: 8px;
+    z-index: 100;
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    background: var(--vscode-editor-background);
+    padding: 2px;
+    border-radius: 4px;
+}
+
+.editor-window-btn {
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--vscode-foreground);
+    width: 26px;
+    height: 26px;
+    border-radius: 3px;
+    cursor: pointer;
+    line-height: 0;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.editor-window-btn:hover {
+    background: var(--vscode-toolbar-hoverBackground);
+}
+
+.editor-window-btn[data-window-action="close"]:hover {
+    background: var(--vscode-inputValidation-errorBackground, #c8392f);
+    color: #fff;
+}
+
+.editor-window-btn svg {
+    width: 14px;
+    height: 14px;
+    stroke-width: 1.6;
+}
+
+/* Legacy class kept for any markup still using it — same look as new buttons. */
+.editor-close-button {
+    position: fixed;
+    top: 8px;
+    right: 12px;
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--vscode-foreground);
+    width: 28px;
+    height: 28px;
+    border-radius: 4px;
+    cursor: pointer;
+    line-height: 0;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+}
+
+.editor-close-button svg {
+    width: 16px;
+    height: 16px;
+    stroke-width: 1.6;
+}
+
+.editor-close-button:hover {
+    background: var(--vscode-toolbar-hoverBackground);
+    border-color: var(--vscode-focusBorder, transparent);
+}
+
+/* Tag chip input — endpoint editor's Tags field.
+   Container behaves like a multi-line input; chips wrap; the text input grows
+   to fill the remaining space on the last line. */
+.tag-chip-input {
+    position: relative; /* #432: the suggestions hang under it */
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+    min-height: 28px;
+    padding: 3px 6px;
+    background: var(--vscode-input-background);
+    color: var(--vscode-input-foreground);
+    border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
+    border-radius: 3px;
+    cursor: text;
+}
+
+.tag-chip-input:focus-within {
+    border-color: var(--vscode-focusBorder);
+    outline: 1px solid var(--vscode-focusBorder);
+    outline-offset: -1px;
+}
+
+.tag-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 2px 4px 2px 8px;
+    background: var(--vscode-badge-background);
+    color: var(--vscode-badge-foreground);
+    border-radius: 10px;
+    font-size: 12px;
+    line-height: 1.3;
+    white-space: nowrap;
+}
+
+.tag-chip-label {
+    user-select: none;
+}
+
+.tag-chip-remove {
+    background: transparent;
+    border: none;
+    color: inherit;
+    cursor: pointer;
+    padding: 0 4px;
+    font-size: 14px;
+    line-height: 1;
+    opacity: 0.7;
+    border-radius: 50%;
+}
+
+.tag-chip-remove:hover {
+    opacity: 1;
+    background: rgba(255, 255, 255, 0.15);
+}
+
+.tag-chip-textinput {
+    flex: 1 1 80px;
+    min-width: 80px;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: inherit;
+    font: inherit;
+    padding: 2px 4px;
+}
+
+/* #432: Manage tags… beside the endpoint editor's Tags field: a link, not a button */
+.tag-manage-link,
+.tag-manage-link:hover:not(:disabled) {
+    flex: none;
+    padding: 2px 4px;
+    background: none;
+    border: none;
+    color: var(--vscode-textLink-foreground);
+    font-size: 12px;
+    white-space: nowrap;
+    cursor: pointer;
+}
+.tag-manage-link:hover:not(:disabled) {
+    color: var(--vscode-textLink-activeForeground, var(--vscode-textLink-foreground));
+    text-decoration: underline;
+}
+
+/* #432: tag suggestions under the tag field (shared/tag-suggest.js), the dropdown look */
+.tag-suggest {
+    position: absolute;
+    top: calc(100% + 2px);
+    left: 0;
+    min-width: 220px;
+    max-width: 100%;
+    margin: 0;
+    padding: 4px 0;
+    list-style: none;
+    background: var(--vscode-dropdown-background);
+    color: var(--vscode-dropdown-foreground, var(--vscode-foreground));
+    border: 1px solid var(--vscode-dropdown-border, var(--vscode-panel-border));
+    border-radius: 4px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    z-index: 1000;
+}
+
+.tag-suggest.hidden {
+    display: none;
+}
+
+.tag-suggest-option {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    font-size: 12px;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+/* Each tag as the chip it becomes in the field (.tag-chip), without the × */
+.tag-suggest-chip {
+    padding: 2px 8px;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: inline-block;
+}
+
+.tag-suggest-option strong {
+    font-weight: 700;
+}
+
+.tag-suggest-option.active {
+    background: var(--vscode-list-activeSelectionBackground);
+    color: var(--vscode-list-activeSelectionForeground);
+}
+
+.tag-suggest-create {
+    border-top: 1px solid var(--vscode-panel-border);
+}
+
+.tag-suggest-hint {
+    color: var(--vscode-descriptionForeground);
+}
+
+.tag-suggest-option.active .tag-suggest-hint {
+    color: inherit;
+}
+
+/* ── Filter button (funnel) ────────────────────────────────────────────
+ * Shared control across the Catalogue, Transactions and Console Raw
+ * views. Idle: icon-only, muted. Active (>0 filters): accent bg + count
+ * pill + a trailing × that clears everything in one click. Filled funnel
+ * SVG swaps in on the active state.
+ */
+.dbmn-filter-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    height: 28px;
+    background: transparent;
+    color: var(--vscode-foreground);
+    border: 1px solid var(--vscode-input-border, transparent);
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    line-height: 1;
+    flex-shrink: 0;
+    transition: background-color 80ms ease, color 80ms ease, border-color 80ms ease;
+}
+
+.dbmn-filter-btn:hover {
+    background: var(--vscode-toolbar-hoverBackground, rgba(255, 255, 255, 0.08));
+}
+
+.dbmn-filter-btn:focus-visible {
+    outline: 1px solid var(--vscode-focusBorder);
+    outline-offset: 1px;
+}
+
+.dbmn-filter-btn .dbmn-filter-btn-icon {
+    display: inline-flex;
+    width: 16px;
+    height: 16px;
+    align-items: center;
+    justify-content: center;
+}
+
+.dbmn-filter-btn .dbmn-filter-btn-icon svg {
+    width: 16px;
+    height: 16px;
+}
+
+/* Count pill — only rendered when at least one filter is applied.
+ * The whole button also flips to the accent scheme via .is-active. */
+.dbmn-filter-btn .dbmn-filter-btn-count {
+    font-weight: 600;
+    font-size: 12px;
+    line-height: 1;
+    padding: 2px 6px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.18);
+    color: inherit;
+}
+
+/* Clear-all × sits inside the same button but stops propagation so a
+ * click here removes every filter rather than opening the modal. */
+.dbmn-filter-btn .dbmn-filter-btn-clear {
+    display: inline-flex;
+    width: 16px;
+    height: 16px;
+    align-items: center;
+    justify-content: center;
+    border-radius: 3px;
+    cursor: pointer;
+    opacity: 0.85;
+}
+
+.dbmn-filter-btn .dbmn-filter-btn-clear:hover {
+    background: rgba(255, 255, 255, 0.18);
+    opacity: 1;
+}
+
+.dbmn-filter-btn .dbmn-filter-btn-clear svg {
+    width: 12px;
+    height: 12px;
+}
+
+/* Active state — filters are on. */
+.dbmn-filter-btn.is-active {
+    background: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+    border-color: var(--vscode-button-background);
+}
+
+.dbmn-filter-btn.is-active:hover {
+    background: var(--vscode-button-hoverBackground);
+    border-color: var(--vscode-button-hoverBackground);
+}
+
+/* Issue #314: DbmnContextMenu (shared/dbmn-context-menu.js) */
+.dbmn-context-menu {
+    position: fixed;
+    z-index: 10000;
+    min-width: 160px;
+    padding: 4px;
+    background: var(--vscode-menu-background);
+    color: var(--vscode-menu-foreground);
+    border: 1px solid var(--vscode-menu-border, var(--vscode-widget-border));
+    border-radius: 6px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+}
+.dbmn-context-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 6px 10px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+.dbmn-context-menu-item:hover,
+.dbmn-context-menu-item:focus {
+    background: var(--vscode-menu-selectionBackground);
+    color: var(--vscode-menu-selectionForeground);
+    outline: none;
+}
+.dbmn-context-menu-item.is-danger { color: var(--vscode-errorForeground); }
+.dbmn-context-menu-item[aria-disabled="true"] { opacity: 0.5; cursor: default; }
+.dbmn-context-menu-icon { display: inline-flex; }
+.dbmn-context-menu-icon svg { width: 14px; height: 14px; }
+.dbmn-context-menu-separator {
+    height: 1px;
+    margin: 4px 6px;
+    background: var(--vscode-menu-separatorBackground, var(--vscode-widget-border));
+}
+
+/* Help mode (shared/help-mode.js): one help button, DBMN-wide, instead of a help icon per
+   control. In help mode every documented control gets a dashed outline and opens its docs.
+   Outline only: no badges, no hover change, nothing that moves the layout. */
+.help-mode-toggle {
+    color: var(--vscode-descriptionForeground);
+}
+.help-mode-toggle:hover {
+    color: var(--vscode-foreground);
+}
+[data-help-toggle][aria-pressed="true"] {
+    color: var(--vscode-focusBorder);
+}
+body.help-mode .help-mode-target {
+    outline: 2px dotted var(--vscode-focusBorder) !important;
+    outline-offset: -2px !important;
+    transition: none !important;
+    animation: none !important;
+    cursor: help !important;
+}
+body.help-mode .help-mode-target * {
+    cursor: help !important;
+}
+.help-mode-banner {
+    position: fixed;
+    top: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10001;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: max-content;
+    max-width: calc(100vw - 32px);   /* wraps on a narrow window instead of running off the edge */
+    box-sizing: border-box;
+    padding: 6px 14px;
+    border: 1px solid var(--vscode-focusBorder);
+    border-radius: 4px;
+    background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+    color: var(--vscode-foreground);
+    font-size: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+.help-mode-banner-icon {
+    flex-shrink: 0;
+    color: var(--vscode-focusBorder);
+}
+.help-mode-banner strong {
+    margin-right: 6px;
+}
+.help-mode-banner kbd {
+    padding: 0 4px;
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 3px;
+    font-size: 11px;
+}
+
+/* #344: an environment that runs in DBMN for VS Code, beside its name (Hub header, Console
+   title): the VS Code mark, in the text colour while VS Code is there and grey when it isn't (or
+   isn't known yet). Only where VS Code is reached from: the web app's page carries
+   data-agent-connection; VS Code itself never does, so the mark never shows there. */
+.agent-link {
+    display: inline-flex;
+    align-items: center;
+    flex: 0 0 auto;
+    line-height: 0;
+    color: var(--vscode-descriptionForeground);
+}
+html:not([data-agent-connection]) .agent-link {
+    display: none;
+}
+html[data-agent-connection="connected"] .agent-link {
+    color: inherit;
+}
+.agent-link .icon svg {
+    width: 16px;
+    height: 16px;
+}

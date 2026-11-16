@@ -1,0 +1,888 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DBMN Hub</title>
+    <link rel="stylesheet" href="{{ATOMIC_CSS_URI}}">
+    <link rel="stylesheet" href="{{CORE_CSS_URI}}">
+    <link rel="stylesheet" href="{{MODALS_CSS_URI}}">
+    <link rel="stylesheet" href="{{TABLES_CSS_URI}}">
+    <link rel="stylesheet" href="{{IMPORT_EXPORT_CSS_URI}}">
+    <link rel="stylesheet" href="{{HUB_CSS_URI}}">
+    <link rel="stylesheet" href="{{TOAST_CSS_URI}}">
+    <link rel="stylesheet" href="{{THEME_PICKER_CSS_URI}}">
+</head>
+<body class="hub">
+    <!-- Readable buttons in every theme (shared/button-contrast.js): first in the body, so it applies before anything is painted -->
+    <script src="{{BUTTON_CONTRAST_JS_URI}}"></script>
+    <div class="hub-layout">
+        <header class="hub-header" role="banner">
+            <span class="hub-logo" aria-label="DBMN">
+                <img class="hub-logo-mark" src="{{HUB_LOGO_URI}}" alt="" aria-hidden="true">
+                <span class="hub-logo-wordmark">DBMN</span>
+            </span>
+            <!-- Left: what this build is ("DBMN · DEV · LOCAL"). Right: state (sign-in, activity).
+                 The environment name is centred over the bar, so each side has to stay short. -->
+            {{DEV_BACKEND_PILL}}
+            <div class="hub-env-selector-wrap">
+                <button type="button" class="hub-env-selector" id="hubEnvSelector" title="Switch environment" aria-haspopup="listbox" aria-expanded="false">
+                    <span class="hub-env-current" id="hubEnvCurrent">No environment</span>
+                    <!-- #344: the active environment runs in DBMN for VS Code: is it there? (the web app only) -->
+                    <span class="agent-link hidden" id="hubEnvAgent" role="img">
+                        <span class="icon" data-icon="vscode"></span>
+                    </span>
+                    <span class="hub-env-caret icon" data-icon="chevron-down"></span>
+                </button>
+                <div class="hub-env-popup hidden" id="hubEnvPopup" role="listbox"></div>
+                <!-- #424: one segment per variable the active environment shows in its header
+                     (the org among them), each with its own list: hub.js renders them -->
+                <div class="hub-env-vars" id="hubEnvVars"></div>
+                <!-- Signed out of DBMN: this replaces the selector, so being signed out is
+                     obvious. Same sign-in as Account, which also registers a new email. -->
+                <button type="button" class="hub-sign-in hidden" id="hubSignInBtn" data-help="hub#account" title="Sign in, or create your DBMN account with your email">
+                    <span class="icon" data-icon="user"></span>
+                    <span>Sign in to DBMN</span>
+                </button>
+            </div>
+            <span class="hub-header-spacer"></span>
+            <!-- Issue #396: signed in to DBMN, but the session can no longer refresh. Everything
+                 keeps running; this is the quiet prompt to sign in again so the account syncs. -->
+            <button type="button" class="hub-session-expired hidden" id="hubSessionExpiredBtn" data-help="hub#account" title="Your DBMN sign-in has expired. Everything still runs. Sign in again to keep your endpoints and environments in step with your account.">
+                <span class="icon" data-icon="user"></span>
+                <span class="hub-session-expired-label">DBMN sign-in expired</span>
+            </button>
+            <div class="hub-activity-wrap">
+                <button type="button" class="hub-activity-chip is-idle" id="hubActivityChip" title="Activity" aria-haspopup="dialog" aria-expanded="false">
+                    <span class="hub-activity-dot" aria-hidden="true"></span>
+                    <span class="hub-activity-label" id="hubActivityLabel">Idle</span>
+                    <span class="hub-activity-caret icon" data-icon="chevron-down"></span>
+                </button>
+                <div class="hub-activity-drawer hidden" id="hubActivityDrawer" role="dialog" aria-label="Activity"></div>
+            </div>
+            <!-- The theme picker (shared/theme-picker.js): the web and desktop apps' themes. Hidden until
+                 the host offers them (themeOptions); VS Code themes itself and never does. -->
+            <span class="theme-picker-anchor">
+                <button type="button" class="help-mode-toggle hub-help-toggle hub-theme-btn" id="hubThemeBtn" data-help="hub#theme" title="Change the theme" aria-label="Change the theme" hidden><span class="icon" data-icon="palette"></span></button>
+            </span>
+            <!-- Help mode (shared/help-mode.js): one button for the Hub and every tab in it -->
+            <button type="button" class="help-mode-toggle hub-help-toggle" id="hubHelpToggle" data-help-toggle aria-pressed="false" title="Help mode: click any control to read about it (?)" aria-label="Help mode"><span class="icon" data-icon="shield-question-mark"></span></button>
+        </header>
+        <aside class="hub-nav" aria-label="Hub sections">
+            <nav class="hub-nav-top">
+                <button type="button" class="hub-nav-item" data-section="environments">
+                    <span class="hub-nav-icon icon" data-icon="server"></span>
+                    <span class="hub-nav-label">Environments</span>
+                </button>
+                <button type="button" class="hub-nav-item" data-section="catalogue">
+                    <span class="hub-nav-icon icon" data-icon="notebook-tabs"></span>
+                    <span class="hub-nav-label">Endpoints</span>
+                </button>
+                <button type="button" class="hub-nav-item" data-section="transactions">
+                    <span class="hub-nav-icon icon" data-icon="history"></span>
+                    <span class="hub-nav-label">History</span>
+                </button>
+                <button type="button" class="hub-nav-item" data-section="compare" title="Reports: compare the results of an endpoint">
+                    <span class="hub-nav-icon icon" data-icon="database"></span>
+                    <span class="hub-nav-label">Reporting</span>
+                </button>
+                <button type="button" class="hub-nav-item" data-section="import" title="Import endpoints + environments">
+                    <span class="hub-nav-icon icon" data-icon="download"></span>
+                    <span class="hub-nav-label">Import</span>
+                </button>
+                <button type="button" class="hub-nav-item" data-section="export" title="Export endpoints + environments">
+                    <span class="hub-nav-icon icon" data-icon="upload"></span>
+                    <span class="hub-nav-label">Export</span>
+                </button>
+                <!-- Issue #293: shown only when the rail is too short for every item -->
+                <button type="button" class="hub-nav-item hub-nav-more is-overflowed" id="hubNavMore" title="More" aria-haspopup="menu" aria-expanded="false">
+                    <span class="hub-nav-icon icon" data-icon="ellipsis"></span>
+                    <span class="hub-nav-label">More</span>
+                </button>
+            </nav>
+            <nav class="hub-nav-bottom" aria-label="Pinned">
+                <button type="button" class="hub-nav-item" data-section="account" title="DBMN account">
+                    <span class="hub-nav-icon icon" data-icon="user"></span>
+                    <span class="hub-nav-label">Account</span>
+                </button>
+                <button type="button" class="hub-nav-item" data-section="settings">
+                    <span class="hub-nav-icon icon" data-icon="settings"></span>
+                    <span class="hub-nav-label">Settings</span>
+                </button>
+            </nav>
+        </aside>
+        <div class="hub-env-popup hub-rail-more-popup hidden" id="hubNavMorePopup" role="menu"></div>
+
+        <main class="hub-main">
+            <!-- Endpoints section (the API Catalogue until 0.4.0) -->
+            <section class="hub-section is-visible" data-section="catalogue" aria-label="Endpoints">
+                <header class="catalogue-header">
+                    <div class="catalogue-filters-row">
+                        <div class="catalogue-search">
+                            <svg class="catalogue-search-icon" width="14" height="14" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg>
+                            <!-- #444: a textarea so a long query wraps onto more lines; Enter never adds one -->
+                            <textarea id="catalogueSearch" class="search-box-input" rows="1" placeholder="Search, e.g. @ get #inventory" autocomplete="off" spellcheck="false" data-help="hub#search"></textarea>
+                            <button type="button" id="catalogueFilterBtn" class="search-box-builder" aria-label="Build a search" title="Build a search" data-help="hub#search">
+                                <span class="icon" data-icon="text-search"></span>
+                            </button>
+                        </div>
+                    </div>
+                </header>
+
+                <div class="catalogue-list" id="catalogueList" tabindex="0"></div>
+                <div class="catalogue-empty" id="catalogueEmpty" hidden>
+                    <p class="catalogue-empty-title">No endpoints yet</p>
+                    <p class="catalogue-empty-body">Create one, or paste one a teammate shared.</p>
+                    <div class="flex flex-wrap justify-center gap-8">
+                        <button type="button" class="btn btn-secondary" id="catalogueAddEndpoint">+ Add Endpoint</button>
+                        <button type="button" class="btn btn-secondary" id="catalogueAddFromClipboard" title="New Endpoint from Clipboard"><span class="btn-icon icon" data-icon="clipboard"></span>New Endpoint from Clipboard</button>
+                    </div>
+                </div>
+                <div class="webview-footer tx-bulk-footer" id="catalogueBulkBar" hidden role="region" aria-label="Bulk endpoint actions">
+                    <div class="footer-content">
+                        <div class="footer-button-container">
+                            <span class="tx-bulk-count" id="catalogueBulkCount" aria-live="polite">0 selected</span>
+                            <div class="footer-spacer"></div>
+                            <button type="button" class="btn btn-danger" id="catalogueBulkDelete" disabled>Delete</button>
+                            <button type="button" class="btn btn-secondary" id="catalogueBulkExport" disabled>Export</button>
+                            <button type="button" class="btn btn-primary" id="catalogueBulkUpdate" disabled>Update</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Placeholder sections -->
+            <section class="hub-section" data-section="environments" aria-label="Environments" hidden>
+                <header class="hub-list-header">
+                    <h2 class="hub-list-title">Environments</h2>
+                </header>
+                <div class="hub-list" id="hubEnvironmentList"></div>
+                <div class="hub-list-empty" id="hubEnvironmentEmpty" hidden>
+                    <p class="hub-list-empty-title">No environments yet</p>
+                    <p class="hub-list-empty-body">Add one to start running endpoints.</p>
+                    <div class="flex flex-wrap justify-center gap-8">
+                        <button type="button" class="btn btn-primary" id="hubAddEnvironmentEmpty">+ Add Environment</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Export section — embedded import/export flow -->
+            <section class="hub-section" data-section="export" aria-label="Export" hidden>
+                <div class="ie-page">
+                    <div class="page-header">
+                        <h1>Export Configuration</h1>
+                        <p class="description">Select items to export</p>
+                    </div>
+
+                    <div class="export-content">
+                        <div class="form-group">
+                            <label for="exportFilename">Export Filename</label>
+                            <input type="text" id="exportFilename" class="input" placeholder="dobermann-export" value="dobermann-export">
+                            <small class="help-text">Filename without extension (.dbmn.zip will be added)</small>
+                        </div>
+
+                        <!-- Credentials opt-in (GitHub Issue #289) -->
+                        <div class="form-group">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="exportIncludeCredentials">
+                                <span>Include environment credentials</span>
+                            </label>
+                            <small class="help-text">
+                                Off by default. OAuth client secrets and Google service-account private keys are
+                                removed, so the file is safe to share or commit — recipients enter their own.
+                                Tick this only when you are sending the file somewhere you would send a password.
+                            </small>
+                        </div>
+
+                        <div class="selection-grid">
+                            <div class="selection-column">
+                                <h3>Environments</h3>
+                                <div class="selection-header">
+                                    <button class="btn btn-sm btn-secondary" id="selectAllEnvironments">Select All</button>
+                                    <button class="btn btn-sm btn-secondary" id="deselectAllEnvironments">Deselect All</button>
+                                </div>
+                                <div id="environmentTree" class="checkbox-tree"></div>
+                            </div>
+                            <div class="selection-column">
+                                <h3>Endpoints</h3>
+                                <div class="selection-header">
+                                    <button class="btn btn-sm btn-secondary" id="selectAllEndpoints">Select All</button>
+                                    <button class="btn btn-sm btn-secondary" id="deselectAllEndpoints">Deselect All</button>
+                                </div>
+                                <div id="endpointTree" class="checkbox-tree"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="webview-footer">
+                        <div class="footer-content">
+                            <div class="footer-button-container">
+                                <div class="footer-spacer"></div>
+                                <button class="btn btn-primary" id="executeExport" disabled>
+                                    Export Selected Items
+                                </button>
+                            </div>
+                            <div id="exportFooterNotification" class="footer-notification hidden">
+                                <span class="notification-icon">⚠️</span>
+                                <span class="notification-message"></span>
+                                <button class="notification-dismiss" data-click="clearFooterNotification" title="Dismiss">&times;</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Import section — embedded import/export flow -->
+            <section class="hub-section" data-section="import" aria-label="Import" hidden>
+                <div class="ie-page">
+                    <div class="page-header">
+                        <h1>Import Configuration</h1>
+                        <p class="description">Upload a Dobermann export file (.dbmn.zip) or a Postman collection (.json)</p>
+                    </div>
+
+                    <div class="import-content">
+                        <div id="uploadSection" class="upload-section active">
+                            <div id="dropZone" class="drop-zone">
+                                <div class="drop-zone-content">
+                                    <div class="drop-zone-icon">📁</div>
+                                    <h3>Drag &amp; Drop File Here</h3>
+                                    <p>or</p>
+                                    <button class="btn btn-secondary" id="browseFile">Browse Computer</button>
+                                    <input type="file" id="fileInput" accept=".zip,.dbmn.zip,.json" style="display: none;">
+                                    <p class="help-text mt-20">Supported formats: <code>.dbmn.zip</code>, Postman <code>.json</code> collections</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div id="conflictsSection" class="conflicts-section">
+                            <div id="postmanOptionsPanel" class="postman-options-panel hidden">
+                                <h3>Postman Import Options</h3>
+                                <p class="postman-options-summary" id="postmanOptionsSummary"></p>
+                                <div id="postmanUnsupportedFeatures" class="postman-unsupported hidden">
+                                    <div class="postman-unsupported-header">
+                                        <span class="postman-unsupported-icon">⚠️</span>
+                                        <span class="postman-unsupported-title">This collection contains features that won't be imported:</span>
+                                    </div>
+                                    <ul id="postmanUnsupportedList" class="postman-unsupported-list"></ul>
+                                </div>
+                                <div class="postman-option-row">
+                                    <label class="postman-option-label">
+                                        <input type="checkbox" id="postmanIncludeHeaders">
+                                        <span>Include headers from collection</span>
+                                        <span class="postman-option-hint" id="postmanHeaderHint"></span>
+                                    </label>
+                                </div>
+                                <div class="postman-option-row">
+                                    <div class="postman-option-label">Folder destination:</div>
+                                    <div class="postman-folder-options">
+                                        <label class="postman-radio">
+                                            <input type="radio" name="postmanFolderMode" id="postmanFolderModeFromCollection" value="from-collection" checked>
+                                            <span>Use folders from collection</span>
+                                            <span class="postman-option-hint" id="postmanCollectionFoldersHint"></span>
+                                        </label>
+                                        <label class="postman-radio">
+                                            <input type="radio" name="postmanFolderMode" id="postmanFolderModeAllInto" value="all-into">
+                                            <span>Import all into folder:</span>
+                                            <input type="text" id="postmanTargetFolder" class="postman-target-folder-input" list="postmanExistingFolders" placeholder="folder name (blank = root)" disabled>
+                                            <datalist id="postmanExistingFolders"></datalist>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div id="importItemsList" class="import-items-list">
+                                <h3>Items to Import</h3>
+                                <div class="selection-grid">
+                                    <div class="selection-column">
+                                        <h3>Environments</h3>
+                                        <div class="selection-header">
+                                            <button class="btn btn-sm btn-secondary" id="selectAllImportEnvironments">Select All</button>
+                                            <button class="btn btn-sm btn-secondary" id="deselectAllImportEnvironments">Deselect All</button>
+                                        </div>
+                                        <div id="importEnvironmentTree" class="checkbox-tree"></div>
+                                    </div>
+                                    <div class="selection-column">
+                                        <h3>Endpoints</h3>
+                                        <div class="selection-header">
+                                            <button class="btn btn-sm btn-secondary" id="selectAllImportEndpoints">Select All</button>
+                                            <button class="btn btn-sm btn-secondary" id="deselectAllImportEndpoints">Deselect All</button>
+                                        </div>
+                                        <div id="importEndpointTree" class="checkbox-tree"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="webview-footer">
+                        <div class="footer-content">
+                            <div class="footer-button-container">
+                                <div class="footer-spacer"></div>
+                                <button class="btn btn-primary" id="executeImport" disabled>
+                                    Import Configuration
+                                </button>
+                            </div>
+                            <div id="importFooterNotification" class="footer-notification hidden">
+                                <span class="notification-icon">⚠️</span>
+                                <span class="notification-message"></span>
+                                <button class="notification-dismiss" data-click="clearFooterNotification" title="Dismiss">&times;</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Transactions section -->
+            <section class="hub-section" data-section="transactions" aria-label="Transactions" hidden>
+                <header class="transactions-header">
+                    <div class="transactions-filters-row">
+                        <div class="catalogue-search">
+                            <svg class="catalogue-search-icon" width="14" height="14" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg>
+                            <textarea id="transactionsSearch" class="search-box-input" rows="1" placeholder="Search, e.g. ~ !error 7d 404" autocomplete="off" spellcheck="false" data-help="hub#search"></textarea>
+                            <button type="button" id="transactionsFilterBtn" class="search-box-builder" aria-label="Build a search" title="Build a search" data-help="hub#search">
+                                <span class="icon" data-icon="text-search"></span>
+                            </button>
+                        </div>
+                    </div>
+                </header>
+                <div class="tx-list-toolbar">
+                    <label class="hub-toggle tx-select-switch" title="Turn on to select transactions for bulk delete">
+                        <input type="checkbox" id="transactionsSelectMode">
+                        <span class="hub-toggle-track"><span class="hub-toggle-thumb"></span></span>
+                        <span class="tx-select-switch-label">Select</span>
+                    </label>
+                    <div class="catalogue-summary tx-list-summary" id="transactionsSummary"></div>
+                </div>
+                <div class="catalogue-list" id="transactionsList" tabindex="0"></div>
+                <div class="catalogue-empty" id="transactionsEmpty" hidden>
+                    <p class="catalogue-empty-title">No transactions yet</p>
+                    <p class="catalogue-empty-body">Run an endpoint to see execution history here.</p>
+                </div>
+                <div class="webview-footer tx-bulk-footer" id="transactionsBulkBar" hidden role="region" aria-label="Bulk transaction actions">
+                    <div class="footer-content">
+                        <div class="footer-button-container">
+                            <span class="tx-bulk-count" id="transactionsBulkCount" aria-live="polite">0 selected</span>
+                            <div class="footer-spacer"></div>
+                            <button type="button" class="btn btn-danger" id="transactionsBulkDelete" disabled>Delete</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- #298: Reporting — the saved reports, each a Compare for now (compare-list.js). The
+                 section keeps its id, compare. -->
+            <section class="hub-section" data-section="compare" aria-label="Reporting" hidden>
+                <header class="transactions-header">
+                    <div class="transactions-filters-row">
+                        <span class="dbmn-beta" title="Reporting is new: tell us what you find">Beta</span>
+                        <div class="catalogue-search">
+                            <svg class="catalogue-search-icon" width="14" height="14" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg>
+                            <!-- #444: the Hub's search box, as in Endpoints and History -->
+                            <textarea id="compareSearch" class="search-box-input" rows="1" placeholder="Search, e.g. ~prod #inventory 7d" autocomplete="off" spellcheck="false" data-help="hub#search"></textarea>
+                        </div>
+                    </div>
+                </header>
+                <div class="tx-list-toolbar">
+                    <div class="catalogue-summary tx-list-summary" id="compareSummary"></div>
+                </div>
+                <div class="catalogue-list" id="compareList" tabindex="0"></div>
+                <div class="catalogue-empty" id="compareEmpty" hidden>
+                    <p class="catalogue-empty-title">No reports yet</p>
+                    <p class="catalogue-empty-body">Open a result in its Console and choose Compare on the Completed tab: another environment, or another day. Each compare is saved here.</p>
+                </div>
+            </section>
+
+            <!-- Account section — embedded sign-in / usage flow -->
+            <section class="hub-section" data-section="account" aria-label="Account" hidden>
+                <div class="ac-page">
+                    <div class="ac-content">
+                    <h2>DBMN Account</h2>
+                    {{DEV_BACKEND_NOTE}}
+
+                    <!-- Signed-out view (GitHub Issue #263: single button → shared sign-in modal) -->
+                    <div id="signed-out-view">
+                        <div class="section">
+                            <h3>Sign in to DBMN</h3>
+                            <p class="color-description">Sign in with your email — new email addresses are registered automatically. 30 days of unlimited access on signup.</p>
+                            <div class="flex gap-8 mt-10">
+                                <button id="sign-in-btn" class="btn btn-primary" data-click="handleSignIn">Sign in to DBMN</button>
+                            </div>
+                        </div>
+                        <div class="section">
+                            <h3>New to DBMN?</h3>
+                            <p class="color-description">Puppy School is five hands-on lessons on a practice API: connect, load 60,000 records, fix the ones that fail, report, and build your own template. Sign in, then start from here.</p>
+                        </div>
+                    </div>
+
+                    <!-- Signed-in view -->
+                    <div id="signed-in-view" class="hidden">
+                        <div id="account-expired-banner" class="footer-notification notification-warning hidden">Your DBMN session has expired. Click <strong>Sign In</strong> below to refresh it.</div>
+                        <div class="execution-section">
+                            <h3>Account</h3>
+                            <div class="table-stats">
+                                <div class="stat-item" id="account-name-stat">
+                                    <span class="stat-label">Name</span>
+                                    <span id="account-name"></span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="stat-label">Email</span>
+                                    <span id="account-email"></span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div id="flexiontech-migration-section" class="execution-section hidden">
+                            <h3>Import from Legacy DBMN</h3>
+
+                            <div id="flexiontech-auto" class="hidden">
+                                <p class="color-description">
+                                    We detected a legacy DBMN install. Import your environments and endpoints with one click.
+                                </p>
+                                <div id="migration-result" class="footer-notification notification-info hidden"></div>
+                                <div id="migration-buttons" class="flex gap-8 mt-10">
+                                    <button id="migration-import-btn" class="btn btn-primary" data-click="handleFlexionTechImport">
+                                        <span id="migration-btn-text">Import Environments &amp; Endpoints</span>
+                                        <span id="migration-btn-spinner" class="btn-spinner hidden"></span>
+                                    </button>
+                                    <button class="btn btn-secondary" data-click="handleDismissFlexionTech">No Thanks</button>
+                                </div>
+                                <p id="migration-post-import" class="color-description mt-10 hidden">
+                                    Please verify your data imported correctly, then uninstall the legacy extension to avoid confusion.
+                                </p>
+                            </div>
+
+                            <div id="flexiontech-manual" class="hidden">
+                                <p class="color-description">
+                                    We detected a legacy DBMN install (<span id="flexiontech-version-label"></span>). To bring your data across:
+                                </p>
+                                <ol class="color-description ac-instructions-list">
+                                    <li>In the legacy extension, open Command Palette and run <strong>Active8: Export</strong></li>
+                                    <li>Save the <code>.dbmn.zip</code> file</li>
+                                    <li>Click the button below to open Import/Export and import the file</li>
+                                </ol>
+                                <div class="flex gap-8 mt-10">
+                                    <button class="btn btn-secondary" data-click="handleOpenImportExport">Open Import / Export</button>
+                                    <button class="btn btn-secondary" data-click="handleDismissFlexionTech">No Thanks</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="execution-section" id="puppy-school-section">
+                            <h3>Puppy School &amp; Badges</h3>
+                            <div class="table-stats">
+                                <div class="stat-item">
+                                    <span class="stat-label">Puppy School</span>
+                                    <span id="puppy-school-progress" class="status-pill-generic"></span>
+                                </div>
+                            </div>
+                            <p class="color-description">Five hands-on lessons on a practice API. The lessons open in your browser; every one you finish earns a badge here.</p>
+                            <div class="flex gap-8 mt-10">
+                                <button id="puppy-school-btn" class="btn btn-secondary" data-click="handleOpenPuppySchool">Start Puppy School</button>
+                            </div>
+                            <div id="badge-grid" class="dbmn-badge-grid" role="list" aria-label="Your badges"></div>
+                        </div>
+
+                        <div class="execution-section">
+                            <h3>Weekly Usage <span id="usage-stats-spinner" class="ac-header-spinner hidden" aria-hidden="true"></span></h3>
+                            <label class="flex align-center gap-10 mb-10" data-help="telemetry#the-switch">
+                                <input type="checkbox" id="telemetryEnabled" checked>
+                                <span>Share usage counts with DBMN</span>
+                            </label>
+                            <p class="color-description font-size-12 ac-section-intro" data-help="telemetry#what-is-sent">Optional. Counts of calls, batches, rows and run time, one total per day. Never an address, an API path or any request or response content; nothing while signed out.</p>
+                            <p id="usage-week-label" class="color-description font-size-12 ac-section-intro"></p>
+                            <p id="usage-stats-loading" class="color-description ac-loading-message ac-stats-placeholder hidden"></p>
+                            <div id="usage-stats-grid" class="table-stats hidden">
+                                <div class="stat-item">
+                                    <span class="stat-label">API Calls</span>
+                                    <span id="usage-api-calls">0</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="stat-label">Batches</span>
+                                    <span id="usage-batch-runs">0</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="stat-label">Rows Processed</span>
+                                    <span id="usage-rows-processed">0</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="stat-label">Run Time</span>
+                                    <span id="usage-run-time">0s</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="execution-section">
+                            <h3>Total Usage <span id="total-stats-spinner" class="ac-header-spinner hidden" aria-hidden="true"></span></h3>
+                            <p id="total-stats-loading" class="color-description ac-loading-message ac-stats-placeholder hidden"></p>
+                            <div id="total-stats-grid" class="table-stats hidden">
+                                <div class="stat-item">
+                                    <span class="stat-label">API Calls</span>
+                                    <span id="total-api-calls">0</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="stat-label">Batches</span>
+                                    <span id="total-batch-runs">0</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="stat-label">Rows Processed</span>
+                                    <span id="total-rows-processed">0</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="stat-label">Run Time</span>
+                                    <span id="total-run-time">0s</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    </div><!-- /.ac-content -->
+
+                    <div class="webview-footer">
+                        <div class="footer-content">
+                            <div class="footer-button-container">
+                                <button id="footer-sign-out-btn" class="btn btn-secondary hidden" data-click="handleSignOut">Sign Out</button>
+                                <button id="footer-refresh-session-btn" class="btn btn-primary hidden" data-click="handleRefreshSession">Sign In</button>
+                            </div>
+                            <div id="footerNotification" class="footer-notification hidden">
+                                <span class="notification-icon"></span>
+                                <span class="notification-message"></span>
+                                <button class="notification-dismiss" data-click="clearFooterNotification">&times;</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="hub-section" data-section="settings" aria-label="Settings" hidden>
+                <div class="hub-settings">
+                    <h2 class="hub-settings-title">Settings</h2>
+
+                    <div class="hub-settings-panel">
+                        <h3 class="hub-settings-panel-title">Endpoints</h3>
+
+                        <!-- #342: in the DBMN account, or on this computer by the user's choice; #427 signed out, the account's copy. -->
+                        <div class="hub-setting-row hub-setting-row-stacked hidden" id="catalogueStorageRow">
+                            <span class="hub-setting-label">Stored</span>
+                            <div class="hub-setting-path-row">
+                                <span class="hub-setting-status" id="catalogueStorageWhere">—</span>
+                                <button type="button" class="btn btn-primary hidden" id="catalogueSaveToAccount">Save to my account…</button>
+                                <button type="button" class="btn btn-secondary hidden" id="catalogueRemoveFromDevice">Remove from this computer</button>
+                            </div>
+                            <p class="hub-setting-help" id="catalogueStorageHelp"></p>
+                        </div>
+
+                        <div class="hub-setting-row">
+                            <label class="hub-setting-label" for="catalogueGroupBy">Group by</label>
+                            <select id="catalogueGroupBy" class="hub-setting-control">
+                                <option value="url">URL</option>
+                                <option value="system">System</option>
+                                <option value="method">Method</option>
+                                <option value="none">None (flat)</option>
+                            </select>
+                            <p class="hub-setting-help">How endpoints are arranged in the list.</p>
+                        </div>
+
+                        <div class="hub-setting-row">
+                            <label class="hub-setting-label" for="catalogueShowRecent">Recent</label>
+                            <label class="hub-toggle">
+                                <input type="checkbox" id="catalogueShowRecent" checked>
+                                <span class="hub-toggle-track"><span class="hub-toggle-thumb"></span></span>
+                            </label>
+                            <p class="hub-setting-help">Pin the five endpoints you last opened, edited, or ran to the top of the list.</p>
+                        </div>
+
+                        <div class="hub-setting-row">
+                            <label class="hub-setting-label">Tags</label>
+                            <button type="button" class="btn btn-secondary hub-setting-control" id="hubOpenTagManager">Manage Tags…</button>
+                            <p class="hub-setting-help">Rename, merge, or delete tags across every endpoint.</p>
+                        </div>
+                    </div>
+
+                    <div class="hub-settings-panel">
+                        <h3 class="hub-settings-panel-title">Transactions</h3>
+
+                        <div class="hub-setting-row">
+                            <label class="hub-setting-label" for="transactionsShow">Show</label>
+                            <select id="transactionsShow" class="hub-setting-control">
+                                <option value="current">Current Environment</option>
+                                <option value="all">All Environments</option>
+                            </select>
+                            <p class="hub-setting-help">Restrict the transaction history to the active environment, or show every run.</p>
+                        </div>
+
+                        <div class="hub-setting-row">
+                            <label class="hub-setting-label" for="transactionsGroupBy">Group by</label>
+                            <select id="transactionsGroupBy" class="hub-setting-control">
+                                <option value="date">Date</option>
+                                <option value="endpoint">Endpoint</option>
+                                <option value="environment">Environment</option>
+                                <option value="status">Status</option>
+                                <option value="none">None (flat)</option>
+                            </select>
+                            <p class="hub-setting-help">How transactions are grouped in the list.</p>
+                        </div>
+                    </div>
+
+                    <div class="hub-settings-panel">
+                        <h3 class="hub-settings-panel-title">Execution</h3>
+
+                        <div class="hub-setting-row">
+                            <label class="hub-setting-label" for="autoOpenConsole">Auto-open console on completion</label>
+                            <label class="hub-toggle">
+                                <input type="checkbox" id="autoOpenConsole">
+                                <span class="hub-toggle-track"><span class="hub-toggle-thumb"></span></span>
+                            </label>
+                            <p class="hub-setting-help">When an execution finishes, reveal its console (column 2, beside the Hub).</p>
+                        </div>
+
+                        <div class="hub-setting-row">
+                            <label class="hub-setting-label" for="treatNetworkErrorsAsCritical">Treat network errors as critical</label>
+                            <label class="hub-toggle">
+                                <input type="checkbox" id="treatNetworkErrorsAsCritical">
+                                <span class="hub-toggle-track"><span class="hub-toggle-thumb"></span></span>
+                            </label>
+                            <p class="hub-setting-help">Timeouts, DNS failures and connection-refused errors stop a batch immediately, regardless of error tolerance.</p>
+                        </div>
+
+                        <div class="hub-setting-row">
+                            <label class="hub-setting-label" for="criticalErrorCodes">Critical HTTP codes</label>
+                            <input type="text" id="criticalErrorCodes" class="hub-setting-control" placeholder="e.g. 401, 403">
+                            <p class="hub-setting-help">Comma-separated list. These response codes stop a batch immediately. Default: <code>401, 403</code>. Leave blank to disable.</p>
+                        </div>
+
+                        <div class="hub-setting-row">
+                            <label class="hub-setting-label" for="maxCsvRows">Max CSV rows</label>
+                            <input type="number" id="maxCsvRows" class="hub-setting-control" min="1" max="1000000" step="1000">
+                            <p class="hub-setting-help">Cap on rows allowed in batch CSV uploads. Uploads above ~500,000 may impact performance.</p>
+                        </div>
+                    </div>
+
+                    <div class="hub-settings-panel">
+                        <h3 class="hub-settings-panel-title">UI</h3>
+                        <!-- #373: the host's themes (the web and desktop apps). VS Code themes itself: the row stays hidden there. -->
+                        <div class="hub-setting-row" id="uiThemeRow" hidden>
+                            <label class="hub-setting-label" for="uiTheme">Theme</label>
+                            <select id="uiTheme" class="hub-setting-control"></select>
+                            <p class="hub-setting-help" id="uiThemeHelp"></p>
+                        </div>
+                        <!-- Which themes Follow system switches between, where the computer only says light or dark -->
+                        <div class="hub-setting-row" id="uiThemeLightRow" hidden>
+                            <label class="hub-setting-label" for="uiThemeLight">Light theme</label>
+                            <select id="uiThemeLight" class="hub-setting-control"></select>
+                            <p class="hub-setting-help">What Follow system wears when your computer is set to light.</p>
+                        </div>
+                        <div class="hub-setting-row" id="uiThemeDarkRow" hidden>
+                            <label class="hub-setting-label" for="uiThemeDark">Dark theme</label>
+                            <select id="uiThemeDark" class="hub-setting-control"></select>
+                            <p class="hub-setting-help">What Follow system wears when your computer is set to dark.</p>
+                        </div>
+                        <div class="hub-setting-row">
+                            <label class="hub-setting-label" for="confirmTransactionDeletion">Confirm transaction deletion</label>
+                            <label class="hub-toggle">
+                                <input type="checkbox" id="confirmTransactionDeletion">
+                                <span class="hub-toggle-track"><span class="hub-toggle-thumb"></span></span>
+                            </label>
+                            <p class="hub-setting-help">Show a confirmation dialog when deleting transactions and their files.</p>
+                        </div>
+                    </div>
+
+                    <div class="hub-settings-panel">
+                        <h3 class="hub-settings-panel-title">Workspace</h3>
+                        <div class="hub-setting-row hub-setting-row-stacked">
+                            <span class="hub-setting-label">DBMN workspace folder</span>
+                            <div class="hub-setting-path-row">
+                                <code class="hub-setting-readonly" id="workspacePath">—</code>
+                                <button type="button" class="btn btn-secondary" id="openWorkspaceFolder" title="Open this folder in your file manager">Open folder</button>
+                                <button type="button" class="btn btn-secondary" id="changeWorkspaceFolder">Change folder…</button>
+                            </div>
+                            <p class="hub-setting-help" id="workspaceFolderHelp">DBMN stores its config and database here. The folder is shared across all VS Code workspaces.</p>
+                        </div>
+                        <div class="hub-setting-row hub-setting-row-stacked">
+                            <span class="hub-setting-label">Executions database</span>
+                            <code class="hub-setting-readonly" id="executionsDbPath">—</code>
+                            <p class="hub-setting-help">SQLite file containing execution history. Lives inside the workspace folder.</p>
+                        </div>
+                    </div>
+
+                    <div class="hub-settings-panel">
+                        <div class="hub-settings-panel-header">
+                            <h3 class="hub-settings-panel-title">Systems</h3>
+                            <button type="button" class="btn btn-secondary hub-settings-add" id="hubAddSystem">
+                                <span class="icon" data-icon="plus"></span>
+                                <span>Add System</span>
+                            </button>
+                        </div>
+                        <div class="hub-system-list" id="hubSystemList"></div>
+                    </div>
+
+                    <p class="hub-settings-note">More settings (DBMN-namespace VS Code preferences) coming soon. Until then, search "dbmn" in VS Code's settings UI.</p>
+                </div>
+            </section>
+        </main>
+
+        <div class="hub-col-resize" id="hubColResize" role="separator" aria-orientation="vertical" aria-label="Resize list" tabindex="0"></div>
+        <aside class="hub-content" id="hubContent" aria-label="Open tabs">
+            <div class="hub-tab-strip-wrapper" id="hubTabStripWrapper">
+                <div class="hub-tab-strip" id="hubTabStrip" role="tablist"></div>
+            </div>
+            <div class="hub-tab-bodies" id="hubTabBodies"></div>
+            <!-- Issue #348: Home — what the tab area shows with no tabs open (hub-home.js) -->
+            <div class="hub-home" id="hubHome">
+                <!-- The rail is icons only; on Home its names sit level with the icons (Issue #348) -->
+                <nav class="hub-home-guide" aria-label="Hub sections">
+                    <div class="hub-home-guide-top">
+                        <button type="button" class="hub-home-guide-item" data-home-section="environments">Environments</button>
+                        <button type="button" class="hub-home-guide-item" data-home-section="catalogue">Endpoints</button>
+                        <button type="button" class="hub-home-guide-item" data-home-section="transactions">History</button>
+                        <button type="button" class="hub-home-guide-item" data-home-section="compare">Reporting</button>
+                        <button type="button" class="hub-home-guide-item" data-home-section="import">Import</button>
+                        <button type="button" class="hub-home-guide-item" data-home-section="export">Export</button>
+                    </div>
+                    <div class="hub-home-guide-bottom">
+                        <button type="button" class="hub-home-guide-item" data-home-section="account">Account</button>
+                        <button type="button" class="hub-home-guide-item" data-home-section="settings">Settings</button>
+                    </div>
+                </nav>
+                <div class="hub-home-main">
+                <div class="hub-home-inner">
+                    <header class="hub-home-header">
+                        <img class="hub-home-mark" src="{{HUB_LOGO_URI}}" alt="" aria-hidden="true">
+                        <span class="hub-home-title">DBMN</span>
+                        <span class="hub-home-version">{{HUB_VERSION}}</span>
+                        <span class="hub-header-spacer"></span>
+                        <a href="#" class="hub-home-link" data-home-link="https://dbmn.io/docs/">dbmn.io</a>
+                    </header>
+
+                    <!-- The web app (#344): not on the user's workspace folder. Shown until it is. -->
+                    <section class="hub-settings-panel hub-home-card hub-home-reopen hidden" id="hubHomeWorkspace">
+                        <span class="icon hub-home-tip-icon" data-icon="folder"></span>
+                        <div class="hub-home-reopen-text">
+                            <span class="hub-home-reopen-title" id="hubHomeWorkspaceTitle"></span>
+                            <span class="hub-home-meta" id="hubHomeWorkspaceText"></span>
+                        </div>
+                        <button type="button" class="btn btn-primary hub-home-reopen-btn" id="hubHomeWorkspaceBtn" data-home-action="workspaceFolder"></button>
+                    </section>
+
+                    <!-- #342: the catalogue is only on this computer (the user's choice): encourage saving it. -->
+                    <section class="hub-settings-panel hub-home-card hub-home-reopen hidden" id="hubHomeCatalogue">
+                        <span class="icon hub-home-tip-icon" data-icon="server"></span>
+                        <div class="hub-home-reopen-text">
+                            <span class="hub-home-reopen-title" id="hubHomeCatalogueTitle"></span>
+                            <span class="hub-home-meta" id="hubHomeCatalogueText"></span>
+                        </div>
+                        <button type="button" class="btn btn-primary hub-home-reopen-btn" id="hubHomeCatalogueBtn" data-home-action="saveCatalogue"></button>
+                    </section>
+
+                    <section class="hub-settings-panel hub-home-card hub-home-reopen hidden" id="hubHomeReopen">
+                        <span class="icon hub-home-tip-icon" data-icon="history"></span>
+                        <div class="hub-home-reopen-text">
+                            <span class="hub-home-reopen-title">Pick up where you left off</span>
+                            <span class="hub-home-meta" id="hubHomeReopenNames"></span>
+                        </div>
+                        <button type="button" class="btn btn-secondary hub-home-reopen-btn" id="hubHomeReopenBtn" data-home-action="reopenTabs">Re-open tabs</button>
+                    </section>
+
+                    <section class="hub-settings-panel hub-home-card hub-home-hero" id="hubHomePuppy">
+                        <div class="hub-settings-panel-header">
+                            <h3 class="hub-settings-panel-title hub-home-hero-title"><span class="icon" data-icon="paw-print"></span>Puppy School</h3>
+                            <span class="status-pill-generic" id="hubHomePuppyProgress">Not started</span>
+                        </div>
+                        <div id="hubHomePuppyLearning">
+                            <p class="hub-home-hero-body">Learn DBMN in five short, hands-on lessons on the Training Ground. Each one earns a badge.</p>
+                            <div class="hub-home-badges" id="hubHomeBadges" role="list" aria-label="Puppy School badges"></div>
+                        </div>
+                        <div class="hub-home-graduate hidden" id="hubHomeGraduate">
+                            <div class="hub-home-graduate-art" id="hubHomeGraduateArt"></div>
+                            <span id="hubHomeGraduateText"></span>
+                        </div>
+                        <button type="button" class="btn btn-primary hub-home-cta" id="hubHomePuppyBtn" data-home-action="puppySchool">Start Puppy School</button>
+                    </section>
+
+                    <div class="hub-home-grid">
+                        <section class="hub-settings-panel hub-home-card">
+                            <h3 class="hub-settings-panel-title">Quick start</h3>
+                            <div class="hub-home-actions">
+                                <button type="button" class="hub-list-row hub-home-action" data-home-action="addEndpoint"><span class="icon" data-icon="plus"></span>Add Endpoint</button>
+                                <button type="button" class="hub-list-row hub-home-action" data-home-action="addEndpointFromClipboard"><span class="icon" data-icon="clipboard"></span>New Endpoint from Clipboard</button>
+                                <button type="button" class="hub-list-row hub-home-action" data-home-action="addEnvironment"><span class="icon" data-icon="server"></span>Add Environment</button>
+                                <button type="button" class="hub-list-row hub-home-action" data-home-action="import"><span class="icon" data-icon="download"></span>Import</button>
+                            </div>
+                        </section>
+                        <section class="hub-settings-panel hub-home-card hidden" id="hubHomeWhatsNew">
+                            <h3 class="hub-settings-panel-title" id="hubHomeWhatsNewTitle">What's new</h3>
+                            <p class="hub-home-whatsnew-counts" id="hubHomeWhatsNewCounts"></p>
+                            <ul class="hub-home-whatsnew-list" id="hubHomeWhatsNewList"></ul>
+                            <button type="button" class="hub-home-link-btn" data-home-link="https://dbmn.io/docs/changelog/">Full changelog<span class="icon" data-icon="arrow-right"></span></button>
+                        </section>
+                    </div>
+
+                    <section class="hub-settings-panel hub-home-card hub-home-tip">
+                        <span class="icon hub-home-tip-icon" data-icon="lightbulb"></span>
+                        <p class="hub-home-tip-text" id="hubHomeTipText"><span class="hub-home-tip-line"></span></p>
+                        <div class="hub-home-tip-steps">
+                            <button type="button" class="hub-home-tip-step" id="hubHomeTipPrev" title="Previous tip" aria-label="Previous tip"><span class="icon" data-icon="circle-chevron-up"></span></button>
+                            <button type="button" class="hub-home-tip-step" id="hubHomeTipNext" title="Next tip" aria-label="Next tip"><span class="icon" data-icon="circle-chevron-down"></span></button>
+                        </div>
+                    </section>
+
+                    <section class="hub-settings-panel hub-home-card hidden" id="hubHomeWeek">
+                        <div class="hub-settings-panel-header">
+                            <h3 class="hub-settings-panel-title">This week</h3>
+                            <span class="hub-home-meta" id="hubHomeWeekLabel"></span>
+                        </div>
+                        <div class="table-stats hub-home-stats">
+                            <div class="stat-item">
+                                <span class="stat-label">API Calls</span>
+                                <span id="hubHomeApiCalls">0</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">Batches</span>
+                                <span id="hubHomeBatchRuns">0</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">Rows Processed</span>
+                                <span id="hubHomeRowsProcessed">0</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">Run Time</span>
+                                <span id="hubHomeRunTime">0s</span>
+                            </div>
+                        </div>
+                    </section>
+
+                </div>
+                </div>
+            </div>
+        </aside>
+        <!-- Issue #349: dims the tab content under the open list drawer; a click closes the drawer -->
+        <div class="hub-drawer-scrim" id="hubDrawerScrim" aria-hidden="true"></div>
+    </div>
+
+    {{INITIAL_STATE_SCRIPT}}
+    <script defer src="{{DBMN_ACTIONS_JS_URI}}"></script>
+    <script defer src="{{ICONS_JS_URI}}"></script>
+    <script defer src="{{EXECUTION_ACTIONS_JS_URI}}"></script>
+    <script defer src="{{DBMN_CONTEXT_MENU_JS_URI}}"></script>
+    <script defer src="{{BADGES_JS_URI}}"></script>
+    <script defer src="{{ROW_PASTE_JS_URI}}"></script>
+    <script defer src="{{DBMN_MODAL_JS_URI}}"></script>
+    <script defer src="{{DBMN_TOAST_JS_URI}}"></script>
+    <script defer src="{{DBMN_CLIPBOARD_JS_URI}}"></script>
+    <script defer src="{{SYSTEM_PICKER_JS_URI}}"></script>
+    <script defer src="{{HUB_LAYOUT_JS_URI}}"></script>
+    <script defer src="{{HUB_TABS_JS_URI}}"></script>
+    <script defer src="{{HELP_MODE_JS_URI}}"></script>
+    <script defer src="{{THEME_PICKER_JS_URI}}"></script>
+    <script defer src="{{HUB_HELP_JS_URI}}"></script>
+    <script defer src="{{HUB_ACTIVITY_JS_URI}}"></script>
+    <script defer src="{{SEARCH_WORDS_JS_URI}}"></script>
+    <script defer src="{{CATALOGUE_JS_URI}}"></script>
+    <script defer src="{{HUB_TAG_MANAGER_JS_URI}}"></script>
+    <script defer src="{{TRANSACTIONS_JS_URI}}"></script>
+    <script defer src="{{COMPARE_LIST_JS_URI}}"></script>
+    <script defer src="{{HUB_HOME_JS_URI}}"></script>
+    <script defer src="{{HUB_JS_URI}}"></script>
+    <script defer src="{{IMPORT_EXPORT_JS_URI}}"></script>
+    <script defer src="{{ACCOUNT_FRONTEND_JS_URI}}"></script>
+</body>
+</html>

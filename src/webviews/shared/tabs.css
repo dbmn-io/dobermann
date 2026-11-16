@@ -1,0 +1,125 @@
+/* ===== TABBED INTERFACE STYLES ===== */
+/* Generic tab styles - reusable across all webviews */
+/* Dual selectors for backward compatibility with console's .report-tabs class */
+
+/* Tab Navigation - terminal-style merged tabs */
+.webview-tabs,
+.report-tabs {
+    display: flex;
+    align-items: flex-end;
+    /* Distinct tab-bar surface (darker than the editor in dark themes, lighter
+     * in light themes) so the strip reads as its own zone and the active tab —
+     * on the editor background — pops out of it. Matches the Hub tab strip. */
+    background: var(--vscode-editorGroupHeader-tabsBackground, var(--vscode-editor-background));
+    padding: 0 8px;
+    gap: 2px;
+    z-index: 50;
+    position: relative;
+}
+
+.webview-tabs::after,
+.report-tabs::after {
+    content: '';
+    position: absolute;
+    bottom: -1px;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: var(--vscode-panel-border);
+}
+
+/* Tab Content Area */
+.tab-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.tab-content:focus,
+.tab-content:focus-visible {
+    outline: none;
+}
+
+.tab-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    cursor: pointer;
+    border: 1px solid var(--vscode-tab-border, var(--vscode-contrastBorder, transparent));
+    border-bottom: none;
+    /* Same browser-tab treatment as the Hub tab strip (.hub-tab): a readable
+     * inactive background (lighter than the editor in dark themes, darker in
+     * light), and the active tab on the editor background so it connects to
+     * the content below. */
+    background: var(--vscode-tab-inactiveBackground, var(--vscode-editorGroupHeader-tabsBackground));
+    color: var(--vscode-tab-inactiveForeground, var(--vscode-descriptionForeground));
+    font-family: var(--vscode-font-family);
+    font-size: 13px;
+    font-weight: 400;
+    position: relative;
+    transition: color 0.15s ease, background 0.15s ease;
+    border-radius: 6px 6px 0 0;
+    margin-bottom: -1px; /* Overlap content border */
+}
+
+.tab-item:hover {
+    background: var(--vscode-tab-hoverBackground, var(--vscode-list-hoverBackground));
+    color: var(--vscode-tab-hoverForeground, var(--vscode-editor-foreground));
+}
+
+.tab-item.active,
+.tab-item.active:hover {
+    color: var(--vscode-tab-activeForeground, var(--vscode-foreground));
+    background: var(--vscode-editor-background);
+    border-color: var(--vscode-panel-border);
+    border-bottom: none;
+    font-weight: 500;
+    /* Soft lift above the strip (up/sideways only), matching .hub-tab.is-active. */
+    box-shadow: 0 -2px 6px -2px rgba(0, 0, 0, 0.35);
+    z-index: 1; /* Sit in front of inactive tabs so borders don't overlap */
+}
+
+/* No top accent bar on the active tab — the editor-background fill + the
+ * connection to the content area below already mark selection. (Removed for
+ * consistency across every tab in the app, hub + console alike.) */
+
+.tab-label {
+    font-weight: inherit;
+}
+
+/* Tab panel visibility */
+.tab-panel {
+    padding: 10px 0;
+}
+
+.tab-panel.hidden {
+    display: none !important;
+}
+
+/* Console tab strip in a narrow panel (Links, Input, Raw, Completed, Error,
+ * Settings). When the tabs don't fit, fitReportTabs() in console.html adds
+ * .is-compact: inactive tabs that carry a count badge drop their label (full
+ * name stays in the title tooltip), so every tab stays reachable. The active
+ * tab and Settings keep their labels. Narrower still, the strip clips: it
+ * never grows a scrollbar in either direction (overflow-x alone would force
+ * a vertical one, because the tabs overlap the strip's bottom edge by 1px).
+ * A user who needs more tabs widens the panel. */
+.report-tabs .tab-item {
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+
+.report-tabs.is-compact .tab-item:not(.active):has(.tab-count) .tab-label {
+    display: none;
+}
+
+.report-tabs.is-compact .tab-item {
+    padding: 8px 10px;
+}
+
+.report-tabs.is-compact {
+    overflow: hidden;
+}

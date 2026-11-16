@@ -1,0 +1,157 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Flexion Tech Pty Ltd
+/**
+ * GitHub Issue #237 — Console Views are scoped by URL+method, not endpointId,
+ * so endpoints that target the same URL+method share one View library.
+ *
+ * Future scope kinds (e.g. Manual JSON Sources from #235) can use a different
+ * prefix like `manual:<id>` and slot into the same registry.
+ */
+
+export interface ConsoleViewsRegistryV2 {
+    schemaVersion: 2;
+    scopes: Record<string, unknown>;
+}
+
+export function getEndpointViewScopeKey(method: string, path: string): string {
+    return `${method.trim().toUpperCase()} ${path.trim()}`;
+}
+
+export function isV2ConsoleViewsRegistry(raw: unknown): raw is ConsoleViewsRegistryV2 {
+    return !!raw
+        && typeof raw === 'object'
+        && (raw as any).schemaVersion === 2
+        && typeof (raw as any).scopes === 'object'
+        && (raw as any).scopes !== null;
+}
+
+/**
+ * Merge two `ConsoleViews` shapes (`{ success, errors }`). Primary keeps its
+ * activeView/defaultView; incoming view names that collide get `(2)`/`(3)`
+ * suffixes (lossless). Returns rename count for logging.
+ */
+export function mergeConsoleViews(
+    primary: unknown,
+    incoming: unknown
+): { merged: unknown; renamed: number } {
+    const p = (primary && typeof primary === 'object') ? primary as any : {};
+    const i = (incoming && typeof incoming === 'object') ? incoming as any : {};
+    const tabs: Array<'success' | 'errors'> = ['success', 'errors'];
+    const result: any = {};
+    let renamed = 0;
+    for (const tab of tabs) {
+        const tp = p[tab];
+        const ti = i[tab];
+        if (!tp && !ti) continue;
+        if (!tp) { result[tab] = ti; continue; }
+        if (!ti) { result[tab] = tp; continue; }
+        const { merged, renames } = mergeViewArrays(
+            Array.isArray(tp.views) ? tp.views : [],
+            Array.isArray(ti.views) ? ti.views : []
+        );
+        renamed += renames;
+        result[tab] = {
+            activeView: tp.activeView || ti.activeView,
+            defaultView: tp.defaultView || ti.defaultView,
+            views: merged
+        };
+    }
+    return { merged: result, renamed };
+}
+
+function mergeViewArrays(
+    primary: Array<{ name?: unknown; [k: string]: unknown }>,
+    incoming: Array<{ name?: unknown; [k: string]: unknown }>
+): { merged: Array<Record<string, unknown>>; renames: number } {
+    const merged: Array<Record<string, unknown>> = primary.map(v => ({ ...v }));
+    const taken = new Set<string>(merged.map(v => String(v.name ?? '')));
+    let renames = 0;
+    for (const view of incoming) {
+        const original = String(view.name ?? '');
+        if (!original) continue;
+        let name = original;
+        if (taken.has(name)) {
+            let k = 2;
+            while (taken.has(`${original} (${k})`)) k++;
+            name = `${original} (${k})`;
+            renames++;
+        }
+        taken.add(name);
+        merged.push({ ...view, name });
+    }
+    return { merged, renames };
+}
+
+/**
+ * Issue #237: Pure migration of the legacy endpointId-keyed registry to a
+ * URL+method-keyed v2 registry. Endpoints sharing a URL+method are merged
+ * with `mergeConsoleViews` (rename-on-collision). Entries whose endpoint
+ * cannot be resolved fall back to a stable `orphan:<endpointId>` scope so
+ * the views remain reachable for that execution.
+ *
+ * Pure: takes a `resolveScopeKey` callback so the caller decides how to look
+ * up endpoints (real APIEndpointManager in production; stub in tests).
+ */
+export async function migrateConsoleViewsRegistry(
+    legacy: Record<string, unknown>,
+    resolveScopeKey: (endpointId: string) => Promise<string>
+): Promise<{ registry: ConsoleViewsRegistryV2; migrated: number; renamed: number }> {
+    const v2: ConsoleViewsRegistryV2 = { schemaVersion: 2, scopes: {} };
+    let migrated = 0;
+    let renameTotal = 0;
+
+    for (const [legacyKey, views] of Object.entries(legacy)) {
+        if (legacyKey === 'schemaVersion' || legacyKey === 'scopes') continue;
+        if (!views || typeof views !== 'object') continue;
+
+        const scopeKey = await resolveScopeKey(legacyKey);
+        const existing = v2.scopes[scopeKey];
+        if (!existing) {
+            v2.scopes[scopeKey] = views;
+        } else {
+            const { merged, renamed } = mergeConsoleViews(existing, views);
+            v2.scopes[scopeKey] = merged;
+            renameTotal += renamed;
+        }
+        migrated++;
+    }
+
+    return { registry: v2, migrated, renamed: renameTotal };
+}
+
+/**
+ * Issue #242: Strip auto-generated DEFAULT views before mirroring to
+ * endpoint.consoleViews for export. The registry remains the canonical store
+ * (DEFAULT survives there for the same machine); the mirror is solely for
+ * portability across machines, where stale columns under a different response
+ * shape would mislead. A user-edited DEFAULT (isAutoGenerated === false) is
+ * preserved — once the user takes ownership, it travels.
+ *
+ * Returns a deep-shallow clone with offending views removed. The input is
+ * left unmutated.
+ */
+export function stripAutoDefaultForMirror(views: unknown): unknown {
+    if (!views || typeof views !== 'object') return views;
+    const v = views as Record<string, unknown>;
+    const out: Record<string, unknown> = {};
+    for (const tab of Object.keys(v)) {
+        const tabSettings = v[tab];
+        if (!tabSettings || typeof tabSettings !== 'object') {
+            out[tab] = tabSettings;
+            continue;
+        }
+        const ts = tabSettings as Record<string, unknown>;
+        const arr = Array.isArray(ts.views) ? ts.views : [];
+        const filteredViews = arr.filter(view => {
+            if (!view || typeof view !== 'object') return true;
+            const vw = view as Record<string, unknown>;
+            return !(vw.name === 'DEFAULT' && vw.isAutoGenerated === true);
+        });
+        const stripped = filteredViews.length !== arr.length;
+        const nextActive = stripped && ts.activeView === 'DEFAULT'
+            ? (filteredViews[0] && (filteredViews[0] as Record<string, unknown>).name) || ''
+            : ts.activeView;
+        out[tab] = { ...ts, views: filteredViews, activeView: nextActive };
+    }
+    return out;
+}

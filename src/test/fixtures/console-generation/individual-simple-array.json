@@ -1,0 +1,44 @@
+{
+  "executionId": "exec-001",
+  "duration": 245,
+  "httpStatus": 200,
+  "httpStatusText": "OK",
+  "headers": {
+    "content-type": "application/json",
+    "x-api-version": "1.0"
+  },
+  "data": [
+    {
+      "productId": "P001",
+      "name": "Wireless Headphones",
+      "price": 99.99,
+      "category": "Electronics",
+      "inStock": true,
+      "lastUpdated": "2024-01-15T10:30:00Z"
+    },
+    {
+      "productId": "P002",
+      "name": "USB-C Cable",
+      "price": 19.99,
+      "category": "Accessories",
+      "inStock": true,
+      "lastUpdated": "2024-01-14T16:45:00Z"
+    },
+    {
+      "productId": "P003",
+      "name": "Laptop Stand",
+      "price": 79.99,
+      "category": "Office",
+      "inStock": false,
+      "lastUpdated": "2024-01-13T09:15:00Z"
+    },
+    {
+      "productId": "P004",
+      "name": "Bluetooth Mouse",
+      "price": 45.00,
+      "category": "Electronics",
+      "inStock": true,
+      "lastUpdated": "2024-01-16T14:20:00Z"
+    }
+  ]
+}

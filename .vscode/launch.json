@@ -1,0 +1,53 @@
+{
+    // Which DBMN backend the Extension Development Host talks to is decided by DBMN_BACKEND
+    // (src/services/dbmn-backend/backend-config.ts). Both configurations set it explicitly,
+    // so this file always tells the truth. A packaged build ignores it and is always
+    // production. See CLAUDE.md → "Backends: local vs production".
+    "version": "0.2.0",
+    "configurations": [
+        {
+            // Default. Needs the local stack: npm run dev:local
+            "name": "Run Extension (LOCAL backend)",
+            "type": "extensionHost",
+            "request": "launch",
+            "args": [
+                "--extensionDevelopmentPath=${workspaceFolder}",
+                "--disable-extension=vscode.git",
+                "--disable-extension=vscode.git-base",
+                "--disable-extension=vscode.github",
+                "--disable-extension=vscode.emmet",
+                "--disable-extension=vscode.merge-conflict"
+            ],
+            "env": {
+                "DBMN_BACKEND": "local",
+                // Issue #396: the last known licence is trusted for 10 minutes here, not
+                // 4 weeks, so the lapse can be tested. Delete the line for the real period.
+                "DBMN_LICENSE_GRACE_MINUTES": "10"
+            },
+            "outFiles": [
+                "${workspaceFolder}/out/**/*.js"
+            ]
+        },
+        {
+            // For a machine with no local stack. Real accounts, real data: the Hub shows a
+            // warning-coloured "DEV · PRODUCTION" pill the whole time.
+            "name": "Run Extension (PRODUCTION backend)",
+            "type": "extensionHost",
+            "request": "launch",
+            "args": [
+                "--extensionDevelopmentPath=${workspaceFolder}",
+                "--disable-extension=vscode.git",
+                "--disable-extension=vscode.git-base",
+                "--disable-extension=vscode.github",
+                "--disable-extension=vscode.emmet",
+                "--disable-extension=vscode.merge-conflict"
+            ],
+            "env": {
+                "DBMN_BACKEND": "production"
+            },
+            "outFiles": [
+                "${workspaceFolder}/out/**/*.js"
+            ]
+        }
+    ]
+}

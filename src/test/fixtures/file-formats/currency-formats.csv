@@ -1,0 +1,6 @@
+item,price_usd,price_eur,price_gbp,discount_pct
+"Laptop Computer","$1,299.99","€1,199.50","£999.99",15.5%
+"Wireless Mouse","$29.99","€27.50","£24.99",10.0%
+"USB Drive","$12.49","€11.99","£9.99",5.5%
+"Monitor Stand","$89.95","€79.99","£69.99",20.0%
+"Keyboard","$149.00","€135.50","£119.99",12.5%

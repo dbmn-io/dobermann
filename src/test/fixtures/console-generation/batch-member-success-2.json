@@ -1,0 +1,42 @@
+{
+  "executionId": "batch-001-member-2",
+  "duration": 203,
+  "httpStatus": 201,
+  "httpStatusText": "Created",
+  "headers": {
+    "content-type": "application/json",
+    "location": "/api/shipments/SH-002"
+  },
+  "data": {
+    "shipmentId": "SH-002",
+    "status": "created",
+    "trackingNumber": "TRK987654321",
+    "warehouse": {
+      "warehouseId": "WH-NYC",
+      "name": "New York Fulfillment Center", 
+      "address": "500 Warehouse Blvd, Queens, NY"
+    },
+    "items": [
+      {
+        "sku": "ITEM-C",
+        "description": "Deluxe Component",
+        "quantity": 75,
+        "weight": 3.2,
+        "dimensions": {
+          "length": 12,
+          "width": 10,
+          "height": 6
+        }
+      }
+    ],
+    "totals": {
+      "totalItems": 75,
+      "totalWeight": 240.0,
+      "totalVolume": 720.0
+    },
+    "timestamps": {
+      "created": "2024-01-15T10:31:00Z",
+      "lastUpdated": "2024-01-15T10:31:00Z"
+    }
+  }
+}

@@ -1,0 +1,6 @@
+measurement_id,temperature,pressure,volume,concentration
+EXP001,2.73e+2,1.01e+5,5.67e-3,3.14e-6
+EXP002,3.98e+2,9.87e+4,7.23e-3,2.89e-6  
+EXP003,1.45e+2,1.15e+5,4.92e-3,4.56e-6
+EXP004,4.21e+2,8.76e+4,6.18e-3,1.78e-6
+EXP005,2.96e+2,1.08e+5,5.34e-3,3.67e-6

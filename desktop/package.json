@@ -1,0 +1,22 @@
+{
+  "name": "dbmn-desktop",
+  "private": true,
+  "description": "DBMN desktop app (Electron, #373). The web app's screens and shell (../web) in a locked-down window; the main process sends requests (no CORS) and, later, keeps secrets and files. Own dependencies so Electron never touches the extension's. Packaging: electron-builder.cjs.",
+  "main": "out/desktop/src/main.js",
+  "scripts": {
+    "build": "node ../node_modules/typescript/bin/tsc -p tsconfig.json",
+    "start": "npm run build && electron .",
+    "start:bundled": "npm run build && DBMN_DESKTOP_PAGES=../web/dist-desktop electron .",
+    "package": "npm run build && electron-builder --linux AppImage dir",
+    "package:win": "npm run build && electron-builder --win nsis"
+  },
+  "devDependencies": {
+    "electron": "^44.7.0",
+    "electron-builder": "^26.15.3"
+  },
+  "version": "0.3.1",
+  "author": "DBMN",
+  "dependencies": {
+    "zod": "^3.25.67"
+  }
+}

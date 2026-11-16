@@ -1,0 +1,164 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Flexion Tech Pty Ltd
+/**
+ * Run Batch step bar: Source, Map, Validate, Review (#435: Review ends with Execute, no step of
+ * its own), in the footer. This file says
+ * what each step is; the shared StepBar (shared/step-bar.js, also Compare's) draws it.
+ *
+ * Shows where you are (the current step is tinted, filled and underlined), what each step
+ * decided ("replenishment.csv · 295 rows", "6 of 6 mapped", "3 API calls"), and the walk
+ * forward after Import Data (dt-auto-advance.js) as it ticks each step off.
+ *
+ * Every step reached is clickable: back is a jump (CSVHandler.goToStep → goBackTo), forward
+ * walks through each step's own checks (DTAutoAdvance.walkTo), so nothing skips a check.
+ * A later step is clickable only when nothing before it needs the user; one that waits says
+ * what it waits for. The bar only reads state — it never decides a step itself.
+ */
+(function () {
+    'use strict';
+
+    const STEPS = [
+        { label: 'Source', help: 'batch-preparation#step-1-load-data' },
+        { label: 'Map', help: 'batch-preparation#step-2-map-transform' },
+        { label: 'Validate', help: 'batch-preparation#step-3-review-edit-data' },
+        { label: 'Review', help: 'batch-preparation#step-4-review-json' }
+    ];
+    function handler() { return window.CSVHandler; }
+    function state() { const h = handler(); return h && (h.csvState || (h.getState && h.getState())); }
+    function walk() { return window.DTAutoAdvance && window.DTAutoAdvance.status ? window.DTAutoAdvance.status() : { walking: false, checkingStep: null }; }
+    function chained() { return !!(window.ChainPreload && window.ChainPreload.isChained && window.ChainPreload.isChained()); }
+    function plural(n, one, many) { return `${n.toLocaleString()} ${n === 1 ? one : many}`; }
+    function textOf(id) { const el = document.getElementById(id); return el ? el.textContent.trim() : ''; }
+
+    function rowCount(s) {
+        const parsed = s.currentParsedData;
+        return (parsed && (parsed.totalRows || (parsed.rows && parsed.rows.length)))
+            || (window.currentParsedCsvData && window.currentParsedCsvData.length)
+            || (s.gridDataModel && s.gridDataModel.length) || 0;
+    }
+
+    function unmappedCount(s) {
+        const h = handler();
+        if (!h || !h.getVariablesThatNeedMapping || !s.templateVariables || s.templateVariables.length === 0) return 0;
+        return h.getVariablesThatNeedMapping().filter(v => !v.mappedTo).length;
+    }
+
+    function errorRowCount(s) { return s.gridErrorRows ? s.gridErrorRows.size : 0; }
+
+    /**
+     * What stops the walk at step n, if anything. Amber, like the footer notification and the
+     * highlighted cells: 'warn' for unmapped variables (Map) and for rows to fix (Validate).
+     */
+    function issueAt(n, s) {
+        const reached = s.maxStepReached || 1;
+        if (n === 2 && reached >= 2 && !s.dataEntryMode && unmappedCount(s) > 0) return 'warn';
+        if (n === 3 && errorRowCount(s) > 0) return 'warn';
+        return null;
+    }
+
+    function summaryOf(n, s, status) {
+        // #435: reading a file or checking rows says how far it has got here, in the step
+        if (s.stepProgress && n === s.stepProgress.step && s.stepProgress.text) return s.stepProgress.text;
+        const reached = s.maxStepReached || 1;
+        const rows = rowCount(s);
+        if (n === 1) {
+            if (!s.currentHeaders || s.currentHeaders.length === 0) return '';
+            const origin = s.originalSourceType || s.sourceType;
+            const name = chained() ? ((window.ChainPreload.sourceLabel && window.ChainPreload.sourceLabel()) || 'Chained rows')
+                : origin === 'paste' ? 'Pasted text'
+                : origin === 'grid' ? 'Entered rows'
+                : (s.sourceFileName || window.currentCSVFileName || 'File');
+            return rows ? `${name} · ${plural(rows, 'row', 'rows')}` : name;
+        }
+        if (status === 'checking') return n === 3 ? 'Checking rows…' : 'Checking…';
+        if (n === 2) {
+            if (s.dataEntryMode) return 'Not needed';
+            if (reached < 2) return '';
+            const unmapped = unmappedCount(s);
+            const h = handler();
+            const total = h && h.getVariablesThatNeedMapping ? h.getVariablesThatNeedMapping().length : 0;
+            return unmapped > 0 ? `${unmapped} not mapped` : total ? `${total} of ${total} mapped` : 'Nothing to map';
+        }
+        if (n === 3) {
+            const errors = errorRowCount(s);
+            if (errors > 0) return `${plural(errors, 'row needs', 'rows need')} fixing`;
+            return reached >= 4 && rows ? `${plural(rows, 'row', 'rows')} valid` : '';
+        }
+        const calls = textOf('totalApiCallsDisplay');
+        return reached >= 4 && /\d/.test(calls) ? `${calls} API ${calls === '1' ? 'call' : 'calls'}` : '';
+    }
+
+    /** One step's state: current, checking, done, needs, available, blocked, pending or locked. */
+    function stepState(n, s, w) {
+        const current = s.modalStep || 1;
+        if (n === 1 && chained()) return { status: n === current ? 'current' : 'locked' };
+        if (n === 2 && s.dataEntryMode && n !== current) return { status: 'skipped' };
+        if (n === current) return { status: 'current', checking: w.checkingStep === n, issue: issueAt(n, s) };
+        if (n < current) return { status: issueAt(n, s) ? 'needs' : 'done', issue: issueAt(n, s) };
+        // Ahead: the first step from here that needs the user holds everything after it
+        for (let k = current; k < n; k++) {
+            if (issueAt(k, s)) return { status: 'blocked', waitsFor: STEPS[k - 1].label };
+        }
+        if (w.walking) return { status: 'pending' };
+        const reachable = Math.max(s.maxStepReached || 1, current + 1);
+        if (n > reachable || current === 1) return { status: 'pending' };
+        return { status: issueAt(n, s) ? 'needs' : 'available', issue: issueAt(n, s) };
+    }
+
+    /** Data imported but not run yet: the Hub keeps this tab through Close
+     *  all and asks before it closes (Issue #348). Executing closes the tab. */
+    function hasUnsavedWork(s) {
+        return rowCount(s) > 0 || (s.maxStepReached || 1) > 1;
+    }
+
+    /** The shared step bar (shared/step-bar.js), made once for the page's nav. */
+    let bar = null;
+    let barNav = null;
+
+    function render() {
+        const nav = document.getElementById('batchStepper');
+        const s = state();
+        if (!nav || !s || !window.StepBar) return;
+        if (window.dbmnSetTabDirty) window.dbmnSetTabDirty(hasUnsavedWork(s));
+        if (!bar || barNav !== nav) {
+            bar = window.StepBar.create(nav, STEPS, { onStep: n => handler().goToStep(n) });
+            barNav = nav;
+        }
+        const w = walk();
+        const current = s.modalStep || 1;
+        const states = STEPS.map((_, i) => {
+            const n = i + 1;
+            const st = stepState(n, s, w);
+            const status = st.checking ? 'checking' : st.status;
+            const summary = st.status === 'blocked' ? `Waits for ${st.waitsFor}` : summaryOf(n, s, status);
+            const title = st.status === 'locked' ? 'Set by the chain'
+                : st.status === 'skipped' ? 'Not needed for entered data' : undefined;
+            // #435: how far a file read or a row check has got, as a fill in the current step
+            const p = s.stepProgress && n === s.stepProgress.step ? s.stepProgress : null;
+            return { ...st, summary, title, progress: p ? p.percent : undefined, progressSeconds: p ? p.seconds : 0 };
+        });
+        // Narrow panels: a "Batch Prep" heading over the step names and circles. What a step
+        // needs is in the footer notification, beside Next.
+        // The page carries the name from the start; the endpoint config only arrives after Import Data
+        const endpointName = (s.endpointConfig && s.endpointConfig.name) || (document.body && document.body.dataset.endpointName);
+        bar.render(states, current, endpointName ? `Batch Prep: ${endpointName}` : 'Batch Prep');
+    }
+
+    // Step summaries that live in other steps' markup (API calls, environment) refresh the bar
+    function watch(id) {
+        const el = document.getElementById(id);
+        if (el && window.MutationObserver) {
+            new MutationObserver(render).observe(el, { childList: true, characterData: true, subtree: true });
+        }
+    }
+
+    function init() {
+        watch('totalApiCallsDisplay');
+        render();
+    }
+
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+    else init();
+
+    window.BatchStepper = { refresh: render, stepState, issueAt, hasUnsavedWork };
+})();

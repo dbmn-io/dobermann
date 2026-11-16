@@ -1,0 +1,9 @@
+/* Sign-in page only. Everything else comes from the shared screen CSS. */
+body { background: var(--vscode-editor-background); color: var(--vscode-foreground); font-family: var(--vscode-font-family); margin: 0; }
+.signin { max-width: 360px; margin: 12vh auto; padding: 0 16px; display: flex; flex-direction: column; gap: 12px; }
+.signin form { display: flex; flex-direction: column; gap: 8px; }
+.signin input { padding: 8px; background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border, transparent); border-radius: 4px; }
+.signin-actions { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+.signin-message { min-height: 1.2em; color: var(--vscode-descriptionForeground); }
+.signin-backend { font-size: 12px; color: var(--vscode-descriptionForeground); }
+.signin-logo { width: 48px; height: 48px; }

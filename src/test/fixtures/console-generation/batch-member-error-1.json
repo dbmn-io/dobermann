@@ -1,0 +1,18 @@
+{
+  "executionId": "batch-002-member-1",
+  "duration": 89,
+  "httpStatus": 400,
+  "httpStatusText": "Bad Request",
+  "headers": {
+    "content-type": "application/json"
+  },
+  "error": "Validation failed",
+  "details": {
+    "field": "customer.email",
+    "message": "Invalid email format",
+    "code": "INVALID_EMAIL",
+    "receivedValue": "invalid-email-format",
+    "expectedFormat": "user@domain.com"
+  },
+  "data": null
+}

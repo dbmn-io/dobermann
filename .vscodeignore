@@ -1,0 +1,122 @@
+# Source files (not needed after bundling)
+src/**
+*.ts
+!dist/**
+
+# Development files
+.vscode/**
+.vscode-test/**
+scripts/**
+docs/**
+# The public repo's own files (README, CLA, workflows), copied to its root by scripts/export-public.mjs
+public/**
+test/**
+coverage/**
+.nyc_output/**
+
+# Configuration files
+.gitignore
+.yarnrc
+vsc-extension-quickstart.md
+**/tsconfig.json
+**/.eslintrc.json
+webpack.config.js
+.eslintrc*
+.prettierrc*
+.mocharc.json
+.husky/**
+
+# Build artifacts  
+out/**
+**/*.map
+*.vsix
+*.log
+test_results.json
+
+# Version control
+.git/**
+.github/**
+
+# Dependencies: webpack bundles every runtime dependency into dist/extension.js
+# (xlsx, codepage, zod, jszip, …). The one exception is sql.js, which is a
+# webpack external so its WASM loader works; it is required from node_modules
+# at runtime and the .wasm itself is copied to dist/. Nothing else in
+# node_modules is read by the shipped extension. (0.3.0: 7.8 MB → ~2 MB.)
+node_modules/**
+!node_modules/sql.js/package.json
+!node_modules/sql.js/dist/sql-wasm.js
+
+# The per-package rules below are kept for the record; node_modules/** covers them.
+node_modules/@types/**
+node_modules/@typescript-eslint/**
+node_modules/@vscode/test-*/**
+node_modules/mocha/**
+node_modules/chai/**
+node_modules/sinon/**
+node_modules/eslint/**
+node_modules/typescript/**
+node_modules/webpack/**
+node_modules/webpack-cli/**
+node_modules/ts-loader/**
+node_modules/copy-webpack-plugin/**
+node_modules/terser-webpack-plugin/**
+node_modules/husky/**
+node_modules/lint-staged/**
+node_modules/jsdom/**
+
+# GitHub Issue #109: Exclude unused sql.js builds (saves 20MB)
+# We only need sql-wasm.js (48K) + sql-wasm.wasm (645K)
+node_modules/sql.js/dist/sql-asm*.js
+node_modules/sql.js/dist/sql-wasm-debug*
+node_modules/sql.js/dist/worker.*
+node_modules/sql.js/dist/*.zip
+node_modules/sql.js/test/**
+node_modules/sql.js/examples/**
+
+# Include runtime dependencies (sql.js and its minimal files)
+
+# Supabase (contains secrets)
+supabase/**
+
+# Development files
+package-lock.json
+Architecture.md
+oauth_analysis.md
+manh_auth_logs.log
+
+# Large test and sample directories (exclude from package)
+sample-data/**
+.active8/**
+test-results/**
+test-data/**
+e2e/**
+playwright.config.ts
+.vscode-test.js
+
+# Local dev stack output (logs, pids, Playwright last-run) — never ship
+.dev-local/**
+
+# Private repo guidance and working notes — never ship
+CLAUDE.md
+README_DEVELOPMENT.md
+puppy-school-review.md
+puppy-school-content-review.md
+eslint.config.architecture.js
+tsconfig.source.json
+test_file_analyzer.sh
+.claude/**
+
+# Keep only essential files
+!dist/**
+!images/**  
+!package.json
+!package.nls.json
+!README.md
+!LICENSE
+!CHANGELOG.md
+# Web app (its own package, app.dbmn.io) and the disposable test Supabase stack: never in the VSIX
+web/**
+.supabase-test/**
+
+# The desktop app is its own package, never in the VSIX
+desktop/**

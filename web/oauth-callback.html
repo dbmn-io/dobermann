@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Signing in · Dobermann</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="stylesheet" href="/theme.css">
+    <link rel="stylesheet" href="/webviews/shared/atomic.css">
+    <link rel="stylesheet" href="/webviews/shared/core.css">
+    <link rel="stylesheet" href="/signin.css">
+</head>
+<body>
+    <!-- #343: where an OAuth provider sends the browser back. Hands its answer (code or error)
+         to the DBMN tab that asked (web/src/shell/oauth.ts), then closes. -->
+    <main class="signin">
+        <h1>Signing in…</h1>
+        <p id="oauth-callback-message" class="signin-message" role="status">Taking you back to DBMN.</p>
+    </main>
+    <script src="/oauth-callback.js"></script>
+</body>
+</html>

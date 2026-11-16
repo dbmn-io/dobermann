@@ -1,0 +1,47 @@
+{
+    "id": "samplewms",
+    "name": "samplewms",
+    "description": "A made-up Standard System for a local stack",
+    "config": {
+        "match": "^(?<instance>[a-z0-9-]+)\\.samplewms\\.test$",
+        "oauth": {
+            "authorizeUrl": "https://{{instance}}-auth.samplewms.test/oauth/authorize",
+            "tokenUrl": "https://{{instance}}-auth.samplewms.test/oauth/token",
+            "scopes": [
+                "openid",
+                "profile",
+                "email"
+            ],
+            "pkce": false,
+            "flow": "authorization_code",
+            "requiredPaths": {
+                "authorize": "/oauth/authorize",
+                "token": "/oauth/token"
+            },
+            "tokenRequest": {
+                "clientAuth": "basic",
+                "headers": {
+                    "Accept": "*/*"
+                }
+            }
+        },
+        "claims": {
+            "name": "name",
+            "email": "email",
+            "username": "preferred_username"
+        },
+        "defaultHeaders": {
+            "Organization": "{{org}}",
+            "SelectedOrganization": "{{org}}",
+            "Location": "{{org}}",
+            "SelectedLocation": "{{org}}",
+            "Content-Type": "application/json",
+            "Accept": "application/json"
+        },
+        "defaultVariables": {
+            "org": {
+                "showInHeader": true
+            }
+        }
+    }
+}

@@ -1,0 +1,1674 @@
+/* Modal and CSV upload styles */
+
+/* Modal Dialog Base.
+ * z-index: the overlay must sit above every persistent chrome layer so the
+ * page underneath is neither visible through it nor clickable while a modal
+ * is open. Layers it has to clear: the sticky .webview-footer action bar
+ * (1000), the fullscreen editor / raw panes (1001) and the fullscreen peek
+ * footer (1002). It stays below .dbmn-modal-backdrop (9999), the confirm /
+ * progress overlays (10000) and toasts (10050), which may stack on top of
+ * an open modal. */
+.modal {
+    position: fixed;
+    z-index: 2000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.modal-content {
+    background-color: var(--vscode-editor-background);
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 6px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+    width: 90%;
+    max-width: 500px;
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.modal-header {
+    padding: 20px;
+    border-bottom: 1px solid var(--vscode-panel-border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.modal-header h3 {
+    margin: 0;
+    color: var(--vscode-foreground);
+}
+
+.modal-close {
+    font-size: 24px;
+    font-weight: bold;
+    color: var(--vscode-foreground);
+    cursor: pointer;
+    line-height: 1;
+}
+
+.modal-close:hover {
+    color: var(--vscode-errorForeground);
+}
+
+.modal-body {
+    padding: 20px;
+    flex: 1;
+    overflow-y: auto;
+}
+
+.modal-footer {
+    padding: 20px;
+    border-top: 1px solid var(--vscode-panel-border);
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+}
+
+.modal-cancel-btn {
+    margin-right: auto;
+}
+
+.modal-body-scroll-hidden {
+    overflow: hidden;
+}
+
+.modal-body-scroll-auto {
+    overflow: auto;
+}
+
+/* CSV Modal Specific */
+#csvUploadModal .modal-content {
+    width: 90vw;
+    max-width: 1400px;
+    min-width: 600px;
+    height: 85vh;
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column;
+}
+
+#csvUploadModal .modal-body {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: auto;
+    min-height: 400px;
+    padding: 20px;
+}
+
+/* CSV Steps */
+.csv-step {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.csv-upload-options {
+    display: flex;
+    flex-direction: column;
+    gap: 25px;
+    height: 100%;
+}
+
+.upload-option {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.upload-option label {
+    font-weight: 600;
+    color: var(--vscode-foreground);
+    margin-bottom: 10px;
+}
+
+.upload-button-row {
+    display: flex;
+    gap: 15px;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-top: 5px;
+}
+
+/* CSV Dropzone */
+.csv-dropzone {
+    border: 2px dashed #ccc;
+    border-radius: 12px;
+    padding: 40px 20px;
+    text-align: center;
+    cursor: pointer;
+    min-height: 200px;
+    transition: all 0.3s ease;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 12px;
+    background-color: var(--vscode-input-background);
+    flex: 1;
+    max-height: 300px;
+}
+
+.csv-dropzone p {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 500;
+}
+
+.csv-dropzone p:first-child {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--vscode-foreground);
+}
+
+.csv-dropzone:hover {
+    border-color: var(--vscode-focusBorder);
+    background-color: var(--vscode-list-hoverBackground);
+}
+
+.csv-dropzone.dragover {
+    border-color: var(--vscode-charts-green);
+    background-color: var(--vscode-merge-incomingHeaderBackground);
+    border-style: solid;
+    border-width: 3px;
+    transform: scale(1.02);
+}
+
+.csv-dropzone .dropzone-hint {
+    font-size: 14px;
+    color: var(--vscode-descriptionForeground);
+    margin: 4px 0;
+}
+
+/* dbmn#4: the browse dialog is the Windows shell's, and it refuses a file
+ * another program holds open ("This file is in use") — Excel plus OneDrive's
+ * sync engine is enough to trip it. Drag & drop hands the file over directly
+ * and is unaffected, so point people at it before they hit the wall. Quieter
+ * than the format hint above: it only matters to the subset who are stuck. */
+.csv-dropzone .dropzone-hint-locked {
+    font-size: 12px;
+    opacity: 0.75;
+    margin-top: 6px;
+}
+
+.csv-dropzone.file-selected {
+    border-color: var(--vscode-charts-green);
+    background-color: var(--vscode-input-background);
+    border-style: solid;
+    min-height: 200px;
+    max-height: 300px;
+}
+
+.csv-dropzone.file-selected .file-info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.csv-dropzone.file-selected .file-icon {
+    font-size: 20px;
+}
+
+.csv-dropzone.file-selected .file-details {
+    text-align: left;
+}
+
+.csv-dropzone.file-selected .file-name {
+    margin: 0;
+    font-weight: bold;
+    font-size: 14px;
+    line-height: 1.2;
+    max-width: 200px;
+    word-break: break-all;
+    color: var(--vscode-foreground);
+}
+
+.csv-dropzone.file-selected .file-size {
+    margin: 0;
+    font-size: 11px;
+    line-height: 1.2;
+    color: var(--vscode-foreground);
+    opacity: 0.8;
+}
+
+.csv-dropzone.file-selected .filename::before {
+    content: "📄";
+    font-size: 16px;
+}
+
+.csv-dropzone.file-selected .change-hint {
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+    font-style: italic;
+}
+
+.csv-upload-success {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background-color: var(--vscode-merge-incomingHeaderBackground);
+    border: 1px solid var(--vscode-charts-green);
+    border-radius: 4px;
+    padding: 12px;
+    margin-top: 10px;
+    color: var(--vscode-foreground);
+}
+
+.csv-upload-success .success-icon {
+    color: var(--vscode-charts-green);
+    font-weight: bold;
+    font-size: 16px;
+}
+
+.csv-upload-success .file-info {
+    flex: 1;
+}
+
+.csv-upload-success .file-info .file-name {
+    font-weight: bold;
+    display: block;
+}
+
+.csv-upload-success .file-info .file-details {
+    font-size: 12px;
+    color: var(--vscode-descriptionForeground);
+    margin-top: 2px;
+}
+
+/* Paste Area - styles now in data-transformer.css for tabbed interface */
+
+/* CSV Verification */
+.csv-verification-panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    position: relative;
+    width: 100%;
+}
+
+#csvModalPreview {
+    position: relative;
+    width: 100%;
+}
+
+/* File Info */
+.file-upload-help {
+    margin-top: 5px;
+    margin-bottom: 10px;
+}
+
+.file-upload-help p {
+    margin: 0;
+    font-size: 12px;
+    color: var(--vscode-descriptionForeground);
+}
+
+.file-details-container {
+    padding: 20px;
+    background-color: var(--vscode-textCodeBlock-background);
+    border-radius: 8px;
+    border: 1px solid var(--vscode-panel-border);
+    margin-top: 15px;
+}
+
+.file-info-box {
+    margin-bottom: 15px;
+    padding: 8px 12px;
+    background: var(--vscode-editor-background);
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 3px;
+}
+
+.file-info-box .file-label {
+    color: var(--vscode-descriptionForeground);
+    margin-left: 20px;
+}
+
+.file-info-box .file-label:first-child {
+    margin-left: 0;
+}
+
+/* Variable Input Modal */
+.variable-input-group {
+    margin-bottom: 15px;
+}
+
+.variable-input-group label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: bold;
+    color: var(--vscode-foreground);
+}
+
+.variable-input-group .variable-type {
+    color: var(--vscode-descriptionForeground);
+    font-size: 12px;
+    font-weight: normal;
+}
+
+.variable-input-group input,
+.variable-input-group select {
+    width: 100%;
+    padding: 8px 12px;
+    background-color: var(--vscode-input-background);
+    border: 1px solid var(--vscode-input-border);
+    border-radius: 3px;
+    color: var(--vscode-input-foreground);
+    font-family: var(--vscode-font-family);
+}
+
+.variable-input-group input:focus,
+.variable-input-group select:focus {
+    outline: none;
+    border-color: var(--vscode-focusBorder);
+}
+
+/* Column Mapping */
+.mapping-explanation {
+    padding: 15px;
+    background-color: var(--vscode-textCodeBlock-background);
+    border-radius: 8px;
+    border-left: 4px solid var(--vscode-charts-blue);
+    padding: 12px;
+    margin-bottom: 20px;
+    background-color: var(--vscode-textBlockQuote-background);
+    border: 1px solid var(--vscode-textBlockQuote-border);
+    border-radius: 4px;
+}
+
+.mapping-section {
+    margin-bottom: 25px;
+}
+
+.mapping-section h5 {
+    margin: 0 0 10px 0;
+    color: var(--vscode-editor-foreground);
+    font-weight: bold;
+}
+
+.mapping-table-container {
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 4px;
+}
+
+.mapping-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 15px;
+    flex: 1;
+    overflow: auto;
+}
+
+.mapping-table th,
+.mapping-table td {
+    border: 1px solid var(--vscode-panel-border);
+    padding: 10px;
+    text-align: left;
+}
+
+.mapping-table th {
+    background-color: var(--vscode-list-hoverBackground);
+    font-weight: bold;
+}
+
+.mapping-table td {
+    background-color: var(--vscode-editor-background);
+}
+
+.mapping-type {
+    width: 100%;
+    min-width: 120px;
+}
+
+.csv-column-select,
+.static-value,
+.template-value {
+    width: 100%;
+    min-width: 150px;
+}
+
+.mapping-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+}
+
+.mapping-dropdown {
+    width: 100%;
+    padding: 4px 8px;
+    border: 1px solid var(--vscode-input-border);
+    background-color: var(--vscode-input-background);
+    color: var(--vscode-input-foreground);
+    border-radius: 2px;
+    font-size: 11px;
+}
+
+.mapping-status {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 10px;
+    font-weight: bold;
+}
+
+.mapping-status.mapped {
+    background-color: var(--vscode-testing-iconPassed);
+    color: white;
+}
+
+.mapping-status.unmapped {
+    background-color: var(--vscode-testing-iconFailed);
+    color: white;
+}
+
+.mapping-status.calculated {
+    background-color: var(--vscode-testing-iconQueued);
+    color: var(--vscode-editor-foreground);
+}
+
+/* GitHub Issue #135: Enhanced Mapping Table with Source Type */
+.mapping-table.enhanced-mapping {
+    border-collapse: collapse;
+}
+
+.mapping-table.enhanced-mapping th,
+.mapping-table.enhanced-mapping td {
+    padding: 8px 10px;
+    vertical-align: middle;
+}
+
+/* Source Type dropdown */
+.source-type-dropdown {
+    width: 100%;
+    padding: 4px 8px;
+    border: 1px solid var(--vscode-input-border);
+    background-color: var(--vscode-input-background);
+    color: var(--vscode-input-foreground);
+    border-radius: 2px;
+    font-size: 11px;
+    min-width: 90px;
+}
+
+.source-type-dropdown:focus {
+    outline: 1px solid var(--vscode-focusBorder);
+}
+
+/* Status column */
+.status-col {
+    width: 40px;
+    text-align: center;
+}
+
+.status-cell {
+    width: 40px;
+    text-align: center;
+    padding: 4px !important;
+}
+
+.status-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    cursor: help;
+}
+
+.status-icon.status-ok {
+    color: var(--vscode-testing-iconPassed, #4caf50);
+}
+
+.status-icon.status-warn {
+    color: var(--vscode-editorWarning-foreground, #cca700);
+}
+
+.status-icon.status-error {
+    color: var(--vscode-testing-iconFailed, #f44336);
+}
+
+/* Row highlighting for warnings/errors */
+.mapping-table tr.has-warning {
+    background-color: rgba(204, 167, 0, 0.1);
+}
+
+.mapping-table tr.has-warning td {
+    background-color: rgba(204, 167, 0, 0.1);
+}
+
+.mapping-table tr.has-error {
+    background-color: rgba(244, 67, 54, 0.1);
+}
+
+.mapping-table tr.has-error td {
+    background-color: rgba(244, 67, 54, 0.1);
+}
+
+/* Sample cell in enhanced table */
+.enhanced-mapping .sample-cell {
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 11px;
+    max-width: 200px;
+}
+
+/* Issue text below sample value */
+.enhanced-mapping .sample-cell .issue-text {
+    font-size: 10px;
+    color: var(--vscode-editorWarning-foreground, #cca700);
+    margin-top: 4px;
+    font-family: var(--vscode-font-family);
+    white-space: normal;
+}
+
+#mappingValidationResults {
+    margin-top: 15px;
+}
+
+#mappingValidationResults h5 {
+    margin-top: 0;
+    margin-bottom: 10px;
+}
+
+#mappingValidationResults .validation-item {
+    padding: 5px 0;
+}
+
+#mappingValidationResults .variable-name {
+    font-weight: bold;
+    margin-right: 8px;
+}
+
+#mappingValidationResults .validation-message {
+    font-size: 12px;
+}
+
+/* A8 Fields */
+.a8-fields-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 15px;
+    padding: 15px;
+    background-color: var(--vscode-textBlockQuote-background);
+    border: 1px solid var(--vscode-textBlockQuote-border);
+    border-radius: 4px;
+}
+
+.a8-field-item {
+    padding: 10px;
+    background-color: var(--vscode-editor-background);
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 4px;
+}
+
+.a8-field-name {
+    font-weight: bold;
+    color: var(--vscode-editor-foreground);
+    margin-bottom: 5px;
+}
+
+.a8-field-description {
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+    margin-bottom: 8px;
+}
+
+.a8-field-sample {
+    font-family: var(--vscode-editor-font-family);
+    font-size: 11px;
+    background-color: var(--vscode-textCodeBlock-background);
+    padding: 4px 6px;
+    border-radius: 2px;
+    border: 1px solid var(--vscode-panel-border);
+}
+
+/* Extra Columns */
+.extra-columns-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 15px;
+    background-color: var(--vscode-editorWarning-background);
+    border: 1px solid var(--vscode-editorWarning-border);
+    border-radius: 4px;
+}
+
+.extra-column-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    background-color: var(--vscode-editor-background);
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 4px;
+    font-size: 11px;
+}
+
+.extra-column-name {
+    font-weight: bold;
+    color: var(--vscode-editor-foreground);
+}
+
+.extra-column-action {
+    font-size: 10px;
+    padding: 2px 6px;
+    border: 1px solid var(--vscode-button-border);
+    background-color: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+    border-radius: 2px;
+    cursor: pointer;
+}
+
+.extra-column-action:hover {
+    background-color: var(--vscode-button-hoverBackground);
+}
+
+/* JSON Preview */
+.json-preview-container {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.preview-header h5 {
+    margin: 0 0 8px 0;
+    color: var(--vscode-textLink-foreground);
+    font-size: 16px;
+}
+
+.preview-header p {
+    margin: 0;
+    color: var(--vscode-descriptionForeground);
+    font-size: 14px;
+}
+
+.json-preview-editor-container {
+    position: relative;
+    border-radius: 4px;
+    overflow: hidden;
+    width: 100%;
+    min-height: 200px;
+    flex: 1;  /* overridden to flex: none by #csvJsonPreviewStep in data-transformer.css */
+    border: 1px solid var(--vscode-input-border);
+}
+
+#monacoEditorContainer.json-error {
+    border-color: var(--vscode-errorForeground) !important;
+    box-shadow: 0 0 0 1px var(--vscode-errorForeground) !important;
+}
+
+#monacoEditorContainer.json-valid {
+    border-color: var(--vscode-terminal-ansiGreen) !important;
+}
+
+.editor-toolbar {
+    display: flex;
+    justify-content: flex-end;
+    padding: 8px 12px;
+    background-color: var(--vscode-editor-background);
+    border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+.copy-btn {
+    background-color: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+    border: 1px solid var(--vscode-button-border);
+    padding: 6px 12px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    transition: all 0.2s ease;
+}
+
+.copy-btn:hover {
+    background-color: var(--vscode-button-secondaryHoverBackground);
+}
+
+.copy-btn:active {
+    transform: scale(0.98);
+}
+
+.copy-btn.copied {
+    background-color: var(--vscode-charts-green);
+    color: white;
+}
+
+.copy-btn-overlay {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    z-index: 1000;
+    background-color: var(--vscode-editor-background);
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 3px;
+    padding: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    transition: all 0.2s ease;
+    opacity: 0.7;
+}
+
+.copy-btn-overlay:hover {
+    opacity: 1;
+    background-color: var(--vscode-button-secondaryHoverBackground);
+    border-color: var(--vscode-focusBorder);
+}
+
+.copy-btn-overlay:active {
+    transform: scale(0.95);
+}
+
+.copy-btn-overlay.copied {
+    background-color: var(--vscode-charts-green);
+    border-color: var(--vscode-charts-green);
+}
+
+.copy-btn-overlay .copy-icon {
+    fill: var(--vscode-foreground);
+    transition: fill 0.2s ease;
+}
+
+.copy-btn-overlay:hover .copy-icon {
+    fill: var(--vscode-button-secondaryForeground);
+}
+
+.copy-btn-overlay.copied .copy-icon {
+    fill: white;
+}
+
+.json-preview-pre {
+    background: var(--vscode-editor-background, #1e1e1e);
+    color: var(--vscode-editor-foreground, #d4d4d4);
+    padding: 12px;
+    margin: 0;
+    border-radius: 4px;
+    font-family: 'Courier New', monospace;
+    font-size: 14px;
+    line-height: 1.4;
+    overflow: auto;
+    white-space: pre-wrap;
+    max-height: none;
+    height: auto;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.preview-footer {
+    margin-top: 10px;
+}
+
+.preview-note {
+    margin: 0;
+    padding: 12px;
+    background-color: var(--vscode-textBlockQuote-background);
+    border-left: 4px solid var(--vscode-textBlockQuote-border);
+    border-radius: 0 4px 4px 0;
+    font-size: 13px;
+    color: var(--vscode-descriptionForeground);
+}
+
+.preview-note strong {
+    color: var(--vscode-textPreformat-foreground);
+}
+
+/* Query String Preview (GitHub Issue #108) */
+.query-param-config {
+    padding: 15px;
+    background-color: var(--vscode-textCodeBlock-background);
+    border-radius: 4px;
+    border: 1px solid var(--vscode-panel-border);
+    margin-bottom: 15px;
+}
+
+.query-preview-container {
+    position: relative;
+    border: 1px solid var(--vscode-input-border);
+    border-radius: 4px;
+    background-color: var(--vscode-editor-background);
+    overflow: hidden;
+    height: calc(85vh - 250px);
+    display: flex;
+    flex-direction: column;
+}
+
+.query-preview-container .preview-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 15px;
+    background-color: var(--vscode-editorGroupHeader-tabsBackground);
+    border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+.query-preview-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 15px;
+}
+
+.query-preview-pre {
+    background: var(--vscode-editor-background);
+    color: var(--vscode-editor-foreground);
+    padding: 15px;
+    margin: 0;
+    border-radius: 4px;
+    font-family: 'Courier New', monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+.preview-info {
+    padding: 8px 12px;
+    background-color: var(--vscode-textBlockQuote-background);
+    border-left: 3px solid var(--vscode-charts-blue);
+    border-radius: 3px;
+    font-size: 12px;
+    color: var(--vscode-descriptionForeground);
+    margin-bottom: 12px;
+}
+
+.bg-warning-subtle {
+    background-color: var(--vscode-editorWarning-background);
+    border-color: var(--vscode-editorWarning-border);
+}
+
+.color-warning {
+    color: var(--vscode-editorWarning-foreground);
+}
+
+.color-success {
+    color: var(--vscode-terminal-ansiGreen);
+}
+
+/* Execution Summary */
+.execution-summary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 20px;
+    padding: 20px;
+    background-color: var(--vscode-textCodeBlock-background);
+    border-radius: 8px;
+    border: 1px solid var(--vscode-panel-border);
+}
+
+.execution-summary h4 {
+    margin: 0 0 15px 0;
+    color: var(--vscode-textLink-foreground);
+    font-size: 16px;
+    font-weight: 600;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+.summary-item {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    padding: 15px;
+    background-color: var(--vscode-editor-background);
+    border-radius: 6px;
+    border: 1px solid var(--vscode-input-border);
+}
+
+.summary-item strong {
+    color: var(--vscode-foreground);
+    font-size: 14px;
+}
+
+.summary-item span {
+    font-family: 'Courier New', monospace;
+    font-size: 13px;
+    color: var(--vscode-descriptionForeground);
+    word-break: break-all;
+}
+
+/* Loading message */
+.loading-message {
+    padding: 12px;
+    color: var(--vscode-foreground);
+    text-align: center;
+}
+
+/* Placeholder text */
+.placeholder-text {
+    color: var(--vscode-descriptionForeground);
+    font-style: italic;
+    text-align: center;
+    padding: 20px;
+    border: 1px dashed var(--vscode-panel-border);
+    border-radius: 5px;
+    background-color: var(--vscode-editor-background);
+}
+
+/* ===== REUSABLE SEMANTIC TOOLTIP SYSTEM ===== */
+/*
+ * Usage Examples:
+ *
+ * Warning:
+ * <span class="tooltip-icon tooltip-warning">
+ *     ⚠️
+ *     <div class="tooltip-popup">
+ *         <div class="tooltip-title">Warning Title</div>
+ *         <div class="tooltip-message">Warning message here</div>
+ *         <div class="tooltip-footer">Optional footer</div>
+ *     </div>
+ * </span>
+ *
+ * Error:
+ * <span class="tooltip-icon tooltip-error">❌</span>
+ *
+ * Info:
+ * <span class="tooltip-icon tooltip-info">ℹ️</span>
+ *
+ * Help:
+ * <span class="tooltip-icon tooltip-help">❓</span>
+ *
+ * Success:
+ * <span class="tooltip-icon tooltip-success">✅</span>
+ *
+ * Suggested Emojis:
+ * Warning: ⚠️
+ * Error: ❌ 🚫 ⛔
+ * Info: ℹ️ 💡 📘
+ * Help: ❓ 🤔 💭
+ * Success: ✅ ✓ 🎉
+ */
+
+/* Base tooltip icon wrapper */
+.tooltip-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    margin-left: 6px;
+    font-size: 14px;
+    cursor: help;
+    position: relative;
+    flex-shrink: 0;
+}
+
+/* Bare Lucide SVGs have no intrinsic size — pin it to the text. */
+.tooltip-icon svg {
+    width: 14px;
+    height: 14px;
+}
+
+/* Base tooltip popup container */
+.tooltip-popup {
+    position: absolute;
+    bottom: calc(100% + 12px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--vscode-editorHoverWidget-background);
+    border: 1px solid var(--vscode-editorHoverWidget-border);
+    border-radius: 6px;
+    padding: 12px 16px;
+    min-width: 280px;
+    max-width: 400px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+    z-index: 10000;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.2s ease, visibility 0.2s ease;
+    pointer-events: none;
+    white-space: normal;
+    color: var(--vscode-editorHoverWidget-foreground);
+    line-height: 1.5;
+}
+
+.tooltip-icon:hover .tooltip-popup {
+    opacity: 1;
+    visibility: visible;
+}
+
+/* Tooltip arrow */
+.tooltip-popup::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 6px solid transparent;
+    border-top-color: var(--vscode-editorHoverWidget-border);
+}
+
+/* Tooltip content structure */
+.tooltip-title {
+    font-weight: 600;
+    font-size: 13px;
+    margin-bottom: 8px;
+    color: var(--vscode-editorHoverWidget-foreground);
+}
+
+.tooltip-message {
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--vscode-editorHoverWidget-foreground);
+    margin-bottom: 8px;
+    opacity: 0.95;
+}
+
+.tooltip-message:last-child {
+    margin-bottom: 0;
+}
+
+.tooltip-footer {
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+    padding-top: 8px;
+    border-top: 1px solid var(--vscode-panel-border);
+    margin-top: 8px;
+}
+
+/* ===== SEMANTIC TOOLTIP VARIANTS ===== */
+
+/* Warning tooltip (yellow/orange) */
+.tooltip-warning {
+    color: var(--vscode-editorWarning-foreground);
+}
+
+.tooltip-warning .tooltip-title {
+    color: var(--vscode-editorWarning-foreground);
+}
+
+/* Error tooltip (red) */
+.tooltip-error {
+    color: var(--vscode-errorForeground);
+}
+
+.tooltip-error .tooltip-title {
+    color: var(--vscode-errorForeground);
+}
+
+.tooltip-error .tooltip-popup {
+    border-color: var(--vscode-inputValidation-errorBorder);
+}
+
+/* Info tooltip (blue) */
+.tooltip-info {
+    color: var(--vscode-charts-blue);
+}
+
+.tooltip-info .tooltip-title {
+    color: var(--vscode-charts-blue);
+}
+
+/* Help/Confusion tooltip (purple/gray) */
+.tooltip-help {
+    color: var(--vscode-descriptionForeground);
+}
+
+.tooltip-help .tooltip-title {
+    color: var(--vscode-foreground);
+}
+
+/* Success tooltip (green) */
+.tooltip-success {
+    color: var(--vscode-terminal-ansiGreen);
+}
+
+.tooltip-success .tooltip-title {
+    color: var(--vscode-terminal-ansiGreen);
+}
+
+/* ===== Pagination Modal (GitHub Issue #198) ===== */
+/* Tabs reuse shared .tab-item from tabs.css */
+
+.pagination-summary {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.pagination-summary td {
+    padding: 6px 12px;
+    font-size: 13px;
+    border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+.pagination-summary td:first-child {
+    color: var(--vscode-descriptionForeground);
+    width: 120px;
+}
+
+/* ─── DbmnModal — shared dismissible modal component ─────────────────── */
+/* Rendered by src/webviews/shared/dbmn-modal.js. Distinct `.dbmn-modal-*`
+ * prefix so it doesn't collide with the legacy `.modal-*` rules above.   */
+
+.dbmn-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: rgba(0, 0, 0, 0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    animation: dbmn-modal-fade-in 0.12s ease;
+}
+
+.dbmn-modal {
+    background: var(--vscode-editor-background);
+    color: var(--vscode-foreground);
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 6px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+    /* Width grows with content. The modal needs to be wide enough for the
+     * widest row inside — usually the footer button cluster — without
+     * wrapping. Capped at viewport-48px so we never punch off-screen. */
+    width: max-content;
+    max-width: min(calc(100vw - 48px), 920px);
+    min-width: 360px;
+    max-height: calc(100vh - 48px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    animation: dbmn-modal-scale-in 0.14s ease;
+}
+
+/* Size hints — guide the body's wrap point. Buttons never wrap regardless. */
+.dbmn-modal-sm { max-width: min(calc(100vw - 48px), 480px); }
+.dbmn-modal-md { max-width: min(calc(100vw - 48px), 600px); }
+.dbmn-modal-lg { max-width: min(calc(100vw - 48px), 820px); }
+/* Issue #271: wide viewer for the console cell-detail modal (maximised text). */
+.dbmn-modal-cell-detail { max-width: min(calc(100vw - 48px), 1120px); }
+/* maximisable: the whole window */
+.dbmn-modal-backdrop.has-maximised { padding: 8px; }
+.dbmn-modal.is-maximised { width: 100%; height: 100%; max-width: none; max-height: none; }
+.dbmn-modal-max { margin-left: auto; }
+
+.dbmn-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--vscode-panel-border);
+    flex-shrink: 0;
+}
+
+.dbmn-modal-title {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--vscode-foreground);
+    /* Atomic.css sets `text-transform: capitalize` on every h1–h6 globally,
+     * which butchers natural sentence casing like "Before we go on…". */
+    text-transform: none;
+}
+
+.dbmn-modal-close {
+    background: transparent;
+    border: none;
+    color: var(--vscode-descriptionForeground);
+    cursor: pointer;
+    font-size: 22px;
+    line-height: 1;
+    padding: 0 6px;
+    border-radius: 3px;
+}
+.dbmn-modal-close:hover {
+    background: var(--vscode-toolbar-hoverBackground);
+    color: var(--vscode-foreground);
+}
+
+/* Enter submits a dialog with several fields too (dbmn-modal.js): unseen, but rendered */
+.dbmn-modal-implicit-submit {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    border: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+}
+
+.dbmn-modal-form {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+}
+
+.dbmn-modal-body {
+    padding: 18px 20px 12px;
+    overflow-y: auto;
+    color: var(--vscode-foreground);
+    font-size: 13px;
+    line-height: 1.5;
+}
+/* "Can't continue yet" (Run Batch Next): what to fix, one line each */
+.dbmn-modal-body .cannot-continue-list {
+    margin: 0;
+    padding-left: 20px;
+}
+
+.dbmn-modal-body .cannot-continue-list li {
+    margin: 4px 0;
+}
+
+.dbmn-modal-body p {
+    margin: 0 0 8px;
+    /* A host's message keeps its own line breaks (a list of names, separate points) */
+    white-space: pre-line;
+}
+.dbmn-modal-body p:last-child {
+    margin-bottom: 0;
+}
+.dbmn-modal-body strong {
+    color: var(--vscode-foreground);
+    font-weight: 600;
+}
+
+.dbmn-modal-fields {
+    padding: 4px 20px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+/* Two-column layout for modals that would otherwise scroll — e.g. Run API
+ * with many template variables. Opt-in via `columns: 2` on the spec; the
+ * modal shell keeps a comfortable width because .dbmn-modal-lg already
+ * grows to fit two columns of inputs at a readable size. */
+.dbmn-modal-fields.is-2col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px 20px;
+}
+
+.dbmn-modal-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.dbmn-modal-field label {
+    font-size: 12px;
+    color: var(--vscode-descriptionForeground);
+}
+
+/* Inline validation state — painted by dbmn-modal.js on Run submit when a
+ * field's declarative rules fail. The error slot always reserves its own
+ * line-height's worth of vertical space so text appearing/clearing never
+ * shifts the fields below it (a jarring layout jump when a modal fills
+ * with red mid-review). */
+.dbmn-modal-field.is-invalid .dbmn-modal-input {
+    border-color: var(--vscode-inputValidation-errorBorder, var(--vscode-errorForeground));
+}
+.dbmn-modal-field-error {
+    font-size: 11px;
+    line-height: 14px;
+    min-height: 14px;
+    color: var(--vscode-errorForeground);
+}
+
+.dbmn-modal-input {
+    background: var(--vscode-input-background);
+    color: var(--vscode-input-foreground);
+    border: 1px solid var(--vscode-input-border, transparent);
+    border-radius: 3px;
+    padding: 6px 8px;
+    font: inherit;
+    font-size: 13px;
+    outline: none;
+}
+.dbmn-modal-input:focus {
+    border-color: var(--vscode-focusBorder);
+}
+textarea.dbmn-modal-input {
+    min-height: 80px;
+    resize: vertical;
+}
+
+/* Radio groups (issue#269) — clickable option rows used by the Resume /
+ * Reprocess modals where a dropdown reads as overkill for 2–5 choices.
+ * Styled structurally off the field container + semantic markup, no classes:
+ * a [role=radiogroup] of <label> rows, each wrapping <input type=radio> + a
+ * <span> (option label) and optional <small> (description). */
+.dbmn-modal-field [role="radiogroup"] {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.dbmn-modal-field [role="radiogroup"] label {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    column-gap: 10px;
+    /* center the radio against the row: for single-line options it sits
+     * mid-text; with a description the input spans both rows (below) and
+     * centres against the whole block. */
+    align-items: center;
+    padding: 9px 12px;
+    border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background 0.1s ease, border-color 0.1s ease;
+}
+.dbmn-modal-field [role="radiogroup"] label:hover {
+    background: var(--vscode-list-hoverBackground);
+}
+.dbmn-modal-field [role="radiogroup"] label:has(input:checked) {
+    border-color: var(--vscode-focusBorder);
+    background: var(--vscode-list-activeSelectionBackground, var(--vscode-list-hoverBackground));
+}
+.dbmn-modal-field [role="radiogroup"] input[type="radio"] {
+    grid-row: 1 / 3;
+    margin: 0;
+    accent-color: var(--vscode-focusBorder);
+    cursor: pointer;
+}
+.dbmn-modal-field [role="radiogroup"] span {
+    grid-column: 2;
+    font-size: 13px;
+    color: var(--vscode-foreground);
+}
+.dbmn-modal-field [role="radiogroup"] small {
+    grid-column: 2;
+    font-size: 12px;
+    color: var(--vscode-descriptionForeground);
+}
+
+/* Issue #302: row-paste result line under the fields (same side padding as
+ * .dbmn-modal-fields so it lines up with the inputs), and the footer-left
+ * group that carries the Paste button. */
+.dbmn-modal-paste-status {
+    margin: 0;
+    padding: 0 20px 12px;
+    font-size: 12px;
+    color: var(--vscode-testing-iconPassed, var(--vscode-descriptionForeground));
+}
+.dbmn-modal-paste-status.is-error {
+    color: var(--vscode-errorForeground);
+}
+.dbmn-modal-paste-status:empty {
+    display: none;
+}
+.dbmn-modal-footer-left {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-right: auto;
+}
+/* Header help icon: directly after the title, like the help icon on every
+ * other heading (.help-icon supplies the 8px gap). The close button takes
+ * the free space so it stays alone in the corner. */
+.dbmn-modal-help {
+    background: none;
+    border: none;
+    padding: 4px;
+    color: inherit;
+    flex-shrink: 0;
+}
+.dbmn-modal-help ~ .dbmn-modal-close {
+    margin-left: auto;
+}
+.dbmn-modal-help svg {
+    width: 18px;
+    height: 18px;
+}
+
+.dbmn-modal-footer {
+    display: flex;
+    /* No wrap — buttons stay on one line and the modal grows horizontally
+     * to fit. The body and fields can wrap; the action row never does. */
+    flex-wrap: nowrap;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 12px 20px 16px;
+    border-top: 1px solid var(--vscode-panel-border);
+    flex-shrink: 0;
+}
+.dbmn-modal-footer .btn {
+    /* No min-width — buttons size to their text. nowrap so the labels never
+     * collapse onto two lines inside the button itself. */
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+
+@keyframes dbmn-modal-fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+@keyframes dbmn-modal-scale-in {
+    from { opacity: 0; transform: scale(0.96) translateY(4px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+/* ── Filters modal (transactions / catalogue / console raw) ────────────
+ * Custom body content — a stack of labelled sections, each holding radios,
+ * a native select, or a chip strip. Shared here so all three views feel
+ * identical. Chips reuse the .catalogue-chip base rules (status/method
+ * colours, is-active state); only the wrapper is view-specific.
+ */
+.dbmn-filters-modal {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+.dbmn-filter-section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.dbmn-filter-section-title {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--vscode-descriptionForeground);
+    margin: 0;
+}
+
+.dbmn-filter-radio-group {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 6px 12px;
+}
+
+.dbmn-filter-radio {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    padding: 4px 6px;
+    border-radius: 4px;
+}
+.dbmn-filter-radio:hover {
+    background: var(--vscode-toolbar-hoverBackground, rgba(255, 255, 255, 0.06));
+}
+.dbmn-filter-radio input[type="radio"] {
+    margin: 0;
+    cursor: pointer;
+}
+
+.dbmn-filter-daterange {
+    display: flex;
+    gap: 12px;
+    padding-top: 6px;
+}
+.dbmn-filter-daterange label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 12px;
+    color: var(--vscode-descriptionForeground);
+}
+.dbmn-filter-daterange input[type="date"] {
+    padding: 4px 8px;
+    background: var(--vscode-input-background);
+    color: var(--vscode-input-foreground);
+    border: 1px solid var(--vscode-input-border);
+    border-radius: 4px;
+    font-size: 13px;
+}
+
+.dbmn-filter-select {
+    width: 100%;
+    padding: 6px 8px;
+    background: var(--vscode-input-background);
+    color: var(--vscode-input-foreground);
+    border: 1px solid var(--vscode-input-border);
+    border-radius: 4px;
+    font-size: 13px;
+}
+
+.dbmn-filter-chip-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.dbmn-filter-check-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 16px;
+}
+
+.dbmn-filter-check {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    padding: 4px 6px;
+    border-radius: 4px;
+}
+.dbmn-filter-check:hover {
+    background: var(--vscode-toolbar-hoverBackground, rgba(255, 255, 255, 0.06));
+}
+.dbmn-filter-check input[type="checkbox"] {
+    margin: 0;
+    cursor: pointer;
+}
+
+/* Searchable tag list inside the catalogue's filters modal. Depth indent
+ * (via --depth) mirrors the /-hierarchy in tag names, capped at 4 levels. */
+.dbmn-filter-tags-search input[type="search"] {
+    width: 100%;
+    padding: 6px 8px;
+    background: var(--vscode-input-background);
+    color: var(--vscode-input-foreground);
+    border: 1px solid var(--vscode-input-border);
+    border-radius: 4px;
+    font-size: 13px;
+}
+
+.dbmn-filter-tags-list {
+    max-height: 240px;
+    overflow-y: auto;
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 4px;
+    padding: 4px 0;
+}
+
+.dbmn-filter-tags-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 8px 4px calc(8px + var(--depth, 0) * 12px);
+    cursor: pointer;
+    font-size: 13px;
+}
+.dbmn-filter-tags-row:hover {
+    background: var(--vscode-list-hoverBackground);
+}
+.dbmn-filter-tags-row input[type="checkbox"] {
+    margin: 0;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.dbmn-filter-tags-label {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.dbmn-filter-tags-count {
+    color: var(--vscode-descriptionForeground);
+    font-variant-numeric: tabular-nums;
+    font-size: 12px;
+    padding: 0 4px;
+}
+
+.dbmn-filter-tags-empty {
+    padding: 12px;
+    color: var(--vscode-descriptionForeground);
+    text-align: center;
+    font-size: 12px;
+}
+
+/* Template autocomplete for plain fields (template-autocomplete.js): `{{` in a path, a query
+   parameter or a header value opens this list under the caret */
+.tpl-ac {
+    position: fixed;
+    z-index: 1000;
+    min-width: 240px;
+    max-width: 420px;
+    max-height: 260px;
+    overflow-y: auto;
+    padding: 4px 0;
+    background: var(--vscode-editorSuggestWidget-background, var(--vscode-dropdown-background));
+    color: var(--vscode-editorSuggestWidget-foreground, var(--vscode-foreground));
+    border: 1px solid var(--vscode-editorSuggestWidget-border, var(--vscode-panel-border));
+    border-radius: 4px;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+    font-size: 12px;
+}
+.tpl-ac.hidden { display: none; }
+.tpl-ac-group {
+    padding: 4px 10px 2px;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    opacity: 0.6;
+}
+.tpl-ac-item {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 3px 10px;
+    cursor: pointer;
+}
+.tpl-ac-item:hover,
+.tpl-ac-item.is-selected {
+    background: var(--vscode-editorSuggestWidget-selectedBackground, var(--vscode-list-activeSelectionBackground));
+    color: var(--vscode-editorSuggestWidget-selectedForeground, var(--vscode-list-activeSelectionForeground));
+}
+.tpl-ac-value {
+    font-family: var(--vscode-editor-font-family, monospace);
+    white-space: nowrap;
+}
+.tpl-ac-detail {
+    opacity: 0.7;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.tpl-ac-empty {
+    padding: 3px 10px;
+    font-style: italic;
+    opacity: 0.7;
+}

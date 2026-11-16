@@ -1,0 +1,18 @@
+{
+  "executionId": "batch-002-member-2",
+  "duration": 45,
+  "httpStatus": 409,
+  "httpStatusText": "Conflict",
+  "headers": {
+    "content-type": "application/json"
+  },
+  "error": "Resource already exists",
+  "details": {
+    "field": "orderId",
+    "message": "Order with this ID already exists",
+    "code": "DUPLICATE_ORDER",
+    "receivedValue": "ORD-12345",
+    "existingResource": "/api/orders/ORD-12345"
+  },
+  "data": null
+}

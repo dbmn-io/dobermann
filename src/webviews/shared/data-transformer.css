@@ -1,0 +1,2643 @@
+/* CSV Handler Module Specific Styles */
+/* Uses atomic.css classes where possible to avoid bloating main styles.css */
+
+/* Run Batch: full-viewport flex column. The footer is an in-flow flex item at the
+   bottom (rule below) and each step is a scrollable container that fills the space
+   above it — so no step's content can ever hide behind the footer, on any screen. */
+body:has(#csvBatchContainer) {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
+    box-sizing: border-box;
+    /* The side padding lives on the scrolling step (below), so the scrollbar sits at the
+       window edge and the content has the same margin on both sides of it. */
+    padding-left: 0;
+    padding-right: 0;
+}
+
+#csvBatchContainer {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-height: 0;
+}
+
+/* STANDARD step container — one consistent scroll region every step is loaded into.
+   Fills the area between the top of the container and the footer and scrolls its own
+   overflow. Steps lay out as a column so fill-height children (the data grid, the JSON
+   editor) can expand via flex:1, while simple steps just scroll when content is tall. */
+#csvBatchContainer > .csv-step {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    overflow-x: hidden;
+    /* Breathing room so the scroll-end is unambiguous (Step 5's Execute gate, etc.), and
+       the same margin left and right (the body's side padding is zero for this layout). */
+    padding: 0 20px 16px;
+}
+
+/* Run Batch footer participates in the flex column instead of floating (position:
+   fixed) over the steps, so it stays pinned to the bottom, is always visible, and can
+   never overlap step content. Scoped to the batch layout; other webviews keep the
+   fixed footer + their own body padding reservation. */
+body:has(#csvBatchContainer) .webview-footer {
+    position: static;
+    flex: none;
+    box-shadow: none;
+}
+/* The same side margin as the steps above it (the body's side padding is zero here) */
+body:has(#csvBatchContainer) .footer-content {
+    padding-left: 20px;
+    padding-right: 20px;
+}
+
+/* GitHub Issue #224: Simplified file processing container — appears inside dropzone */
+.csv-file-processing {
+    width: 100%;
+    min-height: 120px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 12px;
+}
+
+.csv-processing-file-info {
+    text-align: center;
+}
+
+.csv-processing-file-info h4 {
+    margin: 0 0 8px 0;
+    font-size: 18px;
+    color: var(--vscode-foreground);
+    font-weight: bold;
+}
+
+.csv-processing-file-info .file-size {
+    margin: 0;
+    color: var(--vscode-descriptionForeground);
+    font-size: 14px;
+}
+
+/* Overall completion state for dropzone */
+.csv-dropzone.processing {
+    border-color: var(--vscode-progressBar-background);
+    border-style: solid;
+    animation: csv-dropzone-pulse 2s infinite;
+}
+
+@keyframes csv-dropzone-pulse {
+    0%, 100% { 
+        border-color: var(--vscode-progressBar-background);
+    }
+    50% { 
+        border-color: var(--vscode-focusBorder);
+    }
+}
+
+/* Success state when processing is complete */
+.csv-dropzone.processing-complete {
+    border-color: var(--vscode-testing-iconPassed);
+    border-style: solid;
+    animation: none;
+}
+
+/* Step Transition Progress Stages (used by showStepTransitionProgress) */
+.csv-processing-stages {
+    width: 100%;
+    max-width: 400px;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.csv-stage-item {
+    transition: opacity 0.3s ease;
+    opacity: 0.5;
+}
+
+.csv-stage-item.stage-active {
+    opacity: 1;
+}
+
+.csv-stage-item.stage-complete {
+    opacity: 1;
+}
+
+.csv-stage-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.csv-stage-label {
+    font-weight: bold;
+    color: var(--vscode-foreground);
+    font-size: 14px;
+}
+
+.csv-stage-status {
+    font-size: 12px;
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.csv-stage-status.pending {
+    background-color: var(--vscode-input-background);
+    color: var(--vscode-descriptionForeground);
+}
+
+.csv-stage-status.in-progress {
+    background-color: var(--vscode-progressBar-background);
+    color: white;
+    animation: csv-pulse 1.5s infinite;
+}
+
+.csv-stage-status.complete {
+    background-color: var(--vscode-testing-iconPassed);
+    color: white;
+}
+
+.csv-stage-progress-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.csv-stage-progress-bar {
+    flex: 1;
+    height: 8px;
+    background-color: var(--vscode-input-background);
+    border: 1px solid var(--vscode-input-border);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.csv-stage-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg,
+        var(--vscode-progressBar-background) 0%,
+        var(--vscode-button-background) 100%);
+    transition: width 0.3s ease;
+    border-radius: 3px;
+}
+
+.csv-stage-percentage {
+    min-width: 50px;
+    text-align: right;
+    font-size: 12px;
+    color: var(--vscode-descriptionForeground);
+    font-weight: 500;
+}
+
+.csv-stage-percentage.complete::before {
+    content: '\2713 ';
+    color: var(--vscode-testing-iconPassed);
+    font-weight: bold;
+}
+
+@keyframes csv-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+
+/* Array Repetition Configuration Styles */
+.array-repetition-config {
+    background-color: var(--vscode-input-background);
+    border: 1px solid var(--vscode-input-border);
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 20px;
+}
+
+.array-repetition-config h4 {
+    color: var(--vscode-foreground);
+    margin: 0 0 15px 0;
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.repetition-slider-container {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    margin: 10px 0;
+}
+
+.repetition-slider {
+    flex: 1;
+    min-width: 300px;
+    height: 6px;
+    background: var(--vscode-input-background);
+    outline: none;
+    border-radius: 3px;
+    appearance: none;
+}
+
+.repetition-slider::-webkit-slider-thumb {
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    background: var(--vscode-button-background);
+    border-radius: 50%;
+    cursor: pointer;
+    border: 2px solid var(--vscode-button-foreground);
+}
+
+.repetition-slider::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+    background: var(--vscode-button-background);
+    border-radius: 50%;
+    cursor: pointer;
+    border: 2px solid var(--vscode-button-foreground);
+}
+
+.repetition-value-display {
+    color: var(--vscode-foreground);
+    font-weight: bold;
+    font-size: 16px;
+    min-width: 30px;
+    text-align: center;
+}
+
+.array-dropdown {
+    width: 100%;
+    max-width: 400px;
+    padding: 8px;
+    background-color: var(--vscode-input-background);
+    border: 1px solid var(--vscode-input-border);
+    border-radius: 4px;
+    color: var(--vscode-input-foreground);
+}
+
+.array-dropdown:focus {
+    outline: none;
+    border-color: var(--vscode-focusBorder);
+}
+
+.repetition-status-message {
+    padding: 12px;
+    background-color: var(--vscode-textBlockQuote-background);
+    border-radius: 4px;
+    color: var(--vscode-foreground);
+    font-size: 14px;
+    margin-top: 10px;
+}
+
+/* Batch Configuration Panel Styles */
+.batch-config-panel {
+    background-color: var(--vscode-input-background);
+    border: 1px solid var(--vscode-input-border);
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 15px;
+}
+
+.batch-config-summary {
+    background-color: var(--vscode-textBlockQuote-background);
+    border-radius: 4px;
+    padding: 15px;
+    margin-bottom: 20px;
+}
+
+.error-tolerance-section {
+    margin-bottom: 15px;
+}
+
+.error-tolerance-options {
+    margin-left: 25px;
+    margin-top: 15px;
+    padding: 15px;
+    background-color: var(--vscode-textBlockQuote-background);
+    border-radius: 4px;
+}
+
+.tolerance-limits {
+    margin-left: 25px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 15px;
+}
+
+.tolerance-input-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+}
+
+.tolerance-number-input {
+    width: 80px;
+    padding: 4px 8px;
+    background-color: var(--vscode-input-background);
+    border: 1px solid var(--vscode-input-border);
+    border-radius: 4px;
+    color: var(--vscode-input-foreground);
+    font-size: 14px;
+    margin-left: 8px;
+}
+
+.tolerance-number-input:focus {
+    outline: none;
+    border-color: var(--vscode-focusBorder);
+}
+
+/* Additional utility classes not in atomic.css */
+.nowrap {
+    white-space: nowrap;
+}
+
+.min-w-150 {
+    min-width: 150px;
+}
+
+.w-80 {
+    width: 80px;
+}
+
+/* Transformed Cell Indicator - shows when type conversion changes value */
+.transformed-cell {
+    background-color: var(--vscode-diffEditor-insertedTextBackground, rgba(155, 185, 85, 0.2)) !important;
+    border-left: 3px solid var(--vscode-diffEditor-insertedLineBackground, rgba(155, 185, 85, 0.5));
+    font-style: italic;
+    position: relative;
+}
+
+.transformed-cell::after {
+    content: '✓';
+    position: absolute;
+    top: 2px;
+    right: 4px;
+    font-size: 10px;
+    color: var(--vscode-testing-iconPassed, #73c991);
+    opacity: 0.7;
+}
+
+/* Responsive adjustments for smaller screens */
+@media (max-width: 600px) {
+    .csv-file-processing {
+        padding: 15px;
+        gap: 15px;
+    }
+
+    .csv-processing-stages {
+        max-width: 100%;
+    }
+
+    .csv-stage-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 5px;
+        margin-bottom: 10px;
+    }
+
+    .csv-stage-progress-wrapper {
+        gap: 8px;
+    }
+
+    .csv-stage-percentage {
+        min-width: 40px;
+        font-size: 11px;
+    }
+
+}
+
+/* =========================================================================
+   GitHub Issue #129: Grid Data Entry Styles
+   ========================================================================= */
+
+/* Grid entry container with drop zone support */
+.grid-entry-container {
+    position: relative;
+    margin-bottom: 15px;
+}
+
+.grid-entry-container.drag-over {
+    outline: 2px dashed var(--vscode-focusBorder);
+    outline-offset: 2px;
+}
+
+/* Grid container */
+.csv-grid-entry {
+    min-height: 200px;
+    max-height: 300px;
+    overflow: auto;
+    border: 1px solid var(--vscode-input-border);
+    border-radius: 4px;
+    background: var(--vscode-input-background);
+}
+
+/* GitHub Issue #223: Virtual scroll spacer rows — invisible, just occupy height */
+.vs-spacer {
+    visibility: hidden;
+    pointer-events: none;
+}
+.vs-spacer td {
+    padding: 0 !important;
+    border: none !important;
+}
+
+/* Grid hint text */
+.grid-hint {
+    margin-top: 8px;
+    font-size: 12px;
+    color: var(--vscode-descriptionForeground);
+}
+
+/* No variables message */
+.grid-no-variables {
+    padding: 20px;
+    text-align: center;
+    color: var(--vscode-descriptionForeground);
+    font-style: italic;
+}
+
+/* Grid error message */
+.grid-error {
+    padding: 20px;
+    text-align: center;
+    color: var(--vscode-errorForeground);
+}
+
+/* Drop overlay (shown when dragging file over grid) */
+.grid-drop-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(var(--vscode-editor-background), 0.95);
+    background: var(--vscode-editor-background);
+    opacity: 0.95;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px dashed var(--vscode-focusBorder);
+    border-radius: 4px;
+    z-index: 10;
+}
+
+.drop-overlay-content {
+    text-align: center;
+    padding: 30px;
+}
+
+.drop-overlay-content p {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 500;
+    color: var(--vscode-foreground);
+}
+
+.drop-overlay-content .dropzone-hint {
+    margin-top: 8px;
+    font-size: 12px;
+    font-weight: normal;
+    color: var(--vscode-descriptionForeground);
+}
+
+/* =========================================================================
+   Vanilla Grid Styles (GitHub Issue #129)
+   ========================================================================= */
+
+/* Main grid table */
+/* GitHub Issue #202: Use table-layout: auto with min-widths so columns with many
+   template variables don't get squished. Grid container provides horizontal scroll. */
+.vanilla-grid {
+    border-collapse: collapse;
+    background: var(--vscode-input-background);
+    color: var(--vscode-foreground);
+    font-family: var(--vscode-editor-font-family, 'Consolas', monospace);
+    font-size: 13px;
+    table-layout: auto;
+}
+
+/* Header cells */
+.vanilla-grid thead th {
+    background: var(--vscode-editorWidget-background);
+    color: var(--vscode-foreground);
+    border: 1px solid var(--vscode-input-border);
+    font-weight: 600;
+    padding: 8px 10px;
+    text-align: left;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+
+/* Row number header */
+.vanilla-grid .row-num-header {
+    width: 40px;
+    text-align: center;
+}
+
+/* Actions header */
+.vanilla-grid .actions-header {
+    width: 40px;
+    text-align: center;
+}
+
+/* Body cells */
+.vanilla-grid tbody td {
+    border: 1px solid var(--vscode-input-border);
+    padding: 6px 8px;
+    vertical-align: middle;
+}
+
+/* Row number cell */
+.vanilla-grid .row-num-cell {
+    background: var(--vscode-editorWidget-background);
+    color: var(--vscode-descriptionForeground);
+    text-align: center;
+    font-size: 12px;
+    user-select: none;
+}
+
+/* Row number, and in its place on hover or keyboard focus a bin that deletes the row
+   (dt-data-entry-grid.js makeRowNumCell). Works for every source and grid size. */
+.vanilla-grid .row-num-cell {
+    position: relative;
+}
+
+/* Laid over the number, so a hovered row never changes height */
+.vanilla-grid .row-num-cell .row-delete-btn {
+    display: none;
+    position: absolute;
+    inset: 0;
+    width: 22px;
+    height: 22px;
+    margin: auto;
+    padding: 0;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: none;
+    border-radius: 3px;
+    color: var(--vscode-errorForeground);
+    cursor: pointer;
+}
+
+.vanilla-grid tr:hover .row-num-cell .row-num,
+.vanilla-grid .row-num-cell:focus-within .row-num {
+    visibility: hidden;
+}
+
+.vanilla-grid tr:hover .row-num-cell .row-delete-btn,
+.vanilla-grid .row-num-cell:focus-within .row-delete-btn {
+    display: inline-flex;
+}
+
+.vanilla-grid .row-num-cell .row-delete-btn:hover {
+    background: var(--vscode-list-hoverBackground);
+}
+
+.vanilla-grid .row-num-cell .row-delete-btn:focus-visible {
+    outline: 1px solid var(--vscode-focusBorder);
+}
+
+/* The old × column at the row's end: deleting is from the row number now */
+.vanilla-grid .actions-header,
+.vanilla-grid .actions-cell {
+    display: none;
+}
+
+/* Editable grid cells */
+/* GitHub Issue #202: min-width prevents squished columns with many template variables */
+.vanilla-grid .grid-cell {
+    background: var(--vscode-input-background);
+    min-height: 24px;
+    min-width: 120px;
+    cursor: text;
+    outline: none;
+    transition: background-color 0.1s, box-shadow 0.1s;
+}
+
+.vanilla-grid .grid-cell:focus {
+    background: var(--vscode-editor-background);
+    box-shadow: inset 0 0 0 1px var(--vscode-focusBorder);
+}
+
+.vanilla-grid .grid-cell:hover:not(:focus) {
+    background: var(--vscode-list-hoverBackground);
+}
+
+/* Actions cell */
+.vanilla-grid .actions-cell {
+    text-align: center;
+    padding: 2px;
+}
+
+/* Delete row button */
+.grid-delete-row-btn {
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    background: transparent;
+    border: none;
+    color: var(--vscode-descriptionForeground);
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+    border-radius: 3px;
+    transition: background-color 0.1s, color 0.1s;
+}
+
+.grid-delete-row-btn:hover {
+    background: var(--vscode-inputValidation-errorBackground);
+    color: var(--vscode-errorForeground);
+}
+
+/* Add row button */
+.grid-add-row-btn {
+    margin-top: 8px;
+    padding: 6px 12px;
+    background: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+    border: none;
+    border-radius: 4px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: background-color 0.1s;
+}
+
+.grid-add-row-btn:hover {
+    background: var(--vscode-button-secondaryHoverBackground);
+}
+
+/* Scrollbars inside grid */
+.csv-grid-entry::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+.csv-grid-entry::-webkit-scrollbar-track {
+    background: var(--vscode-scrollbarSlider-background);
+}
+
+.csv-grid-entry::-webkit-scrollbar-thumb {
+    background: var(--vscode-scrollbarSlider-hoverBackground);
+    border-radius: 5px;
+}
+
+.csv-grid-entry::-webkit-scrollbar-thumb:hover {
+    background: var(--vscode-scrollbarSlider-activeBackground);
+}
+
+/* GitHub Issue #129: Clickable dropzone */
+.csv-dropzone-clickable {
+    cursor: pointer;
+    transition: background-color 0.15s, border-color 0.15s;
+}
+
+.csv-dropzone-clickable:hover {
+    background-color: var(--vscode-list-hoverBackground);
+    border-color: var(--vscode-focusBorder);
+}
+
+/* GitHub Issue #202: Dropzone content elements */
+.dropzone-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+}
+
+.dropzone-icon {
+    font-size: 32px;
+    opacity: 0.7;
+}
+
+.dropzone-text {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--vscode-foreground);
+    margin: 0;
+}
+
+.csv-dropzone .dropzone-hint {
+    font-size: 12px;
+    color: var(--vscode-descriptionForeground);
+    margin: 0;
+}
+
+/* dbmn#4 — see modals.css for the rationale. */
+.csv-dropzone .dropzone-hint-locked {
+    font-size: 11px;
+    opacity: 0.75;
+    margin-top: 6px;
+}
+
+/* GitHub Issue #129: Type-specific grid cells */
+
+/* Boolean cells with checkbox */
+.vanilla-grid .grid-cell-boolean {
+    text-align: center;
+    padding: 4px;
+}
+
+.grid-checkbox {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+    accent-color: var(--vscode-button-background);
+}
+
+/* Number cells with input */
+.vanilla-grid .grid-cell-number {
+    padding: 0;
+    min-width: 100px;
+}
+
+.grid-number-input {
+    width: 100%;
+    height: 100%;
+    padding: 6px 8px;
+    border: none;
+    background: transparent;
+    color: var(--vscode-foreground);
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 13px;
+    text-align: right;
+}
+
+.grid-number-input:focus {
+    outline: none;
+    background: var(--vscode-editor-background);
+    box-shadow: inset 0 0 0 1px var(--vscode-focusBorder);
+}
+
+/* GitHub Issue #162: Date/DateTime/Time cells */
+.vanilla-grid .grid-cell-date,
+.vanilla-grid .grid-cell-datetime,
+.vanilla-grid .grid-cell-time {
+    padding: 0;
+}
+
+.grid-date-input,
+.grid-datetime-input,
+.grid-time-input {
+    width: 100%;
+    height: 100%;
+    min-height: 28px;
+    padding: 4px 6px;
+    border: none;
+    background: transparent;
+    color: var(--vscode-foreground);
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 13px;
+    box-sizing: border-box;
+}
+
+.grid-date-input:focus,
+.grid-datetime-input:focus,
+.grid-time-input:focus {
+    outline: none;
+    background: var(--vscode-editor-background);
+    box-shadow: inset 0 0 0 1px var(--vscode-focusBorder);
+}
+
+/* Compact column widths for specific types */
+.vanilla-grid .grid-cell-boolean {
+    width: 60px;
+    min-width: 60px;
+    max-width: 60px;
+}
+
+.vanilla-grid .grid-cell-date {
+    width: 130px;
+    min-width: 130px;
+}
+
+.vanilla-grid .grid-cell-time {
+    width: 110px;
+    min-width: 110px;
+}
+
+.vanilla-grid .grid-cell-datetime {
+    width: 180px;
+    min-width: 180px;
+}
+
+/* ==========================================================================
+   GitHub Issue #175: Header Validation Indicators
+   ========================================================================= */
+
+/* Header name */
+.grid-header-name {
+    font-weight: 600;
+    font-size: 13px;
+}
+
+/* Validation: dotted underline in accent color - shows column has validation rules */
+.grid-header-has-validation {
+    text-decoration: underline dotted;
+    text-decoration-color: var(--vscode-textLink-foreground, #3794ff);
+    text-underline-offset: 3px;
+    cursor: help;
+}
+
+/* Optional: hollow circle indicator */
+.grid-header-optional-indicator {
+    display: inline-block;
+    margin-left: 4px;
+    font-size: 10px;
+    color: var(--vscode-descriptionForeground);
+    cursor: help;
+    vertical-align: middle;
+}
+
+/* =========================================================================
+   GitHub Issue #175: Mapping Table Variable Indicators
+   ========================================================================= */
+
+/* Validation: dotted underline - shows variable has validation rules */
+.mapping-has-validation {
+    text-decoration: underline dotted;
+    text-decoration-color: var(--vscode-textLink-foreground, #3794ff);
+    text-underline-offset: 3px;
+    cursor: help;
+}
+
+/* Optional: hollow circle indicator */
+.mapping-optional-indicator {
+    display: inline-block;
+    margin-left: 4px;
+    font-size: 10px;
+    color: var(--vscode-descriptionForeground);
+    cursor: help;
+    vertical-align: middle;
+}
+
+/* Modifier hints text below variable name */
+.variable-modifiers {
+    margin-top: 2px;
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+}
+
+.variable-modifiers small {
+    font-style: italic;
+}
+
+/* Optional/nullable cell styling - subtle background */
+.vanilla-grid .grid-cell-optional {
+    background: var(--vscode-editor-background);
+}
+
+/* Style the date/time picker chrome */
+.grid-date-input::-webkit-calendar-picker-indicator,
+.grid-datetime-input::-webkit-calendar-picker-indicator,
+.grid-time-input::-webkit-calendar-picker-indicator {
+    filter: invert(0.8);
+    cursor: pointer;
+    padding: 2px;
+}
+
+/* ==========================================================================
+   Progressive Copy Hint (Enhanced Data Entry)
+   ========================================================================= */
+
+/* Hint shown during progressive Tab copy - positioned below grid near Add Row button */
+.progressive-copy-hint {
+    display: inline-block;
+    margin-left: 12px;
+    padding: 5px 12px;
+    background: var(--vscode-notifications-background);
+    border: 1px solid var(--vscode-focusBorder);
+    border-radius: 4px;
+    font-size: 12px;
+    color: var(--vscode-notificationsInfoIcon-foreground, var(--vscode-foreground));
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+    animation: hintFadeIn 0.2s ease-out;
+    white-space: nowrap;
+    cursor: pointer;
+    vertical-align: middle;
+}
+
+.progressive-copy-hint:hover {
+    opacity: 0.8;
+}
+
+.progressive-copy-hint::before {
+    content: "💡 ";
+}
+
+@keyframes hintFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* ==========================================================================
+   Blank Fields Warning
+   ========================================================================= */
+
+/* Warning highlight for blank grid cells */
+.grid-cell-blank-warning {
+    background-color: var(--vscode-inputValidation-warningBackground, rgba(255, 200, 0, 0.2)) !important;
+    border: 1px solid var(--vscode-inputValidation-warningBorder, #cca700) !important;
+}
+
+.grid-cell-blank-warning:focus {
+    box-shadow: inset 0 0 0 1px var(--vscode-inputValidation-warningBorder, #cca700) !important;
+}
+
+/* Warning banner shown above grid */
+.blank-fields-warning {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    margin-bottom: 12px;
+    background: var(--vscode-inputValidation-warningBackground, rgba(255, 200, 0, 0.2));
+    border: 1px solid var(--vscode-inputValidation-warningBorder, #cca700);
+    border-radius: 4px;
+    font-size: 13px;
+    animation: warningFadeIn 0.2s ease-out;
+}
+
+.blank-fields-warning .warning-icon {
+    font-size: 16px;
+    flex-shrink: 0;
+}
+
+.blank-fields-warning .warning-text {
+    flex: 1;
+    color: var(--vscode-foreground);
+}
+
+.blank-fields-warning .warning-actions {
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.blank-fields-warning .btn-sm {
+    padding: 4px 10px;
+    font-size: 12px;
+}
+
+@keyframes warningFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-5px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* ==========================================================================
+   GitHub Issue #175: Validation Errors (Amber/Warning highlighting)
+   ========================================================================= */
+
+/* Validation error highlight for cells - uses amber/warning colors */
+.grid-cell-error {
+    background-color: var(--vscode-inputValidation-warningBackground, rgba(255, 200, 0, 0.2)) !important;
+    border: 1px solid var(--vscode-inputValidation-warningBorder, #cca700) !important;
+}
+
+.grid-cell-error:focus {
+    box-shadow: inset 0 0 0 1px var(--vscode-inputValidation-warningBorder, #cca700) !important;
+}
+
+/* Error container shown above modal footer */
+.validation-errors {
+    margin: 12px 20px;
+    padding: 12px 16px;
+    background: var(--vscode-inputValidation-errorBackground, rgba(255, 80, 80, 0.15));
+    border: 1px solid var(--vscode-inputValidation-errorBorder, #be1100);
+    border-radius: 4px;
+    animation: errorFadeIn 0.2s ease-out;
+}
+
+.validation-errors .error-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.validation-errors .error-icon {
+    font-size: 16px;
+}
+
+.validation-errors .error-title {
+    font-weight: 600;
+    color: var(--vscode-errorForeground, #f14c4c);
+}
+
+.validation-errors .error-list {
+    margin: 0;
+    padding-left: 24px;
+    font-size: 12px;
+    color: var(--vscode-foreground);
+}
+
+.validation-errors .error-list li {
+    margin-bottom: 4px;
+}
+
+.validation-errors .error-list li strong {
+    color: var(--vscode-errorForeground, #f14c4c);
+}
+
+.validation-errors .error-list .more-errors {
+    color: var(--vscode-descriptionForeground);
+    font-style: italic;
+}
+
+.validation-errors .error-hint {
+    margin-top: 8px;
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+}
+
+@keyframes errorFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-5px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* GitHub Issue #162: Paste area highlight animation */
+.paste-area-highlight {
+    animation: pasteHighlight 0.5s ease-out 2;
+}
+
+@keyframes pasteHighlight {
+    0%, 100% {
+        border-color: var(--vscode-input-border);
+    }
+    50% {
+        border-color: var(--vscode-focusBorder);
+        box-shadow: 0 0 8px var(--vscode-focusBorder);
+    }
+}
+
+/* =========================================================================
+   GitHub Issue #202: Tabbed Input Interface (new tab design)
+   Base tab styles come from tabs.css (.webview-tabs, .tab-item, .tab-content)
+   ========================================================================= */
+
+/* GitHub Issue #202: Dropzone file details (shown after file is loaded) */
+.dropzone-file-details {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 20px;
+}
+
+.dropzone-file-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+}
+
+.dropzone-file-icon {
+    font-size: 24px;
+}
+
+.dropzone-file-name {
+    font-weight: 500;
+    color: var(--vscode-foreground);
+}
+
+.dropzone-file-size {
+    color: var(--vscode-descriptionForeground);
+}
+
+.dropzone-file-actions {
+    display: flex;
+    gap: 12px;
+}
+
+.dropzone-file-actions .btn-link {
+    background: none;
+    border: none;
+    color: var(--vscode-textLink-foreground);
+    cursor: pointer;
+    padding: 2px 4px;
+    font-size: 12px;
+    text-decoration: underline;
+}
+
+.dropzone-file-actions .btn-link:hover {
+    color: var(--vscode-textLink-activeForeground);
+}
+
+/* Data input container — fills the standard step container (no viewport math) */
+.data-input-container {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+}
+
+/* Tab data indicator (dot showing tab has data) */
+.tab-data-indicator {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: none;
+}
+
+.tab-data-indicator.has-data {
+    display: inline-block;
+    background: var(--vscode-notificationsInfoIcon-foreground, #3794ff);
+}
+
+/* Override tabs.css tab-content to add padding for data input */
+.data-input-container .tab-content {
+    padding: 16px;
+    border: 1px solid var(--vscode-panel-border);
+    border-top: none;
+}
+
+/* Panel layout for hidden-based toggling */
+#tabPanelFile:not(.hidden),
+#tabPanelPaste:not(.hidden) {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+}
+
+/* Dropzone drag-over feedback */
+.csv-dropzone.drag-over {
+    outline: 2px dashed var(--vscode-focusBorder);
+    outline-offset: -2px;
+    background: var(--vscode-list-hoverBackground);
+}
+
+/* Paste Tab Styling */
+#tabPanelPaste textarea {
+    width: 100%;
+    flex: 1;
+    min-height: 0;
+    padding: 12px;
+    border: 1px solid var(--vscode-input-border);
+    border-radius: 4px;
+    background: var(--vscode-input-background);
+    color: var(--vscode-input-foreground);
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 13px;
+    resize: none;
+}
+
+#tabPanelPaste textarea:focus {
+    outline: none;
+    border-color: var(--vscode-focusBorder);
+}
+
+.paste-hint {
+    margin-top: 8px;
+    font-size: 12px;
+    color: var(--vscode-descriptionForeground);
+    flex-shrink: 0;
+}
+
+/* GitHub Issue #202: Step 3 — Review & Edit Data grid layout. Height comes from the
+   standard step container (flex:1); the grid below fills and scrolls internally. */
+#csvDataValidationStep {
+    display: flex;
+    flex-direction: column;
+}
+
+#csvDataValidationStep .grid-entry-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 0;
+    overflow: hidden;
+}
+
+#csvDataValidationStep .csv-grid-entry {
+    flex: 1;
+    max-height: none;
+    overflow: auto;
+}
+
+#csvDataValidationStep .grid-hint {
+    flex-shrink: 0;
+}
+
+/* Hide add/delete row controls for file/paste sources */
+.grid-readonly-structure .grid-add-row-btn,
+.grid-readonly-structure .grid-delete-row-btn,
+.grid-readonly-structure .actions-header,
+.grid-readonly-structure .actions-cell {
+    display: none;
+}
+
+/* Error row filter */
+.grid-row-hidden {
+    display: none;
+}
+
+/* File tab panel layout */
+#tabPanelFile {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: center;
+}
+
+/* ============================================
+   GitHub Issue #148: CSV Sorting Modal Styles
+   ============================================ */
+
+/* Modal overlay */
+.csv-sorting-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+    animation: csv-sorting-fade-in 0.2s ease;
+}
+
+@keyframes csv-sorting-fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+/* Modal container */
+.csv-sorting-modal {
+    background-color: var(--vscode-editor-background);
+    border: 1px solid var(--vscode-widget-border);
+    border-radius: 8px;
+    max-width: 500px;
+    width: 90%;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    animation: csv-sorting-slide-up 0.25s ease;
+}
+
+@keyframes csv-sorting-slide-up {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Modal header */
+.csv-sorting-modal-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--vscode-widget-border);
+    background-color: var(--vscode-sideBar-background);
+    border-radius: 8px 8px 0 0;
+}
+
+.csv-sorting-icon {
+    font-size: 24px;
+}
+
+.csv-sorting-modal-header h3 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--vscode-foreground);
+}
+
+/* Modal body */
+.csv-sorting-modal-body {
+    padding: 20px;
+}
+
+.csv-sorting-main-message {
+    margin: 0 0 16px 0;
+    font-size: 14px;
+    color: var(--vscode-foreground);
+    line-height: 1.5;
+}
+
+/* Details section */
+.csv-sorting-details {
+    background-color: var(--vscode-textBlockQuote-background);
+    border: 1px solid var(--vscode-textBlockQuote-border);
+    border-radius: 6px;
+    padding: 12px 16px;
+    margin-bottom: 16px;
+}
+
+.csv-sorting-detail-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 0;
+}
+
+.csv-sorting-detail-row:not(:last-child) {
+    border-bottom: 1px solid var(--vscode-widget-border);
+}
+
+.csv-sorting-label {
+    font-size: 13px;
+    color: var(--vscode-descriptionForeground);
+}
+
+.csv-sorting-value {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--vscode-foreground);
+    font-family: var(--vscode-editor-font-family);
+}
+
+/* Explanation text */
+.csv-sorting-explanation {
+    margin: 0 0 12px 0;
+    font-size: 13px;
+    color: var(--vscode-descriptionForeground);
+    line-height: 1.5;
+}
+
+/* Learn more link */
+.csv-sorting-learn-more {
+    display: inline-block;
+    font-size: 13px;
+    color: var(--vscode-textLink-foreground);
+    text-decoration: none;
+    margin-bottom: 8px;
+}
+
+.csv-sorting-learn-more:hover {
+    color: var(--vscode-textLink-activeForeground);
+    text-decoration: underline;
+}
+
+/* Modal footer */
+.csv-sorting-modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    padding: 16px 20px;
+    border-top: 1px solid var(--vscode-widget-border);
+    background-color: var(--vscode-sideBar-background);
+    border-radius: 0 0 8px 8px;
+}
+
+/* Sort column indicator badge */
+.sort-column-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background-color: var(--vscode-badge-background);
+    color: var(--vscode-badge-foreground);
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 10px;
+    margin-left: 8px;
+    font-weight: 500;
+}
+
+.sort-column-badge::before {
+    content: '↕';
+    font-size: 11px;
+}
+
+/* Sort indicator in mapping table */
+.mapping-dropdown option.sort-column {
+    font-weight: 600;
+}
+
+/* Sorted data indicator */
+.csv-sorted-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background-color: var(--vscode-testing-iconPassed);
+    color: white;
+    font-size: 12px;
+    padding: 4px 10px;
+    border-radius: 4px;
+    margin-left: 10px;
+}
+
+.csv-sorted-indicator::before {
+    content: '✓';
+    font-weight: bold;
+}
+
+/* ==========================================================================
+   GitHub Issue #148: Hierarchical Mapping Table UI
+   ========================================================================== */
+
+/* Array Container - nested box for array-level grouping */
+.array-container {
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 6px;
+    margin: 8px 0 8px 0;
+    background: var(--vscode-editor-background);
+    overflow: hidden;
+}
+
+.array-container.nested-level-1 {
+    margin-left: 0;
+}
+
+.array-container.nested-level-2 {
+    margin-left: 20px;
+    border-color: var(--vscode-textLink-foreground);
+}
+
+.array-container.nested-level-3 {
+    margin-left: 40px;
+    border-color: var(--vscode-charts-purple);
+}
+
+.array-container.nested-level-4 {
+    margin-left: 60px;
+    border-color: var(--vscode-charts-orange);
+}
+
+/* Array Header - title bar for each array container */
+.array-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--vscode-sideBar-background);
+    padding: 8px 12px;
+    font-weight: 500;
+    font-size: 13px;
+    color: var(--vscode-foreground);
+    border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+.array-header-icon {
+    font-size: 14px;
+}
+
+.array-header-name {
+    font-family: var(--vscode-editor-font-family, monospace);
+    color: var(--vscode-textLink-foreground);
+}
+
+.array-header-count {
+    color: var(--vscode-descriptionForeground);
+    font-weight: normal;
+    font-size: 12px;
+    margin-left: auto;
+}
+
+/* Variables inside array container */
+.array-container .mapping-table {
+    margin: 0;
+    border: none;
+    border-radius: 0;
+}
+
+.array-container .mapping-table thead {
+    display: none; /* Hide header inside nested containers */
+}
+
+/* Root level variables (not in any array) */
+.root-variables-section {
+    margin-bottom: 12px;
+}
+
+.root-variables-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 0;
+    font-weight: 500;
+    font-size: 13px;
+    color: var(--vscode-descriptionForeground);
+}
+
+/* Sort column badges in SOURCE column */
+.sort-order-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    background: var(--vscode-badge-background);
+    color: var(--vscode-badge-foreground);
+    font-size: 11px;
+    font-weight: 600;
+    border-radius: 50%;
+    margin-left: 6px;
+    vertical-align: middle;
+}
+
+.sort-order-badge.sort-order-1 {
+    background: var(--vscode-charts-blue);
+    color: white;
+}
+
+.sort-order-badge.sort-order-2 {
+    background: var(--vscode-charts-purple);
+    color: white;
+}
+
+.sort-order-badge.sort-order-3 {
+    background: var(--vscode-charts-orange);
+    color: white;
+}
+
+.sort-order-badge.sort-order-4 {
+    background: var(--vscode-charts-red);
+    color: white;
+}
+
+/* Sorting warning banner */
+.csv-sorting-banner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    margin-bottom: 12px;
+    background: var(--vscode-inputValidation-warningBackground, rgba(255, 200, 0, 0.15));
+    border: 1px solid var(--vscode-inputValidation-warningBorder, #cca700);
+    border-radius: 6px;
+    font-size: 13px;
+}
+
+.csv-sorting-banner .banner-icon {
+    font-size: 16px;
+    flex-shrink: 0;
+}
+
+.csv-sorting-banner .banner-text {
+    flex: 1;
+    color: var(--vscode-foreground);
+}
+
+.csv-sorting-banner .sort-columns {
+    font-weight: 600;
+    font-family: var(--vscode-editor-font-family, monospace);
+    color: var(--vscode-textLink-foreground);
+}
+
+/* Variable row indentation based on nesting level */
+.mapping-table tr.nested-level-1 .variable-name {
+    padding-left: 0;
+}
+
+.mapping-table tr.nested-level-2 .variable-name {
+    padding-left: 16px;
+}
+
+.mapping-table tr.nested-level-2 .variable-name::before {
+    content: '└ ';
+    color: var(--vscode-descriptionForeground);
+}
+
+.mapping-table tr.nested-level-3 .variable-name {
+    padding-left: 32px;
+}
+
+.mapping-table tr.nested-level-3 .variable-name::before {
+    content: '└ ';
+    color: var(--vscode-descriptionForeground);
+}
+
+.mapping-table tr.nested-level-4 .variable-name {
+    padding-left: 48px;
+}
+
+.mapping-table tr.nested-level-4 .variable-name::before {
+    content: '└ ';
+    color: var(--vscode-descriptionForeground);
+}
+
+/* Hierarchical table layout */
+.mapping-table.hierarchical-layout {
+    border-collapse: separate;
+    border-spacing: 0;
+}
+
+.mapping-table.hierarchical-layout .array-section-header {
+    background: var(--vscode-sideBar-background);
+    font-weight: 500;
+}
+
+.mapping-table.hierarchical-layout .array-section-header td {
+    padding: 10px 12px;
+    border-top: 1px solid var(--vscode-panel-border);
+    border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+.mapping-table.hierarchical-layout .array-section-header .array-icon {
+    margin-right: 8px;
+}
+
+/* ==========================================================================
+   GitHub Issue #204: Step 4 Body/Details Toggle + Input Columns
+   ========================================================================== */
+
+/* Run Batch Step 4 (GitHub Issue #308): Configure and Requests side by side when there is
+   room, one above the other when not. The cards inside are tables.css .table-stats. */
+.review-sections {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 48px;
+}
+
+/* Each section is as wide as its cards, not half the row, so a lone card does not
+   stretch across the page. */
+.review-sections > .execution-section {
+    flex: 0 1 auto;
+    min-width: 0;
+}
+
+/* Every card the same standard width, a value or a control alike */
+.review-sections .stat-item {
+    flex: 0 0 140px;
+    box-sizing: border-box;
+}
+.review-sections .stat-item > input,
+.review-sections .stat-item > select {
+    width: 100%;
+    max-width: 104px;
+}
+
+/* Every card the same height, value or control (tables.css sizes controls to the value line) */
+.review-sections .stat-item > :last-child {
+    min-height: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* A label carrying the ⓘ is no taller than a plain one */
+.review-sections .stat-label {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    height: 15px;
+}
+
+/* #435: Review in two columns. Configure and Summary stacked in a narrow column on the left,
+   their cards as label-and-value rows; the samples take the rest of the width, all the way down.
+   The column stays in view while the samples scroll (the step is the scroll region). */
+.review-layout {
+    display: grid;
+    grid-template-columns: minmax(200px, 240px) minmax(0, 1fr);
+    gap: 0 28px;
+    align-items: start;
+    flex: 1 0 auto;
+}
+
+.review-layout > .review-sections {
+    position: sticky;
+    top: 0;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    gap: 16px;
+}
+
+.review-layout > .review-sections > .execution-section {
+    flex: none;
+}
+
+.review-layout .review-sections .table-stats {
+    flex-direction: column;
+    gap: 6px;
+}
+
+.review-layout .review-sections .stat-item {
+    flex: none;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 10px;
+}
+
+.review-layout .review-sections .stat-label {
+    margin-bottom: 0;
+    height: auto;
+    text-align: left;
+    white-space: nowrap;
+}
+
+.review-layout .review-sections .stat-item > :last-child {
+    min-height: 0;
+    justify-content: flex-end;
+    font-size: 14px;
+    text-align: right;
+}
+
+/* #435: the column scrolls on its own when it is taller than the window, so its last card
+   is never out of reach while it stays in view */
+.review-layout > .review-sections {
+    max-height: calc(100vh - 120px);
+    overflow-y: auto;
+}
+
+/* A wide control (Name, Error Handling, Processing Mode) or a long value (Endpoint): the label
+   above it, the control the card's width */
+.review-layout .review-sections .stat-item.is-stacked {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+}
+.review-layout .review-sections .stat-item.is-stacked > :last-child {
+    justify-content: flex-start;
+    text-align: left;
+}
+.review-layout .review-sections .stat-item.is-stacked > input,
+.review-layout .review-sections .stat-item.is-stacked > select {
+    max-width: none;
+    width: 100%;
+    box-sizing: border-box;
+}
+.review-layout .review-sections .stat-value-cut {
+    display: block;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.review-layout .review-sections .stat-item > .stat-value-wrap {
+    font-size: 11px;
+    line-height: 1.4;
+    overflow-wrap: anywhere;
+}
+.review-layout .execution-warning {
+    margin-top: 6px;
+    padding: 6px 10px;
+    font-size: 12px;
+    border: 1px solid var(--vscode-editorWarning-foreground);
+    border-radius: var(--dbmn-radius, 4px);
+    color: var(--vscode-foreground);
+    background: color-mix(in srgb, var(--vscode-editorWarning-foreground) 12%, transparent);
+}
+
+/* #435: the footer's buttons keep one width whatever they say (Import Data, Next, Execute,
+   "Processing…"), and their row keeps room for the most a step shows (Back, Filter Errors,
+   Next), so the step bar beside them never moves as buttons come and go */
+#csvBatchContainer .webview-footer .footer-button-container {
+    width: calc(3 * 112px + 2 * 10px);
+    flex-wrap: nowrap;
+}
+#csvBatchContainer .webview-footer .footer-button-container .btn {
+    width: 112px;
+    padding-left: 6px;
+    padding-right: 6px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: none;
+}
+
+.review-layout .review-sections .stat-item > input,
+.review-layout .review-sections .stat-item > select {
+    width: 90px;
+    max-width: 120px;
+}
+
+.review-layout > .review-requests {
+    min-width: 0;
+}
+
+/* Narrow: one column again, the settings above the samples */
+@media (max-width: 640px) {
+    .review-layout {
+        grid-template-columns: minmax(0, 1fr);
+    }
+    .review-layout > .review-sections {
+        position: static;
+    }
+}
+
+/* The first requests: Raw tab cards (transaction-card.css), spaced like the Raw list */
+.request-preview-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+/* While the samples rebuild for a changed setting: the old cards stay, dimmed, under a strip
+   saying what is being built. renderStep4 clears both when the new plan arrives. */
+.request-preview-list.is-rebuilding > :not(.request-preview-rebuilding) {
+    opacity: 0.4;
+    pointer-events: none;
+    transition: opacity 0.15s ease;
+}
+.request-preview-rebuilding {
+    padding: 8px 12px;
+    border-radius: 4px;
+    border: 1px solid var(--vscode-focusBorder, #0078d4);
+    background: var(--vscode-editorInfo-background, rgba(0, 120, 212, 0.1));
+    color: var(--vscode-foreground);
+    font-size: 12px;
+}
+
+/* GitHub Issue #307: Step 2 "Update Endpoint Template" */
+.update-template-option {
+    margin-top: 12px;
+}
+
+.update-template-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--vscode-foreground);
+    cursor: pointer;
+    user-select: none;
+}
+
+.update-template-toggle input[type="checkbox"] {
+    accent-color: var(--vscode-button-background);
+    cursor: pointer;
+    margin: 0;
+}
+
+.update-template-detail {
+    margin: 4px 0 0 22px;
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--vscode-descriptionForeground);
+}
+
+.update-template-detail code {
+    font-family: var(--vscode-editor-font-family);
+    font-size: 11px;
+    padding: 0 3px;
+    border-radius: 3px;
+    background: var(--vscode-textCodeBlock-background);
+}
+
+/* GitHub Issue #207: Filter choice radio buttons (inline in file details) */
+.filter-choice-container {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 6px 0;
+}
+
+.filter-choice-container:empty {
+    display: none;
+}
+
+.filter-choice-container > label {
+    font-size: 13px;
+    color: var(--vscode-descriptionForeground);
+    white-space: nowrap;
+}
+
+.filter-choice-container.filter-choice-flash {
+    animation: filter-choice-flash 0.5s ease-in-out 2;
+}
+
+@keyframes filter-choice-flash {
+    0%, 100% { box-shadow: none; }
+    50% { box-shadow: 0 0 0 3px rgba(255, 166, 0, 0.5); border-radius: 4px; }
+}
+/* ==========================================================================
+   GitHub Issue #226 v3: Column-mismatch repair editor
+   Full-height inline editor that takes over Step 1. Cool palette: bad rows
+   only flagged via thin left-border + warning-coloured pill. No row fill.
+   ========================================================================= */
+
+/* Hide the upload tabs / dropzone while the repair editor is active. */
+#csvUploadStep.csv-upload-step--repairing > .data-input-container,
+#csvUploadStep.csv-upload-step--repairing > #csvUploadError {
+    display: none;
+}
+
+#csvMismatchRepairContainer {
+    display: flex;
+    flex-direction: column;
+    min-height: 60vh;
+}
+
+#csvMismatchRepairContainer.hidden {
+    display: none;
+}
+
+.mismatch-edit-panel {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    border: 1px solid var(--vscode-widget-border, rgba(127, 127, 127, 0.25));
+    border-radius: 4px;
+    background-color: var(--vscode-editor-background);
+    color: var(--vscode-editor-foreground);
+    font-family: var(--vscode-font-family);
+    font-size: 13px;
+    overflow: hidden;
+}
+
+/* ---- row list ---- */
+.mismatch-edit-rows {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    background-color: var(--vscode-editor-background);
+}
+
+.mismatch-edit-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 1px 12px 1px 0;
+    border-left: 2px solid transparent;
+    line-height: 22px;
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: var(--vscode-editor-font-size, 12px);
+}
+
+.mismatch-edit-row.is-hidden {
+    display: none;
+}
+
+.mismatch-edit-row.is-bad {
+    border-left-color: var(--vscode-editorWarning-foreground, #cca700);
+}
+
+.mismatch-edit-row.is-header {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background-color: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+    border-bottom: 1px solid var(--vscode-widget-border, rgba(127, 127, 127, 0.2));
+    font-weight: 600;
+}
+
+.mismatch-edit-row.is-header .mismatch-edit-row-text {
+    cursor: default;
+}
+
+.mismatch-edit-row-num {
+    flex-shrink: 0;
+    width: 48px;
+    padding: 0 8px;
+    text-align: right;
+    color: var(--vscode-editorLineNumber-foreground, var(--vscode-descriptionForeground));
+    font-variant-numeric: tabular-nums;
+    user-select: none;
+}
+
+.mismatch-edit-row.is-bad .mismatch-edit-row-num {
+    color: var(--vscode-editorWarning-foreground, #cca700);
+}
+
+.mismatch-edit-row-text {
+    flex: 1;
+    min-width: 0;
+    overflow-x: auto;
+    white-space: pre;
+    color: var(--vscode-editor-foreground);
+    cursor: text;
+}
+
+.mismatch-edit-row:not(.is-bad):not(.is-header) .mismatch-edit-row-text {
+    opacity: 0.65;
+}
+
+/* Inline edit input must match the read-only span dimensions exactly so
+ * clicking a row produces zero layout shift. No border, no padding — focus
+ * uses outline (which doesn't take layout space). Same line-height / font /
+ * background as the underlying row.
+ */
+.mismatch-edit-row-input {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    background-color: transparent;
+    color: var(--vscode-input-foreground);
+    border: none;
+    border-radius: 0;
+    font-family: inherit;
+    font-size: inherit;
+    line-height: inherit;
+}
+
+.mismatch-edit-row-input:focus {
+    outline: 1px solid var(--vscode-focusBorder);
+    outline-offset: -1px;
+}
+
+.mismatch-edit-row-pill {
+    flex-shrink: 0;
+    min-width: 56px;
+    padding: 0 8px;
+    border-radius: 8px;
+    font-size: 11px;
+    font-weight: 600;
+    text-align: center;
+    background-color: var(--vscode-badge-background);
+    color: var(--vscode-badge-foreground);
+}
+
+.mismatch-edit-row-pill.is-bad {
+    background-color: var(--vscode-editorWarning-foreground, #cca700);
+    color: var(--vscode-editor-background);
+}
+
+/* ---- view-toggle (in footer) ---- */
+.mismatch-edit-view-btn {
+    padding: 4px 12px;
+    font-size: 12px;
+}
+
+/* ---- footer ---- */
+.mismatch-edit-footer {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 8px 12px;
+    border-top: 1px solid var(--vscode-widget-border, rgba(127, 127, 127, 0.2));
+    background-color: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+}
+
+.mismatch-edit-footer-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.mismatch-edit-cancel,
+.mismatch-edit-continue {
+    padding: 4px 14px;
+    font-size: 13px;
+}
+
+/* =========================================================================
+   GitHub Issue #308: Run Batch ⓘ "How your rows become API requests"
+   (shared/batch-explainer.js). Role colours come from the theme's chart palette.
+   ========================================================================= */
+.batch-explainer {
+    --bx-request: var(--vscode-charts-orange, #d18616);
+    --bx-group: var(--vscode-charts-purple, #b180d7);
+    --bx-item: var(--vscode-charts-blue, #3794ff);
+    --bx-first: var(--vscode-charts-yellow, #cca700);
+    --bx-url: var(--vscode-charts-green, #89d185);
+    --bx-env: var(--vscode-charts-green, #89d185);
+    --bx-generated: var(--vscode-descriptionForeground, #9d9d9d);
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--vscode-foreground);
+}
+
+.bx-section h3 {
+    text-transform: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 0 8px;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.bx-step {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--vscode-button-foreground);
+    background: var(--vscode-button-background);
+}
+
+.bx-lead { margin: 0 0 10px; }
+.batch-explainer code, .bx-url-text {
+    font-family: var(--vscode-editor-font-family);
+    font-size: 12px;
+    padding: 1px 4px;
+    border-radius: 3px;
+    background: var(--vscode-textCodeBlock-background);
+}
+
+.bx-template {
+    margin: 0 0 10px;
+    padding: 12px 14px;
+    max-height: 260px;
+    overflow: auto;
+    border-radius: 6px;
+    font-family: var(--vscode-editor-font-family);
+    font-size: 12px;
+    line-height: 1.6;
+    white-space: pre;
+    background: var(--vscode-editor-background);
+    border: 1px solid var(--vscode-input-border, transparent);
+}
+
+.bx-comment { color: var(--vscode-descriptionForeground); opacity: 0.8; }
+
+.bx-var {
+    color: inherit;
+    padding: 0 3px;
+    border-radius: 3px;
+    border-bottom: 2px solid currentColor;
+    font-family: var(--vscode-editor-font-family);
+}
+.bx-var.role-request   { background: color-mix(in srgb, var(--bx-request) 22%, transparent); border-color: var(--bx-request); }
+.bx-var.role-group     { background: color-mix(in srgb, var(--bx-group) 22%, transparent); border-color: var(--bx-group); }
+.bx-var.role-item,
+.bx-var.role-row       { background: color-mix(in srgb, var(--bx-item) 20%, transparent); border-color: var(--bx-item); }
+.bx-var.role-first     { background: color-mix(in srgb, var(--bx-first) 22%, transparent); border-color: var(--bx-first); }
+.bx-var.role-url       { background: color-mix(in srgb, var(--bx-url) 20%, transparent); border-color: var(--bx-url); }
+.bx-var.role-env       { background: color-mix(in srgb, var(--bx-env) 16%, transparent); border-color: var(--bx-env); }
+.bx-var.role-generated { background: transparent; border-color: var(--bx-generated); border-bottom-style: dashed; color: var(--vscode-descriptionForeground); }
+
+.bx-legend { width: 100%; border-collapse: collapse; font-size: 12px; }
+.bx-legend th {
+    text-align: left;
+    font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: var(--vscode-descriptionForeground);
+    padding: 4px 8px;
+    border-bottom: 1px solid var(--vscode-widget-border, var(--vscode-input-border, #444));
+}
+.bx-legend td { padding: 5px 8px; border-bottom: 1px solid color-mix(in srgb, var(--vscode-widget-border, #444) 50%, transparent); vertical-align: top; }
+.bx-legend td:first-child { white-space: nowrap; }
+.bx-from { color: var(--vscode-descriptionForeground); }
+.bx-missing { color: var(--vscode-errorForeground); }
+.bx-arrow { color: var(--vscode-descriptionForeground); }
+.bx-more { margin: 6px 0 0; color: var(--vscode-descriptionForeground); font-style: italic; }
+
+.bx-req {
+    display: inline-block;
+    min-width: 28px;
+    padding: 0 6px;
+    border-radius: 4px;
+    font-weight: 600;
+    font-size: 11px;
+    text-align: center;
+    color: var(--bx-request);
+    background: color-mix(in srgb, var(--bx-request) 15%, transparent);
+}
+
+.bx-chunks { display: flex; flex-wrap: wrap; gap: 8px; }
+.bx-chunk {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    background: var(--vscode-input-background);
+    border: 1px solid var(--vscode-input-border, transparent);
+}
+.bx-chunk.bx-more { border-style: dashed; background: transparent; }
+
+.bx-urls { display: flex; flex-direction: column; gap: 6px; }
+.bx-url { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.bx-method { font-size: 11px; font-weight: 700; color: var(--bx-url); }
+.bx-url-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
+.bx-url-rows { font-size: 11px; color: var(--vscode-descriptionForeground); white-space: nowrap; }
+
+.bx-tree { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
+.bx-node {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    position: relative;
+}
+.bx-node + .bx-node::before {
+    content: '└';
+    position: absolute;
+    color: var(--vscode-descriptionForeground);
+}
+.bx-depth-1 { padding-left: 22px; }
+.bx-depth-2 { padding-left: 44px; }
+.bx-depth-3 { padding-left: 66px; }
+.bx-depth-1::before { left: 6px; }
+.bx-depth-2::before { left: 28px; }
+.bx-depth-3::before { left: 50px; }
+.bx-node-label { font-weight: 600; }
+.bx-node-detail { color: var(--vscode-descriptionForeground); }
+
+.bx-notes { margin: 0; padding-left: 18px; color: var(--vscode-descriptionForeground); font-size: 12px; }
+.bx-notes li + li { margin-top: 4px; }
+
+/* GitHub Issue #247: a chained Run Batch has no Step 1 — the Console's rows are the input.
+   Step 1 (and its Import Data button) stays hidden while the rows load; Back stops at Step 2. */
+body.chained-run #csvUploadStep,
+body.chained-run[data-csv-step="1"] #csvNextBtn,
+body.chained-run[data-csv-step="2"] #csvBackBtn {
+    display: none !important;
+}
+
+
+/* ==========================================================================
+   Run Batch step bar (batch-stepper.js): Source, Map, Validate, Review, Execute.
+   Current = tinted block, filled accent circle, bold accent label, thick underline.
+   Clickable ahead = plain white ring and label. Waiting = dashed ring, dimmed.
+   ========================================================================== */
+
+.batch-stepper {
+    --step-accent: var(--vscode-textLink-foreground);
+    --step-ok: var(--vscode-testing-iconPassed, #73c991);
+    --step-warn: var(--vscode-editorWarning-foreground, #cca700);
+    /* Dim, never faint: a theme's disabled grey can all but vanish on the progress fill */
+    --step-dim: color-mix(in srgb, var(--vscode-foreground) 62%, transparent);
+    flex: none;
+    container-type: inline-size;
+    padding: 8px 16px 0;
+    border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+/* #435: the step bar sits in the footer, beside Back and Next: it takes the rest of the row,
+   with no rule of its own and a shorter step */
+.webview-footer .batch-stepper {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 0;
+    border-bottom: none;
+}
+
+.webview-footer .batch-step {
+    min-height: 44px;
+    padding: 4px 10px 2px;
+}
+
+.webview-footer .footer-button-container {
+    flex: none;
+}
+
+
+/* Each step's content starts below the bar, with the gap its heading used to give */
+#csvBatchContainer > .csv-step {
+    padding-top: 16px;
+}
+
+.batch-stepper-row {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+/* Every step takes the same share of the bar, whatever its summary says: a step's width never
+   follows its text, so ticking a step off ("Waits for Map" becoming "8 of 8 mapped") moves
+   nothing (#397). A summary longer than its share ends in an ellipsis; the full text is the
+   button's title and aria-label. */
+.batch-step {
+    flex: 1 1 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    min-height: 52px;
+    padding: 6px 12px 4px;
+    background: none;
+    border: 1px solid transparent;
+    border-bottom: 3px solid transparent;
+    border-radius: 6px 6px 0 0;
+    color: var(--vscode-foreground);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    position: relative;
+    z-index: 1;
+}
+
+.batch-step:disabled {
+    cursor: default;
+}
+
+/* #435: the current step's own work (Run Batch reading a file, checking rows), as far as it has
+   got: the running colour as a tint behind the step, as a Console tab fills in the Hub */
+.batch-step-fill {
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: color-mix(in srgb, var(--vscode-charts-blue) 22%, transparent);
+    clip-path: inset(0 calc(100% - var(--step-progress, 0%)) 0 0);
+    transition: clip-path var(--step-progress-time, 0.3s) linear;
+    pointer-events: none;
+    display: none;
+}
+.batch-step.has-progress .batch-step-fill {
+    display: block;
+}
+.batch-step > .batch-step-circle,
+.batch-step > .batch-step-text {
+    position: relative;
+}
+
+.batch-step:not(:disabled):hover {
+    background: var(--vscode-list-hoverBackground);
+}
+
+.batch-step:focus-visible {
+    outline: 1px solid var(--vscode-focusBorder);
+    outline-offset: -1px;
+}
+
+.batch-step-circle {
+    position: relative;
+    flex: none;
+    width: 26px;
+    height: 26px;
+    box-sizing: border-box;
+    border-radius: 50%;
+    border: 2px solid var(--vscode-foreground);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+/* The digit or "!" in a circle: a whole-pixel line box, centred on the circle */
+.batch-step-num {
+    display: block;
+    line-height: 16px;
+}
+
+/* A tick's point sits left of its middle, so centred by its box it reads as left of centre */
+.batch-step-icon.is-check {
+    transform: translateX(1px);
+}
+
+.batch-step-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.batch-step-label {
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.batch-step-summary {
+    min-height: 16px;
+    max-width: 100%;
+    font-size: 12px;
+    /* What a step is doing has to read over the progress fill in every theme: the foreground,
+       a little softer, not the theme's description grey */
+    color: color-mix(in srgb, var(--vscode-foreground) 82%, transparent);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.batch-step-line {
+    position: relative;
+    overflow: hidden;
+    flex: 0 0 24px;
+    min-width: 12px;
+    height: 2px;
+    margin: 0 4px;
+    background: var(--vscode-panel-border);
+}
+
+/* A finished step's line fills towards the next one, left to right */
+.batch-step-line::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--step-ok);
+    transform: scaleX(0);
+    transform-origin: left center;
+}
+.batch-step-line.is-done::after {
+    transform: scaleX(1);
+}
+
+/* Current: unmistakable. One highlight sits behind the current step and slides to the next
+   (batch-stepper.js places it with --x and --w), so a hand-off reads as a move, not a cut. */
+.batch-step-indicator {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: var(--w, 0);
+    transform: translateX(var(--x, 0));
+    box-sizing: border-box;
+    background: color-mix(in srgb, var(--step-accent) 14%, transparent);
+    border: 1px solid color-mix(in srgb, var(--step-accent) 55%, transparent);
+    border-bottom: 3px solid var(--step-accent);
+    border-radius: 6px 6px 0 0;
+    pointer-events: none;
+    z-index: 0;
+}
+
+.batch-step.is-current .batch-step-circle {
+    background: var(--step-accent);
+    border-color: var(--step-accent);
+    color: var(--vscode-editor-background);
+}
+
+.batch-step.is-current .batch-step-label {
+    color: var(--step-accent);
+    font-weight: 700;
+}
+
+.batch-step.is-current .batch-step-summary {
+    color: var(--vscode-foreground);
+}
+
+/* Done: green check, click to go back */
+.batch-step.is-done .batch-step-circle,
+.batch-step.is-skipped .batch-step-circle {
+    border-color: var(--step-ok);
+    color: var(--step-ok);
+}
+
+/* Needs you: a filled amber "!" (unmapped variables, rows to fix), as in the footer */
+.batch-step.has-warn .batch-step-summary { color: var(--step-warn); }
+
+.batch-step.is-needs.has-warn .batch-step-circle,
+.batch-step.is-current.has-warn .batch-step-circle {
+    background: var(--step-warn);
+    border-color: var(--step-warn);
+    color: var(--vscode-editor-background);
+}
+
+/* Not reached, or waiting on an earlier step: dashed and dimmed */
+.batch-step.is-pending .batch-step-circle,
+.batch-step.is-blocked .batch-step-circle {
+    border-style: dashed;
+    border-color: var(--vscode-panel-border);
+    color: var(--step-dim);
+}
+
+.batch-step.is-pending .batch-step-label,
+.batch-step.is-blocked .batch-step-label,
+.batch-step.is-pending .batch-step-summary,
+.batch-step.is-blocked .batch-step-summary,
+.batch-step.is-locked .batch-step-label {
+    color: var(--step-dim);
+}
+
+.batch-step.is-locked .batch-step-circle,
+.batch-step.is-skipped .batch-step-label {
+    border-color: var(--vscode-panel-border);
+    color: var(--vscode-descriptionForeground);
+}
+
+/* The walk forward is checking this step: a ring turns round it */
+.batch-step.is-checking .batch-step-circle::before {
+    content: '';
+    position: absolute;
+    inset: -5px;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    border-top-color: var(--step-accent);
+    border-right-color: var(--step-accent);
+    animation: batch-step-spin 0.9s linear infinite;
+}
+
+@keyframes batch-step-spin {
+    to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .batch-step.is-checking .batch-step-circle::before {
+        animation: none;
+        border-color: var(--step-accent);
+        opacity: 0.6;
+    }
+}
+
+/* One look at every width (decided 2026-11-13, "keep it like this"): small and centred, each step's
+   name over its circle, coloured like it, and no line of text under it. What a step is doing
+   shows on the screen itself, and in the step's hover (its title). Don't bring back a wide
+   layout with summaries: batch-stepper-widths.spec.mjs holds this.
+   Whole-pixel sizes throughout, so the circles never land on half pixels. */
+.batch-stepper { padding: 16px 20px 18px; }
+.batch-stepper-current { display: none; }
+.batch-stepper-row { align-items: flex-end; }
+
+/* Name above circle; the button is at least a 44px target */
+.batch-step {
+    flex: none;
+    flex-direction: column-reverse;
+    align-items: center;
+    gap: 8px;   /* room for the checking ring, which sits 5px outside the circle */
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0;
+    border: none;
+    border-radius: 4px;
+}
+.batch-step-text { align-items: center; }
+.batch-step-summary { display: none; }
+.batch-step-label { font-size: 11px; line-height: 14px; }
+/* The line meets the circles' middle, not the names */
+.batch-step-line { margin: 0 0 12px; }
+
+.batch-step.is-current { background: none; }
+.batch-step.is-current .batch-step-circle {
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--step-accent) 35%, transparent);
+}
+.batch-step.is-done .batch-step-label { color: var(--step-ok); }
+.batch-step.has-warn .batch-step-label { color: var(--step-warn); }
+.batch-step.is-current.has-warn .batch-step-label { color: var(--step-accent); }
+
+
+/* ==========================================================================
+   Run Batch step bar: the hand-off from one step to the next (#397), in beats.
+     0 ms    the finished step's tick pops in and its line fills towards the next step
+     260 ms  the highlight slides to the next step (420 ms)
+     ~480 ms the next step lights up and its check begins
+   Only once the bar is in place (.is-ready), so opening the page animates nothing.
+   ========================================================================== */
+.batch-stepper-row.is-ready .batch-step-indicator {
+    transition: transform 420ms cubic-bezier(0.4, 0, 0.2, 1) 260ms, width 420ms cubic-bezier(0.4, 0, 0.2, 1) 260ms;
+}
+.batch-stepper-row.is-ready .batch-step-line::after {
+    transition: transform 280ms ease-out;
+}
+.batch-stepper-row.is-ready .batch-step-circle {
+    transition: background-color 220ms ease, border-color 220ms ease, color 220ms ease;
+}
+.batch-stepper-row.is-ready .batch-step-label,
+.batch-stepper-row.is-ready .batch-step-summary {
+    transition: color 220ms ease;
+}
+/* The step taking over waits for the highlight to arrive before it lights up */
+.batch-stepper-row.is-ready .batch-step.is-current .batch-step-circle,
+.batch-stepper-row.is-ready .batch-step.is-current .batch-step-label {
+    transition-delay: 480ms;
+}
+.batch-step.just-done .batch-step-circle {
+    animation: batch-step-pop 420ms ease-out;
+}
+@keyframes batch-step-pop {
+    0% { transform: scale(0.7); }
+    60% { transform: scale(1.15); }
+    100% { transform: scale(1); }
+}
+.batch-stepper-row.is-ready .batch-step.is-checking .batch-step-circle::before {
+    animation: batch-step-spin 0.9s linear infinite, batch-step-fade-in 240ms ease-out 480ms both;
+}
+@keyframes batch-step-fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .batch-stepper-row.is-ready .batch-step-indicator,
+    .batch-stepper-row.is-ready .batch-step-line::after,
+    .batch-stepper-row.is-ready .batch-step-circle,
+    .batch-stepper-row.is-ready .batch-step-label,
+    .batch-stepper-row.is-ready .batch-step-summary {
+        transition: none;
+    }
+    .batch-step.just-done .batch-step-circle { animation: none; }
+}
+/* The current step's look is a ring on its circle: no sliding block */
+.batch-step-indicator { display: none; }
+
+/* Compare's step bar is its footer: no Back or Next buttons. The next step lights up when the
+   current one is done and is clicked to go on; the progress panel keeps its place on the right. */
+.webview-footer .batch-stepper {
+    flex: 1;
+    min-width: 0;
+    padding: 4px 0 0;
+    border-bottom: none;
+}
+
+/* On Results the footer folds into the peek strip (core.css, body.is-footer-peek). The stepped
+   layout keeps its footer in the flow, so it lifts out to ride over the grid's bottom edge. */
+body.is-footer-peek:has(#csvBatchContainer) .webview-footer {
+    position: fixed;
+}
+

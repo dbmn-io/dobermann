@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DBMN Account</title>
+    {{SHARED_STYLES}}
+</head>
+<body>
+    <h2>DBMN Account</h2>
+
+    <!-- Signed-out view (GitHub Issue #263: single button → shared sign-in modal) -->
+    <div id="signed-out-view">
+        <div class="section">
+            <h3>Sign in to DBMN</h3>
+            <p class="color-description">Sign in with your email — new email addresses are registered automatically. 30 days of unlimited access on signup.</p>
+            <div class="flex gap-8 mt-10">
+                <button id="sign-in-btn" class="btn btn-primary" onclick="handleSignIn()">Sign in to DBMN</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Signed-in view -->
+    <div id="signed-in-view" class="hidden">
+
+        <div id="account-expired-banner" class="footer-notification notification-warning hidden">Your DBMN session has expired. Click <strong>Sign In</strong> below to refresh it.</div>
+
+        <!-- Account Section -->
+        <div class="execution-section">
+            <h3>Account</h3>
+            <div class="table-stats">
+                <div class="stat-item" id="account-name-stat">
+                    <span class="stat-label">Name</span>
+                    <span id="account-name"></span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Email</span>
+                    <span id="account-email"></span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Legacy DBMN Migration Section -->
+        <div id="flexiontech-migration-section" class="execution-section hidden">
+            <h3>Import from Legacy DBMN</h3>
+
+            <!-- v0.0.51+: one-click automatic import -->
+            <div id="flexiontech-auto" class="hidden">
+                <p class="color-description">
+                    We detected a legacy DBMN install. Import your environments and endpoints with one click.
+                </p>
+                <div id="migration-result" class="footer-notification notification-info hidden"></div>
+                <div id="migration-buttons" class="flex gap-8 mt-10">
+                    <button id="migration-import-btn" class="btn btn-primary" onclick="handleFlexionTechImport()">
+                        <span id="migration-btn-text">Import Environments & Endpoints</span>
+                        <span id="migration-btn-spinner" class="btn-spinner hidden"></span>
+                    </button>
+                    <button class="btn btn-secondary" onclick="handleDismissFlexionTech()">No Thanks</button>
+                </div>
+                <p id="migration-post-import" class="color-description mt-10 hidden">
+                    Please verify your data imported correctly, then uninstall the legacy extension to avoid confusion.
+                </p>
+            </div>
+
+            <!-- Older versions: manual export/import instructions -->
+            <div id="flexiontech-manual" class="hidden">
+                <p class="color-description">
+                    We detected a legacy DBMN install (<span id="flexiontech-version-label"></span>). To bring your data across:
+                </p>
+                <ol class="color-description" style="margin: 8px 0 8px 20px; line-height: 1.8;">
+                    <li>In the legacy extension, open Command Palette and run <strong>Active8: Export</strong></li>
+                    <li>Save the <code>.dbmn.zip</code> file</li>
+                    <li>Click the button below to open Import/Export and import the file</li>
+                </ol>
+                <div class="flex gap-8 mt-10">
+                    <button class="btn btn-secondary" onclick="handleOpenImportExport()">Open Import / Export</button>
+                    <button class="btn btn-secondary" onclick="handleDismissFlexionTech()">No Thanks</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Weekly Usage Section -->
+        <div class="execution-section">
+            <h3>Weekly Usage <span id="usage-stats-spinner" class="ac-header-spinner hidden" aria-hidden="true"></span></h3>
+            <p id="usage-week-label" class="color-description font-size-12" style="margin-bottom: 10px;"></p>
+            <p id="usage-stats-loading" class="color-description ac-stats-placeholder hidden"></p>
+            <div id="usage-stats-grid" class="table-stats hidden">
+                <div class="stat-item">
+                    <span class="stat-label">API Calls</span>
+                    <span id="usage-api-calls">0</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Batches</span>
+                    <span id="usage-batch-runs">0</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Rows Processed</span>
+                    <span id="usage-rows-processed">0</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Run Time</span>
+                    <span id="usage-run-time">0s</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Total Usage Section -->
+        <div class="execution-section">
+            <h3>Total Usage <span id="total-stats-spinner" class="ac-header-spinner hidden" aria-hidden="true"></span></h3>
+            <p id="total-stats-loading" class="color-description ac-stats-placeholder hidden"></p>
+            <div id="total-stats-grid" class="table-stats hidden">
+                <div class="stat-item">
+                    <span class="stat-label">API Calls</span>
+                    <span id="total-api-calls">0</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Batches</span>
+                    <span id="total-batch-runs">0</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Rows Processed</span>
+                    <span id="total-rows-processed">0</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Run Time</span>
+                    <span id="total-run-time">0s</span>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Sticky Footer with Action Buttons -->
+    <div class="webview-footer">
+        <div class="footer-content">
+            <div class="footer-button-container">
+                <button id="footer-sign-out-btn" class="btn btn-secondary hidden" onclick="handleSignOut()">Sign Out</button>
+                <button id="footer-refresh-session-btn" class="btn btn-primary hidden" onclick="handleRefreshSession()">Sign In</button>
+            </div>
+            <div id="footerNotification" class="footer-notification hidden">
+                <span class="notification-icon"></span>
+                <span class="notification-message"></span>
+                <button class="notification-dismiss" onclick="clearFooterNotification()">&times;</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- DbmnModal — auto-bridge listens for ext-host modal requests (Issue #263) -->
+    <script src="{{ROW_PASTE_SCRIPT}}"></script>
+    <script src="{{DBMN_MODAL_SCRIPT}}"></script>
+    <script src="{{DBMN_TOAST_SCRIPT}}"></script>
+    <script src="{{DBMN_CLIPBOARD_SCRIPT}}"></script>
+    <script src="{{ACCOUNT_SCRIPT}}"></script>
+</body>
+</html>

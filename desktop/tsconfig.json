@@ -1,0 +1,15 @@
+{
+  "//": "The desktop app's main process and preload, with the core they import (npm --prefix desktop run build). rootDir is the repo, so core compiles beside them into desktop/out.",
+  "compilerOptions": {
+    "module": "commonjs",
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "outDir": "out",
+    "rootDir": "..",
+    "strict": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "sourceMap": true
+  },
+  "include": ["src"]
+}

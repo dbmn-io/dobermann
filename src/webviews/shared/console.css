@@ -1,0 +1,3364 @@
+/* ===== REPORT GENERATION STYLES ===== */
+/* Styles specific to report generation features - tabbed interface, arrays, nested objects, modals */
+
+/* ===== STATUS PILL STYLES ===== */
+.status-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    line-height: 1;
+    white-space: nowrap;
+    vertical-align: middle;
+}
+
+/* Status pill color variants - inverted colors */
+.status-pill-success {
+    background-color: var(--vscode-terminal-ansiGreen);
+    color: var(--vscode-editor-background);
+}
+
+.status-pill-error {
+    background-color: var(--vscode-errorForeground);
+    color: var(--vscode-editor-background);
+}
+
+.status-pill-stopped {
+    background-color: var(--vscode-errorForeground);
+    /* VS Code error red - same as error */
+    color: var(--vscode-editor-background);
+}
+
+.status-pill-running {
+    background-color: var(--vscode-charts-blue);
+    color: var(--vscode-editor-background);
+}
+
+.status-pill-partial {
+    background-color: var(--vscode-editorWarning-foreground);
+    color: var(--vscode-editor-background);
+}
+
+.status-pill-cancelled {
+    background-color: var(--vscode-editorWarning-foreground);
+    /* VS Code warning orange */
+    color: var(--vscode-editor-background);
+}
+
+.status-pill-paused {
+    background-color: var(--vscode-charts-yellow);
+    /* VS Code chart yellow */
+    color: var(--vscode-editor-background);
+}
+
+.status-pill-preparing {
+    background-color: var(--vscode-progressBar-background);
+    /* VS Code progress bar purple */
+    color: var(--vscode-editor-background);
+}
+
+.status-pill-default {
+    background-color: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+}
+
+/* GitHub Issue #176: Subtle lineage badge for copied/reprocessed batches */
+.lineage-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 8px;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    line-height: 1;
+    white-space: nowrap;
+    vertical-align: middle;
+    margin-left: 6px;
+    background-color: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-descriptionForeground);
+    border: 1px solid var(--vscode-widget-border, transparent);
+}
+
+/* ===== TABBED INTERFACE STYLES ===== */
+/* Generic tab styles (.webview-tabs, .report-tabs, .tab-item, etc.) are in shared/tabs.css */
+
+/* Console-specific tab count badges */
+.tab-count {
+    background: var(--vscode-badge-background);
+    color: var(--vscode-badge-foreground);
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: bold;
+    min-width: 20px;
+    text-align: center;
+}
+
+/* Tab-specific count colors */
+.tab-count[data-tab="input"] {
+    background: var(--vscode-charts-blue);
+    color: white;
+}
+
+.tab-count[data-tab="success"] {
+    background: var(--vscode-charts-green);
+    color: white;
+}
+
+.tab-count[data-tab="errors"] {
+    background: var(--vscode-charts-red);
+    color: white;
+}
+
+.tab-count[data-tab="raw"] {
+    background: var(--vscode-charts-purple);
+    color: white;
+}
+
+/* Tab count increment animation */
+.count-increment {
+    animation: countPulse 400ms ease-out;
+}
+
+@keyframes countPulse {
+    0% {
+        transform: scale(1);
+    }
+
+    50% {
+        transform: scale(1.3);
+        filter: brightness(1.3);
+    }
+
+    100% {
+        transform: scale(1);
+    }
+}
+
+/* Report Toolbar — issue #262: tighter vertical padding, smaller inter-control gap */
+.report-toolbar {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    padding: 6px 16px;
+    background: var(--vscode-editor-background);
+    border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+/* GitHub Issue #229: View Selector (split button: path dropdown + gear) */
+.view-selector {
+    position: relative;
+    flex: 0 0 auto;
+    display: flex;
+}
+
+.view-selector-split {
+    display: flex;
+    align-items: stretch;
+}
+
+.view-path-button {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    background: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+    border: 1px solid var(--vscode-button-border);
+    border-radius: 4px 0 0 4px;
+    border-right: none;
+    cursor: pointer;
+    font-size: 13px;
+    font-family: var(--vscode-font-family);
+    white-space: nowrap;
+    transition: all 0.2s ease;
+    min-height: 32px;
+}
+
+.view-path-button:hover {
+    background: var(--vscode-button-secondaryHoverBackground);
+}
+
+.view-gear-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 8px;
+    background: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+    border: 1px solid var(--vscode-button-border);
+    border-radius: 0 4px 4px 0;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    min-height: 32px;
+}
+
+.view-gear-button:hover {
+    background: var(--vscode-button-secondaryHoverBackground);
+}
+
+/* #439: fixed, not absolute. The results area clips what overflows it, so a long list hung
+ * inside it ran under the footer and its last views couldn't be reached. Placed under its
+ * button when it opens (console-page.js placeViewsDropdown), above the footer, scrolling
+ * within the window. Over the footer, too: the footer is z-index 1000 and comes later in the page,
+ * so at the same level it was drawn over the list's bottom when the window was short (zoomed in). */
+.root-dropdown {
+    position: fixed;
+    top: var(--views-dropdown-top, 0px);
+    left: var(--views-dropdown-left, 0px);
+    min-width: 280px;
+    width: max-content;
+    max-width: calc(100vw - var(--views-dropdown-left, 0px) - 8px);
+    max-height: calc(100vh - var(--views-dropdown-top, 0px) - 8px);
+    overflow-y: auto;
+    background: var(--vscode-dropdown-background);
+    border: 1px solid var(--vscode-dropdown-border);
+    border-radius: 4px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    z-index: 1001;
+}
+
+/* Edit button inside a view row — replaces the small gear icon.
+ * Keeps a constant appearance regardless of row hover so it's obvious the
+ * button is a distinct target; only changes on its own :hover. */
+.view-row-edit {
+    background: transparent;
+    border: 1px solid var(--vscode-button-border, var(--vscode-panel-border));
+    color: var(--vscode-foreground);
+    font-size: 12px;
+    line-height: 1;
+    padding: 8px 14px;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.view-row-edit:hover {
+    background: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+    border-color: var(--vscode-button-secondaryBackground);
+}
+
+.root-path-list {
+    padding: 8px 0;
+}
+
+.root-path-item {
+    padding: 10px 16px;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+    border-left: 3px solid transparent;
+}
+
+.root-path-item:hover {
+    background: var(--vscode-list-hoverBackground);
+}
+
+.root-path-item.current {
+    background: var(--vscode-list-activeSelectionBackground);
+    color: var(--vscode-list-activeSelectionForeground);
+    border-left-color: var(--vscode-textLink-foreground);
+}
+
+.root-path-item.recommended::after {
+    content: ' ⭐';
+    color: var(--vscode-charts-yellow);
+    font-size: 12px;
+}
+
+.path-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.path-name {
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--vscode-foreground);
+}
+
+.path-description {
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+    opacity: 0.8;
+    /* Views dropdown: keep row basis + col count on one line regardless of
+     * dropdown width. Deep paths are already shortened to …last.two; this
+     * clips on very narrow containers instead of wrapping. */
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Search Container */
+.search-container {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
+}
+
+/* Issue #304: Input tab — rows by the status of the transaction that sent them */
+.input-status-filter {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+    font-size: 13px;
+    color: var(--vscode-foreground);
+}
+
+.input-status-filter.hidden {
+    display: none;
+}
+
+.input-status-filter select {
+    padding: 4px 8px;
+    font-size: 13px;
+    background: var(--vscode-input-background);
+    color: var(--vscode-input-foreground);
+    border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
+    border-radius: 4px;
+}
+
+/* GitHub Issue #261: Search input with syntax-highlighting overlay.
+   The mirror <div> sits behind the <input>, rendering coloured spans;
+   the input has transparent text so the mirror shows through. */
+.search-input-wrapper {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+}
+
+.search-input {
+    width: 100%;
+    box-sizing: border-box;
+    /* Left padding leaves room for .search-icon-inset (#262). */
+    padding: 6px 12px 6px 30px;
+    border: 1px solid var(--vscode-input-border);
+    background: transparent;
+    color: transparent;
+    caret-color: var(--vscode-input-foreground);
+    border-radius: 4px;
+    font-size: 13px;
+    font-family: var(--vscode-font-family);
+    position: relative;
+    z-index: 1;
+}
+
+/* Issue #262: Lucide search glyph sits inside the input box on the left. */
+.search-icon-inset {
+    position: absolute;
+    left: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--vscode-input-placeholderForeground, var(--vscode-descriptionForeground));
+    opacity: 0.75;
+    pointer-events: none;
+    z-index: 2;
+}
+
+.search-input:focus {
+    outline: none;
+    border-color: var(--vscode-focusBorder);
+}
+
+/* When the input is empty the placeholder needs to render in the input layer
+   itself — the mirror is empty at that point and would show nothing. */
+.search-input:placeholder-shown {
+    color: var(--vscode-input-foreground);
+}
+
+.search-input-mirror {
+    position: absolute;
+    inset: 0;
+    /* Drop vertical padding so flex centering aligns with the input's intrinsic
+       vertical text centring; left padding matches the input so highlight glyphs
+       land at the same x as the typed text (and clear the inset search icon). */
+    padding: 0 12px 0 30px;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    font-size: 13px;
+    font-family: var(--vscode-font-family);
+    background: var(--vscode-input-background);
+    color: var(--vscode-input-foreground);
+    white-space: pre;
+    overflow: hidden;
+    pointer-events: none;
+    z-index: 0;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    line-height: 1.4;
+}
+
+.search-input-mirror .search-tok {
+    display: inline;
+    white-space: pre;
+}
+
+/* Distinct, theme-distinct hex fallbacks so highlighting is visible even when
+   the VS Code variable resolves to a colour close to the foreground. Colour only, never
+   bold: the coloured copy must be exactly as wide as the text typed over it, or the caret
+   drifts away from the letters as the line grows. */
+
+.search-tok-op-and  { color: var(--vscode-charts-blue,   #569cd6); }
+.search-tok-op-not  { color: var(--vscode-charts-red,    #f48771); }
+.search-tok-quoted  { color: var(--vscode-charts-yellow, #dcdcaa); }
+.search-tok-wildcard{ color: var(--vscode-charts-green,  #4ec9b0); }
+.search-tok-term-1  { color: var(--vscode-input-foreground); }
+.search-tok-term-2  { color: var(--vscode-input-foreground); }
+
+/* A column term: @column in the link colour, its operator orange, its value as quoted text */
+.search-tok-col-name  { color: var(--vscode-textLink-foreground, #3794ff); }
+.search-tok-col-op    { color: var(--vscode-charts-orange, #d18616); }
+.search-tok-col-value { color: var(--vscode-charts-yellow, #dcdcaa); }
+
+/* `@` in a find box: the columns, then the operators, in a list under it */
+.column-suggest {
+    position: absolute;
+    top: calc(100% + 2px);
+    left: 0;
+    min-width: 220px;
+    max-width: 360px;
+    max-height: 280px;
+    overflow-y: auto;
+    z-index: 30;
+    padding: 4px 0;
+    background: var(--vscode-editorWidget-background, var(--vscode-input-background));
+    border: 1px solid var(--vscode-editorWidget-border, var(--vscode-panel-border));
+    border-radius: 4px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+}
+.column-suggest-option {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 4px 10px;
+    cursor: pointer;
+    font-size: 12px;
+}
+.column-suggest-option.is-active,
+.column-suggest-option:hover {
+    background: var(--vscode-list-activeSelectionBackground, var(--vscode-list-hoverBackground));
+    color: var(--vscode-list-activeSelectionForeground, inherit);
+}
+.column-suggest-text {
+    font-family: var(--vscode-editor-font-family, monospace);
+}
+.column-suggest-label {
+    color: var(--vscode-descriptionForeground);
+}
+
+/* Comma renders as an inverted chip so it punches the OR boundary visually
+   without depending on a single hue. */
+.search-tok-op-or {
+    background: var(--vscode-input-foreground);
+    color: var(--vscode-input-background);
+    border-radius: 2px;
+}
+
+/* Chip backgrounds — each OR group gets a subtle tint so adjacent groups read
+   as separate chunks. The comma between groups is tagged orGroup=-1 and keeps
+   the default mirror background, acting as the visible separator. */
+.search-tok-grp-0   { background: rgba(86, 156, 214, 0.10); }
+.search-tok-grp-1   { background: rgba(206, 145, 120, 0.12); }
+
+.search-results {
+    font-size: 12px;
+    color: var(--vscode-descriptionForeground);
+    white-space: nowrap;
+}
+
+/* Toolbar Actions */
+.toolbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 0 0 auto;
+}
+
+.export-button {
+    padding: 8px 14px;
+    border: 1px solid var(--vscode-button-border);
+    background: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    font-family: var(--vscode-font-family);
+    transition: all 0.2s ease;
+}
+
+.export-button:hover {
+    background: var(--vscode-button-secondaryHoverBackground);
+}
+
+/* GitHub Issue #152: Disabled export button during running */
+.export-button.disabled,
+.export-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+/* Chain stays hoverable while disabled so its tooltip can say why
+ * (Can't chain "Paused"). console-chain.js sets the title. */
+#chain-btn:disabled {
+    pointer-events: auto;
+}
+
+/* Table Container */
+.table-container {
+    flex: 1;
+    overflow: auto;
+    margin: 0 20px 20px 20px;
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 4px;
+    background: var(--vscode-editor-background);
+}
+
+.data-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-family: var(--vscode-editor-font-family);
+    font-size: 12px;
+}
+
+.data-table th {
+    background: var(--vscode-list-headerBackground);
+    color: var(--vscode-list-headerForeground);
+    font-weight: bold;
+    padding: 6px 8px;
+    text-align: left;
+    border-bottom: 2px solid var(--vscode-panel-border);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+.data-table th:not(:last-child) {
+    border-right: 1px solid var(--vscode-panel-border);
+}
+
+.sortable-header {
+    cursor: pointer;
+    user-select: none;
+}
+
+.sortable-header:hover {
+    background: var(--vscode-list-hoverBackground);
+}
+
+.data-table td {
+    padding: 8px;
+    border-bottom: 1px solid var(--vscode-panel-border);
+    vertical-align: top;
+}
+
+/* Apply max-width ONLY to cells without nested content */
+.data-table td:not(:has(.expandable-array, .nested-data-table)) {
+    max-width: 300px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Cells with nested content can expand freely */
+.data-table td:has(.expandable-array, .nested-data-table) {
+    max-width: none;
+    overflow: visible;
+    white-space: normal;
+}
+
+.data-table td:not(:last-child) {
+    border-right: 1px solid var(--vscode-panel-border);
+}
+
+.data-row {
+    border-bottom: 2px solid var(--vscode-panel-border);
+}
+
+.data-row:hover {
+    background: var(--vscode-list-activeSelectionBackground);
+    color: var(--vscode-list-activeSelectionForeground);
+}
+
+/* Cell type styles */
+.numeric-cell {
+    text-align: right;
+    font-family: var(--vscode-editor-font-family, monospace);
+}
+
+.date-cell {
+    text-align: center;
+    font-family: var(--vscode-editor-font-family, monospace);
+}
+
+.boolean-cell {
+    text-align: center;
+}
+
+.text-cell {
+    text-align: left;
+}
+
+/* Issue #250: warning glyph next to view names (active label + dropdown rows)
+   when some responses have no rows at that view's rowBasis. Uses cursor:help
+   so the tooltip behaviour is consistent across both placements. */
+.view-name-warning {
+    cursor: help;
+}
+
+/* Report Footer */
+.report-footer {
+    flex-shrink: 0;
+    /* Never shrink */
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 20px;
+    border-top: 1px solid var(--vscode-panel-border);
+    background: var(--vscode-editor-background);
+    font-size: 12px;
+    color: var(--vscode-descriptionForeground);
+}
+
+.footer-stats,
+.footer-performance {
+    display: flex;
+    gap: 10px;
+}
+
+
+/* Export dropdown — console-specific overrides (base styles in core.css) */
+.export-dropdown {
+    top: calc(100% + 4px);
+}
+
+
+/* Array Display Strategies */
+.array-display {
+    position: relative;
+    margin: 4px 0;
+}
+
+.array-concatenated {
+    display: inline;
+    font-family: var(--vscode-editor-font-family, monospace);
+    background-color: var(--vscode-textCodeBlock-background);
+    padding: 2px 6px;
+    border-radius: 3px;
+    border: 1px solid var(--vscode-panel-border);
+    font-size: 12px;
+    color: var(--vscode-editor-foreground);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 300px;
+}
+
+.array-concatenated.long-text {
+    max-width: 500px;
+}
+
+.array-inline {
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 4px;
+    background-color: var(--vscode-editor-background);
+    margin: 8px 0;
+}
+
+.array-inline-header {
+    padding: 8px 12px;
+    background-color: var(--vscode-textCodeBlock-background);
+    border-bottom: 1px solid var(--vscode-panel-border);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    transition: background-color 0.2s ease;
+}
+
+.array-inline-header:hover {
+    background-color: var(--vscode-list-hoverBackground);
+}
+
+.array-inline-title {
+    font-weight: 600;
+    color: var(--vscode-foreground);
+    font-size: 13px;
+}
+
+.array-inline-count {
+    color: var(--vscode-badge-foreground);
+    font-size: 11px;
+    background-color: var(--vscode-badge-background);
+    padding: 2px 6px;
+    border-radius: 10px;
+    font-weight: bold;
+}
+
+.array-inline-toggle {
+    color: var(--vscode-icon-foreground);
+    font-size: 12px;
+    transition: transform 0.2s ease;
+}
+
+.array-inline-toggle.expanded {
+    transform: rotate(90deg);
+}
+
+.array-inline-content {
+    padding: 12px;
+    border-top: 1px solid var(--vscode-panel-border);
+    background-color: var(--vscode-editor-background);
+}
+
+.array-inline-content.collapsed {
+    display: none;
+}
+
+.array-inline-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--vscode-editor-font-family);
+    font-size: 12px;
+    margin: 0;
+}
+
+.array-inline-table th {
+    background-color: var(--vscode-list-headerBackground);
+    color: var(--vscode-list-headerForeground);
+    font-weight: bold;
+    padding: 8px;
+    text-align: left;
+    border: 1px solid var(--vscode-panel-border);
+}
+
+.array-inline-table td {
+    padding: 6px 8px;
+    border: 1px solid var(--vscode-panel-border);
+    vertical-align: top;
+    background-color: var(--vscode-editor-background);
+    color: var(--vscode-editor-foreground);
+}
+
+
+
+.array-modal {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    background-color: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+    border: 1px solid var(--vscode-button-border);
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 500;
+    transition: all 0.2s ease;
+    user-select: none;
+    text-decoration: none;
+}
+
+.array-modal:hover {
+    background-color: var(--vscode-button-secondaryHoverBackground);
+    border-color: var(--vscode-focusBorder);
+    transform: translateY(-1px);
+}
+
+.array-modal:active {
+    transform: translateY(0);
+}
+
+.array-modal-icon {
+    font-size: 14px;
+    opacity: 0.8;
+}
+
+.array-modal-text {
+    font-weight: 600;
+}
+
+.array-modal-count {
+    background-color: var(--vscode-badge-background);
+    color: var(--vscode-badge-foreground);
+    padding: 1px 5px;
+    border-radius: 8px;
+    font-size: 10px;
+    font-weight: bold;
+    margin-left: 2px;
+}
+
+/* Expandable Row Renderer */
+.expandable-row {
+    margin: 8px 0;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.expandable-row-header {
+    user-select: none;
+    border-bottom: 1px solid transparent;
+}
+
+.expandable-row-header.expanded {
+    border-bottom-color: var(--vscode-panel-border);
+}
+
+.expandable-row-toggle {
+    transition: transform 0.2s ease;
+    color: var(--vscode-icon-foreground);
+    width: 12px;
+    text-align: center;
+}
+
+.expandable-row-toggle.expanded {
+    transform: rotate(90deg);
+}
+
+.expandable-row-title {
+    color: var(--vscode-foreground);
+}
+
+.property-count {
+    font-weight: 500;
+}
+
+.expandable-indicators {
+    opacity: 0.8;
+}
+
+.indicator-badge {
+    font-family: var(--vscode-editor-font-family, monospace);
+}
+
+.expandable-row-content {
+    border-top: none;
+    animation: slideDown 0.2s ease-out;
+}
+
+.expandable-row-content.collapsed {
+    display: none;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        max-height: 0;
+        padding: 0;
+    }
+
+    to {
+        opacity: 1;
+        max-height: 500px;
+        padding: 12px;
+    }
+}
+
+.property-list {
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 12px;
+    line-height: 1.4;
+}
+
+.property-item {
+    margin: 2px 0;
+    border-radius: 3px;
+    position: relative;
+}
+
+.property-item.property-expandable:hover {
+    background-color: var(--vscode-list-hoverBackground);
+}
+
+.property-header {
+    min-height: 20px;
+}
+
+.property-toggle {
+    color: var(--vscode-icon-foreground);
+    width: 10px;
+    text-align: center;
+    transition: transform 0.2s ease;
+}
+
+.property-toggle.expanded {
+    transform: rotate(90deg);
+}
+
+.property-bullet {
+    color: var(--vscode-descriptionForeground);
+    width: 10px;
+    text-align: center;
+}
+
+.property-key {
+    color: var(--vscode-debugTokenExpression-name, #9cdcfe);
+    min-width: 100px;
+}
+
+.property-value {
+    color: var(--vscode-editor-foreground);
+    word-break: break-word;
+}
+
+.property-children {
+    animation: slideDown 0.15s ease-out;
+}
+
+.property-children.collapsed {
+    display: none;
+}
+
+/* Property type-specific styling */
+.property-type-primitive .property-key {
+    color: var(--vscode-debugTokenExpression-name, #9cdcfe);
+}
+
+.property-type-primitive .property-value {
+    color: var(--vscode-debugTokenExpression-value, #ce9178);
+}
+
+.property-type-object .property-key {
+    color: var(--vscode-debugTokenExpression-name, #9cdcfe);
+    font-weight: 600;
+}
+
+.property-type-object .property-value {
+    color: var(--vscode-descriptionForeground);
+    font-style: italic;
+}
+
+.property-type-array .property-key {
+    color: var(--vscode-debugTokenExpression-name, #9cdcfe);
+    font-weight: 600;
+}
+
+.property-type-array .property-value {
+    color: var(--vscode-textLink-foreground);
+}
+
+.type-hint {
+    color: var(--vscode-descriptionForeground);
+    font-weight: normal;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.property-type-primitive .type-hint {
+    background-color: var(--vscode-charts-blue);
+    color: white;
+}
+
+.property-type-object .type-hint {
+    background-color: var(--vscode-charts-orange);
+    color: white;
+}
+
+.property-type-array .type-hint {
+    background-color: var(--vscode-charts-green);
+    color: white;
+}
+
+/* Progressive Disclosure Navigation */
+.disclosure-navigation {
+    border: 1px solid var(--vscode-panel-border);
+    background-color: var(--vscode-textCodeBlock-background);
+}
+
+.disclosure-stats .stat-badge {
+    background-color: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+    font-weight: 500;
+}
+
+.disclosure-levels {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.level-toggle {
+    transition: all 0.2s ease;
+    border: 1px solid var(--vscode-button-border);
+    font-weight: 500;
+    min-width: auto;
+    padding: 6px 12px;
+}
+
+.level-toggle:hover {
+    background-color: var(--vscode-button-secondaryHoverBackground);
+    transform: translateY(-1px);
+}
+
+.level-toggle.active {
+    background-color: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+    border-color: var(--vscode-button-background);
+}
+
+.disclosure-recommendations {
+    margin-top: 12px;
+}
+
+.recommendations-toggle {
+    color: var(--vscode-textLink-foreground);
+    transition: color 0.2s ease;
+}
+
+.recommendations-toggle:hover {
+    color: var(--vscode-textLink-activeForeground);
+}
+
+.recommendations-content {
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.recommendation-item {
+    border-left: 3px solid;
+    margin-bottom: 8px;
+    padding: 8px;
+    background-color: var(--vscode-editor-background);
+    border-radius: 3px;
+}
+
+.recommendation-item.priority-high {
+    border-left-color: var(--vscode-errorForeground);
+}
+
+.recommendation-item.priority-medium {
+    border-left-color: var(--vscode-editorWarning-foreground);
+}
+
+.recommendation-item.priority-low {
+    border-left-color: var(--vscode-textLink-foreground);
+}
+
+/* Report Modal Styles */
+.modal-size-small .modal-content {
+    width: 400px;
+    max-width: 90vw;
+    height: auto;
+    max-height: 60vh;
+}
+
+.modal-size-medium .modal-content {
+    width: 600px;
+    max-width: 90vw;
+    height: auto;
+    max-height: 70vh;
+}
+
+.modal-size-large .modal-content {
+    width: 800px;
+    max-width: 90vw;
+    height: auto;
+    max-height: 80vh;
+}
+
+.modal-size-fullscreen .modal-content {
+    width: 95vw;
+    height: 90vh;
+    max-width: none;
+    max-height: none;
+}
+
+.modal-toolbar {
+    border-bottom: 1px solid var(--vscode-panel-border);
+    background-color: var(--vscode-textCodeBlock-background);
+}
+
+.search-container input:focus {
+    outline: none;
+    border-color: var(--vscode-focusBorder);
+    box-shadow: 0 0 0 1px var(--vscode-focusBorder);
+}
+
+.modal-stats {
+    color: var(--vscode-descriptionForeground);
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+.export-controls .btn {
+    min-width: 60px;
+}
+
+.modal-body table {
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 12px;
+    background-color: var(--vscode-editor-background);
+    border: none;
+}
+
+.modal-body table th {
+    background-color: var(--vscode-list-headerBackground);
+    color: var(--vscode-list-headerForeground);
+    font-weight: bold;
+    padding: 8px;
+    text-align: left;
+    border: 1px solid var(--vscode-panel-border);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+.modal-body table td {
+    padding: 6px 8px;
+    border: 1px solid var(--vscode-panel-border);
+    vertical-align: top;
+    background-color: var(--vscode-editor-background);
+    color: var(--vscode-editor-foreground);
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+
+
+.hierarchical-content {
+    padding: 16px;
+    max-height: 100%;
+    overflow-y: auto;
+}
+
+.hierarchical-item {
+    border: 1px solid var(--vscode-panel-border);
+    background-color: var(--vscode-editor-background);
+}
+
+.hierarchical-item .item-header {
+    border-bottom: 1px solid var(--vscode-panel-border);
+    padding-bottom: 8px;
+    margin-bottom: 8px;
+}
+
+.hierarchical-item .item-header h4 {
+    color: var(--vscode-foreground);
+    margin: 0;
+}
+
+.hierarchical-item .property-row {
+    margin: 2px 0;
+    min-height: 20px;
+    align-items: flex-start;
+}
+
+.hierarchical-item .property-key {
+    color: var(--vscode-debugTokenExpression-name, #9cdcfe);
+    min-width: 120px;
+    flex-shrink: 0;
+}
+
+.hierarchical-item .property-value {
+    color: var(--vscode-debugTokenExpression-value, #ce9178);
+    word-break: break-word;
+    flex: 1;
+}
+
+.hierarchical-item .nested-object {
+    flex: 1;
+    margin-left: 8px;
+    padding-left: 8px;
+    border-left: 1px solid var(--vscode-panel-border);
+}
+
+.json-content {
+    background-color: var(--vscode-editor-background);
+    color: var(--vscode-editor-foreground);
+    border: 1px solid var(--vscode-panel-border);
+    max-height: 100%;
+    margin: 16px;
+    font-size: 12px;
+    line-height: 1.4;
+}
+
+.pagination-controls {
+    padding: 12px 16px;
+    border-top: 1px solid var(--vscode-panel-border);
+    background-color: var(--vscode-editor-background);
+}
+
+.page-info {
+    color: var(--vscode-descriptionForeground);
+}
+
+.page-navigation .btn {
+    min-width: 80px;
+}
+
+.page-navigation .btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+.modal-body input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    cursor: pointer;
+}
+
+.modal-body input[type="checkbox"]:checked {
+    accent-color: var(--vscode-button-background);
+}
+
+/* Animation for modal content transitions */
+.modal-content {
+    animation: modalSlideIn 0.3s ease-out;
+}
+
+@keyframes modalSlideIn {
+    from {
+        opacity: 0;
+        transform: scale(0.9) translateY(-50px);
+    }
+
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+/* ===== NESTED DATA RENDERING STYLES ===== */
+/* Styles for the new intelligent array and object rendering */
+
+/* Array Cell Styles */
+.array-cell {
+    position: relative;
+}
+
+.array-preview {
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 12px;
+    color: var(--vscode-editor-foreground);
+    word-break: break-word;
+}
+
+.array-count {
+    color: var(--vscode-descriptionForeground);
+    font-size: 11px;
+    font-weight: 500;
+    margin-left: 4px;
+}
+
+/* Expandable Array Styles */
+.expandable-array {
+    position: relative;
+}
+
+/* Issue #238: inline-flow toggle — zero everything that contributes to
+   height. Pure link-style text so a row with the toggle is the same
+   height as a row with just text. */
+.expand-toggle {
+    background: transparent;
+    border: none;
+    color: var(--vscode-textLink-foreground);
+    cursor: pointer;
+    padding: 0;
+    margin: 0;
+    border-radius: 0;
+    font-size: 11px;
+    line-height: 1.4;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    transition: color 0.15s ease;
+}
+
+.expand-toggle:hover {
+    background: transparent;
+    color: var(--vscode-textLink-activeForeground);
+    text-decoration: underline;
+}
+
+.expand-icon {
+    font-size: 10px;
+    transition: transform 0.2s ease;
+    width: 12px;
+    display: inline-block;
+    text-align: center;
+}
+
+.expand-icon.expanded {
+    transform: rotate(90deg);
+}
+
+/* Issue #312: the chevron is a Lucide glyph now (chevron-right / chevron-down) */
+.expand-icon svg {
+    width: 12px;
+    height: 12px;
+    vertical-align: middle;
+}
+
+.array-content {
+    margin-top: 8px;
+    padding: 8px;
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 3px;
+    background-color: var(--vscode-textCodeBlock-background);
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+/* Issue #238: when array-content holds a nested table, the table already
+   has its own border/radius — drop the wrapper chrome so we don't double up.
+   Zero margin-top so the inner table sits flush under the controls strip. */
+.array-content:has(> .nested-data-table) {
+    padding: 0;
+    border: none;
+    background: transparent;
+    margin-top: 0;
+    max-height: none;
+    overflow: visible;
+}
+
+.array-content.hidden {
+    display: none;
+}
+
+/* Object Cell Styles */
+.object-cell {
+    position: relative;
+}
+
+.expandable-object {
+    position: relative;
+}
+
+.object-content {
+    margin-top: 8px;
+    padding: 8px;
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 3px;
+    background-color: var(--vscode-textCodeBlock-background);
+    max-height: 150px;
+    overflow-y: auto;
+}
+
+.object-content.hidden {
+    display: none;
+}
+
+/* Array and Object Item Styles */
+.array-item {
+    margin: 4px 0;
+    padding: 4px 0;
+    border-bottom: 1px solid var(--vscode-panel-border);
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 12px;
+}
+
+.array-item:last-child {
+    border-bottom: none;
+}
+
+.nested-object {
+    margin-left: 16px;
+    margin-top: 4px;
+}
+
+.object-property {
+    margin: 2px 0;
+    display: flex;
+    gap: 8px;
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 12px;
+    align-items: flex-start;
+}
+
+.property-key {
+    color: var(--vscode-debugTokenExpression-name, #9cdcfe);
+    font-weight: 500;
+    min-width: 80px;
+    flex-shrink: 0;
+}
+
+.property-value {
+    color: var(--vscode-debugTokenExpression-value, #ce9178);
+    word-break: break-word;
+    flex: 1;
+}
+
+/* Modal Trigger Button */
+.modal-trigger {
+    background-color: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+    border: 1px solid var(--vscode-button-border);
+    padding: 6px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+.modal-trigger:hover {
+    background-color: var(--vscode-button-secondaryHoverBackground);
+    border-color: var(--vscode-focusBorder);
+    transform: translateY(-1px);
+}
+
+/* Array Modal Styles */
+.array-modal .modal-content {
+    width: 80vw;
+    max-width: 1000px;
+    height: 70vh;
+}
+
+.array-modal .modal-body {
+    padding: 0;
+    overflow: hidden;
+}
+
+.array-modal-content {
+    padding: 16px;
+    max-height: 100%;
+    overflow-y: auto;
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 13px;
+    line-height: 1.4;
+}
+
+
+/* ===== PHASE 1: NESTED DATA TABLES ===== */
+
+/* Unified table styling for all data tables.
+   Issue #238: dropped `overflow: hidden` (made the <table> the sticky
+   containing-block instead of #table-container, so headers couldn't pin),
+   `margin: 8px 0` (was the visible gap above the main table), and the
+   `border` + `border-radius` (#table-container already provides them for
+   the main table; .nested-data-table provides its own for nested tables). */
+.data-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 12px;
+    background-color: var(--vscode-editor-background);
+}
+
+.data-table th {
+    background-color: var(--vscode-list-headerBackground);
+    color: var(--vscode-list-headerForeground);
+    font-weight: bold;
+    padding: 4px 8px;
+    text-align: left;
+    border-bottom: 2px solid var(--vscode-panel-border);
+    border-right: 1px solid var(--vscode-panel-border);
+    font-size: 11px;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+.data-table th:last-child {
+    border-right: none;
+}
+
+.data-table td {
+    padding: 2px 8px;
+    border-bottom: 1px solid var(--vscode-panel-border);
+    border-right: 1px solid var(--vscode-panel-border);
+    vertical-align: top;
+    color: var(--vscode-editor-foreground);
+    font-size: 11px;
+    line-height: 1.4;
+}
+
+.data-table td:last-child {
+    border-right: none;
+}
+
+
+
+.data-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+/* Expandable array/object styling within nested tables */
+.data-table .expandable-array,
+.data-table .expandable-object {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+
+/* Issue #238: same zero-everything inline-flow style. */
+.data-table .expand-toggle {
+    background-color: transparent;
+    color: var(--vscode-textLink-foreground);
+    border: none;
+    border-radius: 0;
+    padding: 0;
+    margin: 0;
+    font-size: 11px;
+    line-height: 1.4;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    width: fit-content;
+    transition: color 0.15s ease;
+}
+
+.data-table .expand-toggle:hover {
+    background-color: transparent;
+    color: var(--vscode-textLink-activeForeground);
+    text-decoration: underline;
+}
+
+.data-table .expand-icon {
+    font-size: 8px;
+    transition: transform 0.2s ease;
+}
+
+.data-table .array-content,
+.data-table .object-content {
+    margin-top: 4px;
+    padding: 8px;
+    background-color: var(--vscode-textCodeBlock-background);
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 3px;
+}
+
+/* Simple array item styling */
+.simple-array-item {
+    padding: 4px 8px;
+    margin: 2px 0;
+    background-color: var(--vscode-input-background);
+    border: 1px solid var(--vscode-input-border);
+    border-radius: 3px;
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 11px;
+}
+
+.simple-array-item strong {
+    color: var(--vscode-textLink-foreground);
+}
+
+/* Empty array styling — Issue #250: quiet inline marker, not a chunky block. */
+.empty-array {
+    color: var(--vscode-descriptionForeground);
+    font-style: italic;
+}
+
+/* Max depth reached styling */
+.max-depth-reached {
+    color: var(--vscode-editorWarning-foreground);
+    font-style: italic;
+    padding: 8px;
+    text-align: center;
+    font-size: 11px;
+    background-color: var(--vscode-editorWarning-background);
+    border: 1px solid var(--vscode-editorWarning-border);
+    border-radius: 3px;
+}
+
+/* Null value styling */
+.null-value {
+    color: var(--vscode-descriptionForeground);
+    font-style: italic;
+    font-size: 11px;
+}
+
+/* Empty object styling */
+.empty-object {
+    color: var(--vscode-descriptionForeground);
+    font-style: italic;
+    padding: 8px;
+    text-align: center;
+    font-size: 11px;
+}
+
+/* Unified expandable nested content */
+.expandable-nested {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.nested-content {
+    margin-top: 8px;
+    padding: 12px;
+    background-color: var(--vscode-textCodeBlock-background);
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 6px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+
+/* Issue #238: inline-flow toggle — flows at text height so a row with
+   the toggle is the same height as a row without one. At rest it looks
+   like a link; on hover it gains a subtle background + outlined border. */
+.expandable-array .expand-toggle {
+    background-color: transparent;
+    color: var(--vscode-textLink-foreground);
+    border: none;
+    border-radius: 0;
+    padding: 0;
+    margin: 0;
+    font-size: 11px;
+    font-weight: normal;
+    line-height: 1.4;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    width: fit-content;
+    transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.expandable-array .expand-toggle:hover {
+    background-color: transparent;
+    color: var(--vscode-textLink-activeForeground);
+    text-decoration: underline;
+}
+
+.expandable-array .expand-icon {
+    font-size: 10px;
+    transition: transform 0.2s ease;
+}
+
+/* Issue #238: zero the wrapper chrome — the nested table provides its
+   own border. Higher specificity than .array-content so this wins. */
+.expandable-array .array-content {
+    margin-top: 0;
+    padding: 0;
+    background-color: transparent;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+}
+
+/* ===== REPORT HTML SPECIFIC STYLES ===== */
+
+/* Progress Bar Components */
+.progress-bar {
+    width: 100%;
+    height: 9px;
+    background-color: var(--vscode-input-background);
+    border-radius: 9px;
+    overflow: hidden;
+    position: relative;
+}
+
+.progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg,
+            var(--vscode-progressBar-background) 0%,
+            var(--vscode-button-background) 100%);
+    width: 0%;
+    transition: width 0.3s ease;
+    border-radius: 3px;
+}
+
+/* Main Data Table — issue #238: border-collapse must be `separate` for
+   `position: sticky` on <th> to work; `collapse` silently breaks it. */
+#data-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 12px;
+}
+
+/* Issue #238: sticky on thead AND tr AND th — defence in depth across
+   Chromium versions. All three layers carry an opaque background because
+   --vscode-list-headerBackground is semi-transparent in some themes —
+   without solid backing, scrolled rows show through the pinned headers. */
+#data-table thead {
+    position: sticky;
+    top: 0;
+    z-index: 11;
+    background-color: var(--vscode-editor-background);
+}
+
+#data-table thead tr {
+    position: sticky;
+    top: 0;
+    z-index: 11;
+    background-color: var(--vscode-editor-background);
+}
+
+#data-table th {
+    background-color: var(--vscode-editor-background);
+    background-image: linear-gradient(var(--vscode-list-headerBackground), var(--vscode-list-headerBackground));
+    color: var(--vscode-list-headerForeground);
+    font-weight: bold;
+    padding: 4px 8px;
+    text-align: left;
+    border-bottom: 2px solid var(--vscode-panel-border);
+    border-right: 1px solid var(--vscode-panel-border);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    cursor: pointer;
+    user-select: none;
+}
+
+#data-table th:hover {
+    background-color: var(--vscode-list-hoverBackground);
+}
+
+/* Issue #238: inline sort indicator + × hide on the right of the title.
+   Hidden until hover; sort-asc/sort-desc keeps the directional arrow visible. */
+.column-header-content {
+    width: 100%;
+    gap: 4px;
+}
+
+.header-actions {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    flex-shrink: 0;
+}
+
+.sort-icon {
+    display: inline-block;
+    width: 12px;
+    text-align: center;
+    font-size: 12px;
+    color: var(--vscode-descriptionForeground);
+    opacity: 0;
+    transition: opacity 0.15s ease;
+}
+
+.sort-icon::before {
+    content: '↕';
+}
+
+.sortable-header:hover .sort-icon {
+    opacity: 0.85;
+}
+
+.sortable-header.sort-asc .sort-icon,
+.sortable-header.sort-desc .sort-icon {
+    opacity: 1;
+    color: var(--vscode-textLink-foreground);
+    font-weight: bold;
+}
+
+.sortable-header.sort-asc .sort-icon::before {
+    content: '↑';
+}
+
+.sortable-header.sort-desc .sort-icon::before {
+    content: '↓';
+}
+
+
+#data-table td {
+    padding: 2px 8px;
+    border-right: 1px solid var(--vscode-panel-border);
+    border-bottom: 1px solid var(--vscode-panel-border);
+    vertical-align: top;
+}
+
+/* Export Menu — console-specific overrides (base styles in core.css) */
+/* GitHub Issue #174: Copy dropdown - centred text */
+#copy-dropdown .export-option {
+    text-align: center;
+}
+
+/* GitHub Issue #200: Export dropdown - disabled options (scale limits) */
+.export-dropdown .export-option.limit-exceeded {
+    opacity: 0.45;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+.export-dropdown .export-option .limit-note {
+    display: block;
+    font-size: 11px;
+    opacity: 0.7;
+    margin-top: 2px;
+}
+
+/* Unified Column Hide Button Styles */
+.column-hide-btn,
+.group-hide-btn {
+    background: var(--vscode-errorBackground);
+    color: var(--vscode-errorForeground);
+    border: none;
+    border-radius: 3px;
+    padding: 2px 6px;
+    font-size: 12px;
+    font-weight: bold;
+    cursor: pointer;
+    margin-left: 8px;
+    opacity: 0;
+    transition: all 0.2s ease;
+}
+
+/* Show buttons on header hover */
+#data-table th:hover .column-hide-btn,
+.group-header:hover .group-hide-btn,
+.child-header:hover .column-hide-btn,
+.standalone-header:hover .column-hide-btn,
+.sortable-header:hover .column-hide-btn {
+    opacity: 1;
+}
+
+/* Issue #238: when × lives inside .header-actions, gap on the parent
+   handles spacing — drop the legacy margin so the icons sit tight. */
+.header-actions .column-hide-btn {
+    margin-left: 0;
+}
+
+/* Hover effect for buttons */
+.column-hide-btn:hover,
+.group-hide-btn:hover {
+    background: var(--vscode-errorForeground);
+    color: var(--vscode-editor-background);
+    transform: scale(1.1);
+}
+
+/* Error Message Component */
+.error-message {
+    padding: 15px;
+    margin: 20px 0;
+    background-color: var(--vscode-editor-background);
+    border: 1px solid var(--vscode-errorForeground);
+    border-left: 4px solid var(--vscode-errorForeground);
+    border-radius: 4px;
+    color: var(--vscode-errorForeground);
+}
+
+/* Page Layout Fix - Flexbox approach for adaptive layout */
+body {
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+#report-container {
+    flex: 1;
+    /* Take remaining space after title/summary */
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-height: 0;
+    /* Allow flexbox shrinking */
+    padding-bottom: 70px;
+    /* Space for fixed .webview-footer */
+}
+
+#table-container {
+    flex: 1;
+    overflow: auto;
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 4px;
+}
+
+#table-container:has(.raw-tab-container) {
+    border-top: none;
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+}
+
+/* Logs container - let parent handle scrolling */
+.logs-container {
+    position: relative;
+    min-height: 600px;
+    font-family: var(--vscode-editor-font-family, monospace);
+    background-color: var(--vscode-editor-background);
+    color: var(--vscode-editor-foreground);
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 4px;
+}
+
+/* ===== HIERARCHICAL COLUMN HEADERS STYLES ===== */
+
+/* Group header row styling */
+.group-header-row {
+    border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+.group-header {
+    background: linear-gradient(to bottom,
+            var(--vscode-button-secondaryBackground),
+            var(--vscode-button-secondaryHoverBackground));
+    color: var(--vscode-button-secondaryForeground);
+    font-weight: bold;
+    text-align: center;
+    border-right: 2px solid var(--vscode-panel-border);
+    border-bottom: 2px solid var(--vscode-panel-border);
+    padding: 12px 8px;
+    position: relative;
+}
+
+.group-header:last-child {
+    border-right: none;
+}
+
+.group-header .group-name {
+    display: inline-block;
+    margin-right: 8px;
+}
+
+
+/* Column header row styling */
+.column-header-row {
+    border-bottom: 2px solid var(--vscode-panel-border);
+}
+
+.child-header {
+    background: var(--vscode-editor-background);
+    border-right: 1px solid var(--vscode-panel-border);
+    border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+.child-header:last-child {
+    border-right: none;
+}
+
+.standalone-header {
+    background: linear-gradient(to bottom,
+            var(--vscode-list-headerBackground),
+            var(--vscode-editor-background));
+    border-right: 2px solid var(--vscode-panel-border);
+    border-bottom: 2px solid var(--vscode-panel-border);
+    vertical-align: top;
+}
+
+.standalone-header:last-child {
+    border-right: none;
+}
+
+/* Visual grouping enhancement */
+.group-header-row th {
+    box-shadow: inset 0 -1px 0 var(--vscode-panel-border);
+}
+
+.column-header-row .child-header {
+    box-shadow: inset 1px 0 0 var(--vscode-input-border);
+}
+
+/* Hover effects for grouped headers */
+.group-header:hover {
+    background: linear-gradient(to bottom,
+            var(--vscode-button-secondaryHoverBackground),
+            var(--vscode-list-hoverBackground));
+}
+
+.child-header:hover {
+    background: var(--vscode-list-hoverBackground);
+}
+
+.standalone-header:hover {
+    background: linear-gradient(to bottom,
+            var(--vscode-list-hoverBackground),
+            var(--vscode-input-background));
+}
+
+
+/* Responsive adjustments for hierarchical headers */
+@media (max-width: 1200px) {
+
+    .group-header,
+    .child-header,
+    .standalone-header {
+        padding: 8px 6px;
+        font-size: 13px;
+    }
+
+    .group-name {
+        font-size: 12px;
+    }
+}
+
+/* ===== GITHUB ISSUE #229: DUAL-LIST VIEW EDITOR MODAL STYLES ===== */
+
+/* Wide modal for dual-list layout.
+ * Phase 1B.11: lock height so the modal doesn't grow with content. The
+ * inner panels scroll internally as soon as their list overflows, instead
+ * of the modal expanding up to the max cap first. */
+.column-modal-wide {
+    max-width: 900px !important;
+    width: 90vw;
+    height: 80vh;
+    max-height: 80vh;
+}
+
+/* Flex row body for side-by-side panels. Takes remaining flex space inside
+ * the fixed-height modal; panel overflow lives in .column-list and
+ * .selected-column-list. */
+.column-modal-body {
+    display: flex;
+    gap: 16px;
+    flex: 1;
+    min-height: 0;
+}
+
+/* Each panel takes equal space */
+.column-panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 4px;
+    background: var(--vscode-editor-background);
+    overflow: hidden;
+}
+
+.column-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    background: var(--vscode-button-secondaryBackground);
+    border-bottom: 1px solid var(--vscode-panel-border);
+    flex-shrink: 0;
+}
+
+.column-panel-title {
+    font-weight: 600;
+    font-size: 13px;
+    color: var(--vscode-foreground);
+}
+
+.column-panel-available .column-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0;
+    /* Override the base .column-list 300px cap so the tree fills the panel. */
+    max-height: none;
+}
+
+.column-panel-available {
+    padding: 8px;
+}
+
+.column-panel-available .column-panel-header {
+    margin: -8px -8px 8px -8px;
+}
+
+/* Right panel: selected columns list */
+.selected-column-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 4px 0;
+}
+
+.selected-column-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    border-bottom: 1px solid var(--vscode-input-border);
+    cursor: pointer;
+    transition: background 0.15s ease;
+    user-select: none;
+}
+
+.selected-column-item:last-child {
+    border-bottom: none;
+}
+
+.selected-column-item:hover {
+    background: var(--vscode-list-hoverBackground);
+}
+
+.selected-column-item.active {
+    background: var(--vscode-list-activeSelectionBackground);
+    color: var(--vscode-list-activeSelectionForeground);
+}
+
+.selected-column-item.dragging {
+    opacity: 0.4;
+}
+
+.selected-column-name {
+    flex: 1;
+    font-size: 13px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Drag handle */
+.drag-handle {
+    cursor: grab;
+    color: var(--vscode-descriptionForeground);
+    font-size: 14px;
+    flex-shrink: 0;
+    padding: 0 2px;
+}
+
+.drag-handle:active {
+    cursor: grabbing;
+}
+
+/* Remove button on selected items */
+.selected-column-remove {
+    background: none;
+    border: none;
+    color: var(--vscode-descriptionForeground);
+    cursor: pointer;
+    font-size: 16px;
+    padding: 0 4px;
+    line-height: 1;
+    flex-shrink: 0;
+    border-radius: 2px;
+}
+
+.selected-column-remove:hover {
+    color: var(--vscode-errorForeground);
+    background: var(--vscode-input-background);
+}
+
+/* Drop indicator line */
+.column-drop-indicator {
+    height: 2px;
+    background: var(--vscode-focusBorder);
+    margin: 0 8px;
+    border-radius: 1px;
+}
+
+/* Move up/down button bar */
+.column-order-controls {
+    display: flex;
+    gap: 4px;
+}
+
+.column-order-controls .btn-xs {
+    padding: 2px 6px;
+    font-size: 11px;
+    min-width: unset;
+}
+
+/* Small button variant */
+.btn-xs {
+    padding: 3px 8px !important;
+    font-size: 11px !important;
+}
+
+/* Footer with reset on left, apply/cancel on right */
+.column-modal-wide .modal-footer {
+    justify-content: flex-start;
+}
+
+.modal-footer-right {
+    display: flex;
+    gap: 8px;
+    margin-left: auto;
+}
+
+/* Responsive: stack vertically on narrow viewports */
+@media (max-width: 600px) {
+    .column-modal-body {
+        flex-direction: column;
+        max-height: none;
+    }
+
+    .column-panel {
+        min-height: 200px;
+    }
+
+    .column-modal-wide {
+        max-width: 100vw !important;
+        width: 98vw;
+    }
+}
+
+/* ===== VIEW EDITOR (#views-modal) DENSITY OVERRIDES =====
+ * The view editor is the one modal whose payload is two long lists, so it
+ * trades the generic 20px modal chrome for a taller, tighter frame. Every
+ * rule here is scoped to .view-editor-modal so other modals sharing the base
+ * .modal-* classes are untouched. */
+.view-editor-modal {
+    max-width: 1100px !important;
+    width: 94vw;
+    height: 94vh;
+    max-height: 94vh;
+}
+
+.view-editor-modal .modal-header {
+    padding: 10px 16px;
+}
+
+.view-editor-modal .modal-header h3 {
+    display: flex;
+    align-items: center;
+    font-size: 15px;
+}
+
+.view-editor-body {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding: 8px 16px 10px;
+}
+
+/* Name: label + input on one row. The row carries the same 8px horizontal
+ * inset as the panel headers, so the NAME label lines up with the panel
+ * titles below it and the input's right edge with the Remove All button.
+ * The label and input match the panel-header title and control sizes. */
+.view-editor-name-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 0 8px;
+    padding: 0 8px;
+    flex-shrink: 0;
+}
+
+.view-editor-name-row label {
+    flex-shrink: 0;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--vscode-descriptionForeground);
+}
+
+.view-editor-name-row input {
+    flex: 1;
+    min-width: 0;
+    height: 26px;
+    margin: 0;
+    padding: 0 8px;
+    box-sizing: border-box;
+    font-size: 13px;
+    line-height: 24px;
+    border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
+    border-radius: 3px;
+}
+
+.view-editor-name-row input:focus {
+    outline: none;
+    border-color: var(--vscode-focusBorder);
+}
+
+.view-editor-panels {
+    gap: 12px;
+    flex: 1;
+    min-height: 0;
+    max-height: none;
+}
+
+/* Panel headers: one pinned row. flex-wrap lets the search / select drop to
+ * a second row if the panel gets too narrow instead of overflowing.
+ * Background is the editor widget tone, not the button tone the base
+ * .column-panel-header uses, so the header reads as a toolbar and the
+ * buttons inside it keep their button look. Every control is pinned to
+ * the same 26px height and zero margin (the base input/select rule adds
+ * 5px vertical margin) so both panel headers come out the same height. */
+.view-editor-panel-header {
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 6px 8px;
+    min-height: 38px;
+    box-sizing: border-box;
+    background: var(--vscode-editorWidget-background, var(--vscode-sideBar-background, var(--vscode-editor-background)));
+}
+
+.view-editor-panel-header .column-panel-title {
+    flex-shrink: 0;
+    white-space: nowrap;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--vscode-descriptionForeground);
+}
+
+.view-editor-search-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+    flex: 1 1 140px;
+    min-width: 120px;
+}
+
+.view-editor-search-icon {
+    position: absolute;
+    left: 8px;
+    color: var(--vscode-descriptionForeground);
+    pointer-events: none;
+}
+
+.view-editor-search,
+.view-editor-row-basis {
+    height: 26px;
+    margin: 0;
+    padding: 0 8px;
+    box-sizing: border-box;
+    font-size: 12px;
+    line-height: 24px;
+    border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
+    border-radius: 3px;
+}
+
+.view-editor-search {
+    width: 100%;
+    padding-left: 28px;
+}
+
+.view-editor-search:focus,
+.view-editor-row-basis:focus {
+    outline: none;
+    border-color: var(--vscode-focusBorder);
+}
+
+.view-editor-row-basis {
+    flex: 1 1 140px;
+    min-width: 120px;
+}
+
+.view-editor-panel-actions {
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+    margin-left: auto;
+}
+
+/* Sort / Remove All: give them an outline so they read as buttons against
+ * the header rather than as loose text. */
+.view-editor-panel-actions .btn-xs {
+    height: 26px;
+    padding: 0 10px !important;
+    border: 1px solid var(--vscode-button-border, var(--vscode-contrastBorder, var(--vscode-panel-border)));
+    background: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+}
+
+.view-editor-panel-actions .btn-xs:hover {
+    background: var(--vscode-button-secondaryHoverBackground);
+}
+
+/* Left panel: base rule pads the panel and pulls the header back out with
+ * negative margins, both sized for the old 8px padding. Reset both. */
+.view-editor-modal .column-panel-available {
+    padding: 0;
+}
+
+.view-editor-modal .column-panel-available .column-panel-header {
+    margin: 0;
+}
+
+/* Tree rows carry only depth indent, so the list itself supplies the gutter
+ * the old panel padding used to provide. */
+.view-editor-modal .column-panel-available .column-list {
+    padding: 4px 8px;
+}
+
+.view-editor-footer {
+    padding: 10px 16px;
+    align-items: center;
+}
+
+.view-editor-footer .modal-footer-right {
+    align-items: center;
+}
+
+.view-editor-delete {
+    color: var(--vscode-errorForeground);
+}
+
+/* Narrow viewports: the base rule stacks the panels vertically, but the
+ * body still clips overflow, so the Selected panel is cut off below the
+ * footer. Here the modal goes full-screen, the body becomes the one scroll
+ * surface, both lists expand to their natural height, each panel header
+ * sticks to the top of the body while its panel scrolls past, and the
+ * footer stays pinned to the bottom of the screen. */
+@media (max-width: 600px) {
+    .view-editor-modal {
+        width: 100vw;
+        max-width: 100vw !important;
+        height: 100vh;
+        max-height: 100vh;
+        border-radius: 0;
+        border: none;
+    }
+
+    .view-editor-body {
+        overflow-y: auto;
+        padding: 8px 12px;
+    }
+
+    .view-editor-name-row {
+        padding: 0;
+    }
+
+    .view-editor-panels {
+        flex: none;
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .view-editor-modal .column-panel {
+        flex: none;
+        min-height: 0;
+        overflow: visible;
+    }
+
+    .view-editor-panel-header {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+        border-radius: 4px 4px 0 0;
+    }
+
+    .view-editor-modal .column-panel-available .column-list,
+    .view-editor-modal .selected-column-list {
+        flex: none;
+        overflow: visible;
+        max-height: none;
+    }
+
+    .view-editor-footer {
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+}
+
+.mb-8 {
+    margin-bottom: 8px;
+}
+
+/* ===== HIERARCHICAL COLUMN MANAGEMENT MODAL STYLES ===== */
+
+/* Column group container */
+.column-group-container {
+    margin-bottom: 15px;
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 4px;
+    background: var(--vscode-editor-background);
+}
+
+/* Group header with collapsible functionality */
+.column-group-header {
+    background: var(--vscode-button-secondaryBackground);
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--vscode-panel-border);
+    display: flex;
+    align-items: center;
+}
+
+/* Collapsible button */
+.group-collapse-btn {
+    background: none;
+    border: none;
+    color: var(--vscode-foreground);
+    cursor: pointer;
+    padding: 4px;
+    margin-right: 8px;
+    border-radius: 2px;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+}
+
+.group-collapse-btn:hover {
+    background: var(--vscode-button-secondaryHoverBackground);
+}
+
+.collapse-icon {
+    font-size: 12px;
+    transition: transform 0.2s ease;
+    user-select: none;
+}
+
+.group-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: bold;
+    margin: 0;
+    cursor: pointer;
+}
+
+.group-name-text {
+    color: var(--vscode-button-secondaryForeground);
+    font-size: 14px;
+}
+
+.group-count {
+    color: var(--vscode-descriptionForeground);
+    font-size: 12px;
+    font-weight: normal;
+    margin-left: auto;
+}
+
+/* Group children container with smooth transitions */
+.column-group-children {
+    padding: 8px 0;
+    transition: all 0.3s ease;
+    overflow: hidden;
+}
+
+/* Child column items with progressive indentation for nested groups */
+.child-column-item {
+    padding: 4px 12px 4px 66px;
+    /* Base indentation for first level */
+    background: var(--vscode-input-background);
+    border-bottom: 1px solid var(--vscode-input-border);
+}
+
+/* Deeper nesting levels - add more indentation based on group nesting */
+.column-group-container .column-group-container .child-column-item {
+    padding-left: 60px;
+    /* Second level nesting */
+}
+
+.column-group-container .column-group-container .column-group-container .child-column-item {
+    padding-left: 80px;
+    /* Third level nesting */
+}
+
+.child-column-item:last-child {
+    border-bottom: none;
+}
+
+.child-column-item label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+    cursor: pointer;
+}
+
+/* Standalone column items */
+.standalone-column-item {
+    padding: 8px 12px;
+    margin-bottom: 8px;
+    background: var(--vscode-input-background);
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 4px;
+}
+
+.standalone-column-item label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+    cursor: pointer;
+}
+
+/* Column name styling */
+.column-name {
+    font-weight: 500;
+}
+
+.column-type {
+    color: var(--vscode-descriptionForeground);
+    font-size: 11px;
+    background: var(--vscode-badge-background);
+    color: var(--vscode-badge-foreground);
+    padding: 2px 6px;
+    border-radius: 10px;
+    font-weight: normal;
+}
+
+/* Hover effects */
+.column-group-header:hover {
+    background: var(--vscode-button-secondaryHoverBackground);
+}
+
+.child-column-item:hover {
+    background: var(--vscode-list-hoverBackground);
+}
+
+.standalone-column-item:hover {
+    background: var(--vscode-list-hoverBackground);
+}
+
+/* Checkbox styling for better visibility */
+.column-group-container input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+}
+
+/* Indeterminate checkbox styling */
+input[type="checkbox"]:indeterminate {
+    background-color: var(--vscode-button-background);
+}
+
+/* Icons removed for cleaner look */
+
+/* ===== ARRAY CONTROLS AND SET AS ROOT FUNCTIONALITY ===== */
+
+/* Array controls container */
+.array-controls {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-bottom: 2px;
+}
+
+/* Issue #238: zero-everything inline-flow link style. Only visible
+   while the array is expanded (see :has rule below). */
+.set-as-root-btn {
+    background: transparent;
+    color: var(--vscode-textLink-foreground);
+    border: none;
+    border-radius: 0;
+    padding: 0;
+    margin: 0;
+    font-size: 11px;
+    font-weight: normal;
+    line-height: 1.4;
+    cursor: pointer;
+    transition: color 0.15s ease;
+}
+
+.set-as-root-btn:hover {
+    background: transparent;
+    color: var(--vscode-textLink-activeForeground);
+    text-decoration: underline;
+}
+
+/* Hide Set as Row whenever the sibling .array-content is still collapsed.
+   Once the user expands the array, .hidden is removed and the button
+   appears next to the toggle. */
+.expandable-array:has(> .array-content.hidden) .set-as-root-btn {
+    display: none;
+}
+
+.set-as-root-btn:active {
+    transform: translateY(0);
+}
+
+/* Nested table styling */
+.nested-data-table {
+    width: 100%;
+    margin: 0;
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 4px;
+    font-size: 13px;
+    /* Slightly smaller for nested tables */
+    table-layout: auto;
+}
+
+.nested-data-table th {
+    background: var(--vscode-list-headerBackground);
+    font-size: 12px;
+    padding: 6px 8px;
+}
+
+.nested-data-table td {
+    padding: 6px 8px;
+}
+
+.nested-row {
+    background: var(--vscode-editor-background);
+    border-bottom: 2px solid var(--vscode-panel-border);
+}
+
+.nested-row:hover {
+    background: var(--vscode-list-hoverBackground);
+}
+
+/* Utility Classes */
+.hidden {
+    display: none !important;
+}
+
+/* ===== COMPACT EXECUTION SUMMARY STYLES ===== */
+
+#execution-summary {
+    margin-bottom: 10px;
+}
+
+.summary-line {
+    padding: 4px 0;
+    font-size: 14px;
+    color: var(--vscode-foreground);
+}
+
+.summary-line strong {
+    color: var(--vscode-textLink-foreground);
+}
+
+.status-inline {
+    font-weight: bold;
+}
+
+.status-inline.completed {
+    color: var(--vscode-terminal-ansiGreen);
+}
+
+.status-inline.failed {
+    color: var(--vscode-errorForeground);
+}
+
+.status-inline.running {
+    color: var(--vscode-charts-blue);
+}
+
+.method-inline {
+    font-family: var(--vscode-editor-font-family);
+    background: var(--vscode-textCodeBlock-background);
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-weight: bold;
+}
+
+/* #438: the run's status colour flows down from its Hub tab into the Console. The heading is a
+ * band across the top on the open tab's tint (hub.css .hub-tab.is-active .hub-tab-progress: the
+ * colour at 12%), the heading's text in the normal colour. The tabs' tokens, one each. */
+.report-title {
+    --title-c: transparent;
+    /* Edge to edge, out over the page's padding (core.css body: 20px), so it meets the tab */
+    margin: -20px -20px 16px;
+    padding: 22px 40px 18px;
+    color: var(--vscode-foreground);
+    background: color-mix(in srgb, var(--title-c) 12%, transparent);
+    transition: background 0.2s ease;
+}
+
+.title-success { --title-c: var(--vscode-charts-green); }
+.title-error,
+.title-partial { --title-c: var(--vscode-charts-red); }
+.title-warning { --title-c: var(--vscode-charts-yellow); }
+.title-stopped { --title-c: var(--vscode-descriptionForeground); }
+
+/* In the Hub the tab's own colour, whatever the run's status says here: the tab and the heading
+ * are one surface (hub-tabs.js sends it; hub.css draws the open tab in it) */
+html[data-tab-colour="none"] .report-title { --title-c: transparent; }
+html[data-tab-colour="running"] .report-title { --title-c: var(--vscode-charts-blue); }
+html[data-tab-colour="paused"] .report-title { --title-c: var(--vscode-charts-yellow); }
+html[data-tab-colour="completed"] .report-title { --title-c: var(--vscode-charts-green); }
+html[data-tab-colour="error"] .report-title { --title-c: var(--vscode-charts-red); }
+html[data-tab-colour="stopped"] .report-title { --title-c: var(--vscode-descriptionForeground); }
+.title-running { --title-c: var(--vscode-charts-blue); }
+.title-preparing { --title-c: var(--vscode-textLink-foreground); }
+
+/* Status Badge Styling */
+.status-badge {
+    font-size: 12px;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-weight: bold;
+    margin-left: 8px;
+}
+
+.status-badge.success {
+    background-color: var(--vscode-charts-green);
+    color: white;
+}
+
+.status-badge.error {
+    background-color: var(--vscode-charts-red);
+    color: white;
+}
+
+.status-badge.partial {
+    background-color: var(--vscode-charts-yellow);
+    color: var(--vscode-editor-background);
+}
+
+.status-badge.running {
+    background-color: var(--vscode-charts-blue);
+    color: white;
+}
+
+.path-inline {
+    font-family: var(--vscode-editor-font-family);
+    color: var(--vscode-textLink-foreground);
+}
+
+.file-inline {
+    font-family: var(--vscode-editor-font-family);
+    color: var(--vscode-textPreformat-foreground);
+}
+
+/* ===== LIVE INDICATOR STYLES ===== */
+/* Simple live streaming indicator */
+.live-indicator {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    background-color: var(--vscode-editor-background);
+    border: 1px solid var(--vscode-charts-red);
+    border-radius: 16px;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.live-indicator.hidden {
+    display: none;
+}
+
+.live-pulse {
+    color: var(--vscode-charts-red);
+    font-size: 16px;
+    animation: pulse-live 1.5s infinite;
+}
+
+.live-text {
+    color: var(--vscode-charts-red);
+    letter-spacing: 1px;
+}
+
+@keyframes pulse-live {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.4;
+    }
+}
+
+/* ===== LOG LINE STYLES ===== */
+.log-line {
+    padding: 4px 12px;
+    border-bottom: 1px solid var(--vscode-panel-border);
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: var(--vscode-editor-font-size, 13px);
+    line-height: 1.4;
+    /* Proper text wrapping to prevent overlap */
+    white-space: pre-wrap;
+    /* Preserve whitespace but wrap */
+    word-wrap: break-word;
+    /* Break long words if needed */
+    overflow-wrap: break-word;
+    /* Modern equivalent of word-wrap */
+    word-break: break-word;
+    /* Additional breaking for long strings */
+    /* Prevent horizontal overflow */
+    max-width: 100%;
+    overflow-x: hidden;
+}
+
+/* ===== GITHUB ISSUE #156: INFO TAB STYLES ===== */
+
+/* Info tab content container */
+#info-tab-content {
+    background: var(--vscode-editor-background);
+}
+
+/* Info tab uses existing .execution-section, .table-stats, .stat-item styles from tables.css */
+
+/* Additional styles for Info tab form controls */
+#info-tab-content .form-input {
+    padding: 6px 10px;
+    background: var(--vscode-input-background);
+    border: 1px solid var(--vscode-input-border);
+    color: var(--vscode-input-foreground);
+    border-radius: 4px;
+    font-size: 13px;
+    font-family: var(--vscode-font-family);
+}
+
+#info-tab-content .form-input:focus {
+    outline: none;
+    border-color: var(--vscode-focusBorder);
+    box-shadow: 0 0 0 1px var(--vscode-focusBorder);
+}
+
+#info-tab-content .form-input:disabled {
+    opacity: 0.6;
+    cursor: default;
+}
+
+#info-tab-content .form-select {
+    /* Issue #312: this id rule outranks tables.css's 22px card-control sizing, but only for the
+       padding — the 22px height still applied, and a select with 16px of vertical padding in a
+       22px box showed half its text. Size it to its own content instead. */
+    height: auto;
+    min-height: 22px;
+    padding: 6px 12px;
+    background: var(--vscode-dropdown-background);
+    color: var(--vscode-dropdown-foreground);
+    border: 1px solid var(--vscode-dropdown-border);
+    border-radius: 4px;
+    font-size: 13px;
+    cursor: pointer;
+}
+
+#info-tab-content .form-select:focus {
+    outline: none;
+    border-color: var(--vscode-focusBorder);
+}
+
+#info-tab-content .form-select:disabled {
+    opacity: 0.6;
+    cursor: default;
+}
+
+/* Disabled radio buttons in Info tab */
+#info-tab-content .radio-group.disabled {
+    opacity: 0.7;
+}
+
+#info-tab-content .radio-group.disabled .radio-label {
+    cursor: default;
+}
+
+#info-tab-content .radio-group.disabled input[type="radio"] {
+    cursor: default;
+}
+
+/* Custom radio button styling for better visibility */
+#info-tab-content input[type="radio"] {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 16px;
+    height: 16px;
+    border: 2px solid var(--vscode-input-border, #6b6b6b);
+    border-radius: 50%;
+    background: var(--vscode-input-background);
+    position: relative;
+    flex-shrink: 0;
+}
+
+#info-tab-content input[type="radio"]:checked {
+    border-color: var(--vscode-focusBorder, #007acc);
+}
+
+#info-tab-content input[type="radio"]:checked::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--vscode-foreground);
+}
+
+/* Disabled checked state - inner white, outer grey */
+#info-tab-content input[type="radio"]:disabled:checked {
+    border-color: var(--vscode-descriptionForeground, #888);
+}
+
+#info-tab-content input[type="radio"]:disabled:checked::after {
+    background: var(--vscode-checkbox-foreground, var(--vscode-button-foreground, #ffffff));
+}
+
+/* Info tab footer notification */
+.info-notification {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    background: var(--vscode-inputValidation-infoBackground, rgba(0, 122, 204, 0.15));
+    border: 1px solid var(--vscode-inputValidation-infoBorder, #007acc);
+    border-radius: 4px;
+    color: var(--vscode-foreground);
+    font-size: 13px;
+    animation: infoNotificationSlideIn 0.3s ease;
+}
+
+.info-notification.hidden {
+    display: none;
+}
+
+.info-notification .notification-icon {
+    flex-shrink: 0;
+}
+
+.info-notification .notification-message {
+    flex: 1;
+}
+
+@keyframes infoNotificationSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Raw tab / transaction card styles: shared/transaction-card.css (GitHub Issue #308) */
+
+/* JSON Syntax Highlighting */
+.json-key {
+    color: var(--vscode-symbolIcon-propertyForeground, #9cdcfe);
+}
+
+.json-string {
+    color: var(--vscode-symbolIcon-stringForeground, #ce9178);
+}
+
+.json-number {
+    color: var(--vscode-symbolIcon-numberForeground, #b5cea8);
+}
+
+.json-boolean {
+    color: var(--vscode-symbolIcon-booleanForeground, #569cd6);
+}
+
+.json-null {
+    color: var(--vscode-symbolIcon-nullForeground, #569cd6);
+    font-style: italic;
+}
+
+/* Collapsible JSON sections */
+.json-collapsible {
+    cursor: pointer;
+    color: var(--vscode-editor-foreground);
+}
+
+.json-collapsible:hover {
+    background: var(--vscode-editor-hoverHighlightBackground);
+    border-radius: 2px;
+}
+
+.json-collapsible.collapsed::after {
+    content: '...';
+    color: var(--vscode-descriptionForeground);
+    font-style: italic;
+}
+
+.json-collapsible-content {
+    display: inline;
+}
+
+.json-collapsible-content.collapsed {
+    display: none;
+}
+
+/* GitHub Issue #197: Loading Spinner (extracted from report.html inline styles) */
+.loading-spinner {
+    width: 32px;
+    height: 32px;
+    border: 3px solid transparent;
+    border-top: 3px solid var(--vscode-textLink-foreground);
+    border-right: 3px solid var(--vscode-charts-green);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin: 20px auto;
+}
+
+@keyframes spin {
+    0% {
+        transform: rotate(0deg);
+    }
+
+    100% {
+        transform: rotate(360deg);
+    }
+}
+
+/* Export Loading Overlay */
+.export-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+}
+
+.export-spinner-container {
+    text-align: center;
+}
+
+.export-message {
+    margin-top: 20px;
+    font-size: 18px;
+    color: var(--vscode-foreground);
+    font-weight: 500;
+}
+
+/* GitHub Issue #132: File links container for consolidated Files section */
+.nav-link {
+    color: var(--vscode-textLink-foreground);
+    text-decoration: none;
+    cursor: pointer;
+    margin-left: 6px;
+    opacity: 0.7;
+    transition: opacity 0.2s ease;
+    vertical-align: middle;
+}
+
+.nav-link:hover {
+    opacity: 1;
+    color: var(--vscode-textLink-activeForeground);
+}
+
+.nav-link svg {
+    vertical-align: middle;
+}
+
+/* The Settings tab's Environment and Endpoint names: plain until their id is known, then a link
+   that opens the editor as a Hub tab */
+.stat-link {
+    margin-left: 0;
+    opacity: 1;
+    color: inherit;
+    cursor: default;
+}
+.stat-link.is-link {
+    color: var(--vscode-textLink-foreground);
+    cursor: pointer;
+}
+.stat-link.is-link:hover {
+    color: var(--vscode-textLink-activeForeground);
+    text-decoration: underline;
+}
+/* =============================================================
+   Issue #271 — long-value cell + cell-detail modal
+   Long string cells become click-to-expand; the modal shows the
+   value with smart, overridable formatting (JSON / BASE64 / ZPL).
+   ============================================================= */
+.cell-expandable {
+    position: relative;
+    cursor: pointer;
+}
+.cell-expandable:hover {
+    color: var(--vscode-textLink-foreground);
+}
+/* Hover-revealed maximize affordance pinned to the cell's right edge. Absolute
+   so it stays out of text flow and never affects truncation measurement. */
+.cell-expand-icon {
+    position: absolute;
+    right: 4px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    opacity: 0;
+    transition: opacity 0.12s ease;
+    pointer-events: none;
+    color: var(--vscode-descriptionForeground);
+    background: var(--vscode-editor-background);
+    border-radius: 2px;
+}
+.cell-expandable:hover .cell-expand-icon {
+    opacity: 1;
+}
+.cell-expand-icon svg {
+    width: 14px;
+    height: 14px;
+}
+
+.cell-detail {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    /* Maximise the value view: widen the shell (see .dbmn-modal-cell-detail)
+       and fill most of the viewport height. */
+    min-width: min(78vw, 1040px);
+    height: 72vh;
+}
+.cell-detail-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 0 0 auto;
+}
+.cell-detail-label {
+    font-size: 12px;
+    color: var(--vscode-descriptionForeground);
+}
+.cell-detail-select {
+    padding: 2px 6px;
+    background: var(--vscode-dropdown-background);
+    color: var(--vscode-dropdown-foreground);
+    border: 1px solid var(--vscode-dropdown-border);
+    border-radius: 3px;
+}
+.cell-detail-error {
+    font-size: 12px;
+    color: var(--vscode-errorForeground);
+    flex: 0 0 auto;
+}
+/* Relative wrapper: lets the copy icon float inside the text box. */
+.cell-detail-prewrap {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+}
+.cell-detail-pre {
+    margin: 0;
+    padding: 10px;
+    flex: 1 1 auto;
+    overflow: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 12px;
+    background: var(--vscode-textCodeBlock-background, var(--vscode-editor-background));
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 4px;
+}
+/* Icon-only copy affordance pinned inside the text box's top-right corner. */
+.cell-detail-copy {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    color: var(--vscode-descriptionForeground);
+    background: var(--vscode-editor-background);
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 4px;
+    cursor: pointer;
+    opacity: 0.55;
+    transition: opacity 0.12s ease, color 0.12s ease;
+}
+.cell-detail-prewrap:hover .cell-detail-copy {
+    opacity: 1;
+}
+.cell-detail-copy:hover {
+    color: var(--vscode-foreground);
+    background: var(--vscode-toolbar-hoverBackground, var(--vscode-list-hoverBackground));
+}
+.cell-detail-copy.is-copied {
+    color: var(--vscode-testing-iconPassed, var(--vscode-charts-green, #89d185));
+    opacity: 1;
+}
+.cell-detail-copy svg {
+    width: 15px;
+    height: 15px;
+}
+
+/* GitHub Issue #247: Chain dialog + Links tab. Everything else is shared patterns
+   (.dbmn-modal-field radio rows, .search-input-wrapper + .search-icon-inset, .csv-table,
+   .execution-section, .status-indicator). */
+.chain-dialog {
+    width: 760px;          /* fixed: the dialog never changes width with its content */
+    max-width: 100%;
+}
+.chain-dialog .chain-intro {
+    margin-bottom: 4px;
+}
+.chain-search .dbmn-modal-input {
+    width: 100%;
+    box-sizing: border-box;
+    padding-left: 30px;   /* room for .search-icon-inset */
+}
+/* Fixed heights, scrolling inside: changing endpoint or searching never resizes the dialog. */
+.chain-target-list {
+    height: clamp(120px, 22vh, 220px);
+    overflow-y: auto;
+    padding-right: 2px;
+}
+.chain-preview-scroll {
+    height: clamp(150px, 30vh, 360px);
+    overflow-y: auto;
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 4px;
+}
+.chain-preview-table {
+    border: 0;
+}
+.chain-preview-table th {
+    top: 0;   /* sticks to the top of .chain-preview-scroll, not the dialog */
+    z-index: 1;
+}
+.chain-preview-table td,
+.chain-preview-table th {
+    white-space: nowrap;
+}
+.chain-dialog .chain-empty {
+    margin: 12px;
+    color: var(--vscode-descriptionForeground);
+}
+.chain-target-list label.is-selected {
+    border-color: var(--vscode-focusBorder);
+    background: var(--vscode-list-activeSelectionBackground, var(--vscode-list-hoverBackground));
+}
+.dbmn-modal-footer button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+/* #298: the Compare dialog (shared/compare-picker.js). Built on the Chain dialog's fixed width
+   and scroll box, the modal's radio rows and the status pills. */
+/* The modal's radio rows (modals.css), three side by side instead of a column */
+.dbmn-modal-field .compare-picker-choices[role="radiogroup"] {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.dbmn-modal-field .compare-picker-choices[role="radiogroup"] label {
+    flex: 1 1 200px;
+    min-width: 0;
+}
+.compare-picker-panel {
+    min-height: clamp(150px, 30vh, 360px);
+}
+/* Coming soon: one small pill, nothing more. Outlined in the warning colour, never filled: a
+   theme's warning colour is made to read on its background, not under its background colour */
+.compare-soon {
+    display: inline-block;
+    padding: 0 7px;
+    border: 1px solid currentColor;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    vertical-align: middle;
+    background: transparent;
+    color: var(--vscode-editorWarning-foreground, var(--vscode-descriptionForeground));
+}
+.compare-picker-soon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: clamp(150px, 30vh, 360px);
+}
+.compare-picker-soon .compare-soon {
+    margin: 0;
+    font-size: 12px;
+    padding: 4px 14px;
+}
+.compare-picker-runs input[type="checkbox"],
+.compare-picker-runs input[type="radio"] {
+    margin: 0 4px 0 0;
+    vertical-align: middle;
+}
+.links-tab-content {
+    padding: 20px;
+    overflow-y: auto;
+    flex: 1;
+}
+.links-table .status-indicator {
+    margin: 1px 4px 1px 0;
+}
+.links-table td:not(:last-child) {
+    white-space: nowrap;
+}

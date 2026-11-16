@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Console</title>
+    <script src="{{CONSOLE_BOOT_URI}}"></script>
+    <script src="{{DBMN_ACTIONS_URI}}"></script>
+    {{SHARED_STYLES}}
+    <script src="{{TIME_FORMATTER_URI}}"></script>
+    <script src="{{CONSOLE_TABLE_BUILDER_URI}}"></script>
+    <script src="{{CONSOLE_LIVE_COUNTS_URI}}"></script>
+    <script src="{{CONSOLE_ERROR_REASON_URI}}"></script>
+    <script src="{{SEARCH_MATCHER_URI}}"></script>
+    <script src="{{DOCUMENTATION_HELPERS_URI}}"></script>
+    <script src="{{RAW_TAB_HANDLER_URI}}"></script>
+    <script src="{{PROGRESS_HANDLER_URI}}"></script>
+    <script src="{{EXECUTION_ACTIONS_URI}}"></script>
+    <script src="{{BATCH_ACTIONS_URI}}"></script>
+    <script src="{{CONSOLE_CHAIN_URI}}"></script>
+    <script src="{{CONSOLE_COMPARE_URI}}"></script>
+    <script src="{{HELP_MODE_URI}}"></script>
+    <script src="{{CONSOLE_HELP_URI}}"></script>
+    <script src="{{CONSOLE_SETTINGS_URI}}"></script>
+    <script src="{{DATA_NAVIGATOR_URI}}"></script>
+    <script src="{{DBMN_TOAST_URI}}"></script>
+    <script src="{{DBMN_CLIPBOARD_URI}}"></script>
+    <script src="{{ROW_PASTE_URI}}"></script>
+    <script src="{{DBMN_MODAL_URI}}"></script>
+    <script src="{{VALUE_FORMATTER_URI}}"></script>
+    <script src="{{CELL_DETAIL_URI}}"></script>
+    <script src="{{VIRTUAL_WINDOW_URI}}"></script>
+    <script src="{{INPUT_ROW_STATUS_URI}}"></script>
+    <!-- GitHub Issue #166: Monaco Editor for RAW tab JSON display -->
+    <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs/loader.js"></script>
+    <script src="{{MONACO_LOADER_CONFIG_URI}}"></script>
+    <!-- Monaco theme utility (must load after Monaco loader, before editors are created) -->
+    <script src="{{MONACO_THEME_URI}}"></script>
+    <script src="{{ICONS_SCRIPT}}"></script>
+    <script src="{{EDITOR_WINDOW_CONTROLS_SCRIPT}}"></script>
+</head>
+<body class="editor-slide-in">
+    <!-- Readable buttons in every theme (shared/button-contrast.js): first in the body, so it applies before anything is painted -->
+    <script src="{{BUTTON_CONTRAST_URI}}"></script>
+    <div class="editor-window-controls">
+        <button type="button" class="editor-window-btn icon" data-window-action="maximize" data-icon="maximize-2" title="Maximise" aria-label="Maximise"></button>
+        <button type="button" class="editor-window-btn icon" data-window-action="close" data-icon="x" title="Close" aria-label="Close"></button>
+    </div>
+    <h2 id="report-title" class="report-title {{TITLE_STATUS_CLASS}} flex justify-between align-center gap-10">
+        <span style="display: flex; align-items: center; gap: 12px;">
+            <span>{{ENVIRONMENT}}: <span id="report-title-name">{{BATCH_NAME}}</span></span>
+            <!-- #344: the environment runs in DBMN for VS Code; shown only where VS Code is reached from (the web app) -->
+            <span class="agent-link {{AGENT_LINK_VISIBILITY}}" role="img" aria-label="Runs in DBMN for VS Code" title="Runs in DBMN for VS Code">
+                <span class="icon" data-icon="vscode"></span>
+            </span>
+        </span>
+        <span style="display: flex; align-items: center; gap: 8px;">
+            <span id="status-badge" class="status-pill {{STATUS_PILL_CLASS}}">{{EXECUTION_STATUS}}</span>
+            <span id="lineage-badge" class="lineage-badge {{LINEAGE_BADGE_VISIBILITY}}">{{LINEAGE_BADGE_TEXT}}</span>
+        </span>
+    </h2>
+
+    <div id="error-container" class="error-message hidden">
+        <strong>Error loading execution:</strong>
+        <div id="error-message"></div>
+    </div>
+
+    <!-- Export Loading Overlay -->
+    <div id="export-overlay" class="export-overlay hidden">
+        <div class="export-spinner-container">
+            <div class="loading-spinner"></div>
+            <div class="export-message">Saving <span id="export-filename"></span>...</div>
+        </div>
+    </div>
+
+    <!-- Loading Data Overlay -->
+    <div id="loading-overlay" class="export-overlay">
+        <div class="export-spinner-container">
+            <div class="loading-spinner"></div>
+            <div class="export-message">Loading <span id="loading-details">{{RECORDS}} input records and {{TRANSACTION_COUNT}} transactions</span>...</div>
+        </div>
+    </div>
+
+    <!-- Legacy pagination banner removed (GitHub Issue #198) -->
+
+    <div id="report-container">
+        <!-- Tab Navigation -->
+        <div class="report-tabs" id="report-tabs">
+            <!-- Tabs will be dynamically created based on available data -->
+        </div>
+
+        <!-- Tab Content Area -->
+        <div class="tab-content">
+            <!-- Single Toolbar (updates based on active tab).
+                 Issue #262: compact layout — search icon inline, two help icons total
+                 (one after search box, one after Export), `View:` prefix dropped,
+                 inline (X of Y) count removed (the footer row count carries it). -->
+            <div class="report-toolbar" id="report-toolbar">
+                <div class="view-selector">
+                    <div class="view-selector-split">
+                        <button id="view-path-btn" class="view-path-button" title="Switch active view">
+                            <span id="current-root">Root</span> <span class="inline-icon" data-icon="chevron-down"></span>
+                        </button>
+                    </div>
+                    <div id="root-dropdown" class="root-dropdown hidden">
+                        <div class="root-path-list" id="root-path-list">
+                            <!-- Populated dynamically -->
+                        </div>
+                    </div>
+                </div>
+
+                <div class="search-container">
+                    <div class="search-input-wrapper">
+                        <svg class="search-icon-inset" width="14" height="14" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg>
+                        <div id="search-input-mirror" class="search-input-mirror" aria-hidden="true"></div>
+                        <input type="text" id="search-input" class="search-input" placeholder="Search rows, or @column=value" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off" />
+                    </div>
+                </div>
+
+                <!-- Issue #304: Input rows by the result of the transaction that sent them -->
+                <label class="input-status-filter hidden" id="input-status-filter-wrap">
+                    <span>Result</span>
+                    <select id="input-status-filter"></select>
+                </label>
+
+                <div class="toolbar-actions">
+                    <!-- GitHub Issue #174: Separate Copy and Export dropdowns -->
+                    <div class="export-menu">
+                        <button id="copy-btn" class="export-button">Copy <span class="inline-icon" data-icon="chevron-down"></span></button>
+                        <div id="copy-dropdown" class="export-dropdown">
+                            <button class="export-option" data-format="html">Standard</button>
+                            <button class="export-option" data-format="tsv" data-excel-safe="true">Excel</button>
+                            <button class="export-option" data-format="csv">CSV</button>
+                            <button class="export-option" data-format="csv" data-excel-safe="true">CSV (Excel)</button>
+                            <button class="export-option" data-format="markdown">Markdown</button>
+                        </div>
+                    </div>
+
+                    <div class="export-menu">
+                        <button id="export-btn" class="export-button">Export <span class="inline-icon" data-icon="chevron-down"></span></button>
+                        <div id="export-dropdown" class="export-dropdown">
+                            <button class="export-option" data-format="csv">CSV</button>
+                            <button class="export-option" data-format="csv" data-excel-safe="true">CSV (Excel)</button>
+                            <button class="export-option" data-format="excel">Excel</button>
+                        </div>
+                    </div>
+
+                    <!-- GitHub Issue #247: these rows as the input of another API's batch (console-chain.js) -->
+                    <button id="chain-btn" class="export-button hidden" title="Send these rows to another API as its Run Batch input">Chain <span class="inline-icon" data-icon="chevron-right"></span></button>
+                    <!-- #298: compare this result with others of the endpoint (console-compare.js) -->
+                    <button id="compare-btn" class="export-button hidden" title="Compare this result with other results of this endpoint" data-help="compare#start">Compare<span class="dbmn-beta" title="Compare is new: tell us what you find">Beta</span></button>
+
+                </div>
+            </div>
+
+            <!-- Single Table Container (content changes based on active tab) -->
+            <div id="table-container" class="table-container">
+                <table id="data-table" class="data-table">
+                    <thead id="table-head"></thead>
+                    <tbody id="table-body"></tbody>
+                </table>
+            </div>
+
+            <!-- GitHub Issue #156: Info Tab Content -->
+            <div id="info-tab-content" class="hidden" style="padding: 20px; overflow-y: auto; flex: 1;">
+                <!-- Section: Sending To (Always shown) -->
+                <div class="execution-section">
+                    <h3>Sending To</h3>
+                    <div class="table-stats">
+                        <div class="stat-item">
+                            <span class="stat-label">Environment</span>
+                            <a href="#" class="nav-link stat-link" id="info-environment-link" data-environment-id="{{ENVIRONMENT_ID}}" title="Open the environment"><span id="info-environment">{{ENVIRONMENT}}</span></a>
+                        </div>
+                        <div class="stat-item" id="info-org-stat">
+                            <span class="stat-label">Organization</span>
+                            <span id="info-organization">{{ORGANIZATION}}</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Endpoint</span>
+                            <a href="#" class="nav-link stat-link" id="info-endpoint-link" data-endpoint-id="{{ENDPOINT_ID}}" title="Open the endpoint"><span id="info-endpoint-name">{{ENDPOINT_NAME}}</span></a>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Request URL</span>
+                            <span id="info-endpoint" class="font-mono">{{ENDPOINT_METHOD}} {{FULL_URL}}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Section: Configure (batch only, editable during run) -->
+                <div class="execution-section" id="info-configure-section">
+                    <h3>Configure</h3>
+                    <div class="table-stats">
+                        <div class="stat-item">
+                            <label class="stat-label" for="info-batch-name">Name</label>
+                            <input type="text" id="info-batch-name" value="{{BATCH_NAME}}"
+                                   maxlength="100" class="form-input" style="max-width: 300px;">
+                        </div>
+                        <div class="stat-item">
+                            <label class="stat-label">Error Handling</label>
+                            <div class="radio-group">
+                                <label class="radio-label">
+                                    <input type="radio" name="infoErrorMode" value="stopOnFirst">
+                                    <span>Stop on first error</span>
+                                </label>
+                                <label class="radio-label">
+                                    <input type="radio" name="infoErrorMode" value="continue" checked>
+                                    <span>Continue processing</span>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="stat-item" id="info-threads-stat">
+                            <label class="stat-label" for="info-threads">Processing Mode</label>
+                            <select id="info-threads" class="form-select">
+                                <option value="1">Sequential (1 thread)</option>
+                                <option value="2">2 threads</option>
+                                <option value="4">4 threads</option>
+                                <option value="8">8 threads</option>
+                                <option value="16">16 threads</option>
+                            </select>
+                            <div class="form-description" id="info-threads-desc">Concurrent API calls</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Section: Execution (Always shown) -->
+                <div class="execution-section">
+                    <h3>Execution</h3>
+                    <div class="table-stats">
+                        <div class="stat-item">
+                            <span class="stat-label" id="info-id-label">ID</span>
+                            <span id="info-exec-id">{{EXECUTION_ID}}</span>
+                        </div>
+                        <div class="stat-item" id="info-http-status-stat">
+                            <span class="stat-label">HTTP Status</span>
+                            <span id="info-http-status">{{HTTP_STATUS_DISPLAY}}</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Started</span>
+                            <span id="info-started">{{EXECUTED_AT}}</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Duration</span>
+                            <span id="info-duration">{{DURATION}}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Section: Lineage (shown when applicable) -->
+                <div class="execution-section" id="info-lineage-section">
+                    <h3>Lineage</h3>
+                    <div class="table-stats">
+                        <div class="stat-item {{COPY_INFO_VISIBILITY}}" id="info-copied-from-batch-stat">
+                            <span class="stat-label">Copied From</span>
+                            <a href="#" class="reprocess-link" id="info-copied-batch-link" data-batch-id="{{COPIED_FROM_BATCH_ID}}">{{COPIED_FROM_BATCH_ID}}</a>
+                        </div>
+                        <div class="stat-item {{COPY_INFO_VISIBILITY}}" id="info-copied-from-env-stat">
+                            <span class="stat-label">Original Environment</span>
+                            <span id="info-copied-from-env">{{COPIED_FROM_ENVIRONMENT}}</span>
+                        </div>
+                        <div class="stat-item {{COPY_INFO_VISIBILITY}}" id="info-copied-at-stat">
+                            <span class="stat-label">Copied At</span>
+                            <span id="info-copied-at">{{COPIED_AT}}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Section: Variables (shown when ENV variables were set at execution time) -->
+                <div class="execution-section" id="info-variables-section" style="display: none;" data-env-vars="{{ENVIRONMENT_VARIABLES_JSON}}">
+                    <h3>Variables</h3>
+                    <div class="table-stats" id="info-variables-container"></div>
+                </div>
+
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="empty-state" class="text-center p-50 color-description hidden">
+            <h3>No Data Found</h3>
+            <p>The selected tab contains no data.</p>
+        </div>
+        
+        <div class="report-footer">
+            <div class="footer-stats">
+                <span id="row-count">0 rows</span> •
+                <span id="column-count">0 columns</span>
+            </div>
+            <div class="footer-performance">
+                <span id="performance-stats">Loaded in 0ms</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- GitHub Issue #229 Phase 1B: Manage Views modal — two screens -->
+    <div id="views-modal" class="modal hidden">
+        <div class="modal-content column-modal-wide view-editor-modal">
+            <div class="modal-header">
+                <h3 id="views-modal-title">
+                    <span id="views-modal-title-text">Edit View</span>
+                </h3>
+                <span class="modal-close" id="views-modal-close">&times;</span>
+            </div>
+
+            <!-- Single editor screen (Manage Views list retired — dropdown owns switching) -->
+            <div id="views-editor-screen" style="display: flex; flex-direction: column; flex: 1; min-height: 0;">
+                <div class="modal-body view-editor-body">
+                    <!-- Name: label + input on one row so the column panels get the height. -->
+                    <div class="form-group view-editor-name-row">
+                        <label for="view-editor-name">Name</label>
+                        <input type="text" id="view-editor-name" placeholder="e.g. PO Lines" />
+                    </div>
+                    <div class="column-modal-body view-editor-panels">
+                        <div class="column-panel column-panel-available">
+                            <!-- Single-row pinned header: title + search. Wraps to two rows only when the panel is too narrow. -->
+                            <div class="column-panel-header view-editor-panel-header">
+                                <span class="column-panel-title">Available Columns</span>
+                                <span class="view-editor-search-wrap">
+                                    <svg class="view-editor-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+                                    <input type="text" id="view-editor-tree-search" class="view-editor-search" placeholder="Search columns..." />
+                                </span>
+                            </div>
+                            <div id="view-editor-tree" class="column-list"></div>
+                        </div>
+                        <div class="column-panel column-panel-selected">
+                            <!-- Single-row pinned header: title + row-basis select + Sort / Remove All. -->
+                            <div class="column-panel-header view-editor-panel-header">
+                                <span class="column-panel-title">Selected (<span id="view-editor-count">0</span>)</span>
+                                <select id="view-editor-row-basis" class="view-editor-row-basis" title="Row basis — which selected array becomes the rows"></select>
+                                <div class="view-editor-panel-actions">
+                                    <button id="view-editor-sort" class="secondary-btn btn-xs" type="button" title="Re-order selected columns to match JSON source order">Sort</button>
+                                    <button id="view-editor-remove-all" class="secondary-btn btn-xs" type="button" title="Clear all selected columns">Remove All</button>
+                                </div>
+                            </div>
+                            <div id="view-editor-selected" class="selected-column-list"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer view-editor-footer">
+                    <button id="view-editor-save" class="primary-btn">Save</button>
+                    <button id="view-editor-save-as" class="secondary-btn">Save As</button>
+                    <button id="view-editor-cancel" class="secondary-btn">Cancel</button>
+                    <!-- Delete sits on the far right, away from Save; the notification shares that slot. -->
+                    <div class="modal-footer-right">
+                        <div id="view-editor-notification" class="footer-notification hidden">
+                            <span class="notification-icon"></span>
+                            <span class="notification-message"></span>
+                            <button class="notification-dismiss" type="button" aria-label="Dismiss">×</button>
+                        </div>
+                        <button id="view-editor-delete" class="secondary-btn view-editor-delete" type="button">Delete View</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- GitHub Issue #198: Pagination Modal (Two-tab: Execute + Settings) -->
+    <div id="pagination-modal" class="modal hidden">
+        <div class="modal-content" style="max-width: 600px;">
+            <div class="modal-header">
+                <h3>Pagination
+                </h3>
+                <span class="modal-close" id="pagination-modal-close">&times;</span>
+            </div>
+
+            <!-- Tab bar (reuses shared tab-item style from tabs.css) -->
+            <div class="webview-tabs" style="padding: 0 16px;">
+                <div id="pagination-tab-execute" class="tab-item active" data-tab="execute">
+                    <span class="tab-label">Execute</span>
+                </div>
+                <div id="pagination-tab-settings" class="tab-item" data-tab="settings">
+                    <span class="tab-label">Settings</span>
+                </div>
+            </div>
+
+            <!-- EXECUTE TAB -->
+            <div id="pagination-execute-content" class="modal-body">
+                <!-- Not configured state -->
+                <div id="pagination-not-configured" class="hidden">
+                    <p>Pagination is not configured for this endpoint.</p>
+                    <p style="color: var(--vscode-descriptionForeground);">Configure settings to enable paginated execution.</p>
+                    <button id="pagination-go-to-settings" class="btn btn-secondary" style="margin-top: 12px;">Go to Settings</button>
+                </div>
+
+                <!-- Summary table (populated by JS) -->
+                <div id="pagination-summary-table" class="hidden"></div>
+
+                <!-- Fetch control -->
+                <div id="pagination-fetch-control" class="hidden" style="margin-top: 16px; display: flex; gap: 20px; align-items: flex-start;">
+                    <p style="color: var(--vscode-descriptionForeground); font-size: 12px; margin: 0; flex: 1; line-height: 1.6;">Select what pages we should fetch for you. DBMN loves to fetch.</p>
+                    <div class="radio-group-inline" style="flex-direction: column; gap: 10px; align-items: flex-start; flex-shrink: 0;">
+                        <label class="radio-label">
+                            <input type="radio" name="pagination-fetch-mode" value="all" checked /> Fetch all pages
+                        </label>
+                        <label class="radio-label">
+                            <input type="radio" name="pagination-fetch-mode" value="next" /> Get next
+                            <input type="number" id="pagination-next-count" class="input-field" min="1" style="width: 64px; margin: 0 4px;" />
+                            pages
+                        </label>
+                    </div>
+                </div>
+
+                <!-- All pages fetched -->
+                <div id="pagination-all-fetched" class="hidden">
+                    <p>All pages have been fetched.</p>
+                </div>
+            </div>
+
+            <!-- SETTINGS TAB -->
+            <div id="pagination-settings-content" class="modal-body hidden">
+                <div class="pagination-grid">
+                    <!-- Page Size -->
+                    <label class="pagination-grid-header">Page Size</label>
+                    <label class="form-sublabel" id="pagination-size-key-label">Query parameter key</label>
+                    <label class="form-sublabel">Value</label>
+                    <label class="form-sublabel">Response size field <span class="form-hint">(optional)</span></label>
+                    <input type="text" id="pagination-size-key" class="input-field" placeholder="e.g. size" />
+                    <input type="number" id="pagination-size-value" class="input-field" placeholder="e.g. 100" min="1" />
+                    <select id="pagination-size-path-select" class="input-field">
+                        <option value="">None &ndash; use value above</option>
+                    </select>
+
+                    <!-- Page Number -->
+                    <label class="pagination-grid-header">Page Number</label>
+                    <label class="form-sublabel" id="pagination-param-key-label">Query parameter key</label>
+                    <label class="form-sublabel">First page #</label>
+                    <label class="form-sublabel">Total record count <span class="form-hint">(optional)</span></label>
+                    <input type="text" id="pagination-param-key" class="input-field" placeholder="e.g. page" />
+                    <div class="radio-group-inline">
+                        <label class="radio-label">
+                            <input type="radio" name="pagination-start-value" value="0" /> 0
+                        </label>
+                        <label class="radio-label">
+                            <input type="radio" name="pagination-start-value" value="1" checked /> 1
+                        </label>
+                    </div>
+                    <select id="pagination-totalcount-select" class="input-field">
+                        <option value="">None &ndash; manage pages manually</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 8px;">
+                <button id="pagination-modal-cancel-btn" class="secondary-btn">Cancel</button>
+                <button id="pagination-modal-run-btn" class="btn btn-primary hidden">Run</button>
+                <button id="pagination-modal-save-btn" class="btn btn-primary hidden">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{CONSOLE_PAGE_URI}}" data-execution-id="{{EXECUTION_ID}}" data-batch-id="{{BATCH_ID}}" data-endpoint-method="{{ENDPOINT_METHOD}}" data-hide-input-tab="{{HIDE_INPUT_TAB}}" data-initial-concurrency="{{INITIAL_CONCURRENCY}}" data-max-concurrency="{{MAX_CONCURRENCY}}" data-report-type="{{REPORT_TYPE}}" data-execution-status="{{EXECUTION_STATUS}}" data-max-threads="{{MAX_THREADS}}" data-organization="{{ORGANIZATION}}" data-environment-id="{{ENVIRONMENT_ID}}" data-endpoint-id="{{ENDPOINT_ID}}" data-environment-variables-json="{{ENVIRONMENT_VARIABLES_JSON}}" data-http-status-display="{{HTTP_STATUS_DISPLAY}}" data-status-display="{{STATUS_DISPLAY}}"></script>
+
+    <!-- Sticky Footer with Transaction Action Buttons -->
+    <div class="webview-footer">
+        <div class="footer-content">
+            <!-- LEFT: Static/Dynamic Action Buttons -->
+            <div class="button-group" id="console-action-buttons">
+                <!-- Static Buttons (for completed executions) -->
+                <button id="delete-transaction-btn" data-click="deleteTransaction" class="btn btn-danger" title="Delete this transaction">
+                    Delete
+                </button>
+                <button id="rerun-transaction-btn" data-click="rerunTransaction" class="btn btn-primary hidden" title="Re-run this transaction">
+                    <span class="btn-icon" data-icon="refresh-cw"></span>Re-run
+                </button>
+                <button id="reprocess-batch-btn" data-click="reprocessBatch" class="btn btn-primary hidden" title="Reprocess this batch">
+                    <span class="btn-icon" data-icon="refresh-cw"></span>Reprocess
+                </button>
+
+                <!-- GitHub Issue #94: Next Page button (standalone quick-access) -->
+                <button id="next-page-btn" data-click="fetchNextPage" class="btn btn-primary hidden" title="Fetch next page">
+                    <span class="btn-icon" data-icon="arrow-right"></span>Next Page
+                </button>
+
+                <!-- GitHub Issue #198: Single Pagination button (opens two-tab modal) -->
+                <button id="pagination-btn" class="btn btn-secondary hidden" title="Pagination settings and execution">
+                    Pagination
+                </button>
+
+                <!-- Dynamic Buttons (for active executions) -->
+                <!-- #335: Pause (or Resume) first, then Cancel: Pause lets the requests in flight finish; Cancel ends the batch -->
+                <button id="pause-batch-btn" data-click="pauseBatch" class="btn btn-secondary hidden" title="Pause: the requests in flight finish; Resume carries on">
+                    <span class="btn-icon" data-icon="pause"></span>Pause
+                </button>
+                <button id="resume-batch-btn" data-click="resumeBatch" class="btn btn-primary hidden" title="Resume batch execution">
+                    <span class="btn-icon" data-icon="play"></span>Resume
+                </button>
+                <button id="cancel-preparation-btn" data-click="cancelExecution" class="btn btn-danger hidden" title="Cancel: stop now, and cut off the requests in flight">
+                    <span class="btn-icon" data-icon="square"></span>Cancel
+                </button>
+            </div>
+
+            <!-- CENTER: Info Tab Notification (GitHub Issue #156) -->
+            <div id="info-notification" class="info-notification hidden">
+                <span class="notification-icon inline-icon" data-icon="info"></span>
+                <span class="notification-message" id="info-notification-message"></span>
+            </div>
+
+            <!-- GitHub Issue #159: Inline Error Notification (uses shared footer-notification from tables.css) -->
+            <div id="footerNotification" class="footer-notification notification-warning hidden">
+                <span class="notification-icon inline-icon" data-icon="triangle-alert"></span>
+                <span class="notification-message"></span>
+                <button class="notification-dismiss" data-click="clearFooterNotification" title="Dismiss">&times;</button>
+            </div>
+
+            <!-- RIGHT: Progress Display -->
+            <div id="progress-display" class="progress-display hidden">
+                <div class="progress-info">
+                    <span id="progress-phase" class="progress-phase">Preparing</span>
+                    <span id="progress-count" class="progress-count">0/0</span>
+                </div>
+                <div class="progress-bar-container">
+                    <div id="progress-bar" class="progress-bar">
+                        <div id="progress-bar-fill" class="progress-bar-fill preparing" style="width: 0%"></div>
+                    </div>
+                </div>
+                <div class="progress-timing">
+                    <span id="progress-elapsed" class="progress-elapsed"><span class="inline-icon" data-icon="timer"></span><span>00s</span></span>
+                    <span id="progress-eta" class="progress-eta"><span class="inline-icon" data-icon="timer"></span><span>Remaining: calculating...</span></span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</body>
+</html>

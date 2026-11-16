@@ -1,0 +1,364 @@
+/**
+ * DBMN buttons and pills: the one place their look is decided.
+ *
+ * Before this, 146 button-like classes each carried their own colours, borders and corners
+ * (111 distinct looks). Now a control is one of four kinds of button, or it is a pill:
+ *
+ *   Main action   What this screen is for, or the next thing to do: Save, Execute, Next,
+ *                 Sign in. Solid, in the theme's accent. A screen has few of them.
+ *   Action        Every other button with a label. A faint tile; under the pointer it takes
+ *                 the selected tint (the Hub menu's active background).
+ *   Icon button   The same tile, square, with a glyph: Run API, Run Batch, copy. Window
+ *                 furniture (close, collapse, tab chevrons) has no tile until it is hovered.
+ *   Menu item     Something that stays chosen: the Hub menu, segmented toggles, filter chips.
+ *                 Chosen = the selected tint. Hover = the same tint at half strength.
+ *   Pill          A label, not a control: method, status, type, counts. A fill from the
+ *                 theme's palette with the page's background colour as its text, so it never
+ *                 reads as something to press. No hover, no pointer.
+ *
+ * Colour comes from the theme, through the tokens below. Readable text on the accent fill is
+ * guaranteed by button-contrast.js, which corrects a theme whose own pair does not read.
+ *
+ * How it applies: core.css imports this file, so every screen has it. Each rule is prefixed
+ * with `body`, which outranks the same class in a screen's own stylesheet whatever the order.
+ * To add a button: give it `.btn` with `.btn-primary` (main) or `.btn-secondary` (action), or
+ * add its class to the list for its kind. Do not give a button its own colours.
+ */
+
+:root {
+    /* The selected tint: the Hub menu's active background, and every button's hover */
+    --dbmn-selected: var(--vscode-list-activeSelectionBackground, rgba(128, 128, 128, 0.3));
+    --dbmn-on-selected: var(--vscode-list-activeSelectionForeground, var(--vscode-foreground));
+    /* Fallbacks for a browser without color-mix(): readable, just less exact */
+    --dbmn-hover: var(--vscode-list-inactiveSelectionBackground, rgba(128, 128, 128, 0.16));
+    --dbmn-tile: rgba(128, 128, 128, 0.12);
+    --dbmn-tile-border: rgba(128, 128, 128, 0.24);
+    --dbmn-radius: 4px;
+    /* A pill's text is the page's own background colour */
+    --dbmn-pill-text: var(--vscode-editor-background, #1f1f1f);
+}
+
+@supports (background: color-mix(in srgb, red 50%, transparent)) {
+    :root {
+        --dbmn-hover: color-mix(in srgb, var(--dbmn-selected) 50%, transparent);
+        --dbmn-tile: color-mix(in srgb, var(--vscode-foreground) 7%, transparent);
+        --dbmn-tile-border: color-mix(in srgb, var(--vscode-foreground) 16%, transparent);
+    }
+}
+
+/* Hover everywhere is the selected tint at half strength. A theme's own list and toolbar
+   hover is often the page colour itself (it "goes black"); rows, menu items and bare icon
+   buttons all read these two. */
+body {
+    --vscode-list-hoverBackground: var(--dbmn-hover);
+    --vscode-toolbar-hoverBackground: var(--dbmn-hover);
+}
+
+/* ─── Action: every button with a label that is not the main action ─────────────────── */
+
+body .btn-secondary,
+body .btn-danger,
+body .secondary-btn,
+body .add-btn,
+body .remove-btn,
+body .view-path-button,
+body .export-button,
+body .modal-trigger,
+body .column-order-controls .btn-xs,
+body .view-editor-panel-actions .btn-xs,
+body .level-toggle,
+body .grid-add-row-btn,
+body .blank-fields-warning .btn-sm,
+body .mismatch-edit-view-btn,
+body .copy-btn,
+body .extra-column-action,
+body .raw-search-clear,
+body .raw-control-btn,
+body .raw-copy-all-btn,
+body .raw-retry-btn,
+body .raw-view-logs-btn,
+body .raw-logs-modal-copy,
+body .raw-logs-modal-close,
+body .tag-manager-action,
+body .dbmn-filter-btn,
+body .view-row-edit,
+body .toolbar-dropdown-btn,
+body .hub-settings-add,
+body .editor-toolbar .editor-toolbar-doc-action,
+/* Home has one main action at a time: the first thing still to do. A to-do further down
+   the page waits its turn as an ordinary action (Re-open is an offer, not a to-do). */
+body .hub-home-card:not(.hidden):not(#hubHomeReopen) ~ .hub-home-card .btn-primary {
+    background: var(--dbmn-tile) !important;
+    color: var(--vscode-foreground) !important;
+    border: 1px solid var(--dbmn-tile-border) !important;
+    border-radius: var(--dbmn-radius) !important;
+    box-shadow: none;
+    transform: none;
+    transition: background-color 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+
+body .btn-secondary:hover:not(:disabled),
+body .btn-danger:hover:not(:disabled),
+body .secondary-btn:hover:not(:disabled),
+body .add-btn:hover:not(:disabled),
+body .remove-btn:hover:not(:disabled),
+body .view-path-button:hover:not(:disabled),
+body .export-button:hover:not(:disabled):not(.disabled),
+body .modal-trigger:hover:not(:disabled),
+body .column-order-controls .btn-xs:hover:not(:disabled),
+body .view-editor-panel-actions .btn-xs:hover:not(:disabled),
+body .level-toggle:hover:not(:disabled),
+body .grid-add-row-btn:hover:not(:disabled),
+body .blank-fields-warning .btn-sm:hover:not(:disabled),
+body .mismatch-edit-view-btn:hover:not(:disabled),
+body .copy-btn:hover:not(:disabled),
+body .extra-column-action:hover:not(:disabled),
+body .raw-search-clear:hover:not(:disabled),
+body .raw-control-btn:hover:not(:disabled),
+body .raw-copy-all-btn:hover:not(:disabled),
+body .raw-retry-btn:hover:not(:disabled),
+body .raw-view-logs-btn:hover:not(:disabled),
+body .raw-logs-modal-copy:hover:not(:disabled),
+body .raw-logs-modal-close:hover:not(:disabled),
+body .tag-manager-action:hover:not(:disabled),
+body .dbmn-filter-btn:hover:not(:disabled),
+body .view-row-edit:hover:not(:disabled),
+body .toolbar-dropdown-btn:hover:not(:disabled),
+body .hub-settings-add:hover:not(:disabled),
+body .editor-toolbar .editor-toolbar-doc-action:hover:not(:disabled),
+body .hub-home-card:not(.hidden):not(#hubHomeReopen) ~ .hub-home-card .btn-primary:hover:not(:disabled) {
+    background: var(--dbmn-selected) !important;
+    color: var(--dbmn-on-selected) !important;
+    border-color: var(--dbmn-tile-border) !important;
+    box-shadow: none;
+    transform: none;
+    filter: none;
+}
+
+/* A split button (Add Endpoint, with New from Clipboard beside it): one tile, two halves.
+   The group draws the border; each half takes the tint on its own. */
+body .hub-add-split-group {
+    background: var(--dbmn-tile);
+    border: 1px solid var(--dbmn-tile-border);
+    border-radius: var(--dbmn-radius);
+}
+
+body .hub-add-split-primary,
+body .hub-add-split-alt {
+    background: transparent;
+    color: var(--vscode-foreground);
+    border-radius: 0;
+}
+
+body .hub-add-split-alt {
+    border-left: 1px solid var(--dbmn-tile-border);
+}
+
+body .hub-add-split-primary:hover,
+body .hub-add-split-alt:hover {
+    background: var(--dbmn-selected);
+    color: var(--dbmn-on-selected);
+}
+
+/* Destructive: the same button, in the theme's error colour */
+body .btn-danger,
+body .remove-btn {
+    color: var(--vscode-errorForeground, #f14c4c) !important;
+}
+
+/* ─── Main action ────────────────────────────────────────────────────────────────────── */
+
+body .btn-primary,
+body .primary-btn,
+body .hub-home-cta.btn,
+body .hub-sign-in {
+    background: var(--vscode-button-background) !important;
+    color: var(--vscode-button-foreground) !important;
+    border: 1px solid var(--vscode-button-background) !important;
+    border-radius: var(--dbmn-radius) !important;
+    font-weight: 600 !important;
+    box-shadow: none;
+    transform: none;
+    transition: background-color 0.12s ease, filter 0.12s ease;
+}
+
+/* Many themes give the main action the same fill at rest and on hover; the brightness
+   makes the hover visible on those too. */
+body .btn-primary:hover:not(:disabled),
+body .primary-btn:hover:not(:disabled),
+body .hub-home-cta.btn:hover:not(:disabled),
+body .hub-sign-in:hover:not(:disabled) {
+    background: var(--vscode-button-hoverBackground, var(--vscode-button-background)) !important;
+    border-color: var(--vscode-button-hoverBackground, var(--vscode-button-background)) !important;
+    filter: brightness(1.1);
+    box-shadow: none;
+    transform: none;
+}
+
+/* ─── Icon button: the action's tile, square ─────────────────────────────────────────── */
+
+body .catalogue-row-run-btn,
+body button.btn-icon,
+body .view-gear-button,
+body .cell-detail-copy,
+body .copy-btn-overlay,
+body .raw-pane-copy-btn,
+body .raw-pane-fullscreen-btn {
+    background: var(--dbmn-tile);
+    color: var(--vscode-foreground);
+    border: 1px solid var(--dbmn-tile-border);
+    border-radius: var(--dbmn-radius);
+    transition: background-color 0.12s ease, color 0.12s ease;
+}
+
+body .catalogue-row-run-btn:hover,
+body .catalogue-row-run-btn:focus-visible,
+body button.btn-icon:hover:not(:disabled),
+body .view-gear-button:hover,
+body .cell-detail-copy:hover,
+body .copy-btn-overlay:hover,
+body .raw-pane-copy-btn:hover,
+body .raw-pane-fullscreen-btn:hover {
+    background: var(--dbmn-selected);
+    color: var(--dbmn-on-selected);
+}
+
+/* On the chosen row the tile sits on the selected tint already: keep its text with the row */
+body .catalogue-row.is-selected .catalogue-row-run-btn {
+    color: var(--dbmn-on-selected);
+}
+
+/* Signed out, the run controls are off: no hover */
+body.signed-out .catalogue-row-run-btn:hover {
+    background: var(--dbmn-tile);
+    color: var(--vscode-foreground);
+}
+
+/* Window furniture: no tile until it is hovered */
+body .hub-tab-strip-chev:hover,
+body .hub-tab-strip-close-all:hover,
+body .hub-tab-close:hover,
+body .hub-help-toggle:hover,
+body .docs-modal-close:hover,
+body .modal-close:hover,
+body .dbmn-modal-close:hover,
+body .dbmn-toast-close:hover,
+body .group-collapse-btn:hover,
+body .grid-delete-row-btn:hover,
+body .editable-table .btn-delete-row:hover,
+body .tag-chip-remove:hover {
+    background: var(--dbmn-hover);
+    border-radius: var(--dbmn-radius);
+}
+
+/* ─── Menu item: chosen is the selected tint; hover is half of it ────────────────────── */
+
+/* `.is-hovered`: the pointer is on the item's name on Home (hub-home.js), which is the same item */
+body .hub-nav-item:hover:not(:disabled):not(.is-active),
+body .hub-nav-item.is-hovered:not(:disabled):not(.is-active) {
+    background: var(--dbmn-hover);
+}
+
+/* The chosen item stays chosen under the pointer (it used to take the hover colour) */
+body .hub-nav-item.is-active,
+body .hub-nav-item.is-active:hover {
+    background: var(--dbmn-selected);
+    color: var(--dbmn-on-selected);
+}
+
+body .toggle-btn.active,
+body .level-toggle.active,
+body .raw-view-mode-btn.active,
+body .raw-show-chip[aria-pressed="true"],
+body .dbmn-filter-btn.is-active,
+body .catalogue-chip.is-active,
+body .catalogue-chip.catalogue-chip-scope.is-active,
+body .catalogue-chip.method-GET.is-active,
+body .catalogue-chip.method-POST.is-active,
+body .catalogue-chip.method-PUT.is-active,
+body .catalogue-chip.method-PATCH.is-active,
+body .catalogue-chip.method-DELETE.is-active {
+    background: var(--dbmn-selected) !important;
+    color: var(--dbmn-on-selected) !important;
+    border-color: var(--dbmn-tile-border) !important;
+}
+
+body .toggle-btn:hover:not(.active),
+body .raw-view-mode-btn:hover:not(.active),
+body .raw-show-chip:hover:not(:disabled):not([aria-pressed="true"]),
+body .catalogue-chip:hover:not(.is-active) {
+    background: var(--dbmn-hover);
+}
+
+/* ─── Every button: keyboard focus, and off ──────────────────────────────────────────── */
+
+body .btn:focus-visible,
+body .catalogue-row-run-btn:focus-visible,
+body button.btn-icon:focus-visible,
+body .hub-nav-item:focus-visible {
+    outline: 1px solid var(--vscode-focusBorder);
+    outline-offset: 1px;
+}
+
+body .btn:disabled,
+body .btn.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    filter: none;
+}
+
+/* ─── Pills: labels, not controls ────────────────────────────────────────────────────── */
+
+/* The page's background colour as text, on a fill from the theme's palette */
+body .catalogue-method-badge,
+body .status-badge.success,
+body .status-badge.error,
+body .status-badge.running,
+body .tab-count[data-tab],
+body .property-type-primitive .type-hint,
+body .property-type-object .type-hint,
+body .property-type-array .type-hint,
+body .sort-order-badge[class*="sort-order-"],
+body .csv-stage-status.in-progress,
+body .csv-stage-status.complete,
+body .csv-sorted-indicator,
+body .conflict-type.endpoint,
+body .conflict-type.environment,
+body .import-item-action.create,
+body .import-item-action.update,
+body .import-item-action.conflict,
+body .import-item-action.resolved,
+body .mapping-status.mapped,
+body .mapping-status.unmapped,
+body .type-badge[class*="type-"],
+body .data-type-string,
+body .data-type-number,
+body .data-type-boolean,
+body .data-type-date,
+body .data-type-array,
+body .raw-retry-badge,
+body .copy-btn.copied {
+    color: var(--dbmn-pill-text) !important;
+}
+
+body .catalogue-method-badge,
+body .status-badge,
+body .type-badge,
+body .sort-order-badge,
+body .raw-retry-badge {
+    cursor: default;
+}
+
+/* Method: the theme's own green, blue, orange, purple and red */
+body .catalogue-row.method-GET .catalogue-method-badge { background: var(--vscode-charts-green, #89d185); }
+body .catalogue-row.method-POST .catalogue-method-badge { background: var(--vscode-charts-blue, #3794ff); }
+body .catalogue-row.method-PUT .catalogue-method-badge { background: var(--vscode-charts-orange, #d18616); }
+body .catalogue-row.method-PATCH .catalogue-method-badge { background: var(--vscode-charts-purple, #b180d7); }
+body .catalogue-row.method-DELETE .catalogue-method-badge { background: var(--vscode-charts-red, #f14c4c); }
+
+/* Data types, which were fixed colours: the same palette */
+body .data-type-string { background: var(--vscode-charts-blue, #3794ff); }
+body .data-type-number { background: var(--vscode-charts-green, #89d185); }
+body .data-type-boolean { background: var(--vscode-charts-orange, #d18616); }
+body .data-type-date { background: var(--vscode-charts-purple, #b180d7); }
+body .data-type-array { background: var(--vscode-charts-red, #f14c4c); }

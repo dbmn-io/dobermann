@@ -1,0 +1,9 @@
+{
+  "timeout": 30000,
+  "slow": 5000,
+  "reporter": "spec",
+  "recursive": true,
+  "extension": ["js"],
+  "exit": true,
+  "bail": false
+}

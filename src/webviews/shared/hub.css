@@ -1,0 +1,3890 @@
+/* DBMN Hub layout
+ * Single-window management surface. Left-side section nav + main content pane.
+ * Catalogue section is the only active section in P2a; others render
+ * a placeholder.
+ */
+
+html, body.hub {
+    height: 100%;
+    margin: 0;
+    overflow: hidden;
+    background: var(--vscode-editor-background);
+    color: var(--vscode-editor-foreground);
+    font-family: var(--vscode-font-family);
+    font-size: var(--vscode-font-size);
+}
+/* Issue #353: core.css pads every page's body (20px, 80px at the foot). The
+ * Hub fills its webview, so that padding only made the document 100px taller
+ * than the viewport: scrollIntoView or a focus could shift the whole Hub up. */
+body.hub { padding: 0; }
+
+.hub-layout {
+    display: grid;
+    /* Two columns: the 44px icon rail · tab content (Home when no tabs are
+     * open). Neither changes width (Issues #348, #349): the list panel is a
+     * drawer over the content column, and the rail never grows labels.
+     * `--hub-col2-w` is the drawer width, set by its drag handle (hub.js)
+     * and persisted to vscode.setState. */
+    --hub-col2-w: 360px;
+    grid-template-columns: 44px 1fr;
+    grid-template-rows: auto 1fr;
+    height: 100%;
+    width: 100%;
+    /* The list drawer is wider than the rail, so mid-slide it reaches past
+     * the rail's left edge; clip it to the Hub (Issue #349). `clip`, not
+     * `hidden`: nothing here should become a scroll container. */
+    overflow: clip;
+    transition: grid-template-columns 0.22s ease;
+}
+
+/* Top header bar — spans all columns. Holds the rail toggle (left), env
+ * switcher pill (left-center), and activity chip (right). Replaces the
+ * old per-rail nav header so the env switcher stays visible even when
+ * the rail collapses to icons. */
+.hub-header {
+    grid-column: 1 / -1;
+    grid-row: 1;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    /* GitHub Issue #285: the env name renders at 16px inside a selector that
+     * only had a 26px content box (30px min-height less 2px padding each side),
+     * so descenders were clipped by `.hub-env-current`'s `overflow: hidden`
+     * ("staging" lost the tail of its g). The bar is now tall enough for 16px
+     * text plus the selector's own padding and border, with headroom to spare. */
+    padding: 6px 12px;
+    min-height: 44px;
+    border-bottom: 1px solid var(--vscode-panel-border);
+    background: var(--vscode-sideBar-background);
+    position: relative;
+    z-index: 3;
+}
+.hub-header-spacer { flex: 1; }
+
+/* GitHub Issue #285: DBMN brand lockup, pinned to the far left of the header.
+ * Reuses the `paw-print` glyph already used to mark the active environment, so
+ * the header mark and the in-app marker are the same shape. */
+.hub-logo {
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 0;
+    padding-right: 4px;
+    color: var(--vscode-foreground);
+    user-select: none;
+}
+/* The DBMN brand font, the one dbmn.io sets its name and headings in (SIL Open Font
+ * License: fonts/OFL-Cooper.txt). Only the name wears it: the wordmark here and on Home. */
+@font-face {
+    font-family: 'Cooper Black';
+    src: url('fonts/Cooper-Black.woff2') format('woff2');
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+}
+.hub-logo-mark {
+    height: 28px;
+    width: auto;
+    display: block;
+}
+.hub-logo-wordmark {
+    font-family: 'Cooper Black', Georgia, serif;
+    font-size: 18px;
+    font-weight: 400;
+    line-height: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    max-width: 90px;
+    margin-left: 8px;
+    opacity: 1;
+    /* Same 0.22s as the grid-column transition so the wordmark slides
+     * away in step with the rail labels. */
+    transition: max-width 0.22s ease, margin-left 0.22s ease, opacity 0.16s ease;
+}
+/* Keep the lockup legible against the production red banner. */
+.hub-header.is-production .hub-logo {
+    color: var(--vscode-statusBarItem-errorForeground, #ffffff);
+}
+
+/* GitHub Issue #273: production environment warning banner. When the active
+ * environment is flagged as production, the header turns red so there's no
+ * mistaking which environment live requests will hit.
+ *
+ * Uses the statusBarItem *error* token pair (the red error badge in VS Code's
+ * status bar): themes are obliged to keep its background/foreground legible
+ * together — a solid red with a light/white foreground — so we get reliable
+ * contrast across light and dark themes. (The inputValidation error tokens are
+ * NOT a safe pair here: their foreground is a red meant to sit on a *light*
+ * error background, which rendered red-on-red on some themes.) */
+.hub-header.is-production {
+    background: var(--vscode-statusBarItem-errorBackground, #c72e0f);
+    border-bottom-color: color-mix(in srgb, var(--vscode-statusBarItem-errorBackground, #c72e0f) 70%, black);
+}
+.hub-header.is-production .hub-env-selector,
+.hub-header.is-production .hub-env-current,
+.hub-header.is-production .hub-env-caret {
+    color: var(--vscode-statusBarItem-errorForeground, #ffffff);
+}
+.hub-header.is-production .hub-env-current {
+    font-weight: 600;
+}
+.hub-header.is-production .hub-env-caret svg {
+    opacity: 1;
+}
+/* Keep white text legible on the red banner while hovering / open — the
+ * default list-hover background is a pale overlay that washes it out. */
+.hub-header.is-production .hub-env-selector:hover,
+.hub-header.is-production .hub-env-selector[aria-expanded="true"] {
+    background: rgba(0, 0, 0, 0.22);
+    border-color: rgba(255, 255, 255, 0.4);
+}
+.hub-header.is-production .hub-env-current::before {
+    content: '● PROD ';
+    letter-spacing: 0.04em;
+}
+
+/* While the user is dragging the resize handle, suppress the smooth
+ * column transition so the column tracks the cursor 1:1. Also disable
+ * pointer events on the iframes — without this, the cursor crossing
+ * into the tab content area transfers pointer focus into the iframe
+ * which captures the events, and the window-level mousemove stops
+ * firing (cursor seems to "freeze" the drag a few pixels in). */
+.hub-layout.is-resizing {
+    transition: none;
+    cursor: col-resize;
+    user-select: none;
+}
+.hub-layout.is-resizing .hub-tab-iframe,
+.hub-layout.is-resizing iframe {
+    pointer-events: none;
+}
+
+/* ─── List drawer (GitHub Issue #349) ───
+ * The list panel (.hub-main), its resize handle and the scrim share the
+ * content column's grid cell with .hub-content and sit above it, so the tab
+ * content never changes width. Closed, the drawer slides back behind the
+ * rail (which stacks above it); `.drawer-open` on .hub-layout brings it out. */
+.hub-main,
+.hub-col-resize,
+.hub-drawer-scrim {
+    grid-column: 2;
+    grid-row: 2;
+}
+
+.hub-drawer-scrim {
+    z-index: 4;
+    background: rgba(0, 0, 0, 0.22);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.18s ease;
+}
+.hub-layout.drawer-open .hub-drawer-scrim {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+/* Drag handle on the drawer's right edge — a 4px sliver over the scrim. */
+.hub-col-resize {
+    z-index: 6;
+    justify-self: start;
+    width: 4px;
+    margin-left: calc(var(--hub-col2-w) - 2px);
+    cursor: col-resize;
+    background: transparent;
+    transition: background 0.12s ease;
+}
+.hub-col-resize:hover,
+.hub-col-resize:focus-visible,
+.hub-layout.is-resizing .hub-col-resize {
+    background: var(--vscode-sash-hoverBorder, var(--vscode-focusBorder, transparent));
+}
+.hub-layout:not(.drawer-open) .hub-col-resize {
+    display: none;
+}
+
+/* ─── Side nav ─── */
+
+.hub-nav {
+    grid-row: 2;
+    /* Above the list drawer, which slides out from behind it. */
+    position: relative;
+    z-index: 7;
+    background: var(--vscode-sideBar-background);
+    border-right: 1px solid var(--vscode-panel-border);
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    /* Never show a horizontal scrollbar — during the rail width transition
+     * the labels are clipped, not scrolled. */
+    overflow-x: hidden;
+}
+.hub-nav-top {
+    flex: 1;
+    min-height: 0;
+    /* Issue #293: items keep their size; what doesn't fit goes behind the
+     * rail's `…` (hub.js layoutRailOverflow), as in VS Code's activity bar. */
+    overflow: hidden;
+}
+.hub-nav-item.is-overflowed { display: none; }
+.hub-nav-bottom {
+    border-top: 1px dashed var(--vscode-panel-border);
+    padding-top: 6px;
+}
+
+/* All grid items below the header occupy row 2. */
+.hub-content { grid-row: 2; }
+
+.hub-nav-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 8px 10px 12px;
+    border-bottom: 1px solid var(--vscode-panel-border);
+    gap: 4px;
+}
+
+/* ─── Env selector in the header ─── */
+
+.hub-env-selector-wrap {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    min-width: 0;
+    max-width: 560px;
+    /* #424: one pill group: the environment, then a segment per variable its header shows */
+    display: inline-flex;
+    align-items: stretch;
+}
+
+.hub-env-selector {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 8px;
+    background: transparent;
+    color: var(--vscode-foreground);
+    border: 1px solid transparent;
+    border-radius: 4px;
+    cursor: pointer;
+    font: inherit;
+    font-size: 13px;
+    text-align: left;
+    line-height: 1.2;
+}
+
+/* Signed out of DBMN: Sign in replaces the selector in the header. Header-sized, in the
+   accent tint the Run Batch step bar uses for the current step, so it reads as the thing to do. */
+.hub-sign-in {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 12px;
+    background: color-mix(in srgb, var(--vscode-textLink-foreground) 14%, transparent);
+    color: var(--vscode-textLink-foreground);
+    border: 1px solid color-mix(in srgb, var(--vscode-textLink-foreground) 55%, transparent);
+    border-radius: 4px;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.2;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.hub-sign-in:hover {
+    background: color-mix(in srgb, var(--vscode-textLink-foreground) 24%, transparent);
+}
+
+.hub-sign-in:focus-visible {
+    outline: 1px solid var(--vscode-focusBorder);
+    outline-offset: 1px;
+}
+
+/* Issue #396: signed in to DBMN, but the session can no longer refresh. A warning, not a
+   block — the environment selector stays and runs carry on. It sits with the other state on
+   the right (sign-in, activity); the DEV badge moved to the logo on the left to make room,
+   because the environment name is centred over the bar. */
+.hub-session-expired {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+    padding: 3px 12px;
+    background: color-mix(in srgb, var(--vscode-editorWarning-foreground) 14%, transparent);
+    color: var(--vscode-editorWarning-foreground);
+    border: 1px solid color-mix(in srgb, var(--vscode-editorWarning-foreground) 55%, transparent);
+    border-radius: 4px;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.2;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.hub-session-expired:hover {
+    background: color-mix(in srgb, var(--vscode-editorWarning-foreground) 24%, transparent);
+}
+
+.hub-session-expired:focus-visible {
+    outline: 1px solid var(--vscode-focusBorder);
+    outline-offset: 1px;
+}
+
+/* A narrow Hub: the icon alone (the tooltip says the rest), so it never reaches the
+   centred environment name. */
+@media (max-width: 900px) {
+    .hub-session-expired { padding: 3px 8px; }
+    .hub-session-expired-label { display: none; }
+}
+
+/* On the red production bar the warning colour is unreadable: the bar's own foreground. */
+.hub-header.is-production .hub-session-expired {
+    background: rgba(0, 0, 0, 0.22);
+    color: var(--vscode-statusBarItem-errorForeground, #ffffff);
+    border-color: rgba(255, 255, 255, 0.55);
+}
+
+.hub-header.is-production .hub-session-expired:hover {
+    background: rgba(0, 0, 0, 0.34);
+}
+
+.hub-env-selector:hover {
+    background: var(--vscode-list-hoverBackground);
+    border-color: var(--vscode-panel-border);
+}
+
+.hub-env-selector[aria-expanded="true"] {
+    background: var(--vscode-list-hoverBackground);
+    border-color: var(--vscode-focusBorder, var(--vscode-panel-border));
+}
+
+.hub-env-current {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 600;
+    font-size: 16px;
+    /* GitHub Issue #285: `overflow: hidden` clips whatever the line box can't
+     * hold, so this needs enough leading for 16px descenders in its own right —
+     * it must not rely on the header being tall enough. */
+    line-height: 1.4;
+}
+
+.hub-env-current.is-empty {
+    color: var(--vscode-descriptionForeground);
+    font-style: italic;
+    font-weight: 400;
+}
+
+.hub-env-caret svg {
+    width: 12px;
+    height: 12px;
+    opacity: 0.7;
+}
+
+/* #424: the variable segments after the name. Each is its own button with its own list under it. */
+.hub-env-vars {
+    display: inline-flex;
+    align-items: stretch;
+    min-width: 0;
+}
+.hub-env-vars:empty { display: none; }
+.hub-env-var {
+    position: relative;
+    display: inline-flex;
+    min-width: 0;
+    max-width: 160px;
+}
+.hub-env-seg {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+    padding: 2px 8px;
+    margin-left: 2px;
+    background: transparent;
+    color: var(--vscode-foreground);
+    border: 1px solid transparent;
+    border-radius: 4px;
+    cursor: pointer;
+    font: inherit;
+    font-size: 13px;
+    line-height: 1.4;
+}
+.hub-env-seg::before {
+    content: '';
+    width: 1px;
+    height: 14px;
+    margin-right: 6px;
+    background: var(--vscode-panel-border);
+    opacity: 0.8;
+    flex-shrink: 0;
+}
+.hub-env-seg:hover,
+.hub-env-seg[aria-expanded="true"] {
+    background: var(--vscode-list-hoverBackground);
+    border-color: var(--vscode-panel-border);
+}
+.hub-env-seg-value {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 600;
+}
+/* No value from its options yet: the segment asks, in the warning colour */
+.hub-env-seg.is-missing .hub-env-seg-value {
+    color: var(--vscode-editorWarning-foreground, var(--vscode-notificationsWarningIcon-foreground));
+    font-weight: 500;
+    font-style: italic;
+}
+/* With header variables, the environment and its variables are one group: an outline around
+   both, the variables in a faintly shaded inner panel, so they read as the environment's own */
+.hub-env-selector-wrap.has-vars {
+    border: 1px solid color-mix(in srgb, var(--vscode-foreground) 22%, transparent);
+    border-radius: 6px;
+    padding: 1px;
+}
+.hub-env-selector-wrap.has-vars .hub-env-vars {
+    margin-left: 4px;
+    padding: 0 2px;
+    border-left: 1px solid color-mix(in srgb, var(--vscode-foreground) 22%, transparent);
+    border-radius: 0 5px 5px 0;
+    background: color-mix(in srgb, var(--vscode-foreground) 6%, transparent);
+}
+/* The panel's own edge divides the name from the first variable */
+.hub-env-selector-wrap.has-vars .hub-env-var:first-child .hub-env-seg::before {
+    display: none;
+}
+.hub-header.is-production .hub-env-selector-wrap.has-vars {
+    border-color: rgba(255, 255, 255, 0.45);
+}
+.hub-header.is-production .hub-env-selector-wrap.has-vars .hub-env-vars {
+    border-left-color: rgba(255, 255, 255, 0.45);
+    background: rgba(0, 0, 0, 0.18);
+}
+.hub-env-var-popup {
+    min-width: 160px;
+}
+.hub-env-var-popup .hub-env-popup-var {
+    padding: 4px 12px 2px;
+}
+.hub-env-var-popup .hub-env-popup-org {
+    padding-left: 12px;
+}
+/* On the production banner a segment reads exactly as the environment's name does: the banner's
+   own foreground, never the error red (red on red was unreadable). A value still to be picked
+   stays italic, in the same foreground, since the warning yellow fails on the banner too. */
+.hub-header.is-production .hub-env-seg,
+.hub-header.is-production .hub-env-seg .hub-env-caret,
+.hub-header.is-production .hub-env-seg.is-missing .hub-env-seg-value {
+    color: var(--vscode-statusBarItem-errorForeground, #ffffff);
+}
+.hub-header.is-production .hub-env-seg .hub-env-caret svg {
+    opacity: 1;
+}
+.hub-header.is-production .hub-env-seg::before {
+    background: rgba(255, 255, 255, 0.45);
+}
+.hub-header.is-production .hub-env-seg:hover,
+.hub-header.is-production .hub-env-seg[aria-expanded="true"] {
+    background: rgba(0, 0, 0, 0.22);
+    border-color: rgba(255, 255, 255, 0.4);
+}
+
+/* The actions at the foot of a list: the active environment's editor, a new one, Add */
+.hub-env-popup-actions {
+    margin-top: 4px;
+    padding-top: 4px;
+    border-top: 1px solid var(--vscode-panel-border);
+}
+.hub-env-popup-action {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 12px;
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--vscode-textLink-foreground);
+}
+.hub-env-popup-action:hover {
+    background: var(--vscode-list-hoverBackground);
+}
+.hub-env-popup-action svg {
+    width: 14px;
+    height: 14px;
+}
+.hub-env-var-popup .hub-env-popup-action {
+    margin-top: 4px;
+    border-top: 1px solid var(--vscode-panel-border);
+    padding-top: 8px;
+}
+
+.hub-env-popup {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    min-width: 280px;
+    max-width: 480px;
+    z-index: 50;
+    background: var(--vscode-dropdown-background, var(--vscode-editor-background));
+    border: 1px solid var(--vscode-dropdown-border, var(--vscode-panel-border));
+    border-radius: 4px;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+    max-height: 320px;
+    overflow-y: auto;
+    padding: 4px 0;
+}
+
+.hub-env-popup.hidden { display: none; }
+
+/* Issue #293: the rail's `…` menu, opened beside the rail. Fixed, so the
+ * rail's own overflow never clips it; hub.js sets top/left. */
+.hub-env-popup.hub-rail-more-popup {
+    position: fixed;
+    top: 0;
+    min-width: 180px;
+}
+.hub-rail-more-popup .hub-env-popup-item {
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+}
+.hub-rail-more-popup .hub-env-popup-item svg {
+    width: 16px;
+    height: 16px;
+}
+
+.hub-env-popup-item {
+    display: flex;
+    flex-direction: column;
+    padding: 6px 12px;
+    cursor: pointer;
+    border-left: 2px solid transparent;
+}
+
+.hub-env-popup-item:hover {
+    background: var(--vscode-list-hoverBackground);
+}
+
+.hub-env-popup-item.is-active {
+    background: var(--vscode-list-activeSelectionBackground);
+    color: var(--vscode-list-activeSelectionForeground);
+    border-left-color: var(--vscode-focusBorder, var(--vscode-textLink-foreground));
+}
+
+/* Production environments read red in the selector, so the risky choice is
+ * obvious at the point of picking it rather than only once the header turns red.
+ * `errorForeground` is the same family used by `.hub-header.is-production` and
+ * is legible in both light and dark themes. */
+.hub-env-popup-item.is-production .hub-env-popup-name {
+    color: var(--vscode-errorForeground, var(--vscode-statusBarItem-errorBackground));
+    font-weight: 600;
+}
+
+.hub-env-popup-item.is-production {
+    border-left-color: var(--vscode-errorForeground, var(--vscode-statusBarItem-errorBackground));
+}
+
+/* Selection highlight must still win — otherwise the active production row
+ * renders red-on-blue and becomes unreadable. */
+.hub-env-popup-item.is-production.is-active .hub-env-popup-name {
+    color: var(--vscode-list-activeSelectionForeground);
+}
+
+.hub-env-popup-name {
+    font-size: 13px;
+    font-weight: 500;
+}
+
+/* The environment list: the name and URL on the left, that environment's Edit pencil on the right */
+#hubEnvPopup .hub-env-popup-item {
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+}
+.hub-env-popup-text {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+}
+.hub-env-popup-edit {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--vscode-descriptionForeground);
+    cursor: pointer;
+}
+.hub-env-popup-edit svg {
+    width: 14px;
+    height: 14px;
+}
+.hub-env-popup-edit:hover,
+.hub-env-popup-edit:focus-visible {
+    color: var(--vscode-foreground);
+    background: var(--vscode-toolbar-hoverBackground, var(--vscode-list-hoverBackground));
+}
+.hub-env-popup-item.is-active .hub-env-popup-edit {
+    color: var(--vscode-list-activeSelectionForeground);
+}
+
+/* #344: the name, and beside it the VS Code mark for an environment that runs there */
+.hub-env-popup-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.hub-env-popup-agent {
+    color: var(--vscode-descriptionForeground);
+}
+.hub-env-popup-agent svg {
+    width: 14px;
+    height: 14px;
+}
+
+.hub-env-popup-sub {
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.hub-env-popup-item.is-active .hub-env-popup-sub {
+    color: var(--vscode-list-activeSelectionForeground);
+    opacity: 0.8;
+}
+
+/* #424: a variable's list under its segment: the variable's name as a heading, one row per
+ * option, the current one ticked. (These rows were nested under each environment before.) */
+.hub-env-popup-var {
+    padding: 6px 16px 2px 28px;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    opacity: 0.6;
+}
+
+.hub-env-popup-org {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 12px 4px 28px;
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--vscode-foreground);
+    border-left: 2px solid transparent;
+}
+
+.hub-env-popup-org:hover {
+    background: var(--vscode-list-hoverBackground);
+}
+
+.hub-env-popup-org.is-current {
+    color: var(--vscode-textLink-foreground);
+    font-weight: 500;
+}
+
+.hub-env-popup-org-check {
+    color: var(--vscode-textLink-foreground);
+    flex-shrink: 0;
+}
+
+/* #424: an option with a label: the label, then the value it sends, muted */
+.hub-env-popup-org-name {
+    flex: 1;
+}
+.hub-env-popup-org-value {
+    margin: 0 8px;
+    color: var(--vscode-descriptionForeground);
+    font-weight: normal;
+}
+.hub-env-popup-org-value:empty {
+    display: none;
+}
+
+.hub-env-popup-org-check svg {
+    width: 14px;
+    height: 14px;
+    stroke-width: 2;
+}
+
+.hub-env-popup-empty {
+    padding: 12px;
+    color: var(--vscode-descriptionForeground);
+    font-style: italic;
+    font-size: 12px;
+}
+
+/* Collapsed state: hide nav text labels, keep icons. Because every nav
+ * item carries a fixed 44px icon column (= the collapsed rail width) that
+ * is anchored to the left, the icon sits at exactly the same x whether the
+ * rail is expanded or collapsed. Collapsing therefore only hides the
+ * label — the icons never shift, and there is no mid-animation drift or
+ * transient scrollbar. The env selector lives in the top header bar so it
+ * stays visible regardless of rail collapse. */
+.hub-nav-label {
+    display: none;
+}
+
+.hub-nav nav {
+    display: flex;
+    flex-direction: column;
+    padding: 8px 0;
+}
+
+.hub-nav-item {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    /* No horizontal padding: the item's left edge meets the column's left
+     * edge so the fixed 44px icon column below anchors the icon to the same
+     * x in both expanded and collapsed rails. overflow:hidden + nowrap clip
+     * the label as the column narrows instead of spawning a scrollbar. */
+    padding: 8px 0;
+    margin: 0;
+    background: transparent;
+    border: none;
+    color: var(--vscode-sideBar-foreground, inherit);
+    cursor: pointer;
+    text-align: left;
+    font: inherit;
+    font-size: 13px;
+    white-space: nowrap;
+    overflow: hidden;
+    flex-shrink: 0;
+    transition: background-color 0.1s ease;
+}
+
+.hub-nav-item:hover:not(:disabled) {
+    background: var(--vscode-list-hoverBackground);
+}
+
+.hub-nav-item.is-active {
+    background: var(--vscode-list-activeSelectionBackground);
+    color: var(--vscode-list-activeSelectionForeground);
+    /* Active bar drawn as an inset shadow rather than a border so it adds
+     * no layout width — the icon never shifts between active/inactive or
+     * expanded/collapsed. */
+    box-shadow: inset 3px 0 0 var(--vscode-focusBorder, transparent);
+}
+
+.hub-nav-item:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+.hub-nav-icon {
+    /* Fixed 44px column == the icon-rail width (.hub-layout.has-tabs
+     * grid track). Anchored at the item's left edge, this keeps every icon's
+     * centre at x=22px whether the rail is expanded (220px) or collapsed
+     * (44px), so collapsing the rail never moves an icon. */
+    flex: 0 0 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 33px;
+}
+
+.hub-nav-icon svg {
+    width: 33px;
+    height: 33px;
+    stroke-width: 1.5;
+}
+
+/* Generic sizing for inline icons rendered by shared/icons.js — keeps the
+ * stroke crisp at 16px and ensures the SVG inherits theme colour. */
+.icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 0;
+}
+
+.icon svg {
+    width: 16px;
+    height: 16px;
+    stroke-width: 1.6;
+    color: currentColor;
+}
+
+.hub-nav-label {
+    flex: 1;
+    min-width: 0;
+    padding-right: 12px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* ─── Main pane ─── */
+
+.hub-main {
+    z-index: 5;
+    justify-self: start;
+    box-sizing: border-box;
+    width: var(--hub-col2-w);
+    max-width: 100%;
+    min-height: 0;
+    overflow: hidden;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    background: var(--vscode-editor-background);
+    border-right: 1px solid var(--vscode-panel-border);
+    box-shadow: 4px 0 16px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.3));
+    /* Closed: tucked behind the rail and out of the focus order.
+     * `visibility` flips only after the slide finishes. */
+    transform: translateX(-100%);
+    visibility: hidden;
+    transition: transform 0.18s ease, visibility 0s linear 0.18s;
+}
+.hub-layout.drawer-open .hub-main {
+    transform: none;
+    visibility: visible;
+    transition: transform 0.18s ease, visibility 0s linear 0s;
+}
+.hub-layout.is-resizing .hub-main {
+    transition: none;
+}
+
+.hub-section {
+    display: none;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.hub-section.is-visible {
+    display: flex;
+}
+
+.hub-placeholder {
+    padding: 32px 36px;
+    max-width: 720px;
+    color: var(--vscode-descriptionForeground);
+}
+
+.hub-placeholder h2 {
+    margin: 0 0 12px;
+    color: var(--vscode-editor-foreground);
+    font-size: 18px;
+    font-weight: 600;
+}
+
+.hub-placeholder p {
+    margin: 0 0 8px;
+    line-height: 1.5;
+}
+
+.hub-placeholder-note {
+    margin-top: 18px;
+    font-style: italic;
+    opacity: 0.7;
+}
+
+/* ─── Catalogue header / controls ─── */
+
+.catalogue-header {
+    padding: 16px 24px 12px;
+    border-bottom: 1px solid var(--vscode-panel-border);
+    background: var(--vscode-editor-background);
+    position: sticky;
+    top: 0;
+    z-index: 2;
+}
+
+.catalogue-filters-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.catalogue-system-mode {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.catalogue-system-mode select {
+    background: var(--vscode-dropdown-background);
+    color: var(--vscode-dropdown-foreground);
+    border: 1px solid var(--vscode-dropdown-border, var(--vscode-input-border, transparent));
+    padding: 4px 8px;
+    border-radius: 3px;
+    font: inherit;
+}
+
+.catalogue-groupby {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.catalogue-control-label {
+    color: var(--vscode-descriptionForeground);
+    font-size: 12px;
+}
+
+.catalogue-groupby select {
+    background: var(--vscode-dropdown-background);
+    color: var(--vscode-dropdown-foreground);
+    border: 1px solid var(--vscode-dropdown-border, var(--vscode-input-border, transparent));
+    padding: 4px 8px;
+    border-radius: 3px;
+    font: inherit;
+}
+
+.catalogue-search {
+    position: relative;
+    flex: 1;
+    min-width: 200px;
+}
+
+.catalogue-search input {
+    width: 100%;
+    box-sizing: border-box;
+    background: var(--vscode-input-background);
+    color: var(--vscode-input-foreground);
+    border: 1px solid var(--vscode-input-border, transparent);
+    /* Left padding leaves room for the inset search icon — matches the
+     * console's `.search-input` (#262) so search boxes look the same
+     * across the extension. */
+    padding: 5px 10px 5px 30px;
+    border-radius: 3px;
+    font: inherit;
+}
+
+.catalogue-search input:focus {
+    outline: 1px solid var(--vscode-focusBorder);
+    outline-offset: -1px;
+}
+
+/* Lucide search glyph inset on the left, matching the console pattern
+ * (`.search-icon-inset` in shared/console.css). */
+.catalogue-search-icon {
+    position: absolute;
+    left: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--vscode-input-placeholderForeground, var(--vscode-descriptionForeground));
+    opacity: 0.75;
+    pointer-events: none;
+    z-index: 1;
+}
+
+/* #444: the search box is a textarea, one line to start, growing as a long query wraps
+ * (search-words.js sets its height); Build a search sits inside it on the right. */
+.catalogue-search textarea.search-box-input {
+    display: block;
+    /* core's textarea margin would put the text 5px below its coloured copy and the icons */
+    margin: 0;
+    width: 100%;
+    box-sizing: border-box;
+    min-height: 30px;
+    resize: none;
+    overflow: hidden;
+    background: var(--vscode-input-background);
+    color: var(--vscode-input-foreground);
+    border: 1px solid var(--vscode-input-border, transparent);
+    padding: 6px 34px 6px 30px;
+    border-radius: 3px;
+    font: inherit;
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 12px;
+    line-height: 16px;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+.catalogue-search textarea.search-box-input::placeholder {
+    font-family: var(--vscode-font-family, sans-serif);
+    font-size: 12px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.catalogue-search textarea.search-box-input:focus {
+    outline: 1px solid var(--vscode-focusBorder);
+    outline-offset: -1px;
+}
+.catalogue-search:has(textarea.search-box-input) .catalogue-search-icon { top: 15px; }
+/* The query in colour: the mirror sits under the textarea, letter for letter (same font,
+ * padding, border width and wrapping); the textarea's own text is transparent, its caret not. */
+.catalogue-search.has-mirror textarea.search-box-input {
+    position: relative;
+    z-index: 1;
+    background: transparent;
+    color: transparent;
+    caret-color: var(--vscode-input-foreground);
+}
+.catalogue-search.has-mirror textarea.search-box-input::placeholder { color: var(--vscode-input-placeholderForeground, var(--vscode-descriptionForeground)); }
+.catalogue-search.has-mirror textarea.search-box-input::selection { color: var(--vscode-input-foreground); }
+.search-box-mirror {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    box-sizing: border-box;
+    padding: 6px 34px 6px 30px;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    background: var(--vscode-input-background);
+    color: var(--vscode-input-foreground);
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 12px;
+    line-height: 16px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow: hidden;
+    pointer-events: none;
+}
+.catalogue-search.has-mirror .catalogue-search-icon { z-index: 2; }
+.search-box-builder { z-index: 2; }
+/* Colour only, never weight: a bold letter could be wider than the box's, and the caret would drift */
+.search-tok-tag { color: var(--vscode-textLink-foreground); }
+.search-tok-system,
+.search-tok-env { color: var(--vscode-charts-yellow, #cca700); }
+.search-tok-status { color: var(--vscode-charts-orange, #d18616); }
+.search-tok-date { color: var(--vscode-charts-purple, #b180d7); }
+.search-tok-not { color: var(--vscode-descriptionForeground); text-decoration: line-through; }
+.search-tok-method.method-GET { color: var(--vscode-charts-green, #89d185); }
+.search-tok-method.method-POST { color: var(--vscode-charts-blue, #3794ff); }
+.search-tok-method.method-PUT { color: var(--vscode-charts-orange, #d18616); }
+.search-tok-method.method-PATCH { color: var(--vscode-charts-purple, #b180d7); }
+.search-tok-method.method-DELETE { color: var(--vscode-charts-red, #f14c4c); }
+.search-box-builder {
+    position: absolute;
+    top: 3px;
+    right: 3px;
+    width: 24px;
+    height: 24px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: none;
+    border-radius: 3px;
+    background: transparent;
+    color: var(--vscode-icon-foreground, var(--vscode-foreground));
+    cursor: pointer;
+}
+.search-box-builder:hover:not(:disabled) { background: var(--vscode-toolbar-hoverBackground, rgba(127, 127, 127, 0.2)); }
+.search-box-builder .icon svg { width: 16px; height: 16px; }
+
+/* #444: the search box's suggestions (shared/search-words.js): `key:value`, under the box */
+.search-suggest {
+    position: absolute;
+    top: calc(100% + 2px);
+    left: 0;
+    right: 0;
+    z-index: 50;
+    max-height: 320px;
+    overflow-y: auto;
+    padding: 4px;
+    background: var(--vscode-editorSuggestWidget-background, var(--vscode-menu-background));
+    color: var(--vscode-editorSuggestWidget-foreground, var(--vscode-menu-foreground));
+    border: 1px solid var(--vscode-editorSuggestWidget-border, var(--vscode-widget-border));
+    border-radius: 4px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+}
+.search-suggest-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 3px 8px;
+    border-radius: 3px;
+    font-size: 12px;
+    cursor: pointer;
+}
+.search-suggest-option.is-active {
+    background: var(--vscode-editorSuggestWidget-selectedBackground, var(--vscode-list-activeSelectionBackground));
+    color: var(--vscode-editorSuggestWidget-selectedForeground, var(--vscode-list-activeSelectionForeground));
+}
+.search-suggest-text {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--vscode-editor-font-family, monospace);
+}
+.search-suggest-key { opacity: 0.7; }
+.search-suggest-count { opacity: 0.7; font-variant-numeric: tabular-nums; }
+mark.search-hit {
+    background: var(--vscode-editor-findMatchHighlightBackground, rgba(234, 92, 0, 0.33));
+    color: inherit;
+    border-radius: 2px;
+}
+/* #444: the search dialog shows the query it is building */
+.dbmn-filter-query {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    padding: 8px 10px;
+    border-radius: 4px;
+    background: var(--vscode-textCodeBlock-background, rgba(127, 127, 127, 0.12));
+}
+.dbmn-filter-query-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--vscode-descriptionForeground);
+}
+.dbmn-filter-query-text {
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 12px;
+    word-break: break-word;
+}
+.dbmn-filter-query-text.is-empty { color: var(--vscode-descriptionForeground); font-style: italic; }
+
+.catalogue-chips-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 10px;
+    flex-wrap: wrap;
+}
+
+.catalogue-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 10px;
+    border-radius: 12px;
+    background: transparent;
+    color: var(--vscode-foreground);
+    border: 1px solid var(--vscode-panel-border, var(--vscode-input-border, rgba(128,128,128,0.4)));
+    cursor: pointer;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    transition: background-color 0.1s ease, color 0.1s ease, border-color 0.1s ease;
+}
+
+.catalogue-chip:hover {
+    border-color: var(--vscode-focusBorder, currentColor);
+}
+
+/* Default active state — applies to any chip that doesn't have its own
+ * category-specific rule below (status chips primarily). Uses the VS Code
+ * button background so it matches the SYS/ENV scope chips. The method
+ * chips override with their own palette; the scope chips override with
+ * the same button-background fill (more specific selector wins). */
+.catalogue-chip.is-active {
+    background: var(--vscode-button-background, #0e639c);
+    color: var(--vscode-button-foreground, #fff);
+    border-color: var(--vscode-button-background, #0e639c);
+}
+
+/* Active chips use the method's own colour — same palette as the row badges
+ * — so the selection is unmistakable. Inactive chips stay transparent. */
+.catalogue-chip.method-GET.is-active    { background: #2c7a3a; color: #fff; border-color: #2c7a3a; }
+.catalogue-chip.method-POST.is-active   { background: #3a6cb3; color: #fff; border-color: #3a6cb3; }
+.catalogue-chip.method-PUT.is-active    { background: #c47b1c; color: #fff; border-color: #c47b1c; }
+.catalogue-chip.method-PATCH.is-active  { background: #8a5fc4; color: #fff; border-color: #8a5fc4; }
+.catalogue-chip.method-DELETE.is-active { background: #b73e3e; color: #fff; border-color: #b73e3e; }
+
+.catalogue-chip.is-empty {
+    display: none;
+}
+
+.catalogue-chip-count {
+    font-weight: 500;
+    opacity: 0.85;
+    background: rgba(128, 128, 128, 0.2);
+    border-radius: 8px;
+    padding: 0 6px;
+    min-width: 16px;
+    text-align: center;
+}
+
+.catalogue-chip.is-active .catalogue-chip-count {
+    background: rgba(255, 255, 255, 0.25);
+    color: inherit;
+}
+
+/* Scope chips (SYS / ENV) — same shape as the method chips and share
+ * the solid-fill active state so they read as part of the same filter
+ * row. Uses the VS Code button background so the active state matches
+ * primary affordances elsewhere in the Hub. */
+.catalogue-chip.catalogue-chip-scope .icon svg {
+    width: 12px;
+    height: 12px;
+}
+.catalogue-chip.catalogue-chip-scope.is-active {
+    background: var(--vscode-button-background, #0e639c);
+    color: var(--vscode-button-foreground, #fff);
+    border-color: var(--vscode-button-background, #0e639c);
+}
+
+/* Thin separator between the scope chip and the method chips. */
+.catalogue-chip-divider {
+    width: 1px;
+    align-self: stretch;
+    background: var(--vscode-panel-border);
+    margin: 2px 2px;
+}
+
+/* ─── Catalogue list ─── */
+
+.catalogue-summary {
+    padding: 6px 24px;
+    color: var(--vscode-descriptionForeground);
+    font-size: 12px;
+}
+
+.catalogue-list {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 4px 12px 24px;
+    outline: none;
+}
+
+.catalogue-noresults {
+    padding: 24px;
+    text-align: center;
+    color: var(--vscode-descriptionForeground);
+    font-style: italic;
+}
+
+.catalogue-crossscope-hint {
+    display: block;
+    margin: 0 auto 16px;
+    padding: 6px 14px;
+    background: transparent;
+    border: 1px solid var(--vscode-button-border, var(--vscode-contrastBorder, transparent));
+    border-radius: 4px;
+    color: var(--vscode-textLink-foreground);
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.catalogue-crossscope-hint:hover {
+    background: var(--vscode-toolbar-hoverBackground);
+    color: var(--vscode-textLink-activeForeground);
+}
+
+.catalogue-group {
+    margin: 4px 0;
+}
+
+.catalogue-group-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 8px;
+    cursor: pointer;
+    user-select: none;
+    border-radius: 3px;
+    transition: background-color 0.1s ease;
+    padding-left: calc(8px + (var(--depth, 0) * 14px));
+}
+
+.catalogue-group-header:hover {
+    background: var(--vscode-list-hoverBackground);
+}
+
+/* Symmetric expand/collapse animation. `max-height` was tried first and looked
+ * snappy on expand because the visible content stops growing as soon as
+ * max-height passes the natural content height, leaving the remaining
+ * transition invisible. The grid-template-rows trick lets the browser
+ * animate against the *natural* height of the inner row, so both directions
+ * look the same. (Requires modern Chromium, which VS Code uses.) */
+.catalogue-group-body {
+    display: grid;
+    grid-template-rows: 1fr;
+    transition: grid-template-rows 0.22s ease;
+}
+
+.catalogue-group-body-inner {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-height: 0;
+}
+
+.catalogue-group.is-collapsed > .catalogue-group-body {
+    grid-template-rows: 0fr;
+}
+
+/* Recent: MRU endpoints pinned above the tree (see catalogue.js renderRecent). */
+.catalogue-recent {
+    margin-bottom: 6px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.25));
+}
+
+.catalogue-recent-icon {
+    flex-shrink: 0;
+    display: inline-flex;
+    opacity: 0.75;
+}
+
+.catalogue-recent-icon svg {
+    width: 14px;
+    height: 14px;
+}
+
+.catalogue-group-chevron {
+    flex-shrink: 0;
+    color: var(--vscode-descriptionForeground);
+    transition: transform 0.14s ease;
+}
+
+.catalogue-group-chevron svg {
+    width: 14px;
+    height: 14px;
+    stroke-width: 1.8;
+}
+
+.catalogue-group.is-collapsed > .catalogue-group-header .catalogue-group-chevron {
+    transform: rotate(-90deg);
+}
+
+.catalogue-group-label {
+    font-weight: 500;
+    flex: 1;
+}
+
+.catalogue-row {
+    display: grid;
+    /* Run icons (1 or 2) | method badge | name (2fr) | path (1fr, shrinks
+     * first). The first column is `auto` so it hugs either a single Run API
+     * button (24px) or the Run API + Run Batch pair when the endpoint has
+     * template variables. The badge column is `auto` so the coloured pill hugs
+     * its method text (POST/DELETE) with the row gap as consistent spacing.
+     *
+     * GitHub Issue #274: name gets 2fr so it wins the shrink competition
+     * against path (1fr). Previously path was `minmax(0, auto)`, whose
+     * max-content sizing meant a long URL took as much space as it wanted
+     * and squeezed the endpoint name — the name is the more meaningful label
+     * (URL prefix is already carried by the group headers). Both remain
+     * `minmax(0, …)` so they can ellipsize instead of pushing the row wider. */
+    grid-template-columns: auto auto minmax(0, 2fr) minmax(0, 1fr);
+    align-items: center;
+    gap: 12px;
+    padding: 4px 8px;
+    padding-left: calc(28px + (var(--depth, 0) * 14px));
+    background: transparent;
+    border: none;
+    border-radius: 3px;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+    font: inherit;
+    transition: background-color 0.1s ease;
+    overflow: hidden;
+}
+
+.catalogue-row:hover {
+    background: var(--vscode-list-hoverBackground);
+}
+
+.catalogue-row.is-selected {
+    background: var(--vscode-list-activeSelectionBackground);
+    color: var(--vscode-list-activeSelectionForeground);
+}
+
+.catalogue-row.is-selected .catalogue-row-path {
+    color: var(--vscode-list-activeSelectionForeground);
+    opacity: 0.8;
+}
+
+.catalogue-row:focus-visible {
+    outline: 1px solid var(--vscode-focusBorder);
+    outline-offset: -1px;
+}
+
+.catalogue-method-badge {
+    display: inline-flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 3px;
+    background: var(--vscode-badge-background);
+    color: var(--vscode-badge-foreground);
+}
+
+/* Each method's fill, from the theme's palette, is in buttons.css (pills). */
+
+.catalogue-row-name {
+    font-size: 13px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+}
+
+.catalogue-row-path {
+    color: var(--vscode-descriptionForeground);
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 12px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    /* GitHub Issue #274: allow the grid track to shrink the path column.
+     * Without this the item's default `min-width: auto` (= min-content, which
+     * for a nowrap URL is the full URL width) prevented any ellipsis. */
+    min-width: 0;
+}
+
+/* GitHub Issue #274: the leaf-vs-query split. Both spans live inside
+ * `.catalogue-row-path` so the outer ellipsis chops from the right — which is
+ * the query — naturally. The leaf keeps the default path colour; the query is
+ * dimmed to read as visually lower priority. */
+.catalogue-row-path-leaf {
+    /* inherits colour + font from .catalogue-row-path */
+}
+.catalogue-row-path-query {
+    opacity: 0.7;
+}
+
+/* Container for the 1-or-2 run buttons at the row's leading edge. Sits inside
+   the first grid column; hugs to width via inline-flex so the "1 button" and
+   "2 button" cases both look tight. */
+.catalogue-row-runs {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+/* Per-row Run API / Run Batch affordance — always visible at the leading edge.
+   Plain play icon = Run API (fill values via the modal). Folder-tree-play =
+   Run Batch (drive from a CSV) — shown only when the endpoint has template
+   variables so both flows are reachable from the catalogue. */
+.catalogue-row-run-btn {
+    width: 24px;
+    height: 24px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    cursor: pointer;
+    /* An icon button (buttons.css): a faint tile, the selected tint under the pointer */
+}
+.catalogue-row-run-btn svg {
+    width: 16px;
+    height: 16px;
+}
+
+/* ─── Empty state ─── */
+
+.catalogue-empty {
+    padding: 48px 36px;
+    text-align: center;
+    color: var(--vscode-descriptionForeground);
+}
+
+.catalogue-empty-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--vscode-editor-foreground);
+    margin: 0 0 6px;
+}
+
+.catalogue-empty-body {
+    margin: 0 0 18px;
+}
+
+/* Hub footer notifications were replaced by the shared DbmnToast overlay
+ * (shared/toast.css). showFooterNotification() now delegates to DbmnToast. */
+
+/* ─── Settings section ─── */
+
+.hub-settings {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 28px 36px;
+    /* Container query root so .hub-setting-row can stack label/control
+     * vertically when the settings panel itself is narrow — independent
+     * of viewport width, driven by the user's Hub column 2 drag. */
+    container-type: inline-size;
+    container-name: hub-settings;
+}
+
+.hub-settings-title {
+    margin: 0 0 24px;
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--vscode-editor-foreground);
+}
+
+.hub-settings-panel {
+    background: var(--vscode-editorWidget-background, transparent);
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 6px;
+    padding: 18px 22px;
+    margin-bottom: 18px;
+}
+
+.hub-settings-panel-title {
+    margin: 0 0 16px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--vscode-editor-foreground);
+    letter-spacing: 0.3px;
+}
+
+.hub-setting-row {
+    display: grid;
+    grid-template-columns: 200px 1fr;
+    column-gap: 16px;
+    align-items: center;
+    padding: 8px 0;
+    min-width: 0;
+}
+
+/* A row the host doesn't offer (the Theme rows in VS Code). The rule above sets `display`,
+ * which outranks the browser's own `[hidden] { display: none }`. */
+.hub-setting-row[hidden] {
+    display: none;
+}
+
+/* Stack label above control when the settings panel is too narrow for
+ * a 200px label + control side-by-side. Drives off the .hub-settings
+ * container, not the viewport, so it responds to column-2 drag in
+ * real time. */
+@container hub-settings (max-width: 480px) {
+    .hub-setting-row {
+        grid-template-columns: 1fr;
+        row-gap: 4px;
+    }
+    .hub-setting-row .hub-setting-help {
+        grid-column: 1;
+    }
+}
+
+/* Stacked variant for rows where the label sits ABOVE the value (e.g. file
+   paths that need full width). */
+.hub-setting-row-stacked {
+    display: block;
+    padding: 10px 0;
+}
+.hub-setting-row-stacked .hub-setting-label {
+    display: block;
+    margin-bottom: 6px;
+}
+
+/* Read-only path display — used for workspace + executions db location. */
+.hub-setting-readonly {
+    display: inline-block;
+    background: var(--vscode-textCodeBlock-background, var(--vscode-editor-background));
+    color: var(--vscode-foreground);
+    border: 1px solid var(--vscode-panel-border);
+    padding: 4px 8px;
+    border-radius: 3px;
+    font: 12px var(--vscode-editor-font-family, monospace);
+    word-break: break-all;
+    user-select: all;
+}
+.hub-setting-row-stacked .hub-setting-readonly {
+    display: block;
+    margin-bottom: 4px;
+}
+.hub-setting-path-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.hub-setting-path-row .hub-setting-readonly {
+    flex: 1;
+    min-width: 240px;
+}
+/* A status, not a value to copy: where the endpoints are stored. Plain text, so it doesn't
+   read as a box to type in. */
+.hub-setting-status {
+    font-size: 13px;
+    color: var(--vscode-foreground);
+}
+.hub-setting-path-row .hub-setting-status {
+    flex: 1;
+    align-self: center;
+}
+.hub-setting-row-stacked .hub-setting-help {
+    grid-column: auto;
+    margin-top: 6px;
+}
+
+.hub-setting-label {
+    font-size: 13px;
+    color: var(--vscode-foreground);
+    font-weight: 500;
+}
+
+.hub-setting-control {
+    background: var(--vscode-dropdown-background);
+    color: var(--vscode-dropdown-foreground);
+    border: 1px solid var(--vscode-dropdown-border, var(--vscode-input-border, transparent));
+    padding: 4px 8px;
+    border-radius: 3px;
+    font: inherit;
+    max-width: 280px;
+}
+
+.hub-setting-help {
+    grid-column: 2;
+    margin: 4px 0 0;
+    font-size: 12px;
+    color: var(--vscode-descriptionForeground);
+}
+
+.hub-settings-note {
+    margin-top: 24px;
+    font-size: 12px;
+    color: var(--vscode-descriptionForeground);
+    font-style: italic;
+}
+
+/* Embedded import/export inside the Hub.
+ *
+ * `.ie-page` is a flex column that fills the section. The content area
+ * scrolls; the footer is the last flex child with `flex-shrink: 0`, so
+ * it's pinned to the section's bottom edge and exactly the section's
+ * width — no `position: fixed`, no left-offset hacks, no nav overlap,
+ * and it follows the nav-collapse animation for free because the
+ * section's column width does.
+ */
+.hub-section .ie-page {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    height: 100%;
+}
+
+.hub-section .ie-page > .page-header {
+    flex-shrink: 0;
+    padding: 16px 24px 12px;
+    border-bottom: 1px solid var(--vscode-panel-border);
+    margin: 0;
+}
+
+.hub-section .ie-page > .page-header h1 {
+    margin: 0 0 4px;
+}
+
+.hub-section .ie-page > .page-header .description {
+    margin: 0;
+    color: var(--vscode-descriptionForeground);
+    font-size: 12px;
+}
+
+.hub-section .import-content,
+.hub-section .export-content {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    min-width: 0;
+    /* Same 24px L/R rhythm as catalogue-header / hub-list-header. */
+    padding: 16px 24px;
+    /* Container query root so .selection-grid + inner children can
+     * adapt to the available column-2 width without media queries. */
+    container-type: inline-size;
+}
+
+/* Tighten horizontal padding when the embedded import/export pane is
+ * narrow — saves precious space for content over chrome. */
+@container (max-width: 480px) {
+    .hub-section .import-content,
+    .hub-section .export-content {
+        padding: 12px 14px;
+    }
+}
+
+/* Hub-specific footer override: drop `position: fixed` (which would anchor
+ * to the viewport and cover the nav) and the drop-shadow (only useful at
+ * the viewport edge). The footer becomes a normal flex child anchored at
+ * the bottom of the section, full section-width, no overlap. */
+.hub-section .webview-footer {
+    position: static;
+    left: auto;
+    right: auto;
+    bottom: auto;
+    flex-shrink: 0;
+    box-shadow: none;
+}
+
+/* Hub toggle switch — used for boolean settings. */
+.hub-toggle {
+    display: inline-flex;
+    align-items: center;
+    cursor: pointer;
+    user-select: none;
+}
+
+.hub-toggle input {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.hub-toggle-track {
+    position: relative;
+    display: inline-block;
+    width: 36px;
+    height: 20px;
+    background: var(--vscode-input-background);
+    border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
+    border-radius: 12px;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.hub-toggle-thumb {
+    /* Sized + positioned so the thumb sits symmetrically inside the 36×20
+     * track in both states: 16px thumb + 2px padding leaves 2px on both
+     * sides off, and a translateX of 16px lands it 2px from the right.
+     * (Old 14px thumb + 2px padding + 16px translate = 4px gap right —
+     * looked off-centre in the on state.) */
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 16px;
+    height: 16px;
+    /* Thumb stays a constant light colour with a subtle shadow — iOS/Material
+     * convention. The old code swapped the thumb to `--vscode-button-foreground`
+     * when on, which in custom themes can sit too close to the track's
+     * `--vscode-button-background` and turn into a muddy blob. `currentColor`
+     * inherits from `.hub-toggle`'s `color`, set just below so we have one
+     * place to override per-theme if needed. */
+    background: currentColor;
+    border-radius: 50%;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+    transition: transform 0.15s ease;
+}
+
+.hub-toggle {
+    /* Thumb colour — bright light grey/white sits well on both the dim
+     * `input-background` and the vivid `button-background`. Fallback chain:
+     * the explicit white wins unless a theme overrides `.hub-toggle`'s
+     * `color`. */
+    color: var(--vscode-checkbox-foreground, #f5f5f5);
+}
+
+.hub-toggle input:checked ~ .hub-toggle-track {
+    background: var(--vscode-button-background);
+    border-color: var(--vscode-button-background);
+}
+
+.hub-toggle input:checked ~ .hub-toggle-track .hub-toggle-thumb {
+    transform: translateX(16px);
+}
+
+.hub-toggle input:focus-visible ~ .hub-toggle-track {
+    outline: 1px solid var(--vscode-focusBorder);
+    outline-offset: 1px;
+}
+
+.hub-settings-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+}
+
+.hub-settings-panel-header .hub-settings-panel-title {
+    margin: 0;
+}
+
+.hub-settings-add {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+/* ─── Generic list (Environments section) ─── */
+
+.hub-list-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 24px 12px;
+    border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+.hub-list-title {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--vscode-editor-foreground);
+}
+
+.hub-list-add {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.hub-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 16px 24px;
+}
+
+/* Generic Hub list row — shared shape across Environments, Catalogue,
+ * Transactions. No solid border at rest so the look matches the Catalogue
+ * rows; hover and selected states drive visual feedback. */
+.hub-list-row {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 6px 10px;
+    margin: 1px 0;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+    font: inherit;
+    transition: background-color 0.1s ease, border-color 0.1s ease;
+}
+
+.hub-list-row:hover {
+    background: var(--vscode-list-hoverBackground);
+}
+
+.hub-list-row:focus-visible {
+    outline: 1px solid var(--vscode-focusBorder);
+    outline-offset: -1px;
+}
+
+/* Row currently open in the side editor — same colour as VS Code's "active
+ * selection" so the connection between list row and editor reads naturally. */
+.hub-list-row.is-selected {
+    background: var(--vscode-list-activeSelectionBackground);
+    color: var(--vscode-list-activeSelectionForeground);
+}
+
+.hub-list-row-text {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+}
+
+.hub-list-row-name {
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.hub-list-row-sub {
+    margin-top: 2px;
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.hub-list-row.is-selected .hub-list-row-sub {
+    color: var(--vscode-list-activeSelectionForeground);
+    opacity: 0.8;
+}
+
+/* Live/active env indicator — the satellite-dish icon stands alone on the
+ * row's right edge. Subtle accent colour so it reads as a status, not a
+ * button. The "currently editing" highlight (is-selected) is decoupled. */
+.hub-list-row-live {
+    color: var(--vscode-charts-green, var(--vscode-textLink-foreground));
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+}
+
+.hub-list-row-live svg {
+    width: 16px;
+    height: 16px;
+}
+
+/* "Add" row at the top of a list (Catalogue, Environments). A plain row that
+ * holds one outlined button — see .hub-add-split below. It used to be a
+ * dashed "slot to fill" box; both lists now share the button form. */
+.hub-list-row.hub-list-row-add {
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    background: transparent;
+    color: var(--vscode-descriptionForeground);
+    font-size: 13px;
+}
+
+.hub-list-row.hub-list-row-add svg {
+    width: 14px;
+    height: 14px;
+}
+
+/* The add row's layout. Catalogue: the Select toggle on the left and one split
+ * button (Add Endpoint + its "from clipboard" variant) centred. Environments:
+ * just the centred button. No box around the row — the button carries its own
+ * solid outline. */
+.hub-list-row.hub-add-split {
+    padding: 6px 0;
+    gap: 0;
+    border: none;
+    justify-content: flex-start;
+    cursor: default;
+}
+
+.hub-add-split-primary,
+.hub-add-split-alt {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: transparent;
+    border: none;
+    color: inherit;
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
+    padding: 6px 12px;
+}
+
+/* Primary + alt are wrapped in `.hub-add-split-group` so they read as one
+ * split-button unit (Add Endpoint + its "from clipboard" variant): one solid
+ * outline, one solid divider. The group is auto-centred inside the row via
+ * horizontal auto margins, and neither half can be pushed off-screen
+ * (flex-shrink: 0). */
+.hub-add-split-group {
+    display: inline-flex;
+    align-items: stretch;
+    margin: 0 auto;
+    flex-shrink: 0;
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.hub-add-split-primary {
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.hub-add-split-alt {
+    border-left: 1px solid var(--vscode-panel-border);
+    padding: 6px 12px;
+    color: var(--vscode-descriptionForeground);
+    flex-shrink: 0;
+}
+
+.hub-add-split-primary:hover,
+.hub-add-split-alt:hover {
+    background: var(--vscode-toolbar-hoverBackground, var(--vscode-list-hoverBackground));
+    color: var(--vscode-foreground);
+}
+
+.hub-add-split-alt svg {
+    width: 15px;
+    height: 15px;
+}
+
+.hub-list-empty {
+    padding: 32px 24px;
+    text-align: center;
+    color: var(--vscode-descriptionForeground);
+}
+
+.hub-list-empty-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--vscode-editor-foreground);
+    margin: 0 0 4px;
+}
+
+.hub-list-empty-body {
+    margin: 0;
+}
+
+/* ─── Systems panel inside Settings ─── */
+
+.hub-system-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.hub-system-row {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 10px;
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 4px;
+    background: transparent;
+}
+
+.hub-system-row-name {
+    font-size: 13px;
+    font-weight: 500;
+    cursor: text;
+    padding: 2px 4px;
+    border-radius: 3px;
+    border: 1px solid transparent;
+}
+
+.hub-system-row-name:hover {
+    background: var(--vscode-list-hoverBackground);
+    border-color: var(--vscode-panel-border);
+}
+
+/* #415: a Standard System's name isn't renamed here */
+.hub-system-row-name.is-standard,
+.hub-system-row-name.is-standard:hover {
+    cursor: default;
+    background: transparent;
+    border-color: transparent;
+}
+
+.hub-system-row-name-input {
+    font: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    background: var(--vscode-input-background);
+    color: var(--vscode-input-foreground);
+    border: 1px solid var(--vscode-focusBorder, var(--vscode-input-border, transparent));
+    border-radius: 3px;
+    padding: 2px 6px;
+    width: 160px;
+    outline: none;
+}
+
+.hub-system-row-name-input.is-invalid {
+    border-color: var(--vscode-inputValidation-errorBorder);
+    background: var(--vscode-inputValidation-errorBackground);
+}
+
+.hub-system-row-count {
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+}
+
+.hub-system-row-actions {
+    display: flex;
+    gap: 4px;
+}
+
+.hub-system-empty {
+    padding: 12px;
+    color: var(--vscode-descriptionForeground);
+    font-style: italic;
+    font-size: 12px;
+    text-align: center;
+}
+
+.btn-icon {
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--vscode-foreground);
+    width: 26px;
+    height: 26px;
+    border-radius: 4px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+}
+
+.btn-icon:hover {
+    background: var(--vscode-toolbar-hoverBackground);
+    border-color: var(--vscode-panel-border);
+}
+
+/* Disabled icon button (e.g. the delete × on a System that still has objects):
+ * dimmed and inert, but kept in layout so rows don't shift (Issue #275). */
+.btn-icon:disabled {
+    opacity: 0.28;
+    cursor: default;
+}
+.btn-icon:disabled:hover {
+    background: transparent;
+    border-color: transparent;
+}
+
+.btn-icon svg {
+    width: 14px;
+    height: 14px;
+}
+
+/* ─── Transactions section ─── */
+
+.transactions-header {
+    padding: 16px 24px 12px;
+    border-bottom: 1px solid var(--vscode-panel-border);
+    background: var(--vscode-editor-background);
+    position: sticky;
+    top: 0;
+    z-index: 2;
+}
+
+.transactions-filters-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.transactions-filters-row .catalogue-search {
+    flex: 1;
+    min-width: 200px;
+}
+
+.transactions-endpoint-select {
+    flex: 0 1 220px;
+    min-width: 140px;
+    max-width: 260px;
+    background: var(--vscode-dropdown-background);
+    color: var(--vscode-dropdown-foreground);
+    border: 1px solid var(--vscode-dropdown-border, var(--vscode-input-border, transparent));
+    padding: 4px 8px;
+    border-radius: 3px;
+    font: inherit;
+}
+
+/* Tx rows override the catalogue's grid with flex so we can give the
+ * meta line a high flex-shrink — when the row narrows, the meta truncates
+ * first while the endpoint name stays intact. */
+.tx-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.tx-row-main {
+    /* Name + path block. Grows to fill, only shrinks after meta is
+     * fully truncated. */
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.tx-row-main .catalogue-row-name {
+    font-size: 13px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.tx-row-main .catalogue-row-path {
+    font-size: 11px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.tx-row-meta {
+    /* High flex-shrink — gives way long before the name does. min-width:0
+     * + overflow:hidden on the inner span enables ellipsis. */
+    flex: 0 9999 auto;
+    min-width: 0;
+    color: var(--vscode-descriptionForeground);
+    font-size: 11px;
+    text-align: right;
+    overflow: hidden;
+}
+
+.tx-row-meta .tx-row-sub {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Status icon on transaction rows — sits in the slot the method/BATCH
+ * badge used to occupy. Bucket-tinted using the VS Code testing icon
+ * tokens so a glance down the list reads success/error/running without
+ * needing pill text. Icon set is shared with the activity drawer + tab
+ * strip (see icons.js) so the whole Hub speaks the same visual language. */
+.tx-row .tx-status-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    flex: 0 0 16px;
+}
+.tx-row .tx-status-icon svg {
+    width: 14px;
+    height: 14px;
+}
+.tx-row .tx-status-icon[data-bucket="success"] { color: var(--vscode-testing-iconPassed, #4caf50); }
+.tx-row .tx-status-icon[data-bucket="error"]   { color: var(--vscode-testing-iconFailed, #e35d5d); }
+.tx-row .tx-status-icon[data-bucket="running"] { color: var(--vscode-charts-blue, #3a6cb3); }
+.tx-row .tx-status-icon[data-bucket="pending"] { color: var(--vscode-descriptionForeground); }
+
+.tx-row.is-selected {
+    background: var(--vscode-list-activeSelectionBackground);
+    color: var(--vscode-list-activeSelectionForeground);
+}
+
+.tx-row.is-selected .catalogue-row-path,
+.tx-row.is-selected .tx-row-meta {
+    color: var(--vscode-list-activeSelectionForeground);
+    opacity: 0.85;
+}
+
+/* ── Bulk-select on transactions (Issue #246) ───────────────────────── */
+
+/* Row + group checkboxes are MODAL — only present when the user opts
+ * into selection via the "Select" toggle. The default view stays clean. */
+.tx-row-select,
+.tx-group-select {
+    display: none;
+    flex: 0 0 14px;
+    width: 14px;
+    height: 14px;
+    margin: 0;
+    cursor: pointer;
+}
+
+.hub-section[data-section="transactions"].is-select-mode .tx-row-select,
+.hub-section[data-section="transactions"].is-select-mode .tx-group-select {
+    display: inline-block;
+}
+
+/* In select mode, every row is a selection target — flag that with a
+ * cell-style cursor so users feel the row, not the checkbox, is the
+ * thing they're clicking. */
+.hub-section[data-section="transactions"].is-select-mode .tx-row {
+    cursor: pointer;
+}
+
+.tx-row.is-bulk-selected {
+    /* Subtle accent so a multi-selection is visible while one row
+     * stays "current/open" via .is-selected. */
+    background: var(--vscode-list-inactiveSelectionBackground);
+}
+
+.catalogue-group-header .tx-group-select {
+    margin-right: 6px;
+}
+
+.transactions-header .tx-date-range {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--vscode-descriptionForeground);
+    font-size: 12px;
+}
+
+.transactions-header .tx-date-range-label {
+    color: var(--vscode-descriptionForeground);
+}
+
+.transactions-header .tx-date-range input[type="date"] {
+    background: var(--vscode-input-background);
+    color: var(--vscode-input-foreground);
+    border: 1px solid var(--vscode-input-border, transparent);
+    padding: 3px 6px;
+    border-radius: 3px;
+    font: inherit;
+}
+
+/* List toolbar — single row above the list with the Select toggle on the
+ * left and the "X of XX transactions in env" count on the right. Replaces
+ * the previous standalone .catalogue-summary row. */
+.tx-list-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 24px 6px;
+    color: var(--vscode-descriptionForeground);
+    font-size: 12px;
+    border-bottom: 1px solid transparent;
+}
+
+.tx-list-toolbar .tx-list-summary {
+    /* The existing .catalogue-summary has its own padding — neutralise
+     * it inside the toolbar so the row aligns cleanly. */
+    padding: 0;
+    margin: 0;
+    flex: 1;
+    text-align: right;
+}
+
+/* Select-mode toggle in the transactions toolbar — uses the shared
+ * `.hub-toggle` switch (track + thumb) so it reads as a true on/off
+ * control, not a checkbox to be checked. */
+.tx-select-switch {
+    gap: 8px;
+}
+
+.tx-select-switch-label {
+    color: var(--vscode-foreground);
+    font-size: 12px;
+}
+
+/* Sectional bulk-action footer — uses the shared .webview-footer
+ * scaffolding so it matches the import/export and account footers.
+ * `.hub-section` already supplies `display: flex; flex-direction: column;
+ * flex: 1; min-height: 0`, so the footer naturally rides at the bottom
+ * with the list filling the space above it — no extra wrapper needed.
+ *
+ * Don't add `[data-section="transactions"] { ... }` rules here — that
+ * selector ALSO matches the nav button (`<button data-section="transactions">`)
+ * and any layout/visibility change leaks into the rail. */
+.tx-bulk-footer .tx-bulk-count {
+    color: var(--vscode-descriptionForeground);
+    font-size: 12px;
+    /* The count gives way first: in a narrow list panel it truncates rather than push a
+       button onto a second line. */
+    min-width: 0;
+    flex: 0 1 auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Narrow list panel: the count shows just the number, so the buttons keep their line. */
+.tx-bulk-footer {
+    container-type: inline-size;
+}
+@container (max-width: 300px) {
+    .tx-bulk-count-word {
+        display: none;
+    }
+}
+
+/* Bulk footers sit in the list panel, which can be narrow while a tab is open: compact
+   buttons on one line (core.css .footer-content .btn is sized for full-width footers). */
+.tx-bulk-footer .footer-button-container {
+    flex: 1;
+    min-width: 0;
+    flex-wrap: nowrap;
+    gap: 6px;
+}
+.tx-bulk-footer .footer-content .btn {
+    min-width: 0;
+    flex: none;
+    padding: 6px 10px !important;
+}
+
+.hub-section[data-section="transactions"] .catalogue-list {
+    /* Let the list fill the remaining space above the bulk footer. */
+    flex: 1;
+    min-height: 0;
+}
+
+/* ── Bulk-select in Endpoints (Issue #275) ──────────────────── */
+/* Same modal select-mode UX as transactions, but the bulk action is
+ * "Set System…". Own classes so the two lists never cross-wire. */
+.catalogue-row-select,
+.catalogue-group-select {
+    display: none;
+    flex: 0 0 14px;
+    width: 14px;
+    height: 14px;
+    margin: 0;
+    cursor: pointer;
+}
+.hub-section[data-section="catalogue"].is-select-mode .catalogue-row-select,
+.hub-section[data-section="catalogue"].is-select-mode .catalogue-group-select {
+    display: inline-block;
+}
+.hub-section[data-section="catalogue"].is-select-mode .catalogue-row {
+    cursor: pointer;
+}
+/* Hide the per-row run buttons while selecting — they'd be a mis-click
+ * hazard when the whole row is a selection target. */
+.hub-section[data-section="catalogue"].is-select-mode .catalogue-row-runs {
+    display: none;
+}
+.catalogue-row.is-bulk-selected {
+    background: var(--vscode-list-inactiveSelectionBackground);
+}
+.catalogue-group-header .catalogue-group-select {
+    margin-right: 6px;
+}
+/* Compact meta strip now lives on the Add-Endpoint row: icon-only Select
+ * toggle at the left edge, the "+ Add Endpoint" affordance centred (natural
+ * width, not stretched), and the "from clipboard" alt tucked at the right.
+ * The result count is at the row's end — .catalogue-add-summary. */
+.hub-add-split-select {
+    padding: 0 12px;
+    flex-shrink: 0;
+    cursor: pointer;
+}
+
+/* The result count, "7 of 10" — hidden by default via the `hidden` attribute;
+ * catalogue.js unhides it only when the search is cutting the list down. At the
+ * end of the Add Endpoint row (#444: the search box has the header to itself). */
+.catalogue-add-summary {
+    margin-left: auto;
+    color: var(--vscode-descriptionForeground);
+    font-size: 12px;
+    padding: 0 8px;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+.hub-section[data-section="catalogue"] .catalogue-list {
+    flex: 1;
+    min-height: 0;
+}
+
+/* ── Account section (embedded) ───────────────────────────────────────── */
+/* Mirror the .ie-page pattern exactly: .ac-page is the flex column, .ac-content
+   is the only scroller, and the footer rides under .hub-section .webview-footer
+   (defined above) — static, flex-shrink:0, full section width, never scrolls. */
+.hub-section .ac-page {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    height: 100%;
+}
+.hub-section .ac-content {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    min-width: 0;
+    padding: 16px 24px;
+    container-type: inline-size;
+}
+
+/* Narrow-width account view — pad less and let .table-stats wrap to
+ * a single column (each .stat-item already flex: 1 1 auto so they
+ * already wrap; just give them a wider basis so they prefer wrapping
+ * over crushing). */
+@container (max-width: 480px) {
+    .hub-section .ac-content {
+        padding: 12px 14px;
+    }
+    .hub-section .ac-content .stat-item {
+        flex: 1 1 100%;
+    }
+}
+.hub-section[data-section="account"] h2 {
+    margin: 0 0 16px;
+}
+.ac-center-text { text-align: center; }
+.ac-full-width { width: 100%; }
+.ac-instructions-list { margin: 8px 0 8px 20px; line-height: 1.8; }
+.ac-section-intro { margin-bottom: 10px; }
+.ac-loading-message { text-align: center; padding: 10px 0; }
+
+/* ─── Content column: Hub tabs, or Home with none open ─── */
+
+.hub-content {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    background: var(--vscode-editor-background);
+    overflow: hidden;
+    /* Always the content column, Home included (Issue #349); the list
+     * drawer, its handle and the scrim stack over this same cell. */
+    grid-column: 2;
+}
+
+/* The wrapper owns the tab bar's chrome — background, padding,
+ * separator — and lays out the strip + control buttons as siblings in
+ * a flex row. The strip itself is the only scrollable region, so the
+ * chevrons and Close all sit OUTSIDE the tab viewport (they visibly
+ * shrink the tab area rather than overlaying it). */
+.hub-tab-strip-wrapper {
+    display: flex;
+    align-items: flex-end;
+    gap: 2px;
+    padding: 0 6px;
+    position: relative;
+    background: var(--vscode-editorGroupHeader-tabsBackground, var(--vscode-editor-background));
+    flex: 0 0 auto;
+}
+
+.hub-tab-strip {
+    display: flex;
+    align-items: flex-end;          /* tabs sit on the content edge, rounded tops up */
+    gap: 2px;
+    /* Only the scrollable middle. Background + padding + separator now
+     * belong to the wrapper. */
+    overflow-x: auto;                 /* horizontal scroll when many tabs are open */
+    overflow-y: hidden;
+    scrollbar-width: none;            /* hide the scroll lane (Firefox) — purely cosmetic */
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.hub-tab-strip::-webkit-scrollbar { display: none; }   /* hide the scroll lane (Chromium/WebKit) */
+
+/* Scroll chevrons + Close all — plain flex items alongside the strip
+ * inside the wrapper. They never overlay tabs; they simply take a slice
+ * of the wrapper's row width and the strip gets the rest. */
+.hub-tab-strip-chev,
+.hub-tab-strip-close-all {
+    align-self: center;              /* wrapper is align-items: flex-end */
+    width: 24px;
+    height: 24px;
+    border-radius: 4px;
+    display: none;                   /* chevrons: shown by data-attr; close-all: overridden below */
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    color: var(--vscode-descriptionForeground);
+    border: none;
+    cursor: pointer;
+    font: inherit;
+    padding: 0;
+    flex: 0 0 auto;
+    margin: 0 1px;
+}
+
+.hub-tab-strip-chev:hover,
+.hub-tab-strip-close-all:hover {
+    /* Opaque hover — mix the tab-bar background with the foreground so
+     * the button reads as a solid pill regardless of theme.
+     * --vscode-toolbar-hoverBackground is semi-transparent in most
+     * themes, which was letting the underlying strip bleed through. */
+    background: color-mix(in srgb, var(--vscode-editorGroupHeader-tabsBackground, var(--vscode-editor-background)) 78%, var(--vscode-foreground, #cccccc) 22%);
+    color: var(--vscode-editor-foreground);
+}
+
+.hub-tab-strip-chev svg,
+.hub-tab-strip-close-all svg {
+    width: 16px;
+    height: 16px;
+    display: block;
+}
+
+.hub-tab-strip-close-all {
+    display: flex;                   /* rendered only when needed */
+}
+
+/* Chevron visibility — driven by data-attrs the JS updates on scroll
+ * and resize. The attrs live on the strip; the chevrons are its
+ * siblings in the wrapper, so we key off the strip via the wrapper. */
+.hub-tab-strip-wrapper:has(.hub-tab-strip[data-can-scroll-left="true"]) .hub-tab-strip-chev--left,
+.hub-tab-strip-wrapper:has(.hub-tab-strip[data-can-scroll-right="true"]) .hub-tab-strip-chev--right {
+    display: flex;
+}
+
+/* Separator line — same pseudo-element technique as .report-tabs::after.
+ * Sits at bottom:0 of the WRAPPER (which spans the full width including
+ * the control buttons); the strip's own overflow can't clip it here.
+ * The flush tabs paint over it, breaking the line under each tab; the
+ * active tab's editor-bg connects into the content. */
+.hub-tab-strip-wrapper::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: var(--vscode-panel-border);
+}
+
+.hub-tab-bodies {
+    flex: 1;
+    min-height: 0;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Each tab body is absolutely stacked; only the active one is visible. Allows
+ * preserving DOM state across tab switches without unmounting. */
+.hub-tab-body {
+    position: absolute;
+    inset: 0;
+    display: none;
+    overflow: auto;
+}
+
+.hub-tab-body.is-active {
+    display: flex;
+    flex-direction: column;
+}
+
+.hub-home {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+}
+
+.hub-home-main {
+    flex: 1;
+    min-width: 0;
+    overflow-y: auto;
+}
+
+/* The rail's names, level with its icons: the same groups, padding and
+ * 49px item height as .hub-nav (8px + 33px icon + 8px), so the rows move
+ * with the rail on any window height. Does not scroll. */
+.hub-home-guide {
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    padding-right: 12px;
+}
+
+.hub-home-guide-top {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    padding: 8px 0;
+}
+
+.hub-home-guide-bottom {
+    display: flex;
+    flex-direction: column;
+    padding: 8px 0;
+    border-top: 1px solid transparent;
+}
+
+.hub-home-guide-item {
+    height: 49px;
+    padding: 0 12px;
+    background: transparent;
+    border: none;
+    color: var(--vscode-descriptionForeground);
+    font: inherit;
+    font-size: 13px;
+    text-align: left;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+/* A name is its rail item's, not a button of its own: under the pointer it gets no box (core.css
+ * gives every bare <button> one, and outranks a single class), and hub-home.js lights the rail
+ * item instead. `.is-hovered`: the pointer is on the name or on its rail item. */
+.hub-home .hub-home-guide-item:hover:not(:disabled),
+.hub-home .hub-home-guide-item.is-hovered {
+    background: transparent;
+    color: var(--vscode-foreground);
+}
+
+.hub-layout.has-tabs .hub-home {
+    display: none;
+}
+
+/* With no tabs open, Home is the whole content column. */
+.hub-layout:not(.has-tabs) .hub-tab-strip-wrapper,
+.hub-layout:not(.has-tabs) .hub-tab-bodies {
+    display: none;
+}
+
+.hub-home-inner {
+    max-width: 920px;
+    margin: 0 auto;
+    padding: 28px 32px 32px;
+}
+
+.hub-home-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 22px;
+}
+
+.hub-home-mark {
+    height: 30px;
+    width: auto;
+}
+
+.hub-home-title {
+    margin: 0;
+    font-family: 'Cooper Black', Georgia, serif;
+    font-size: 22px;
+    font-weight: 400;
+}
+
+.hub-home-version {
+    color: var(--vscode-descriptionForeground);
+    font-size: 12px;
+}
+
+.hub-home-link {
+    color: var(--vscode-textLink-foreground);
+    font-size: 12px;
+    text-decoration: none;
+}
+
+.hub-home-link:hover {
+    text-decoration: underline;
+}
+
+.hub-home-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 0 18px;
+}
+
+.hub-home-card .hub-settings-panel-title {
+    margin-bottom: 12px;
+}
+
+.hub-home-actions {
+    display: flex;
+    flex-direction: column;
+    margin: 0 -10px;
+}
+
+.hub-home-action {
+    gap: 10px;
+}
+
+.hub-home-link-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0;
+    background: transparent;
+    border: none;
+    color: var(--vscode-textLink-foreground);
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
+}
+
+.hub-home-link-btn:hover {
+    /* core.css paints every button:hover with the button colour; a link keeps none. */
+    background: transparent;
+    text-decoration: underline;
+}
+
+/* Pick up where you left off: one line, the button at the end. */
+.hub-home-reopen {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding-top: 12px;
+    padding-bottom: 12px;
+}
+
+.hub-home-reopen-text {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.hub-home-reopen-title {
+    font-weight: 600;
+}
+
+/* Puppy School leads Home until graduation: accent frame and tint, larger
+ * badges with their lesson names, and the one primary-coloured button. */
+.hub-home-hero {
+    border-color: var(--vscode-focusBorder);
+    background: color-mix(in srgb, var(--vscode-button-background) 9%, var(--vscode-editorWidget-background, var(--vscode-editor-background)));
+}
+
+.hub-home-hero.is-graduated {
+    border-color: var(--vscode-panel-border);
+    background: var(--vscode-editorWidget-background, transparent);
+}
+
+.hub-home-hero-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 16px;
+}
+
+.hub-home-hero-body {
+    margin: 0 0 14px;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.hub-home-hero .hub-home-cta {
+    margin-top: 16px;
+}
+
+.hub-home-cta.btn {
+    background-color: var(--vscode-button-background) !important;
+    color: var(--vscode-button-foreground) !important;
+    border-color: var(--vscode-button-background) !important;
+}
+
+.hub-home-cta.btn:hover:not(:disabled) {
+    background-color: var(--vscode-button-hoverBackground) !important;
+    border-color: var(--vscode-button-hoverBackground) !important;
+}
+
+/* The shared heading style title-cases every word ("New In V0.2.1"); a
+ * version number keeps its lower-case v. */
+#hubHomeWhatsNewTitle {
+    text-transform: none;
+}
+
+.hub-home-whatsnew-counts {
+    margin: 0 0 8px;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.hub-home-whatsnew-list {
+    margin: 0 0 10px;
+    padding-left: 18px;
+    font-size: 13px;
+    line-height: 1.7;
+}
+
+.hub-home-tip {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding-top: 12px;
+    padding-bottom: 12px;
+}
+
+.hub-home-tip-icon {
+    color: var(--vscode-descriptionForeground);
+}
+
+.hub-home-tip-text {
+    flex: 1;
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.5;
+    overflow: hidden;
+}
+
+/* Tips scroll vertically: the old line rolls out, the new one rolls in
+   from the opposite edge (hub-home.js swaps the text between the two). */
+.hub-home-tip-line {
+    display: block;
+    transition: transform 160ms ease, opacity 160ms ease;
+}
+
+.hub-home-tip-line-up {
+    transform: translateY(-100%);
+    opacity: 0;
+}
+
+.hub-home-tip-line-down {
+    transform: translateY(100%);
+    opacity: 0;
+}
+
+.hub-home-tip-line-still {
+    transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .hub-home-tip-line {
+        transition: none;
+    }
+}
+
+/* Previous above next, the way the tips scroll. */
+.hub-home-tip-steps {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.hub-home-tip-step {
+    display: flex;
+    padding: 2px;
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    color: var(--vscode-descriptionForeground);
+    cursor: pointer;
+}
+
+.hub-home-tip-step:hover {
+    background: var(--vscode-toolbar-hoverBackground);
+    color: var(--vscode-foreground);
+}
+
+.hub-home-meta {
+    color: var(--vscode-descriptionForeground);
+    font-size: 12px;
+}
+
+/* This week: Account's stat tiles, sharing the row equally. */
+.hub-home-stats .stat-item {
+    flex: 1 1 120px;
+    padding: 10px;
+}
+
+/* Puppy School: Account's badge tiles, compact and in one row. */
+.hub-home-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.hub-home-badge {
+    width: 92px;
+    padding: 10px 6px;
+}
+
+.hub-home-badge .dbmn-badge-art {
+    width: 48px;
+    height: 48px;
+}
+
+.hub-home-graduate {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    font-size: 13px;
+}
+
+.hub-home-graduate-art {
+    width: 56px;
+    height: 56px;
+    line-height: 0;
+}
+
+.hub-home-graduate-art svg {
+    width: 100%;
+    height: 100%;
+}
+
+/* ─── Tab headers in the strip ─── */
+
+.hub-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    /* Height comes from padding (matches console .tab-item: padding 8px 16px) —
+     * no fixed height, so inactive + active tabs are the same height and their
+     * bottoms align flush with the strip's separator (no dead gap below). */
+    padding: 8px 6px 8px 10px;
+    /* Browser-style tab: rounded top, recessed when inactive, connects to the
+     * content when active. Matches the in-view .tab-item language.
+     * In high-contrast themes --vscode-contrastBorder is set, so inactive tabs
+     * keep a visible outline even though their fill matches the strip; in
+     * normal themes the token is empty and the border stays transparent. */
+    border: 1px solid var(--vscode-tab-border, var(--vscode-contrastBorder, transparent));
+    border-bottom: none;
+    border-radius: 6px 6px 0 0;
+    /* Inactive tabs get a real, readable background distinct from the active
+     * tab — VS Code's token is lighter than the editor in dark themes, darker
+     * in light themes. The active tab (below) uses the editor background. */
+    background: var(--vscode-tab-inactiveBackground, var(--vscode-editorGroupHeader-tabsBackground));
+    color: var(--vscode-tab-inactiveForeground, var(--vscode-descriptionForeground));
+    font: inherit;
+    font-size: 12px;
+    cursor: pointer;
+    white-space: nowrap;
+    position: relative;
+    max-width: 240px;
+    /* Hard floor so many-tabs never compresses tabs down to icon-only —
+     * the close × was getting pushed past the tab's visible edge (and
+     * hover feedback became useless because all tabs looked identical).
+     * flex-shrink: 0 tells the strip to scroll horizontally instead of
+     * shrinking, so every tab keeps a readable name + a clickable ×. */
+    min-width: 120px;
+    flex-shrink: 0;
+    /* Connect-overlap: pull the tab's bottom onto the separator line, exactly
+     * like the console .tab-item. (The stray `button { margin }` that used to
+     * fight this was removed from the shared form-field group in core.css.) */
+    margin-bottom: -1px;
+    transition: background 0.1s ease, color 0.1s ease;
+}
+
+/* The open tab doesn't react to hover (#438) */
+.hub-tab:not(.is-active):hover:not(:disabled) {
+    background: var(--vscode-tab-hoverBackground, var(--vscode-list-hoverBackground));
+    color: var(--vscode-tab-hoverForeground, var(--vscode-editor-foreground));
+}
+
+/* With :hover too: core.css's `button:hover:not(:disabled)` outranks a bare .hub-tab.is-active,
+ * so without it the open tab took the hover colours (#438) */
+.hub-tab.is-active,
+.hub-tab.is-active:hover:not(:disabled) {
+    color: var(--vscode-tab-activeForeground, var(--vscode-editor-foreground));
+    /* Same background as the content area below, so the active tab blends into
+     * it (connected-tab look). Against the darker/lighter strip this now reads
+     * as a raised, connected tab. */
+    background: var(--vscode-editor-background);
+    border-color: var(--vscode-panel-border);
+    /* Soft lift so the active tab has a defined edge above the strip. The
+     * shadow is cast up/sideways only (negative vertical offset) so it doesn't
+     * bleed across the bottom edge where the tab connects to the content. */
+    box-shadow: 0 -2px 6px -2px rgba(0, 0, 0, 0.35);
+    /* Same height as inactive tabs (height comes from padding) so the active
+     * tab doesn't grow and create a gap. Sit in front of the inactive tabs +
+     * the strip separator so the bottom edge connects cleanly into the content
+     * area (matches .tab-item.active). */
+    z-index: 1;
+}
+
+/* No top accent bar on the active tab: that strip is reserved for the batch
+ * progress indicator (orange). The active tab is distinguished by its editor-
+ * background fill + border connecting it to the content area below. */
+
+/* Type glyph at the left of each tab — reuses icons.js menu icons. */
+.hub-tab-glyph {
+    width: 14px;
+    height: 14px;
+    display: inline-grid;
+    place-items: center;
+    flex: 0 0 auto;
+    opacity: 0.85;
+}
+
+.hub-tab-glyph svg {
+    width: 14px;
+    height: 14px;
+    stroke-width: 1.6;
+}
+
+/* Console tab status icon — replaces the old status dot. Same colour as
+ * the surrounding text (no per-status tint); state is conveyed by the
+ * icon shape (circle-play / circle-check / octagon-x / etc). Sits in the
+ * row after the type glyph. */
+.hub-tab-status {
+    width: 14px;
+    height: 14px;
+    display: inline-grid;
+    place-items: center;
+    flex: 0 0 auto;
+}
+
+.hub-tab-status svg {
+    width: 14px;
+    height: 14px;
+    stroke-width: 1.6;
+}
+
+.hub-tab.is-running .hub-tab-status svg {
+    animation: hubTabPulse 1.6s ease-in-out infinite;
+}
+
+@keyframes hubTabPulse {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0.55; }
+}
+
+.hub-tab-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 12px;
+}
+
+.hub-tab.is-preview .hub-tab-name {
+    font-style: italic;
+}
+
+/* #438: a console tab's progress, in the Console footer's status colour (--tab-c): a tint behind
+ * the tab's own text (the colour at 22%, as Compare tints a differing cell) and a solid line along
+ * the top, both clipped to --tab-progress. The tint is see-through, so the tab's own background,
+ * hover included, shows under it. The open tab has a lighter tint and a thicker line, and like
+ * every open tab doesn't react to hover. Every colour is a theme token. */
+.hub-tab-progress {
+    --tab-c: var(--vscode-descriptionForeground);
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: color-mix(in srgb, var(--tab-c) 22%, transparent);
+    box-shadow: inset 0 2px 0 var(--tab-c);
+    clip-path: inset(0 calc(100% - var(--tab-progress, 0%)) 0 0);
+    transition: clip-path 0.3s ease, background 0.1s ease;
+    z-index: 0;
+    pointer-events: none;
+}
+
+/* The open tab is the Console's heading colour all the way across (console.css .report-title: the
+ * colour at 12% over the editor background, sent to the Console by hub-tabs.js), so the two are
+ * one surface; how far the run has got is the line along the top, and while it runs a deeper tint. */
+.hub-tab.is-active.has-progress,
+.hub-tab.is-active.has-progress:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--tab-c) 12%, var(--vscode-editor-background));
+}
+
+.hub-tab.is-active .hub-tab-progress {
+    background: transparent;
+    box-shadow: inset 0 3px 0 var(--tab-c);
+}
+
+/* While the run is going (running or paused), the open tab shows how far too: a deeper tint over
+   the heading's, as far as it has got. Done, the tab and the heading are one colour again. */
+.hub-tab.is-active.tab-tone--running .hub-tab-progress,
+.hub-tab.is-active.tab-tone--paused .hub-tab-progress {
+    background: color-mix(in srgb, var(--tab-c) 10%, transparent);
+}
+
+/* Text on a tint is the open tab's text colour, the brightest a theme gives tabs: the inactive
+ * tabs' muted one fell to 1:1 on some themes' tints. Every bundled theme reads at 4.5:1 or more
+ * (tab-tint-contrast.test.ts); a deeper tint on hover would not, so hover is the tab's own
+ * hover background under the tint. */
+.hub-tab.has-progress,
+.hub-tab.has-progress:not(.is-active):hover:not(:disabled) {
+    color: var(--vscode-tab-activeForeground, var(--vscode-editor-foreground));
+}
+
+.hub-tab.has-progress > :not(.hub-tab-progress) {
+    position: relative;
+    z-index: 1;
+}
+
+/* The footer's colours (core.css .progress-bar-fill.<status>), one token each; on the tab too, so
+ * the open tab's own background has it */
+.hub-tab-progress--running,   .hub-tab.tab-tone--running   { --tab-c: var(--vscode-charts-blue); }
+.hub-tab-progress--paused,    .hub-tab.tab-tone--paused    { --tab-c: var(--vscode-charts-yellow); }
+.hub-tab-progress--completed, .hub-tab.tab-tone--completed { --tab-c: var(--vscode-charts-green); }
+.hub-tab-progress--error,     .hub-tab.tab-tone--error     { --tab-c: var(--vscode-charts-red); }
+.hub-tab-progress--stopped,   .hub-tab.tab-tone--stopped   { --tab-c: var(--vscode-descriptionForeground); }
+
+.hub-tab-progress-label {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--vscode-descriptionForeground);
+    flex: 0 0 auto;
+    font-variant-numeric: tabular-nums;
+}
+
+/* The count reads in the tab's text colour: the tint and the line say the status (a status colour
+ * on its own tint fell to 1.4:1) */
+.hub-tab.has-progress .hub-tab-progress-label {
+    color: inherit;
+}
+
+/* Close button — becomes a dirty dot when there are unsaved changes. */
+.hub-tab-close {
+    width: 20px;
+    height: 20px;
+    border-radius: 3px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--vscode-descriptionForeground);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    flex: 0 0 auto;
+    align-self: center;
+    font: inherit;
+    line-height: 0;
+    padding: 0;
+}
+
+.hub-tab-close:hover {
+    /* Opaque hover — mix the tab bg with foreground so the pill reads
+     * as solid instead of letting the tab bleed through (some themes
+     * ship --vscode-toolbar-hoverBackground as semi-transparent). */
+    background: color-mix(in srgb, var(--vscode-tab-inactiveBackground, var(--vscode-editorGroupHeader-tabsBackground)) 72%, var(--vscode-foreground, #cccccc) 28%);
+    color: var(--vscode-editor-foreground);
+}
+
+.hub-tab-close svg {
+    width: 12px;
+    height: 12px;
+    display: block;
+}
+
+/* Asterisk between the icon and the name when the tab is dirty. Stays in
+ * the same position regardless of tab type so the affordance is consistent
+ * across endpoint, environment, batch, and console tabs. The close button
+ * stays as a plain × — dirty state is conveyed by the asterisk alone. */
+.hub-tab.is-dirty .hub-tab-name::before {
+    content: '* ';
+    color: var(--vscode-editorWarning-foreground, var(--vscode-charts-orange, #b9762e));
+    font-weight: 700;
+    margin-right: 1px;
+}
+
+/* Drag affordance — visual feedback while a tab is being dragged. */
+.hub-tab.is-dragging {
+    opacity: 0.5;
+}
+
+.hub-tab.is-drop-target {
+    background: var(--vscode-list-dropBackground, color-mix(in srgb, var(--vscode-focusBorder) 22%, transparent));
+}
+
+/* Iframes hosting embedded manager UIs fill the tab body. Border-0 so the
+ * VS Code-themed content controls its own borders. The iframe owns its
+ * own document, so `position: fixed` footers + modals inside the editor
+ * are naturally scoped to the iframe's viewport. */
+.hub-tab-iframe {
+    width: 100%;
+    height: 100%;
+    flex: 1;
+    border: 0;
+    margin: 0;
+    padding: 0;
+    background: transparent;
+    display: block;
+}
+
+/* Loading overlay shown over the tab body until __embeddedReady__
+ * fires. Sits above the (initially hidden) iframe so the user always
+ * sees something during mount. If the iframe hangs (the recurring
+ * "blank console" symptom), the loader stays — making the hang visible
+ * and the stage text shows which step the host got to. */
+.hub-tab-loader {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    background: var(--vscode-editor-background);
+    color: var(--vscode-descriptionForeground);
+    z-index: 1;
+    pointer-events: none;
+    font-size: 13px;
+}
+.hub-tab-loader-text {
+    font-weight: 600;
+    color: var(--vscode-foreground);
+}
+.hub-tab-loader-stage {
+    font-size: 11px;
+    opacity: 0.75;
+    font-family: var(--vscode-editor-font-family, monospace);
+}
+.hub-tab-loader-spinner {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    border: 2px solid var(--vscode-panel-border);
+    border-top-color: var(--vscode-focusBorder, var(--vscode-textLink-foreground));
+    animation: hubTabLoaderSpin 0.9s linear infinite;
+}
+@keyframes hubTabLoaderSpin {
+    to { transform: rotate(360deg); }
+}
+
+/* ─── Activity chip + drawer (header right side) ─── */
+
+.hub-activity-wrap { position: relative; }
+
+.hub-activity-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border: 1px solid var(--vscode-panel-border);
+    background: transparent;
+    color: var(--vscode-foreground);
+    padding: 3px 10px;
+    border-radius: 14px;
+    font: inherit;
+    font-size: 12px;
+    cursor: pointer;
+}
+.hub-activity-chip:hover { background: var(--vscode-list-hoverBackground); }
+.hub-activity-chip.is-active { border-color: var(--vscode-focusBorder); }
+/* On the production header the pill keeps the header's standard background, so
+   its state colours read as they do anywhere else. (The hover colour can be
+   translucent: it goes over the standard background, not the highlight.) */
+.hub-header.is-production .hub-activity-chip { background: var(--vscode-sideBar-background); }
+.hub-header.is-production .hub-activity-chip:hover {
+    background: linear-gradient(var(--vscode-list-hoverBackground), var(--vscode-list-hoverBackground)), var(--vscode-sideBar-background);
+}
+
+.hub-activity-chip .hub-activity-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--vscode-descriptionForeground);
+    flex: 0 0 auto;
+}
+.hub-activity-chip.is-running .hub-activity-dot {
+    background: var(--vscode-charts-green, #3f7d4f);
+    animation: hubChipPulse 1.5s ease-in-out infinite;
+}
+.hub-activity-chip.is-idle .hub-activity-dot {
+    background: transparent;
+    border: 1px solid var(--vscode-descriptionForeground);
+}
+.hub-activity-chip.is-running { border-color: var(--vscode-charts-green, #3f7d4f); }
+.hub-activity-chip.is-failed { border-color: var(--vscode-charts-red, #b3492f); }
+/* Issue #313: paused work waiting for the user (e.g. after startup recovery) */
+.hub-activity-chip.is-paused { border-color: var(--vscode-charts-yellow, #d8b35f); }
+.hub-activity-chip.is-paused .hub-activity-dot { background: var(--vscode-charts-yellow, #d8b35f); }
+
+@keyframes hubChipPulse {
+    0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--vscode-charts-green, #3f7d4f) 55%, transparent); }
+    70%      { box-shadow: 0 0 0 5px color-mix(in srgb, var(--vscode-charts-green, #3f7d4f) 0%, transparent); }
+}
+
+.hub-activity-chip .hub-activity-caret svg {
+    width: 12px;
+    height: 12px;
+}
+
+.hub-activity-drawer {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    width: 360px;
+    max-height: 480px;
+    overflow-y: auto;
+    background: var(--vscode-menu-background, var(--vscode-editor-background));
+    color: var(--vscode-menu-foreground, var(--vscode-foreground));
+    border: 1px solid var(--vscode-menu-border, var(--vscode-panel-border));
+    border-radius: 6px;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.18);
+    padding: 8px 0;
+    z-index: 100;
+}
+.hub-activity-drawer.hidden { display: none; }
+
+.hub-activity-section-title {
+    display: block;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-size: 10.5px;
+    color: var(--vscode-descriptionForeground);
+    padding: 8px 14px 4px;
+    font-weight: 600;
+}
+
+.hub-activity-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 14px;
+    cursor: pointer;
+    font-size: 12.5px;
+}
+.hub-activity-row:hover { background: var(--vscode-list-hoverBackground); }
+.hub-activity-row .icon { width: 14px; height: 14px; }
+.hub-activity-row .icon svg { width: 14px; height: 14px; stroke-width: 1.6; }
+.hub-activity-row .hub-activity-row-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.hub-activity-row .hub-activity-row-meta {
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+    flex: 0 0 auto;
+}
+.hub-activity-row .hub-activity-bar {
+    width: 64px;
+    height: 5px;
+    border: 1px solid var(--vscode-charts-green, #3f7d4f);
+    border-radius: 3px;
+    overflow: hidden;
+}
+.hub-activity-row .hub-activity-bar > i {
+    display: block;
+    height: 100%;
+    background: var(--vscode-charts-green, #3f7d4f);
+}
+.hub-activity-row.is-running .icon { color: var(--vscode-charts-green, #3f7d4f); }
+.hub-activity-row.is-queued  .icon { color: var(--vscode-charts-yellow, #d8b35f); }
+.hub-activity-row.is-failed  .icon, .hub-activity-row.is-error .icon, .hub-activity-row.is-stopped .icon {
+    color: var(--vscode-charts-red, #b3492f);
+}
+.hub-activity-row.is-done .icon, .hub-activity-row.is-completed .icon {
+    color: var(--vscode-charts-green, #3f7d4f);
+}
+
+.hub-activity-empty {
+    text-align: center;
+    color: var(--vscode-descriptionForeground);
+    font-size: 12px;
+    padding: 18px 14px;
+}
+
+.hub-activity-divider {
+    height: 1px;
+    background: var(--vscode-panel-border);
+    margin: 6px 8px;
+}
+
+/* === Tags filter pill + popover (catalogue) ============================= */
+
+.catalogue-chip-tags {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.catalogue-chip-tags .icon svg {
+    width: 12px;
+    height: 12px;
+}
+
+.catalogue-chip-tags .catalogue-chip-caret {
+    font-size: 10px;
+    opacity: 0.7;
+    margin-left: 2px;
+}
+
+.catalogue-chip-tags.is-empty {
+    display: none;
+}
+
+.catalogue-selected-tags {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+}
+
+.catalogue-selected-tag {
+    background: var(--vscode-badge-background);
+    color: var(--vscode-badge-foreground);
+    border-color: var(--vscode-badge-background);
+    padding: 2px 4px 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    line-height: 1.3;
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+}
+
+.catalogue-selected-tag-remove {
+    background: transparent;
+    border: none;
+    color: inherit;
+    cursor: pointer;
+    font-size: 13px;
+    line-height: 1;
+    padding: 0 4px;
+    opacity: 0.75;
+    border-radius: 50%;
+}
+
+.catalogue-selected-tag-remove:hover {
+    opacity: 1;
+    background: rgba(255, 255, 255, 0.15);
+}
+
+.catalogue-tags-popover {
+    z-index: 1000;
+    min-width: 280px;
+    max-width: 360px;
+    max-height: 420px;
+    background: var(--vscode-menu-background, var(--vscode-editor-background));
+    color: var(--vscode-menu-foreground, var(--vscode-editor-foreground));
+    border: 1px solid var(--vscode-menu-border, var(--vscode-panel-border));
+    border-radius: 4px;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.3);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.catalogue-tags-popover-search {
+    padding: 8px;
+    border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+.catalogue-tags-popover-search input {
+    width: 100%;
+    padding: 4px 8px;
+    background: var(--vscode-input-background);
+    color: var(--vscode-input-foreground);
+    border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
+    border-radius: 3px;
+    font-family: inherit;
+    font-size: 12px;
+}
+
+.catalogue-tags-popover-list {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    min-height: 0;
+    padding: 4px 0;
+}
+
+.catalogue-tags-popover-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 12px 4px calc(12px + var(--depth, 0) * 12px);
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.catalogue-tags-popover-row:hover {
+    background: var(--vscode-list-hoverBackground);
+}
+
+.catalogue-tags-popover-row input[type="checkbox"] {
+    margin: 0;
+    flex: 0 0 auto;
+}
+
+.catalogue-tags-popover-label {
+    flex: 1 1 auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.catalogue-tags-popover-count {
+    flex: 0 0 auto;
+    color: var(--vscode-descriptionForeground);
+    font-variant-numeric: tabular-nums;
+    font-size: 11px;
+}
+
+.catalogue-tags-popover-empty {
+    padding: 12px;
+    color: var(--vscode-descriptionForeground);
+    font-size: 12px;
+    text-align: center;
+}
+
+.catalogue-tags-popover-footer {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 6px 8px;
+    border-top: 1px solid var(--vscode-panel-border);
+    background: var(--vscode-editor-background);
+}
+
+.catalogue-tags-clear,
+.catalogue-tags-manage {
+    background: transparent;
+    border: none;
+    color: var(--vscode-textLink-foreground);
+    cursor: pointer;
+    font-size: 11px;
+    padding: 2px 4px;
+}
+
+.catalogue-tags-clear:hover,
+.catalogue-tags-manage:hover {
+    text-decoration: underline;
+}
+
+/* === Tag Manager modal body ============================================= */
+
+.tag-manager {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-width: 460px;
+    max-height: 60vh;
+}
+
+.tag-manager-search input {
+    width: 100%;
+    padding: 6px 10px;
+    background: var(--vscode-input-background);
+    color: var(--vscode-input-foreground);
+    border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
+    border-radius: 3px;
+    font-family: inherit;
+    font-size: 13px;
+}
+
+.tag-manager-table-host {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    min-height: 0;
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 3px;
+}
+
+.tag-manager-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+}
+
+.tag-manager-table th {
+    text-align: left;
+    padding: 6px 10px;
+    background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+    border-bottom: 1px solid var(--vscode-panel-border);
+    font-weight: 600;
+    color: var(--vscode-descriptionForeground);
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+
+.tag-manager-table th.num {
+    text-align: right;
+}
+
+.tag-manager-table td {
+    padding: 4px 10px;
+    border-bottom: 1px solid var(--vscode-panel-border);
+    vertical-align: middle;
+}
+
+.tag-manager-table tr:last-child td {
+    border-bottom: none;
+}
+
+.tag-manager-tag {
+    font-family: var(--vscode-editor-font-family, monospace);
+    word-break: break-all;
+}
+
+.tag-manager-count {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    color: var(--vscode-descriptionForeground);
+    width: 60px;
+}
+
+.tag-manager-actions {
+    display: flex;
+    gap: 6px;
+    justify-content: flex-end;
+    width: 220px;
+}
+
+.tag-manager-action {
+    background: transparent;
+    border: 1px solid var(--vscode-button-secondaryBackground, var(--vscode-panel-border));
+    color: var(--vscode-foreground);
+    cursor: pointer;
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 3px;
+}
+
+.tag-manager-action:hover {
+    background: var(--vscode-button-secondaryHoverBackground, var(--vscode-list-hoverBackground));
+}
+
+.tag-manager-action-danger:hover {
+    background: var(--vscode-inputValidation-errorBackground, rgba(255, 80, 80, 0.18));
+    border-color: var(--vscode-inputValidation-errorBorder, currentColor);
+}
+
+.tag-manager-rename-input {
+    width: 100%;
+    padding: 2px 6px;
+    font-family: inherit;
+    font-size: 12px;
+    background: var(--vscode-input-background);
+    color: var(--vscode-input-foreground);
+    border: 1px solid var(--vscode-focusBorder);
+    border-radius: 3px;
+}
+
+.tag-manager-merge-row td {
+    background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+}
+
+.tag-manager-merge-cell {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+}
+
+.tag-manager-merge-select {
+    flex: 1 1 auto;
+    padding: 4px 8px;
+    background: var(--vscode-dropdown-background, var(--vscode-input-background));
+    color: var(--vscode-dropdown-foreground, var(--vscode-input-foreground));
+    border: 1px solid var(--vscode-dropdown-border, var(--vscode-panel-border));
+    border-radius: 3px;
+    font-size: 12px;
+}
+
+.tag-manager-merge-confirm {
+    flex: 0 0 auto;
+    padding: 4px 12px;
+    font-size: 12px;
+}
+
+.tag-manager-empty {
+    padding: 24px;
+    text-align: center;
+    color: var(--vscode-descriptionForeground);
+    font-size: 12px;
+}
+
+/* ── Badges (Account section) ─────────────────────────────────────────────
+ * The collection every user has. One picture per badge (shared/badges.js);
+ * a locked badge
+ * is a generic outline, never the picture — what is on a badge is a surprise until earned. */
+.dbmn-badge-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+    gap: 12px;
+    margin-top: 14px;
+}
+
+.dbmn-badge {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 6px;
+    border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+    border-radius: 6px;
+    text-align: center;
+}
+
+.dbmn-badge-art {
+    width: 56px;
+    height: 56px;
+    line-height: 0;
+}
+
+.dbmn-badge-art svg {
+    width: 100%;
+    height: 100%;
+}
+
+.dbmn-badge-name {
+    font-size: 11px;
+    line-height: 1.3;
+}
+
+/* Locked: a generic outline in currentColor, nothing of the badge's art. */
+.dbmn-badge-locked .dbmn-badge-art {
+    color: var(--vscode-descriptionForeground);
+    opacity: 0.6;
+}
+
+.dbmn-badge-locked .dbmn-badge-name {
+    color: var(--vscode-descriptionForeground);
+}
+
+/* A badge was earned since the user last opened Account: a dot on its nav icon. */
+.hub-nav-item.has-unseen-badge .hub-nav-icon {
+    position: relative;
+}
+
+.hub-nav-item.has-unseen-badge .hub-nav-icon::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    right: 6px;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--vscode-notificationsInfoIcon-foreground, #3794ff);
+    border: 2px solid var(--vscode-sideBar-background, var(--vscode-editor-background));
+}
+
+/* ── Development build: which DBMN backend (backend-config.ts) ────────────
+ * Never rendered in a packaged build. LOCAL is solid yellow; PRODUCTION warns. */
+.hub-dev-backend {
+    display: inline-flex;
+    align-items: center;
+    margin-right: 10px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+    border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.5));
+    color: var(--vscode-descriptionForeground);
+}
+
+/* LOCAL: the same solid yellow as the LOCAL ribbon on the local website (dbmn
+ * account/shared.css .dbmn-local-ribbon), so the two read as one signal. */
+.hub-dev-backend.is-local {
+    color: #1a1a2e;
+    background: #f2b632;
+    border-color: #f2b632;
+}
+
+.hub-dev-backend.is-production {
+    color: var(--vscode-editorWarning-foreground, #cca700);
+    border-color: var(--vscode-editorWarning-foreground, #cca700);
+    background: rgba(204, 167, 0, 0.12);
+}
+
+.hub-dev-backend-note {
+    font-size: 12px;
+    color: var(--vscode-descriptionForeground);
+}
+
+/* Help mode button (shared/help-mode.js), right end of the header: the one way into the docs
+   for the Hub and every tab in it. Always visible, unlike Collapse. */
+.hub-help-toggle {
+    background: transparent;
+    border: 1px solid transparent;
+    width: 24px;
+    height: 24px;
+    margin-left: 6px;
+    border-radius: 4px;
+    cursor: pointer;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+.hub-help-toggle:hover {
+    background: var(--vscode-toolbar-hoverBackground);
+}
+.hub-help-toggle[aria-pressed="true"] {
+    border-color: var(--vscode-focusBorder);
+}
+/* On the production header the icons take the header's own text colour: the standard grey
+   (and the focus blue of help mode) can't be read on the red. */
+.hub-header.is-production .hub-help-toggle,
+.hub-header.is-production .hub-help-toggle:hover,
+.hub-header.is-production .hub-help-toggle[aria-pressed="true"] {
+    color: var(--vscode-statusBarItem-errorForeground, #ffffff);
+}
+.hub-header.is-production .hub-help-toggle:hover {
+    background: rgba(0, 0, 0, 0.22);
+}
+.hub-header.is-production .hub-help-toggle[aria-pressed="true"] {
+    border-color: var(--vscode-statusBarItem-errorForeground, #ffffff);
+    background: rgba(0, 0, 0, 0.22);
+}
+
+/* #444: Build a search's key to the signs, under its choices */
+.dbmn-filter-legend {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 2px 12px;
+    margin: 0;
+    padding: 8px 10px;
+    border-radius: 4px;
+    font-size: 12px;
+    color: var(--vscode-descriptionForeground);
+    background: var(--vscode-textCodeBlock-background, rgba(127, 127, 127, 0.12));
+}
+.dbmn-filter-legend dt { font-family: var(--vscode-editor-font-family, monospace); color: var(--vscode-foreground); }
+.dbmn-filter-legend dd { margin: 0; }
+
+/* #298: Compare is new, so its rail icon carries a small Beta label just under it. Drawn over the
+   item's own bottom padding: the button keeps its size, and the label shows on the collapsed rail too */
+.hub-nav-item[data-section="compare"] {
+    position: relative;
+}
+.hub-nav-item[data-section="compare"]::after {
+    content: 'Beta';
+    position: absolute;
+    left: 22px;
+    bottom: 1px;
+    transform: translateX(-50%);
+    padding: 0 3px;
+    border-radius: 4px;
+    font-size: 8px;
+    font-weight: 700;
+    line-height: 10px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    background: var(--vscode-textLink-foreground);
+    color: var(--vscode-editor-background);
+    pointer-events: none;
+}

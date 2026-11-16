@@ -1,0 +1,72 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "🏗️ Validate Architecture",
+            "type": "npm",
+            "script": "validate:architecture",
+            "problemMatcher": [],
+            "group": {
+                "kind": "test",
+                "isDefault": false
+            },
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared",
+                "showReuseMessage": false,
+                "clear": true
+            }
+        },
+        {
+            "label": "🔍 Lint Architecture",
+            "type": "npm",
+            "script": "lint:architecture",
+            "problemMatcher": "$eslint-stylish",
+            "group": "test",
+            "presentation": {
+                "echo": true,
+                "reveal": "problems",
+                "focus": false,
+                "panel": "shared"
+            }
+        },
+        {
+            "label": "✅ Full Architecture Check",
+            "dependsOn": [
+                "🏗️ Validate Architecture",
+                "🔍 Lint Architecture",
+                "🧪 Test Architecture Compliance"
+            ],
+            "dependsOrder": "sequence",
+            "problemMatcher": [],
+            "group": "test",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared",
+                "showReuseMessage": false
+            }
+        },
+        {
+            "label": "👀 Watch Architecture",
+            "type": "shell",
+            "command": "nodemon",
+            "args": [
+                "--watch", "src",
+                "--ext", "ts,js",
+                "--exec", "npm run validate:architecture --silent || true"
+            ],
+            "problemMatcher": [],
+            "isBackground": true,
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "dedicated"
+            }
+        }
+    ]
+}

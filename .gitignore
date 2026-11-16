@@ -1,0 +1,118 @@
+# VS Code Extension Build Output
+out/
+dist/
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# VS Code Extension Package
+*.vsix
+
+# TypeScript
+*.tsbuildinfo
+
+# Logs
+logs
+*.log
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage directory used by tools like istanbul
+coverage/
+*.lcov
+
+# nyc test coverage
+.nyc_output
+
+# Dependency directories
+jspm_packages/
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# Optional REPL history
+.node_repl_history
+
+# Output of 'npm pack'
+*.tgz
+
+# Yarn Integrity file
+.yarn-integrity
+
+# dotenv environment variables file
+.env
+.env.test
+.env.local
+.env.production
+
+# parcel-bundler cache (https://parceljs.org/)
+.cache
+.parcel-cache
+
+# VS Code settings (optional - uncomment if you want to ignore)
+# .vscode/
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+*:Zone.Identifier
+
+# Linux
+*~
+
+# Temporary files
+*.tmp
+*.temp
+
+# VS Cod test directory
+.vscode-test/
+
+# Active8 directories
+VSDEV/
+gpc/
+.active8/
+out - Copy/
+
+# Test directories
+test-results/
+test-output/
+test-workspace/
+Investigations/
+
+# Local .dbmn.zip exports — can contain OAuth client secrets and service-account keys (#289)
+sample-data/exports/
+
+# Claude Code local/runtime artifacts (keep settings.json + agents/ tracked)
+.claude/settings.local.json
+.claude/*.lock
+
+# npm run dev:local — pids and logs of the local backend
+.dev-local/
+
+# Playwright UI tests (see playwright.config.ts)
+playwright-report/
+
+# Disposable test Supabase stack (scripts/supabase-test-stack.mjs)
+.supabase-test/
+
+# Never compiled output next to the web app's sources (Vite builds web/)
+web/src/**/*.js
+web/src/**/*.js.map
+
+# The desktop app (Electron): packages, and the web app's export for it
+desktop/release/
+web/dist-desktop/

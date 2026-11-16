@@ -1,0 +1,7 @@
+id,name,salary,start_date,is_active,rating,notes
+1,"John Smith",75000.50,2023-01-15,true,4.8,"Excellent performance"
+2,"Jane Doe",82500.75,2023-02-20,false,3.9,"Good team player"
+3,"Bob Wilson",68000.00,2023-03-10,true,4.2,"Reliable and consistent"
+4,"Alice Brown",95000.25,2023-04-05,true,4.9,"Outstanding leadership"
+5,"Mike Davis",71500.00,2023-05-12,false,3.7,"Needs improvement"
+6,"Sarah Johnson",88750.50,2023-06-08,true,4.6,"Creative problem solver"

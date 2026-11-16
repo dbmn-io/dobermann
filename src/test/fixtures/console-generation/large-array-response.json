@@ -1,0 +1,84 @@
+{
+  "executionId": "exec-004",
+  "duration": 567,
+  "httpStatus": 200,
+  "httpStatusText": "OK",
+  "headers": {
+    "content-type": "application/json",
+    "x-total-count": "1000",
+    "x-page": "1",
+    "x-per-page": "50"
+  },
+  "data": [
+    {
+      "customerId": "C001",
+      "name": "Acme Corporation",
+      "email": "contact@acme.com",
+      "phone": "+1-555-0101",
+      "address": "123 Business Ave, New York, NY 10001",
+      "accountBalance": 15750.50,
+      "creditLimit": 25000.00,
+      "status": "active",
+      "createdDate": "2023-01-15T09:00:00Z",
+      "lastOrderDate": "2024-01-10T14:30:00Z",
+      "totalOrders": 47,
+      "avgOrderValue": 1250.75
+    },
+    {
+      "customerId": "C002",
+      "name": "Beta Industries",
+      "email": "orders@beta.com",
+      "phone": "+1-555-0102",
+      "address": "456 Industrial Blvd, Chicago, IL 60601",
+      "accountBalance": 8920.25,
+      "creditLimit": 15000.00,
+      "status": "active", 
+      "createdDate": "2023-02-20T11:15:00Z",
+      "lastOrderDate": "2024-01-08T16:45:00Z",
+      "totalOrders": 32,
+      "avgOrderValue": 890.50
+    },
+    {
+      "customerId": "C003",
+      "name": "Gamma Enterprises",
+      "email": "purchasing@gamma.com", 
+      "phone": "+1-555-0103",
+      "address": "789 Commerce St, Los Angeles, CA 90210",
+      "accountBalance": -2150.00,
+      "creditLimit": 20000.00,
+      "status": "overdue",
+      "createdDate": "2023-03-10T08:30:00Z",
+      "lastOrderDate": "2023-12-15T10:20:00Z",
+      "totalOrders": 28,
+      "avgOrderValue": 1580.25
+    },
+    {
+      "customerId": "C004",
+      "name": "Delta Systems",
+      "email": "admin@delta.com",
+      "phone": "+1-555-0104", 
+      "address": "321 Tech Drive, Austin, TX 78701",
+      "accountBalance": 22500.75,
+      "creditLimit": 35000.00,
+      "status": "active",
+      "createdDate": "2023-01-05T13:45:00Z",
+      "lastOrderDate": "2024-01-12T09:15:00Z",
+      "totalOrders": 63,
+      "avgOrderValue": 2150.80
+    },
+    {
+      "customerId": "C005",
+      "name": "Echo Solutions",
+      "email": "info@echo.com",
+      "phone": "+1-555-0105",
+      "address": "654 Innovation Way, Seattle, WA 98101",
+      "accountBalance": 5680.00,
+      "creditLimit": 12000.00,
+      "status": "active",
+      "createdDate": "2023-04-12T15:20:00Z",
+      "lastOrderDate": "2024-01-05T12:40:00Z",
+      "totalOrders": 19,
+      "avgOrderValue": 975.40
+    }
+  ]
+}

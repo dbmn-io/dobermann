@@ -1,0 +1,824 @@
+import initSqlJs, { Database as SqlJsDatabase } from 'sql.js';
+import * as vscode from 'vscode';
+import * as path from 'path';
+import * as fs from 'fs';
+import { IExecutionStorage } from './execution-storage.interface';
+import {
+    ExecutionMetadata,
+    ExecutionFilters,
+    TableOptions,
+    ExecutionTableResult,
+    ExecutionStats,
+    validateExecutionMetadata
+} from '../../storage/execution-metadata';
+import { ensureActive8WorkspaceFolder } from '../../utils/workspace-helper';
+
+/**
+ * SQLite implementation of execution metadata storage using sql.js (WASM)
+ *
+ * GitHub Issue #102: Migrate from JSON to SQLite for:
+ * - 132× reduction in write operations (330,000 → 2,500)
+ * - 60× faster I/O (30 minutes → 30 seconds)
+ * - ACID transactions for corruption protection
+ * - Indexed queries for instant lookups
+ *
+ * GitHub Issue #109: Migrated to sql.js for cross-platform compatibility
+ * - No native binaries (pure WASM)
+ * - Works on Windows, Linux, Mac without build tools
+ * - No NODE_MODULE_VERSION conflicts
+ */
+export class SqliteExecutionStorage implements IExecutionStorage {
+    private db: SqlJsDatabase | null = null;
+    private dbPath: string | null = null;
+    private readonly DB_VERSION = 1;
+    private saveTimer: NodeJS.Timeout | null = null;
+    private readonly SAVE_DEBOUNCE_MS = 500; // Auto-save delay
+
+    constructor(private context: vscode.ExtensionContext) {}
+
+    /**
+     * Initialize SQLite database and create schema
+     * GitHub Issue #109: sql.js requires async WASM loading + file persistence
+     */
+    async initialize(): Promise<void> {
+        try {
+            // Ensure Active8 workspace .active8 directory exists
+            const workspaceUri = await ensureActive8WorkspaceFolder();
+            const active8Dir = vscode.Uri.joinPath(workspaceUri, '.active8');
+            await vscode.workspace.fs.createDirectory(active8Dir);
+
+            // Create database file path
+            this.dbPath = path.join(active8Dir.fsPath, 'executions.db');
+
+            // Initialize sql.js (load WASM)
+            const wasmPath = path.join(this.context.extensionPath, 'dist', 'sql-wasm.wasm');
+            const SQL = await initSqlJs({
+                locateFile: (file) => {
+                    // Return path to WASM file bundled by webpack
+                    if (file === 'sql-wasm.wasm') {
+                        return wasmPath;
+                    }
+                    return file;
+                }
+            });
+
+            // Load existing database or create new
+            if (fs.existsSync(this.dbPath)) {
+                const buffer = fs.readFileSync(this.dbPath);
+                this.db = new SQL.Database(buffer);
+                console.log(`📂 Loaded existing SQLite database: ${this.dbPath}`);
+            } else {
+                this.db = new SQL.Database();
+                console.log(`🆕 Created new SQLite database: ${this.dbPath}`);
+            }
+
+            // Create schema
+            await this.createSchema();
+
+            // Initial save to disk
+            this.saveDatabase();
+
+            console.log(`✅ SQLite execution storage initialized: ${this.dbPath}`);
+        } catch (error) {
+            console.error('❌ Failed to initialize SQLite execution storage:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Save database to disk (debounced)
+     * GitHub Issue #109: sql.js requires explicit save
+     */
+    private saveDatabase(): void {
+        if (!this.db || !this.dbPath) return;
+
+        // Debounce saves to reduce I/O
+        if (this.saveTimer) {
+            clearTimeout(this.saveTimer);
+        }
+
+        this.saveTimer = setTimeout(() => {
+            if (!this.db || !this.dbPath) return;
+
+            try {
+                const data = this.db.export();
+                const buffer = Buffer.from(data);
+                fs.writeFileSync(this.dbPath, buffer);
+            } catch (error) {
+                console.error('❌ Failed to save database:', error);
+            }
+        }, this.SAVE_DEBOUNCE_MS);
+    }
+
+    /**
+     * Save database immediately (for critical operations)
+     */
+    private saveDatabaseSync(): void {
+        if (!this.db || !this.dbPath) return;
+
+        if (this.saveTimer) {
+            clearTimeout(this.saveTimer);
+            this.saveTimer = null;
+        }
+
+        try {
+            const data = this.db.export();
+            const buffer = Buffer.from(data);
+            fs.writeFileSync(this.dbPath, buffer);
+        } catch (error) {
+            console.error('❌ Failed to save database:', error);
+        }
+    }
+
+    /**
+     * Create database schema from SQL file
+     * GitHub Issue #109: sql.js exec() works the same way
+     */
+    private async createSchema(): Promise<void> {
+        if (!this.db) return;
+
+        // Read schema SQL file from extension directory (webpack bundles to dist/)
+        const schemaPath = path.join(this.context.extensionPath, 'dist', 'services', 'storage', 'sqlite-schema.sql');
+        const schemaSql = await fs.promises.readFile(schemaPath, 'utf8');
+
+        // Execute schema (handles CREATE TABLE IF NOT EXISTS)
+        this.db.exec(schemaSql);
+    }
+
+    /**
+     * Generate unique execution ID
+     */
+    private generateExecutionId(): string {
+        return `exec_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    }
+
+    /**
+     * Map ExecutionMetadata to database row
+     */
+    private toRow(metadata: ExecutionMetadata): any {
+        return {
+            id: metadata.id,
+            environment: metadata.environment,
+            environment_id: metadata.environmentId || null,
+            organization: metadata.organization || null,
+            endpoint_id: metadata.endpointId,
+            endpoint_name: metadata.endpointName,
+            endpoint_method: metadata.endpointMethod,
+            endpoint_path: metadata.endpointPath,
+            execution_type: metadata.executionType || 'individual',
+            batch_id: metadata.batchId || null,
+            row_start: metadata.rowStart || null,
+            rows: metadata.rows || '1',
+            status: metadata.status,
+            run_time: metadata.runTime || null,
+            created_at: metadata.createdAt.getTime(),
+            started_at: metadata.startedAt?.getTime() || null,
+            completed_at: metadata.completedAt?.getTime() || null,
+            request_file: metadata.requestFile || null,
+            response_file: metadata.responseFile || null,
+            log_path: metadata.logPath || null,
+            http_status: metadata.httpStatus || null,
+            http_status_text: metadata.httpStatusText || null,
+            error_message: metadata.errorMessage || null,
+            request_hash: metadata.requestHash || null,
+            // JSON fields
+            request_headers: metadata.requestHeaders ? JSON.stringify(metadata.requestHeaders) : null,
+            request_query_params: metadata.requestQueryParams ? JSON.stringify(metadata.requestQueryParams) : null,
+            test_status: metadata.testStatus || null,
+            tests_passed: metadata.testsPassed || null,
+            tests_failed: metadata.testsFailed || null,
+            test_results: metadata.testResults ? JSON.stringify(metadata.testResults) : null,
+            batch_configuration: metadata.batchConfiguration ? JSON.stringify(metadata.batchConfiguration) : null,
+            batch_resumption_data: metadata.batchResumptionData ? JSON.stringify(metadata.batchResumptionData) : null,
+            preparation_state: metadata.preparationState ? JSON.stringify(metadata.preparationState) : null,
+            endpoint_config: metadata.endpointConfig ? JSON.stringify(metadata.endpointConfig) : null,
+            column_mapping_used: metadata.columnMappingUsed ? JSON.stringify(metadata.columnMappingUsed) : null,
+            // Batch copy lineage
+            copied_from_batch_id: metadata.copiedFromBatchId || null,
+            copied_from_environment: metadata.copiedFromEnvironment || null,
+            copied_from_organization: metadata.copiedFromOrganization || null,
+            copied_at: metadata.copiedAt?.getTime() || null,
+            copy_generation: metadata.copyGeneration || null,
+            // Split transaction tracking
+            split_from_member_id: metadata.splitFromMemberId || null,
+            is_split_transaction: metadata.isSplitTransaction ? 1 : 0,
+            split_reason: metadata.splitReason || null,
+            array_index: metadata.arrayIndex || null,
+            original_array_size: metadata.originalArraySize || null
+        };
+    }
+
+    /**
+     * Map database row to ExecutionMetadata
+     */
+    private fromRow(row: any): ExecutionMetadata {
+        return {
+            id: row.id,
+            environment: row.environment,
+            environmentId: row.environment_id,
+            organization: row.organization ?? undefined,
+            endpointId: row.endpoint_id,
+            endpointName: row.endpoint_name,
+            endpointMethod: row.endpoint_method,
+            endpointPath: row.endpoint_path,
+            executionType: row.execution_type,
+            batchId: row.batch_id ?? undefined,
+            rowStart: row.row_start ?? undefined,
+            rows: row.rows,
+            status: row.status,
+            runTime: row.run_time ?? undefined,
+            createdAt: new Date(row.created_at),
+            startedAt: row.started_at ? new Date(row.started_at) : undefined,
+            completedAt: row.completed_at ? new Date(row.completed_at) : undefined,
+            requestFile: row.request_file ?? undefined,
+            responseFile: row.response_file ?? undefined,
+            logPath: row.log_path ?? undefined,
+            httpStatus: row.http_status ?? undefined,
+            httpStatusText: row.http_status_text ?? undefined,
+            errorMessage: row.error_message ?? undefined,
+            requestHash: row.request_hash ?? undefined,
+            // Parse JSON fields
+            requestHeaders: row.request_headers ? JSON.parse(row.request_headers) : undefined,
+            requestQueryParams: row.request_query_params ? JSON.parse(row.request_query_params) : undefined,
+            testStatus: row.test_status ?? undefined,
+            testsPassed: row.tests_passed ?? undefined,
+            testsFailed: row.tests_failed ?? undefined,
+            testResults: row.test_results ? JSON.parse(row.test_results) : undefined,
+            batchConfiguration: row.batch_configuration ? JSON.parse(row.batch_configuration) : undefined,
+            batchResumptionData: row.batch_resumption_data ? JSON.parse(row.batch_resumption_data) : undefined,
+            preparationState: row.preparation_state ? JSON.parse(row.preparation_state) : undefined,
+            endpointConfig: row.endpoint_config ? JSON.parse(row.endpoint_config) : undefined,
+            columnMappingUsed: row.column_mapping_used ? JSON.parse(row.column_mapping_used) : undefined,
+            // Batch copy lineage
+            copiedFromBatchId: row.copied_from_batch_id ?? undefined,
+            copiedFromEnvironment: row.copied_from_environment ?? undefined,
+            copiedFromOrganization: row.copied_from_organization ?? undefined,
+            copiedAt: row.copied_at ? new Date(row.copied_at) : undefined,
+            copyGeneration: row.copy_generation ?? undefined,
+            // Split transaction tracking
+            splitFromMemberId: row.split_from_member_id ?? undefined,
+            isSplitTransaction: row.is_split_transaction === 1,
+            splitReason: row.split_reason ?? undefined,
+            arrayIndex: row.array_index ?? undefined,
+            originalArraySize: row.original_array_size ?? undefined
+        };
+    }
+
+    /**
+     * Create a new execution record
+     */
+    async createExecution(metadata: Omit<ExecutionMetadata, 'id'>): Promise<string> {
+        if (!this.db) throw new Error('Database not initialized');
+
+        const id = this.generateExecutionId();
+        const fullMetadata: ExecutionMetadata = { id, ...metadata } as ExecutionMetadata;
+
+        // DEBUG: Log metadata before validation
+
+        // Validate metadata
+        let validatedMetadata;
+        try {
+            validatedMetadata = validateExecutionMetadata(fullMetadata);
+        } catch (validationError) {
+            throw validationError;
+        }
+
+        // Convert to row
+        const row = this.toRow(validatedMetadata);
+
+        // Insert
+        const stmt = this.db.prepare(`
+            INSERT INTO executions (
+                id, environment, environment_id, organization,
+                endpoint_id, endpoint_name, endpoint_method, endpoint_path,
+                execution_type, batch_id, row_start, rows, status,
+                run_time, created_at, started_at, completed_at,
+                request_file, response_file, log_path,
+                http_status, http_status_text, error_message, request_hash,
+                request_headers, request_query_params,
+                test_status, tests_passed, tests_failed, test_results,
+                batch_configuration, batch_resumption_data, preparation_state,
+                endpoint_config, column_mapping_used,
+                copied_from_batch_id, copied_from_environment, copied_from_organization,
+                copied_at, copy_generation,
+                split_from_member_id, is_split_transaction, split_reason,
+                array_index, original_array_size
+            ) VALUES (
+                @id, @environment, @environment_id, @organization,
+                @endpoint_id, @endpoint_name, @endpoint_method, @endpoint_path,
+                @execution_type, @batch_id, @row_start, @rows, @status,
+                @run_time, @created_at, @started_at, @completed_at,
+                @request_file, @response_file, @log_path,
+                @http_status, @http_status_text, @error_message, @request_hash,
+                @request_headers, @request_query_params,
+                @test_status, @tests_passed, @tests_failed, @test_results,
+                @batch_configuration, @batch_resumption_data, @preparation_state,
+                @endpoint_config, @column_mapping_used,
+                @copied_from_batch_id, @copied_from_environment, @copied_from_organization,
+                @copied_at, @copy_generation,
+                @split_from_member_id, @is_split_transaction, @split_reason,
+                @array_index, @original_array_size
+            )
+        `);
+
+        stmt.run(row);
+
+        return id;
+    }
+
+    /**
+     * Create multiple execution records in a single transaction (GitHub Issue #94 - Batch INSERT optimization)
+     * @param metadataArray - Array of execution metadata to insert
+     * @returns Array of generated execution IDs
+     */
+    async createExecutionBatch(metadataArray: Array<Omit<ExecutionMetadata, 'id'>>): Promise<string[]> {
+        if (!this.db) throw new Error('Database not initialized');
+        if (!metadataArray || metadataArray.length === 0) {
+            return [];
+        }
+
+        const ids: string[] = [];
+        const rows: any[] = [];
+
+        // Pre-generate IDs and validate all metadata
+        for (const metadata of metadataArray) {
+            const id = this.generateExecutionId();
+            const fullMetadata: ExecutionMetadata = { id, ...metadata } as ExecutionMetadata;
+
+            // Validate metadata
+            let validatedMetadata;
+            try {
+                validatedMetadata = validateExecutionMetadata(fullMetadata);
+            } catch (validationError) {
+                throw validationError;
+            }
+
+            // Convert to row
+            const row = this.toRow(validatedMetadata);
+            ids.push(id);
+            rows.push(row);
+        }
+
+        // Prepare INSERT statement
+        const stmt = this.db.prepare(`
+            INSERT INTO executions (
+                id, environment, environment_id, organization,
+                endpoint_id, endpoint_name, endpoint_method, endpoint_path,
+                execution_type, batch_id, row_start, rows, status,
+                run_time, created_at, started_at, completed_at,
+                request_file, response_file, log_path,
+                http_status, http_status_text, error_message, request_hash,
+                request_headers, request_query_params,
+                test_status, tests_passed, tests_failed, test_results,
+                batch_configuration, batch_resumption_data, preparation_state,
+                endpoint_config, column_mapping_used,
+                copied_from_batch_id, copied_from_environment, copied_from_organization,
+                copied_at, copy_generation,
+                split_from_member_id, is_split_transaction, split_reason,
+                array_index, original_array_size
+            ) VALUES (
+                @id, @environment, @environment_id, @organization,
+                @endpoint_id, @endpoint_name, @endpoint_method, @endpoint_path,
+                @execution_type, @batch_id, @row_start, @rows, @status,
+                @run_time, @created_at, @started_at, @completed_at,
+                @request_file, @response_file, @log_path,
+                @http_status, @http_status_text, @error_message, @request_hash,
+                @request_headers, @request_query_params,
+                @test_status, @tests_passed, @tests_failed, @test_results,
+                @batch_configuration, @batch_resumption_data, @preparation_state,
+                @endpoint_config, @column_mapping_used,
+                @copied_from_batch_id, @copied_from_environment, @copied_from_organization,
+                @copied_at, @copy_generation,
+                @split_from_member_id, @is_split_transaction, @split_reason,
+                @array_index, @original_array_size
+            )
+        `);
+
+        // Execute in a transaction for performance
+        const insertMany = this.db.transaction((rows: any[]) => {
+            for (const row of rows) {
+                stmt.run(row);
+            }
+        });
+
+        insertMany(rows);
+
+        return ids;
+    }
+
+    /**
+     * Update an existing execution record
+     */
+    async updateExecution(id: string, updates: Partial<ExecutionMetadata>): Promise<void> {
+        if (!this.db) throw new Error('Database not initialized');
+
+
+        // Get current execution
+        const current = await this.getExecution(id);
+        if (!current) {
+            throw new Error(`Execution with ID "${id}" not found`);
+        }
+
+        // Merge updates
+        const merged = { ...current, ...updates };
+
+        // Validate
+        let validated;
+        try {
+            validated = validateExecutionMetadata(merged);
+        } catch (error) {
+            throw error;
+        }
+
+        // Convert to row
+        const row = this.toRow(validated);
+
+        // Update
+        const stmt = this.db.prepare(`
+            UPDATE executions SET
+                environment = @environment,
+                environment_id = @environment_id,
+                organization = @organization,
+                endpoint_id = @endpoint_id,
+                endpoint_name = @endpoint_name,
+                endpoint_method = @endpoint_method,
+                endpoint_path = @endpoint_path,
+                execution_type = @execution_type,
+                batch_id = @batch_id,
+                row_start = @row_start,
+                rows = @rows,
+                status = @status,
+                run_time = @run_time,
+                created_at = @created_at,
+                started_at = @started_at,
+                completed_at = @completed_at,
+                request_file = @request_file,
+                response_file = @response_file,
+                log_path = @log_path,
+                http_status = @http_status,
+                http_status_text = @http_status_text,
+                error_message = @error_message,
+                request_hash = @request_hash,
+                request_headers = @request_headers,
+                request_query_params = @request_query_params,
+                test_status = @test_status,
+                tests_passed = @tests_passed,
+                tests_failed = @tests_failed,
+                test_results = @test_results,
+                batch_configuration = @batch_configuration,
+                batch_resumption_data = @batch_resumption_data,
+                preparation_state = @preparation_state,
+                endpoint_config = @endpoint_config,
+                column_mapping_used = @column_mapping_used,
+                copied_from_batch_id = @copied_from_batch_id,
+                copied_from_environment = @copied_from_environment,
+                copied_from_organization = @copied_from_organization,
+                copied_at = @copied_at,
+                copy_generation = @copy_generation,
+                split_from_member_id = @split_from_member_id,
+                is_split_transaction = @is_split_transaction,
+                split_reason = @split_reason,
+                array_index = @array_index,
+                original_array_size = @original_array_size
+            WHERE id = @id
+        `);
+
+        stmt.run(row);
+    }
+
+    /**
+     * Bulk update multiple executions (GitHub Issue #67 - prevent corruption)
+     * Uses a transaction for atomic updates
+     */
+    async bulkUpdateExecutions(updates: Array<{ id: string; updates: Partial<ExecutionMetadata> }>): Promise<void> {
+        if (!this.db) throw new Error('Database not initialized');
+        if (updates.length === 0) return;
+
+        // Wrap all updates in a single transaction
+        const transaction = this.db.transaction(() => {
+            for (const { id, updates: executionUpdates } of updates) {
+                // Use internal method for each update
+                this.updateExecutionSync(id, executionUpdates);
+            }
+        });
+
+        transaction();
+    }
+
+    /**
+     * Synchronous update for use within transactions
+     */
+    private updateExecutionSync(id: string, updates: Partial<ExecutionMetadata>): void {
+        if (!this.db) throw new Error('Database not initialized');
+
+        // Get current execution
+        const stmt = this.db.prepare('SELECT * FROM executions WHERE id = ?');
+        const row = stmt.get(id);
+
+        if (!row) {
+            throw new Error(`Execution with ID "${id}" not found`);
+        }
+
+        const current = this.fromRow(row);
+
+        // Merge and validate
+        const merged = { ...current, ...updates };
+        const validated = validateExecutionMetadata(merged);
+        const updatedRow = this.toRow(validated);
+
+        // Update
+        const updateStmt = this.db.prepare(`
+            UPDATE executions SET
+                status = @status,
+                run_time = @run_time,
+                started_at = @started_at,
+                completed_at = @completed_at,
+                http_status = @http_status,
+                http_status_text = @http_status_text,
+                error_message = @error_message,
+                batch_resumption_data = @batch_resumption_data,
+                preparation_state = @preparation_state
+            WHERE id = @id
+        `);
+
+        updateStmt.run(updatedRow);
+    }
+
+    /**
+     * Get a single execution by ID
+     */
+    async getExecution(id: string): Promise<ExecutionMetadata | null> {
+        if (!this.db) throw new Error('Database not initialized');
+
+
+        const stmt = this.db.prepare('SELECT * FROM executions WHERE id = ?');
+        const row = stmt.get(id);
+
+        if (!row) {
+            return null;
+        }
+
+
+        try {
+            const metadata = this.fromRow(row);
+            return metadata;
+        } catch (error) {
+            throw error;
+        }
+    }
+
+    /**
+     * Get all executions with optional filters
+     */
+    async getExecutions(filters?: ExecutionFilters): Promise<ExecutionMetadata[]> {
+        if (!this.db) throw new Error('Database not initialized');
+
+        let sql = 'SELECT * FROM executions WHERE 1=1';
+        const params: any = {};
+
+        // Apply filters (basic implementation - can be enhanced)
+        if (filters?.status) {
+            sql += ' AND status = @status';
+            params.status = filters.status;
+        }
+
+        if (filters?.environment) {
+            sql += ' AND environment = @environment';
+            params.environment = filters.environment;
+        }
+
+        if (filters?.endpointId) {
+            sql += ' AND endpoint_id = @endpoint_id';
+            params.endpoint_id = filters.endpointId;
+        }
+
+        if (filters?.batchId) {
+            sql += ' AND batch_id = @batch_id';
+            params.batch_id = filters.batchId;
+        }
+
+        sql += ' ORDER BY created_at DESC';
+
+        const stmt = this.db.prepare(sql);
+        const rows = stmt.all(params);
+
+        return rows.map((row: any) => this.fromRow(row));
+    }
+
+    /**
+     * Get paginated table of executions
+     */
+    async getExecutionTable(options?: TableOptions): Promise<ExecutionTableResult> {
+        if (!this.db) throw new Error('Database not initialized');
+
+        const limit = options?.limit || 25;
+        const offset = options?.offset || 0;
+        const sortBy = options?.sortBy || 'created_at';
+        const sortOrder = options?.sortOrder || 'desc';
+
+        // Get total count
+        const countStmt = this.db.prepare('SELECT COUNT(*) as count FROM executions');
+        const { count } = countStmt.get() as { count: number };
+
+        // Get paginated results
+        const sql = `
+            SELECT * FROM executions
+            ORDER BY ${sortBy} ${sortOrder}
+            LIMIT ? OFFSET ?
+        `;
+
+        const stmt = this.db.prepare(sql);
+        const rows = stmt.all(limit, offset);
+
+        return {
+            executions: rows.map((row: any) => this.fromRow(row)),
+            totalCount: count,
+            hasMore: (offset + limit) < count
+        };
+    }
+
+    /**
+     * Get execution statistics
+     */
+    async getExecutionStats(): Promise<ExecutionStats> {
+        if (!this.db) throw new Error('Database not initialized');
+
+        const stmt = this.db.prepare(`
+            SELECT
+                COUNT(*) as total,
+                SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
+                SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending,
+                SUM(CASE WHEN status = 'running' THEN 1 ELSE 0 END) as running,
+                SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) as error,
+                SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) as cancelled,
+                AVG(CASE WHEN run_time IS NOT NULL THEN run_time ELSE NULL END) as avgRunTime
+            FROM executions
+        `);
+
+        const stats = stmt.get() as any;
+
+        return {
+            totalExecutions: stats.total || 0,
+            completedExecutions: stats.completed || 0,
+            pendingExecutions: stats.pending || 0,
+            runningExecutions: stats.running || 0,
+            errorExecutions: stats.error || 0,
+            cancelledExecutions: stats.cancelled || 0,
+            averageRunTime: stats.avgRunTime || null
+        };
+    }
+
+    /**
+     * Delete an execution record
+     */
+    async deleteExecution(id: string): Promise<void> {
+        if (!this.db) throw new Error('Database not initialized');
+
+        const stmt = this.db.prepare('DELETE FROM executions WHERE id = ?');
+        stmt.run(id);
+    }
+
+    // Batch-specific methods
+
+    async createBatch(metadata: Omit<ExecutionMetadata, 'id'>): Promise<string> {
+        // Same as createExecution - unified model
+        return this.createExecution(metadata);
+    }
+
+    async updateBatch(batchId: string, updates: Partial<ExecutionMetadata>): Promise<void> {
+        return this.updateExecution(batchId, updates);
+    }
+
+    async getBatchExecution(batchId: string): Promise<ExecutionMetadata | null> {
+        return this.getExecution(batchId);
+    }
+
+    async deleteBatch(batchId: string): Promise<void> {
+        if (!this.db) throw new Error('Database not initialized');
+
+        // Delete batch and all members (CASCADE in schema)
+        const stmt = this.db.prepare('DELETE FROM executions WHERE id = ? OR batch_id = ?');
+        stmt.run(batchId, batchId);
+    }
+
+    async storeBatchExecution(batchExecution: ExecutionMetadata): Promise<{ success: boolean; errorMessage?: string }> {
+        try {
+            await this.createBatch(batchExecution);
+            return { success: true };
+        } catch (error) {
+            return {
+                success: false,
+                errorMessage: error instanceof Error ? error.message : 'Unknown error'
+            };
+        }
+    }
+
+    async updateBatchExecution(batchId: string, updates: Partial<ExecutionMetadata>): Promise<void> {
+        return this.updateBatch(batchId, updates);
+    }
+
+    // Batch resumption data
+
+    async storeBatchResumptionData(batchId: string, resumptionData: any): Promise<void> {
+        return this.updateExecution(batchId, { batchResumptionData: resumptionData });
+    }
+
+    async getBatchResumptionData(batchId: string): Promise<any | null> {
+        const batch = await this.getBatchExecution(batchId);
+        return batch?.batchResumptionData || null;
+    }
+
+    // Filtered query methods
+
+    async getIndividualExecutions(): Promise<ExecutionMetadata[]> {
+        if (!this.db) throw new Error('Database not initialized');
+
+        const stmt = this.db.prepare(`
+            SELECT * FROM executions
+            WHERE execution_type = 'individual'
+            ORDER BY created_at DESC
+        `);
+
+        const rows = stmt.all();
+        return rows.map((row: any) => this.fromRow(row));
+    }
+
+    async getBatchExecutions(): Promise<ExecutionMetadata[]> {
+        if (!this.db) throw new Error('Database not initialized');
+
+        const stmt = this.db.prepare(`
+            SELECT * FROM executions
+            WHERE execution_type = 'batch'
+            ORDER BY created_at DESC
+        `);
+
+        const rows = stmt.all();
+        return rows.map((row: any) => this.fromRow(row));
+    }
+
+    async getBatchMemberExecutions(batchId: string): Promise<ExecutionMetadata[]> {
+        if (!this.db) throw new Error('Database not initialized');
+
+        const stmt = this.db.prepare(`
+            SELECT * FROM executions
+            WHERE batch_id = ? AND execution_type = 'batch_member'
+            ORDER BY created_at ASC
+        `);
+
+        const rows = stmt.all(batchId);
+        return rows.map((row: any) => this.fromRow(row));
+    }
+
+    async getActiveQueue(): Promise<ExecutionMetadata[]> {
+        if (!this.db) throw new Error('Database not initialized');
+
+        // Use optimized view
+        const stmt = this.db.prepare('SELECT * FROM vw_active_queue');
+        const rows = stmt.all();
+        return rows.map((row: any) => this.fromRow(row));
+    }
+
+    async getAllTransactions(): Promise<ExecutionMetadata[]> {
+        if (!this.db) throw new Error('Database not initialized');
+
+        // Only return individual and batch executions (exclude batch_member from tree view)
+        const stmt = this.db.prepare(`
+            SELECT * FROM executions
+            WHERE execution_type IN ('individual', 'batch')
+            ORDER BY created_at DESC
+        `);
+        const rows = stmt.all();
+        return rows.map((row: any) => this.fromRow(row));
+    }
+
+    async getExecutionsByEndpoint(endpointId: string): Promise<ExecutionMetadata[]> {
+        if (!this.db) throw new Error('Database not initialized');
+
+        const stmt = this.db.prepare(`
+            SELECT * FROM executions
+            WHERE endpoint_id = ?
+            ORDER BY created_at DESC
+        `);
+
+        const rows = stmt.all(endpointId);
+        return rows.map((row: any) => this.fromRow(row));
+    }
+
+    async getBatches(): Promise<ExecutionMetadata[]> {
+        return this.getBatchExecutions();
+    }
+
+    async getBatchExecutions_Legacy(batchId: string): Promise<ExecutionMetadata[]> {
+        return this.getBatchMemberExecutions(batchId);
+    }
+
+    /**
+     * Close database connection
+     */
+    close(): void {
+        if (this.db) {
+            this.db.close();
+            this.db = null;
+        }
+    }
+}

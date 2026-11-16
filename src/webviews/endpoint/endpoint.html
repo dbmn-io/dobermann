@@ -1,0 +1,395 @@
+<!-- Template file - {{PLACEHOLDERS}} are replaced at runtime -->
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dobermann - Endpoint</title>
+    {{SHARED_STYLES}}
+</head>
+
+<body class="editor-slide-in" data-endpoint-id="{{ENDPOINT_ID}}">
+    <!-- Readable buttons in every theme (shared/button-contrast.js): first in the body, so it applies before anything is painted -->
+    <script src="{{BUTTON_CONTRAST_SCRIPT}}"></script>
+    <div class="editor-window-controls">
+        <button type="button" class="editor-window-btn icon" data-window-action="maximize" data-icon="maximize-2" title="Maximise" aria-label="Maximise"></button>
+        <button type="button" class="editor-window-btn icon" data-window-action="close" data-icon="x" title="Close" aria-label="Close"></button>
+    </div>
+    <!-- Dynamic Page Heading -->
+    <h1 id="pageHeading">{{ENDPOINT_METHOD}}: {{ENDPOINT_NAME}}</h1>
+    <!-- Issue #291: on a pristine draft this strip replaces the heading — the
+         Paste Endpoint call-to-action is the first thing a new-endpoint user sees.
+         Visibility is owned by updateNewEndpointStart() in endpoint.js. -->
+    <div id="newEndpointStart" class="new-endpoint-start hidden">
+        <div class="new-endpoint-start-text">
+            <span class="new-endpoint-start-title">New Endpoint</span>
+            <span class="new-endpoint-start-hint">Fill in the details below, or paste one a teammate shared with you.</span>
+        </div>
+        <button type="button" id="pasteEndpointTopBtn" data-click="pasteFromClipboard" class="btn btn-secondary" title="Paste an endpoint copied from DBMN (Copy to Share, or a shared DBMN Endpoint card). Ctrl+V into any field does the same." data-help="sharing-endpoints#sharing-endpoints">Paste Endpoint</button>
+    </div>
+    
+    <!-- Section 1: Endpoint Details -->
+    <div class="border border-radius-4 p-15 mb-20">
+        <h2>Endpoint Details</h2>
+        <div class="flex align-center gap-10 mb-10">
+            <label for="endpointName" class="inline-block min-w-120" data-help="endpoints">Endpoint Name:</label>
+            <input type="text" id="endpointName" placeholder="My API Endpoint" value="{{ENDPOINT_NAME}}" class="flex-1" />
+        </div>
+        <div class="flex align-center gap-10 mb-10">
+            <label for="endpointMethod" class="inline-block min-w-120" data-help="endpoints#url-path">
+                Request:
+            </label>
+            <div class="flex gap-10 flex-1">
+                <select id="endpointMethod" data-change="methodChanged" class="min-w-120">
+                    <option value="GET" {{GET_SELECTED}}>GET</option>
+                    <option value="POST" {{POST_SELECTED}}>POST</option>
+                    <option value="PUT" {{PUT_SELECTED}}>PUT</option>
+                    <option value="PATCH" {{PATCH_SELECTED}}>PATCH</option>
+                    <option value="DELETE" {{DELETE_SELECTED}}>DELETE</option>
+                </select>
+                <input type="text" id="endpointPath"
+                    placeholder="/api/v1/orders/{{orderId}}"
+                    value="{{ENDPOINT_PATH}}"
+                    class="flex-1" />
+            </div>
+        </div>
+        <div class="flex align-start gap-10 mb-10">
+            <label for="endpointDescription" class="inline-block min-w-120" data-help="endpoints">Description:</label>
+            <textarea id="endpointDescription" rows="1"
+                placeholder="Brief description of this endpoint..." class="flex-1">{{ENDPOINT_DESCRIPTION}}</textarea>
+        </div>
+        <div class="flex align-center gap-10 mb-10">
+            <label class="inline-block min-w-120" data-help="hub#systems">System:</label>
+            <div id="endpointSystemPicker" class="flex-1">
+                <!-- Populated by SystemPicker.render() on first systemsList message -->
+            </div>
+        </div>
+        <div class="flex align-center gap-10 mb-10">
+            <label for="endpointTagsInput" class="inline-block min-w-120" data-help="endpoints#tags">
+                Tags:
+            </label>
+            <div id="endpointTagsChips" class="tag-chip-input flex-1" data-initial="{{ENDPOINT_TAGS}}">
+                <!-- Chips + input rendered by initTagChipInput() in endpoint.js -->
+            </div>
+            <!-- #432: the Hub's Manage Tags (rename, merge, delete across endpoints) -->
+            <button type="button" id="manageTagsBtn" class="tag-manage-link" data-click="openTagManager" data-help="endpoints#tags">Manage tags…</button>
+        </div>
+        <!-- Folder field hidden - kept for backwards-compat; folder→tags migration runs once at startup -->
+        <input type="hidden" id="endpointFolder" value="{{ENDPOINT_FOLDER}}" />
+    </div>
+
+    <!-- Section 2: Request Body (Initially Hidden) -->
+    <div id="bodySection" class="border border-radius-4 p-15 mb-20 hidden">
+        <div class="flex align-center justify-between mb-15">
+            <h2 class="m-0" data-help="endpoints#request-body">
+                Request Body
+            </h2>
+        </div>
+        <!-- Body not sent indicator for GET/DELETE methods (GitHub Issue #164) -->
+        <div id="bodyNotSentIndicator" class="info-banner hidden">
+            <span class="info-icon">i</span>
+            <span>Request body is not sent for GET/DELETE methods</span>
+        </div>
+        <div class="mb-15">
+            <!-- Editor Toolbar - between header and Monaco container -->
+            <div class="editor-toolbar">
+                <!-- Line Variable with dropdown (Ctrl+M cycles) -->
+                <div class="toolbar-dropdown" id="variableDropdown">
+                    <button id="lineVariableBtn" class="btn btn-secondary toolbar-dropdown-btn" title="Line Variable (Ctrl+M cycles)" disabled data-help="template-variables">
+                        <span class="btn-icon icon" data-icon="variable"></span>Line Variable<span class="dropdown-arrow">▼</span>
+                    </button>
+                    <div class="toolbar-dropdown-menu">
+                        <button class="toolbar-dropdown-item" data-type="input">Input</button>
+                        <button class="toolbar-dropdown-item" data-type="env">Environment</button>
+                        <button class="toolbar-dropdown-item" data-type="a8">Generated (A8)</button>
+                    </div>
+                </div>
+                <button id="insertBtn" class="btn btn-secondary" title="Insert/Remove {{}} (Ctrl+Shift+M)" data-help="template-variables"><span class="btn-icon icon" data-icon="braces"></span>Insert Var</button>
+                <div class="toolbar-dropdown" id="modifierDropdown">
+                    <button id="modifierBtn" class="btn btn-secondary toolbar-dropdown-btn" title="Insert modifier at cursor (must be inside a {{variable}})" disabled data-help="template-variables">
+                        <span class="btn-icon icon" data-icon="sliders-horizontal"></span>Modifier<span class="dropdown-arrow">▼</span>
+                    </button>
+                    <div class="toolbar-dropdown-menu" id="modifierDropdownMenu">
+                    </div>
+                </div>
+                <button id="encodeBtn" class="btn btn-secondary" title="Toggle BASE64 Encoding" disabled><span class="btn-icon icon" data-icon="binary"></span>Encode</button>
+                <button id="commentBtn" class="btn btn-secondary" title="Toggle Comment (Ctrl+/)"><span class="btn-icon icon" data-icon="message-square"></span>Comment</button>
+                <button id="deleteLineBtn" class="btn btn-secondary" title="Delete Line (Ctrl+D)"><span class="btn-icon icon" data-icon="trash-2"></span>Delete</button>
+                <button id="undoBtn" class="btn btn-secondary" title="Undo (Ctrl+Z)" disabled><span class="btn-icon icon" data-icon="undo-2"></span>Undo</button>
+                <button id="redoBtn" class="btn btn-secondary" title="Redo (Ctrl+Shift+Z)" disabled><span class="btn-icon icon" data-icon="redo-2"></span>Redo</button>
+                <button id="formatJsonBtn" class="btn btn-secondary editor-toolbar-doc-action" title="Format JSON"><span class="btn-icon icon" data-icon="wand-sparkles"></span>Format</button>
+            </div>
+            <div class="monaco-editor-wrapper">
+                <div id="monacoEditorContainer" class="border border-radius-4"></div>
+                <!-- Fullscreen toggle lives as an overlay icon inside the editor (Issue from May 13 footer review).
+                     Moved out of the toolbar so the toolbar overflow logic can keep the actually-useful
+                     primary buttons visible at narrow widths. Icon swap (enter/exit) is CSS-driven via
+                     #bodySection.editor-fullscreen. -->
+                <button id="fullscreenBtn" class="editor-fullscreen-icon" title="Toggle full window (Esc to exit)" aria-pressed="false" aria-label="Toggle full window">
+                    <svg class="icon-enter" viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M2 2h4v1H3v3H2V2zm12 0h-4v1h3v3h1V2zM2 14h4v-1H3v-3H2v4zm12 0h-4v-1h3v-3h1v4z"/></svg>
+                    <svg class="icon-exit" viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M6 2v4H2V5h3V2h1zm4 0v4h4V5h-3V2h-1zm0 12v-4h4v1h-3v3h-1zm-4 0v-4H2v1h3v3h1z"/></svg>
+                </button>
+            </div>
+            <div id="jsonErrorMessage" class="color-error bg-input p-12 mt-8 font-size-13 font-mono hidden"></div>
+        </div>
+    </div>
+
+    <!-- Section 3: Headers (Always Visible) -->
+    <div id="headersSection" class="border border-radius-4 p-15 mb-20">
+        <div class="flex align-center justify-between mb-15">
+            <h2 class="m-0" data-help="endpoints#headers">
+                Headers
+            </h2>
+            <button id="addHeaderBtn" data-click="addCustomHeader" class="font-size-12 p-4 border border-radius-3 cursor-pointer">+</button>
+        </div>
+
+        <!-- Use Environment Headers Toggle (Issue #126) -->
+        <div class="mb-15">
+            <label class="checkbox-label flex align-center gap-8">
+                <input type="checkbox" id="useEnvironmentHeaders" checked data-change="handleUseEnvironmentHeadersChange" />
+                <span>Include environment-level headers</span>
+            </label>
+        </div>
+
+        <!-- Shown while this endpoint keeps headers of its own: the DBMN way is the environment's -->
+        <div id="endpointHeadersWarning" class="info-banner warning hidden" role="note">
+            <span class="info-icon">!</span>
+            <span>
+                The DBMN way: keep headers on the environment, not the endpoint. DBMN adds them to each request.
+                <a href="#" data-help-doc="environments" data-help-section="headers">Environment headers</a>
+            </span>
+        </div>
+
+        <!-- All Headers (environment + endpoint) in single container -->
+        <div id="headersContainer">
+            <!-- Environment headers (inherited, disabled) will be inserted at top -->
+            <!-- Endpoint headers (editable) will be added below -->
+        </div>
+    </div>
+
+    <!-- Section 4: Query Parameters (Initially Hidden) -->
+    <div id="queryParamsSection" class="border border-radius-4 p-15 mb-20 hidden">
+        <div class="flex align-center justify-between mb-15">
+            <h2 class="m-0" data-help="endpoints#query-parameters">
+                Query Parameters
+            </h2>
+            <button id="addQueryParamBtn" data-click="addQueryParam" class="font-size-12 p-4 border border-radius-3 cursor-pointer hidden">+</button>
+        </div>
+        <div id="queryParamsContainer">
+            <!-- Dynamic query params will be added here -->
+        </div>
+    </div>
+
+    <!-- Section 5: Tests (Initially Hidden) -->
+    <div id="testsSection" class="border border-radius-4 p-15 mb-20 hidden">
+        <div class="flex align-center justify-between mb-15">
+            <h2 class="m-0" data-help="endpoints">
+                Tests
+            </h2>
+            <button id="addTestBtn" data-click="addTestScript" class="font-size-12 p-4 border border-radius-3 cursor-pointer hidden">+</button>
+        </div>
+        <div id="testsContainer">
+            <div class="mb-15">
+                <h4 class="font-size-14 mb-8">Post Execution Tests</h4>
+                <p class="font-size-13 color-description mb-15">
+                    Write JavaScript tests to validate API responses. Tests run automatically during data loading operations.
+                </p>
+
+                <div class="mb-15">
+                    <textarea id="singleTestScript" rows="12" class="w-full" placeholder="// Write your test assertions here using Chai.js
+// Available objects: response, request, csvRow, expect, assert
+
+// Example:
+expect(response.status).to.equal(200);
+expect(response.json().success).to.be.true;
+
+// Data correlation:
+expect(response.json().data[0].itemId)
+  .to.include(csvRow['SKU']);
+
+// You can write multiple test statements in this single script"></textarea>
+                </div>
+            </div>
+
+            <!-- Test Validation Section -->
+            <div class="mb-15">
+                <div class="flex flex-col gap-15">
+                    <button data-click="validateSingleTest" class="btn btn-secondary">Validate Tests</button>
+                    <div id="testValidationResults" class="hidden">
+                        <!-- Test validation results will be displayed here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sample Data Configuration -->
+            <div class="mb-15">
+                <h4>Sample Data for Testing</h4>
+                <div class="border border-radius-4 p-15">
+                    <div class="flex border-bottom mb-15">
+                        <button type="button" class="p-8 cursor-pointer border-none bg-transparent" data-click="switchSampleTab" data-arg="csv">CSV Row</button>
+                        <button type="button" class="p-8 cursor-pointer border-none bg-transparent" data-click="switchSampleTab" data-arg="response">Mock Response</button>
+                        <button type="button" class="p-8 cursor-pointer border-none bg-transparent" data-click="switchSampleTab" data-arg="api">Call API</button>
+                    </div>
+
+                    <div id="csvSampleTab">
+                        <label class="block mb-8 font-bold">Sample CSV Row (JSON format):</label>
+                        <textarea id="sampleCsvData" rows="3" class="w-full font-mono"
+                            placeholder='{"SKU": "SAMPLE123", "QUANTITY": "10", "LOCATION": "LOC001"}'></textarea>
+                        <p class="font-size-12 color-description mt-8">Provide sample CSV row data as JSON for test preview</p>
+                    </div>
+
+                    <div id="responseSampleTab" class="hidden">
+                        <label class="block mb-8 font-bold">Mock API Response (JSON format):</label>
+                        <textarea id="sampleResponseData" rows="5" class="w-full font-mono"
+                            placeholder='{"success": true, "data": [{"id": "123", "name": "Sample Item"}]}'></textarea>
+                        <p class="font-size-12 color-description mt-8">Provide expected API response for test preview</p>
+                    </div>
+
+                    <div id="apiSampleTab" class="hidden">
+                        <label class="block mb-8 font-bold">Test API Call:</label>
+                        <div class="flex align-center gap-15 mb-15">
+                            <button data-click="makeTestAPICall" class="btn btn-secondary">Call Current Endpoint</button>
+                            <span class="font-size-12 color-description">Use current endpoint configuration to fetch real sample data</span>
+                        </div>
+                        <div id="apiCallResults" class="hidden">
+                            <h5>API Response:</h5>
+                            <pre id="apiResponseData" class="bg-input p-12 border border-radius-4 font-mono font-size-12"></pre>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Test Preview Section -->
+            <div class="mb-15">
+                <div class="flex flex-col gap-15">
+                    <button data-click="runTestsPreview" class="btn btn-secondary">Preview Test Execution</button>
+                    <div id="testPreviewResults" class="hidden">
+                        <!-- Test preview results will be displayed here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sticky Footer with Action Buttons -->
+    <div class="webview-footer">
+        <div class="footer-content">
+            <div class="footer-button-container footer-button-container-overflow">
+                <!-- Add Section Button with Dropdown -->
+                <div class="add-section-dropdown">
+                    <button id="add-section-btn" data-click="toggleAddSectionDropdown" class="btn btn-secondary" title="Add sections to endpoint">
+                        Add <span class="add-icon icon" data-icon="chevron-up"></span>
+                    </button>
+                    <div id="add-section-menu" class="dropdown-menu hidden">
+                        <div class="dropdown-item" data-click="addSection" data-arg="headers">
+                            <span class="dropdown-icon" data-icon="corner-down-left"></span> Header
+                        </div>
+                        <div class="dropdown-item" data-click="addSection" data-arg="queryParams">
+                            <span class="dropdown-icon" data-icon="ampersand"></span> Query Parameter
+                        </div>
+                        <div class="dropdown-item" data-click="addSection" data-arg="body">
+                            <span class="dropdown-icon" data-icon="braces"></span> Request Body
+                        </div>
+                        <!-- Tests section hidden for now — not yet tested. Re-enable once verified.
+                        <div class="dropdown-item" data-click="addSection" data-arg="tests">
+                            <span class="dropdown-icon" data-icon="flask-conical"></span> Tests
+                        </div>
+                        -->
+                    </div>
+                </div>
+
+                <!-- Paste Button (only for new endpoints) - GitHub Issue #164 -->
+                <button id="pasteEndpointBtn" data-click="pasteFromClipboard" class="btn btn-secondary hidden" title="Paste an endpoint copied from DBMN (Copy to Share, or a shared DBMN Endpoint card). Ctrl+V anywhere on a new endpoint does the same." data-help="sharing-endpoints">
+                    Paste Endpoint
+                </button>
+                <!-- Duplicate (only for saved endpoints) -->
+                <button id="duplicateEndpointBtn" data-click="duplicateEndpoint" class="btn btn-secondary hidden" title="Duplicate endpoint" data-help="endpoints">
+                    Duplicate
+                </button>
+                <!-- Download Template (only when endpoint has template variables) -->
+                <button id="downloadTemplateBtn" data-click="downloadTemplate" class="btn btn-secondary hidden" title="Download an Excel template seeded from this endpoint's variables" data-help="endpoints#download-template">
+                    Download Template
+                </button>
+                <button id="share-endpoint-btn" data-click="copyToClipboard" class="btn btn-secondary" title="Copy this endpoint to the clipboard as a shareable card — paste it into Teams, email, or a new DBMN endpoint" disabled data-help="sharing-endpoints">Copy to Share</button>
+                <!-- Delete (only for saved endpoints) — arm-and-confirm pattern handled in deleteEndpointWithConfirm -->
+                <button id="deleteEndpointBtn" data-click="deleteEndpointWithConfirm" class="btn btn-secondary btn-danger hidden" title="Delete this endpoint" data-help="endpoints">
+                    Delete
+                </button>
+
+                <button id="save-endpoint-btn" data-click="saveEndpoint" class="btn btn-primary" disabled data-help="endpoints#save-run">Save Endpoint</button>
+                <!-- Run buttons: Run API always available; Run Batch appears when the
+                     endpoint has template variables. Both stay visible when vars exist so
+                     the user can choose between typing values into the modal (Run API) or
+                     driving the endpoint from a CSV (Run Batch). -->
+                <div id="button-container-{{ENDPOINT_ID}}" class="execution-button-group">
+                    <button id="run-api-btn" class="btn btn-primary" title="Execute API with values you enter" disabled data-help="run-api">Run API</button>
+                    <button id="run-batch-btn" class="btn btn-secondary hidden" title="Execute in batch from a CSV" disabled data-help="batch-preparation">Run Batch</button>
+                </div>
+
+                <!-- More dropdown — pure overflow destination, far right with up-arrow. Hidden unless setupFooterOverflow spills a button into it. -->
+                <div class="more-actions-dropdown footer-more-overflow hidden">
+                    <button id="more-actions-btn" data-click="toggleMoreActionsDropdown" class="btn btn-secondary" title="More actions" aria-haspopup="true">
+                        More<span class="dropdown-arrow">▲</span>
+                    </button>
+                    <div id="more-actions-menu" class="dropdown-menu hidden"></div>
+                </div>
+            </div>
+            <!-- Footer Notification Area (right side) for validation errors/warnings -->
+            <div id="footerNotification" class="footer-notification hidden">
+                <span class="notification-icon"></span>
+                <span class="notification-message"></span>
+                <button class="notification-dismiss" data-click="clearFooterNotification" title="Dismiss">&times;</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- CSV Modal removed - now self-contained in CSV Handler -->
+
+    <!-- Monaco Editor -->
+    <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs/loader.js"></script>
+    <script src="{{MONACO_LOADER_CONFIG_SCRIPT}}"></script>
+    <script src="{{DBMN_ACTIONS_SCRIPT}}"></script>
+
+    <!-- Monaco theme utility (must load after Monaco loader, before editors are created) -->
+    <script src="{{MONACO_THEME_SCRIPT}}"></script>
+    <script src="{{ZOD_SCRIPT}}"></script>
+    <script src="{{ZOD_SCHEMAS_SCRIPT}}"></script>
+    <!-- JSON comment stripper utility -->
+    <script src="{{JSON_COMMENT_STRIPPER_SCRIPT}}"></script>
+    <!-- JSONC Parser for comment-preserving formatting -->
+    <script src="{{JSONC_PARSER_SCRIPT}}"></script>
+    <!-- Query param builder utility (GitHub Issue #108) -->
+    <script src="{{QUERY_PARAM_BUILDER_SCRIPT}}"></script>
+    <!-- Shared icon registry + editor window controls -->
+    <script src="{{ICONS_SCRIPT}}"></script>
+    <script src="{{EDITOR_WINDOW_CONTROLS_SCRIPT}}"></script>
+    <!-- DbmnModal — auto-bridge listens for ext-host modal requests -->
+    <script src="{{ROW_PASTE_SCRIPT}}"></script>
+    <script src="{{LINE_BLOCK_SCRIPT}}"></script>
+    <script src="{{DBMN_MODAL_SCRIPT}}"></script>
+    <script src="{{DBMN_TOAST_SCRIPT}}"></script>
+    <script src="{{DBMN_CLIPBOARD_SCRIPT}}"></script>
+    <!-- Shared System picker (console-style dropdown with "+ Add" footer) -->
+    <script src="{{SYSTEM_PICKER_SCRIPT}}"></script>
+    <script src="{{TAG_SUGGEST_SCRIPT}}"></script>
+    <!-- Documentation helpers for contextual help -->
+    <script src="{{DOCUMENTATION_HELPERS_SCRIPT}}"></script>
+    <script src="{{HELP_MODE_SCRIPT}}"></script>
+    <!-- Modular components: Data Transformer modules (must load BEFORE orchestrator) -->
+    <script src="{{DT_DATA_ENTRY_GRID_SCRIPT}}"></script>
+    <script src="{{DT_TYPE_COERCION_SCRIPT}}"></script>
+    <script src="{{DT_DATA_INGESTION_SCRIPT}}"></script>
+    <script src="{{DT_DATA_PREVIEW_SCRIPT}}"></script>
+    <script src="{{DT_MISMATCH_REPAIR_SCRIPT}}"></script>
+    <script src="{{DT_BATCH_CONFIG_SCRIPT}}"></script>
+    <!-- Data Transformer orchestrator (initializes all modules above) -->
+    <script src="{{CSV_HANDLER_SCRIPT}}"></script>
+    <script src="{{FORM_MANAGER_SCRIPT}}"></script>
+    <script src="{{TEMPLATE_COMPLETIONS_SCRIPT}}"></script>
+    <script src="{{TEMPLATE_AUTOCOMPLETE_SCRIPT}}"></script>
+    <!-- Main endpoint script -->
+    <script src="{{ENDPOINT_SCRIPT}}"></script>
+</body>
+
+</html>

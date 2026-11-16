@@ -1,0 +1,559 @@
+/* Atomic CSS Utilities */
+
+/* Heading styles - Consistent across all webviews */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+    color: var(--vscode-textLink-foreground);
+    font-weight: 600;
+    line-height: 1.4;
+    margin-top: 0;
+    text-transform: capitalize;
+}
+
+h1 {
+    font-size: 24px;
+    font-weight: 700;
+    margin-bottom: 24px;
+}
+
+h2 {
+    font-size: 20px;
+    margin-bottom: 20px;
+}
+
+h3 {
+    font-size: 18px;
+    margin-bottom: 16px;
+}
+
+h4 {
+    font-size: 16px;
+    margin-bottom: 14px;
+}
+
+h5 {
+    font-size: 14px;
+    margin-bottom: 12px;
+}
+
+h6 {
+    font-size: 13px;
+    margin-bottom: 10px;
+    font-weight: 500;
+}
+
+/* Text utilities */
+.break-word {
+    word-break: break-word;
+}
+
+.font-bold {
+    font-weight: bold;
+}
+
+.font-mono {
+    font-family: var(--vscode-editor-font-family, monospace);
+}
+
+.text-center {
+    text-align: center;
+}
+
+.text-right {
+    text-align: right;
+}
+
+.text-left {
+    text-align: left;
+}
+
+.font-size-10 {
+    font-size: 10px;
+}
+
+.font-size-12 {
+    font-size: 12px;
+}
+
+.font-size-13 {
+    font-size: 13px;
+}
+
+.font-size-14 {
+    font-size: 14px;
+}
+
+.font-size-16 {
+    font-size: 16px;
+}
+
+.user-select-none {
+    user-select: none;
+}
+
+.text-ellipsis {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.text-link {
+    color: var(--vscode-textLink-foreground);
+}
+
+/* Colors */
+.color-success {
+    color: var(--vscode-terminal-ansiGreen);
+}
+
+.color-error {
+    color: var(--vscode-errorForeground);
+}
+
+.color-description {
+    color: var(--vscode-descriptionForeground);
+}
+
+.color-foreground {
+    color: var(--vscode-foreground);
+}
+
+.bg-input {
+    background-color: var(--vscode-input-background);
+}
+
+.bg-header {
+    background-color: var(--vscode-list-headerBackground);
+}
+
+.bg-menu {
+    background-color: var(--vscode-menu-background);
+}
+
+/* Display utilities */
+.flex {
+    display: flex;
+}
+
+.inline-block {
+    display: inline-block;
+}
+
+.inline-flex {
+    display: inline-flex;
+}
+
+.block {
+    display: block;
+}
+
+.hidden {
+    display: none !important;
+}
+
+/* Position utilities */
+.relative {
+    position: relative;
+}
+
+.absolute {
+    position: absolute;
+}
+
+.sticky {
+    position: sticky;
+}
+
+.top-0 {
+    top: 0;
+}
+
+.right-0 {
+    right: 0;
+}
+
+.top-100 {
+    top: 100%;
+}
+
+/* Flex utilities */
+.flex-1 {
+    flex: 1;
+}
+
+.justify-between {
+    justify-content: space-between;
+}
+
+.justify-center {
+    justify-content: center;
+}
+
+.justify-end {
+    justify-content: flex-end;
+}
+
+.align-center {
+    align-items: center;
+}
+
+.align-start {
+    align-items: flex-start;
+}
+
+.flex-col {
+    flex-direction: column;
+}
+
+.flex-column {
+    flex-direction: column;
+}
+
+.flex-wrap {
+    flex-wrap: wrap;
+}
+
+/* Composite flex utilities for common patterns */
+.flex-between {
+    display: flex;
+    justify-content: space-between;
+}
+
+.flex-between-center {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.flex-center {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.flex-end-center {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+}
+
+/* Gap utilities */
+.gap-4 {
+    gap: 4px;
+}
+
+.gap-8 {
+    gap: 8px;
+}
+
+.gap-10 {
+    gap: 10px;
+}
+
+.gap-12 {
+    gap: 12px;
+}
+
+.gap-20 {
+    gap: 20px;
+}
+
+/* Padding utilities */
+.p-0 {
+    padding: 0;
+}
+
+.p-2 {
+    padding: 2px;
+}
+
+.p-4 {
+    padding: 4px;
+}
+
+.p-5 {
+    padding: 5px;
+}
+
+.p-8 {
+    padding: 8px;
+}
+
+.p-10 {
+    padding: 10px;
+}
+
+.p-12 {
+    padding: 12px;
+}
+
+.p-15 {
+    padding: 15px;
+}
+
+.p-20 {
+    padding: 20px;
+}
+
+.p-50 {
+    padding: 50px;
+}
+
+.px-8 {
+    padding-left: 8px;
+    padding-right: 8px;
+}
+
+.px-12 {
+    padding-left: 12px;
+    padding-right: 12px;
+}
+
+.py-8 {
+    padding-top: 8px;
+    padding-bottom: 8px;
+}
+
+.pt-15 {
+    padding-top: 15px;
+}
+
+/* Margin utilities */
+.m-0 {
+    margin: 0;
+}
+
+.m-4 {
+    margin: 4px;
+}
+
+.m-8 {
+    margin: 8px;
+}
+
+.m-20 {
+    margin: 20px;
+}
+
+.mt-8 {
+    margin-top: 8px;
+}
+
+.mt-10 {
+    margin-top: 10px;
+}
+
+.mt-15 {
+    margin-top: 15px;
+}
+
+.mt-20 {
+    margin-top: 20px;
+}
+
+.mb-0 {
+    margin-bottom: 0;
+}
+
+.mb-10 {
+    margin-bottom: 10px;
+}
+
+.mb-15 {
+    margin-bottom: 15px;
+}
+
+.mb-20 {
+    margin-bottom: 20px;
+}
+
+.ml-2 {
+    margin-left: 2px;
+}
+
+.ml-4 {
+    margin-left: 4px;
+}
+
+.ml-8 {
+    margin-left: 8px;
+}
+
+.ml-20 {
+    margin-left: 20px;
+}
+
+.mr-6 {
+    margin-right: 6px;
+}
+
+/* Sizing utilities */
+.w-full {
+    width: 100%;
+}
+
+.w-14 {
+    width: 14px;
+}
+
+.h-14 {
+    height: 14px;
+}
+
+.min-w-120 {
+    min-width: 120px;
+}
+
+.min-w-200 {
+    min-width: 200px;
+}
+
+.max-w-300 {
+    max-width: 300px;
+}
+
+.max-h-70vh {
+    max-height: 70vh;
+}
+
+.max-h-300 {
+    max-height: 300px;
+}
+
+/* Border utilities */
+.border {
+    border: 1px solid var(--vscode-panel-border);
+}
+
+.border-none {
+    border: none;
+}
+
+.border-radius-2 {
+    border-radius: 2px;
+}
+
+.border-radius-3 {
+    border-radius: 3px;
+}
+
+.border-radius-4 {
+    border-radius: 4px;
+}
+
+.border-top {
+    border-top: 1px solid var(--vscode-panel-border);
+}
+
+.border-bottom {
+    border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+.border-bottom-2 {
+    border-bottom: 2px solid var(--vscode-panel-border);
+}
+
+.border-right {
+    border-right: 1px solid var(--vscode-panel-border);
+}
+
+/* Effects */
+.opacity-0 {
+    opacity: 0;
+}
+
+.opacity-1 {
+    opacity: 1;
+}
+
+.opacity-70 {
+    opacity: 0.7;
+}
+
+.cursor-pointer {
+    cursor: pointer;
+}
+
+.transition {
+    transition: all 0.2s ease;
+}
+
+.transition-opacity {
+    transition: opacity 0.2s ease;
+}
+
+.overflow-auto {
+    overflow: auto;
+}
+
+.overflow-hidden {
+    overflow: hidden;
+}
+
+.overflow-y-auto {
+    overflow-y: auto;
+}
+
+/* Z-index */
+.z-10 {
+    z-index: 10;
+}
+
+.z-1000 {
+    z-index: 1000;
+}
+
+/* Box shadow */
+.shadow-dropdown {
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* Vertical align */
+.vertical-top {
+    vertical-align: top;
+}
+
+/* Animation utilities */
+.red-pulse {
+    display: inline-block;
+    color: var(--vscode-charts-red);
+    animation: pulse-red 1.5s ease-in-out infinite;
+    font-size: 18px;
+}
+
+/* Preserve space when hidden to prevent layout shift */
+.red-pulse.hidden {
+    visibility: hidden;
+}
+
+@keyframes pulse-red {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.3;
+    }
+}
+/* Beta: a feature that is new and still settling (Compare). One small pill beside its name */
+.dbmn-beta {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 1px 6px;
+    border-radius: 8px;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1.4;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    vertical-align: middle;
+    background: var(--vscode-textLink-foreground);
+    color: var(--vscode-editor-background);
+}

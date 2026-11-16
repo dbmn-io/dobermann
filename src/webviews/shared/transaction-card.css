@@ -1,0 +1,1108 @@
+/*
+ * Transaction card — one design for a request/response, wherever it is shown.
+ *
+ * Moved out of console.css (2026-10-02, GitHub Issue #308) so a page other than the Console
+ * can show the same card without inheriting the Console's page layout (console.css sets a
+ * full-height flex `body`). Used by: the Console Raw tab and its transaction modal (#306,
+ * #296), and Run Batch Step 4's request preview.
+ *
+ * Load order: straight after console.css on the Console, so these rules keep winning over
+ * the Console's own exactly as they did when they lived inside it.
+ */
+/* ===== GitHub Issue #166: RAW TAB STYLES ===== */
+
+/* RAW tab container */
+.raw-tab-container {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+}
+
+/* Filter bar */
+.raw-filter-bar {
+    padding: 12px 16px;
+    background: var(--vscode-editor-background);
+    border-bottom: 1px solid var(--vscode-panel-border);
+    flex-shrink: 0;
+}
+
+.raw-filter-row {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    flex-wrap: wrap;
+}
+
+.raw-filter-row-secondary {
+    margin-top: 10px;
+    justify-content: space-between;
+}
+
+.raw-filter-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.raw-filter-group label {
+    color: var(--vscode-foreground);
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.raw-status-dropdown {
+    padding: 4px 8px;
+    font-size: 13px;
+    background: var(--vscode-input-background);
+    color: var(--vscode-input-foreground);
+    border: 1px solid var(--vscode-input-border);
+    border-radius: 4px;
+    min-width: 150px;
+}
+
+.raw-status-dropdown option:disabled {
+    color: var(--vscode-disabledForeground);
+    font-style: italic;
+}
+
+.raw-checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+    font-weight: normal;
+}
+
+.raw-checkbox-label input[type="checkbox"] {
+    margin: 0;
+    cursor: pointer;
+}
+
+.raw-search-group {
+    flex: 1;
+    max-width: 400px;
+}
+
+.raw-search-input {
+    flex: 1;
+    padding: 4px 8px;
+    font-size: 13px;
+    background: var(--vscode-input-background);
+    color: var(--vscode-input-foreground);
+    border: 1px solid var(--vscode-input-border);
+    border-radius: 4px;
+    min-width: 200px;
+}
+
+.raw-search-clear {
+    padding: 4px 8px;
+    font-size: 12px;
+    background: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.raw-search-clear:hover {
+    background: var(--vscode-button-secondaryHoverBackground);
+}
+
+.raw-counter {
+    font-size: 13px;
+    color: var(--vscode-descriptionForeground);
+}
+
+/* Issue #306: Show Input / Request / Response — toggle chips, same look as
+ * the Hub catalogue chips. */
+.raw-show-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.raw-show-label {
+    color: var(--vscode-foreground);
+    font-size: 13px;
+    font-weight: 500;
+    margin-right: 2px;
+}
+
+.raw-show-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 10px;
+    border-radius: 12px;
+    background: transparent;
+    color: var(--vscode-foreground);
+    border: 1px solid var(--vscode-panel-border, var(--vscode-input-border, rgba(128,128,128,0.4)));
+    cursor: pointer;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    transition: background-color 0.1s ease, color 0.1s ease, border-color 0.1s ease;
+}
+
+.raw-show-chip:hover:not(:disabled) {
+    border-color: var(--vscode-focusBorder, currentColor);
+}
+
+.raw-show-chip[aria-pressed="true"] {
+    background: var(--vscode-button-background, #0e639c);
+    color: var(--vscode-button-foreground, #fff);
+    border-color: var(--vscode-button-background, #0e639c);
+}
+
+.raw-show-chip:disabled {
+    opacity: 0.45;
+    cursor: default;
+}
+
+/* Issue #306: a single transaction (Raw tab with one result, and the
+ * transaction modal) — no list chrome, no card to expand. */
+.raw-card-solo .raw-card-header {
+    cursor: default;
+}
+
+.raw-card-solo .raw-card-header:hover {
+    background: var(--vscode-sideBar-background);
+}
+
+.raw-solo-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    padding: 8px 14px;
+    border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+.raw-solo-toolbar .raw-solo-search {
+    flex: 0 1 280px;
+    min-width: 160px;
+}
+
+.raw-single .raw-card-solo {
+    margin-bottom: 0;
+}
+
+/* Issue #296: transaction modal (right-click a Completed/Error row) */
+.dbmn-modal.dbmn-modal-transaction {
+    width: min(calc(100vw - 48px), 1120px);
+    max-width: min(calc(100vw - 48px), 1120px);
+}
+
+.raw-modal-transaction .raw-card {
+    margin-bottom: 0;
+}
+
+.raw-context-menu {
+    position: fixed;
+    z-index: 10000;
+    min-width: 170px;
+    padding: 4px 0;
+    background: var(--vscode-menu-background, var(--vscode-editorWidget-background));
+    color: var(--vscode-menu-foreground, var(--vscode-foreground));
+    border: 1px solid var(--vscode-menu-border, var(--vscode-panel-border));
+    border-radius: 4px;
+    box-shadow: 0 2px 8px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.36));
+}
+
+.raw-context-menu-item {
+    display: block;
+    width: 100%;
+    padding: 5px 14px;
+    background: transparent;
+    color: inherit;
+    border: none;
+    text-align: left;
+    font-size: 13px;
+    cursor: pointer;
+}
+
+.raw-context-menu-item:hover,
+.raw-context-menu-item:focus-visible {
+    background: var(--vscode-menu-selectionBackground, var(--vscode-list-activeSelectionBackground));
+    color: var(--vscode-menu-selectionForeground, var(--vscode-list-activeSelectionForeground));
+    outline: none;
+}
+
+.raw-expand-controls {
+    display: flex;
+    gap: 8px;
+}
+
+.raw-control-btn {
+    padding: 4px 10px;
+    font-size: 12px;
+    background: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.raw-control-btn:hover {
+    background: var(--vscode-button-secondaryHoverBackground);
+}
+
+/* Transaction cards container */
+.raw-cards-container {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px 16px;
+}
+
+/* Empty state */
+.raw-empty-state {
+    text-align: center;
+    padding: 40px;
+    color: var(--vscode-descriptionForeground);
+    font-size: 14px;
+}
+
+/* Individual transaction card */
+.raw-card {
+    margin-bottom: 12px;
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 6px;
+    background: var(--vscode-editor-background);
+    overflow: hidden;
+}
+
+/* Card body expand/collapse: grid-template-rows transition for smooth animation */
+.raw-card-body {
+    display: grid;
+    grid-template-rows: 1fr;
+    transition: grid-template-rows 0.25s ease;
+}
+
+.raw-card.collapsed .raw-card-body {
+    grid-template-rows: 0fr;
+}
+
+.raw-card-body-inner {
+    overflow: hidden;
+}
+
+/* Card header */
+.raw-card-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px;
+    background: var(--vscode-sideBar-background);
+    cursor: pointer;
+    user-select: none;
+}
+
+.raw-card-header:hover {
+    background: var(--vscode-list-hoverBackground);
+}
+
+.raw-card-toggle {
+    font-size: 10px;
+    color: var(--vscode-descriptionForeground);
+    width: 12px;
+    text-align: center;
+}
+
+.raw-card-title {
+    font-weight: 600;
+    font-size: 13px;
+    color: var(--vscode-foreground);
+}
+
+.raw-status-badge {
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.raw-status-badge.status-completed {
+    background: var(--vscode-terminal-ansiGreen);
+    color: var(--vscode-editor-background);
+}
+
+.raw-status-badge.status-error {
+    background: var(--vscode-errorForeground);
+    color: var(--vscode-editor-background);
+}
+
+.raw-status-badge.status-failed {
+    background: var(--vscode-errorForeground);
+    color: var(--vscode-editor-background);
+}
+
+/* #428: an error the endpoint's own test decided, on a good HTTP answer — red, but
+   outlined, so it never reads as the same thing as a server error */
+.raw-status-badge.status-test-failed {
+    background: transparent;
+    color: var(--vscode-errorForeground);
+    box-shadow: inset 0 0 0 1px var(--vscode-errorForeground);
+}
+
+/* #428: why a transaction is an error, under its card header */
+.raw-card-reason {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 4px 8px;
+    padding: 6px 14px 8px 38px;
+    background: var(--vscode-sideBar-background);
+    border-top: 1px solid var(--vscode-panel-border);
+    font-size: 12px;
+    color: var(--vscode-errorForeground);
+}
+
+.raw-card-reason svg {
+    width: 13px;
+    height: 13px;
+    flex-shrink: 0;
+    align-self: center;
+}
+
+.raw-card-reason-text {
+    font-weight: 600;
+    overflow-wrap: anywhere;
+}
+
+.raw-card-reason-note {
+    color: var(--vscode-descriptionForeground);
+}
+
+.raw-card-solo .raw-card-reason {
+    padding-left: 14px;
+}
+
+.raw-status-badge.status-pending {
+    background: var(--vscode-editorWarning-foreground);
+    color: var(--vscode-editor-background);
+}
+
+.raw-status-badge.status-default {
+    background: var(--vscode-badge-background);
+    color: var(--vscode-badge-foreground);
+}
+
+.raw-status-badge.status-cancelled {
+    /* As the batch's Cancelled pill (console.css .status-pill-cancelled) */
+    background: var(--vscode-editorWarning-foreground);
+    color: var(--vscode-editor-background);
+}
+
+.raw-status-badge.status-split {
+    background: var(--vscode-charts-purple, #b180d7);
+    color: var(--vscode-editor-background);
+}
+
+.raw-status-badge.status-running {
+    background: var(--vscode-charts-blue);
+    color: var(--vscode-editor-background);
+    animation: raw-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes raw-pulse {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.6;
+    }
+}
+
+.raw-http-status {
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    font-family: var(--vscode-editor-font-family, monospace);
+}
+
+.raw-http-status.http-2xx {
+    background: var(--vscode-terminal-ansiGreen);
+    color: var(--vscode-editor-background);
+}
+
+.raw-http-status.http-3xx {
+    background: var(--vscode-charts-blue);
+    color: var(--vscode-editor-background);
+}
+
+.raw-http-status.http-4xx {
+    background: var(--vscode-errorForeground);
+    color: var(--vscode-editor-background);
+}
+
+.raw-http-status.http-5xx {
+    background: var(--vscode-errorForeground);
+    color: var(--vscode-editor-background);
+}
+
+.raw-http-status.http-other {
+    background: var(--vscode-badge-background);
+    color: var(--vscode-badge-foreground);
+}
+
+.raw-response-time {
+    font-size: 12px;
+    color: var(--vscode-descriptionForeground);
+    font-family: var(--vscode-editor-font-family, monospace);
+}
+
+.raw-timestamp {
+    font-size: 12px;
+    color: var(--vscode-descriptionForeground);
+    margin-left: auto;
+}
+
+/* Copy All button in card header */
+.raw-copy-all-btn {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    font-size: 11px;
+    background: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    margin-left: 8px;
+}
+
+.raw-copy-all-btn:hover {
+    background: var(--vscode-button-secondaryHoverBackground);
+}
+
+.raw-copy-all-btn svg {
+    flex-shrink: 0;
+}
+
+/* Card body border handled by expanded state */
+.raw-card.expanded .raw-card-body {
+    border-top: 1px solid var(--vscode-panel-border);
+}
+
+/* Request/Response panes: CSS grid-template-columns transition for smooth show/hide */
+.raw-panes-container {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    transition: grid-template-columns 0.3s ease;
+    gap: 1px;
+    background: var(--vscode-panel-border);
+}
+
+.raw-panes-container.request-hidden {
+    grid-template-columns: 0fr 1fr;
+}
+
+.raw-panes-container.response-hidden {
+    grid-template-columns: 1fr 0fr;
+}
+
+.raw-panes-container.both-hidden {
+    grid-template-columns: 0fr 0fr;
+    gap: 0;
+    background: transparent;
+}
+
+.raw-panes-section {
+    display: grid;
+}
+
+/* GitHub Issue #292: narrow tab columns squeezed the two panes until the
+ * header actions (copy / fullscreen) were clipped by .raw-pane overflow.
+ * Below ~640px the panes stack vertically instead. `.is-stacked` is set by
+ * raw-tab-handler.js from a ResizeObserver on this section — a container
+ * query would apply layout containment here, which turns the section into
+ * the containing block for the position:fixed fullscreen pane. */
+.raw-panes-container.is-stacked {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr 1fr;
+}
+.raw-panes-container.is-stacked.request-hidden {
+    grid-template-columns: 1fr;
+    grid-template-rows: 0fr 1fr;
+}
+.raw-panes-container.is-stacked.response-hidden {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr 0fr;
+}
+.raw-panes-container.is-stacked.both-hidden {
+    grid-template-columns: 1fr;
+    grid-template-rows: 0fr 0fr;
+}
+.raw-panes-container.is-stacked .raw-pane {
+    min-height: 0;
+}
+
+.raw-panes-section > * {
+    grid-row: 1;
+    grid-column: 1;
+}
+
+.raw-panes-wrapper {
+    display: grid;
+    grid-template-rows: 1fr;
+    transition: grid-template-rows 0.3s ease;
+}
+
+.raw-panes-wrapper.raw-section-hidden {
+    grid-template-rows: 0fr;
+}
+
+/* The row can only collapse to 0fr if its child may be shorter than its content (the
+   editors have a fixed height) — the same as .raw-csv-data-section does for Input. Without
+   this, hiding Request (Run Batch Step 4) or both panes (Raw tab) left the panes standing. */
+.raw-panes-wrapper > .raw-panes-container {
+    min-height: 0;
+    overflow: hidden;
+}
+
+.raw-pane {
+    background: var(--vscode-editor-background);
+    min-width: 0;
+    overflow: hidden;
+}
+
+/* CSV data section: grid-template-rows wrapper for smooth vertical collapse */
+.raw-csv-data-wrapper {
+    display: grid;
+    grid-template-rows: 1fr;
+    transition: grid-template-rows 0.3s ease;
+    border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+.raw-csv-data-wrapper.raw-section-hidden {
+    grid-template-rows: 0fr;
+    border-bottom-color: transparent;
+}
+
+.raw-csv-data-section {
+    overflow: hidden;
+}
+
+.raw-pane-header {
+    padding: 8px 12px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--vscode-descriptionForeground);
+    background: var(--vscode-sideBar-background);
+    border-bottom: 1px solid var(--vscode-panel-border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+/* GitHub Issue #292: when the header runs out of room the title truncates
+ * and the view-mode group gives way — the action buttons never shrink, so
+ * the fullscreen toggle stays reachable exactly when the pane is cramped. */
+.raw-pane-title {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.raw-pane-copy-btn {
+    background: transparent;
+    border: none;
+    color: var(--vscode-descriptionForeground);
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    opacity: 0.7;
+    transition: opacity 0.2s, background 0.2s;
+}
+
+.raw-pane-copy-btn:hover {
+    opacity: 1;
+    background: var(--vscode-toolbar-hoverBackground);
+}
+
+/* GitHub Issue #254: RAW pane fullscreen toggle button (mirrors raw-pane-copy-btn). */
+.raw-pane-fullscreen-btn {
+    background: transparent;
+    border: none;
+    color: var(--vscode-descriptionForeground);
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    opacity: 0.7;
+    transition: opacity 0.2s, background 0.2s;
+}
+
+.raw-pane-fullscreen-btn:hover {
+    opacity: 1;
+    background: var(--vscode-toolbar-hoverBackground);
+}
+
+/* Icon swap driven by the fullscreen class on the pane — default shows enter, hides exit. */
+.raw-pane-fullscreen-btn .icon-exit {
+    display: none;
+}
+
+.raw-pane.raw-pane-fullscreen .raw-pane-fullscreen-btn .icon-enter {
+    display: none;
+}
+
+.raw-pane.raw-pane-fullscreen .raw-pane-fullscreen-btn .icon-exit {
+    display: inline-block;
+}
+
+/* Fullscreen state pins the pane to the viewport and flex-fills the Monaco container.
+   Same recipe as #bodySection.editor-fullscreen — position: fixed lifts the pane out
+   of the raw-panes-container grid, so the neighbouring pane's layout is unaffected. */
+.raw-pane.raw-pane-fullscreen {
+    position: fixed;
+    inset: 0 0 var(--dbmn-peek-h, 0px) 0;
+    z-index: 1001;
+    margin: 0;
+    background: var(--vscode-editor-background);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.raw-pane.raw-pane-fullscreen .raw-monaco-container {
+    flex: 1 1 auto;
+    max-height: none;
+    height: auto !important;
+    min-height: 0;
+}
+
+.raw-pane.raw-pane-fullscreen .raw-headers-container,
+.raw-pane.raw-pane-fullscreen .raw-html-render,
+.raw-pane.raw-pane-fullscreen .raw-html-text {
+    flex: 1 1 auto;
+    max-height: none;
+}
+
+.raw-json-content {
+    margin: 0;
+    padding: 12px;
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--vscode-editor-foreground);
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    overflow-x: auto;
+    max-height: 400px;
+    overflow-y: auto;
+    user-select: text;
+    cursor: text;
+}
+
+/* GitHub Issue #183: Header actions container for multiple buttons */
+.raw-pane-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: auto;
+    flex-shrink: 0;
+}
+.raw-pane-copy-btn,
+.raw-pane-fullscreen-btn {
+    flex-shrink: 0;
+}
+
+/* GitHub Issue #183: Render toggle button styling */
+.raw-html-render-btn {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+}
+
+/* GitHub Issue #183: Shadow DOM container for rendered HTML responses */
+.raw-html-render {
+    width: 100%;
+    min-height: 100px;
+    max-height: 400px;
+    overflow: auto;
+    background: transparent;
+    border-radius: 3px;
+}
+
+/* GitHub Issue #183: Plain text extraction container */
+.raw-html-text {
+    width: 100%;
+    min-height: 100px;
+    max-height: 400px;
+    overflow: auto;
+    padding: 12px;
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--vscode-editor-foreground);
+    white-space: pre;
+    user-select: text;
+    cursor: text;
+    box-sizing: border-box;
+}
+
+/* GitHub Issue #183: View mode segmented button group (Raw / Render / Text) */
+.raw-view-mode-group {
+    display: inline-flex;
+    border: 1px solid var(--vscode-button-secondaryBackground);
+    border-radius: 4px;
+    overflow: hidden;
+    margin-left: 8px;
+    flex-shrink: 1;
+    min-width: 0;
+}
+
+.raw-view-mode-btn {
+    background: transparent;
+    border: none;
+    color: var(--vscode-descriptionForeground);
+    font-size: 11px;
+    font-weight: 500;
+    margin: 3px 5px;
+    padding: 2px 8px;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+    border-right: 1px solid var(--vscode-button-secondaryBackground);
+}
+
+.raw-view-mode-btn:last-child {
+    border-right: none;
+}
+
+.raw-view-mode-btn:hover {
+    background: var(--vscode-toolbar-hoverBackground);
+    color: var(--vscode-foreground);
+}
+
+.raw-view-mode-btn.active {
+    background: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+    font-weight: 600;
+}
+
+/* Monaco Editor container for RAW tab */
+.raw-monaco-container {
+    min-height: 100px;
+    max-height: 400px;
+    border: none;
+    overflow: hidden;
+    transition: height 200ms ease;
+}
+
+/* Monaco search highlight decoration */
+.raw-search-highlight-monaco {
+    background: var(--vscode-editor-findMatchHighlightBackground, rgba(255, 255, 0, 0.4)) !important;
+    border: 1px solid var(--vscode-editor-findMatchHighlightBorder, #ffff00);
+    border-radius: 2px;
+}
+
+/* GitHub Issue #166: View Logs button */
+.raw-view-logs-btn {
+    background: transparent;
+    border: 1px solid var(--vscode-button-secondaryBackground);
+    /* No fill: the page's text colour. The button's own text colour is for its fill (hover). */
+    color: var(--vscode-foreground);
+    padding: 3px 8px;
+    border-radius: 3px;
+    font-size: 11px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-right: 8px;
+    transition: background 0.2s;
+}
+
+.raw-view-logs-btn:hover {
+    background: var(--vscode-button-secondaryHoverBackground);
+    color: var(--vscode-button-secondaryForeground);
+}
+
+/* Per-card retry button */
+/* Per-card retry button — matches Copy All button style (secondary) */
+.raw-retry-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    font-size: 11px;
+    background: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    margin-right: 8px;
+}
+
+.raw-retry-btn:hover:not(:disabled) {
+    background: var(--vscode-button-secondaryHoverBackground);
+}
+
+.raw-retry-btn:disabled {
+    cursor: default;
+    opacity: 0.5;
+}
+
+.raw-retry-btn.retrying {
+    opacity: 0.6;
+}
+
+/* Retry count badge (inside retry button) — red to indicate error retries */
+.raw-retry-btn svg, .raw-card-toggle svg {
+    width: 12px;
+    height: 12px;
+}
+
+.raw-retry-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    border-radius: 8px;
+    font-size: 10px;
+    font-weight: 600;
+    background: var(--vscode-errorForeground, #f14c4c);
+    color: #fff;
+}
+
+/* GitHub Issue #166: Logs Modal */
+.raw-logs-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+}
+
+.raw-logs-modal {
+    background: var(--vscode-editor-background);
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 8px;
+    width: 90%;
+    max-width: 1200px;
+    height: 80%;
+    max-height: 800px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.raw-logs-modal-header {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--vscode-panel-border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: var(--vscode-sideBar-background);
+    border-radius: 8px 8px 0 0;
+}
+
+.raw-logs-modal-title {
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--vscode-foreground);
+}
+
+.raw-logs-modal-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.raw-logs-modal-copy,
+.raw-logs-modal-close {
+    background: transparent;
+    border: 1px solid var(--vscode-button-secondaryBackground);
+    /* No fill: the page's text colour. The button's own text colour is for its fill (hover). */
+    color: var(--vscode-foreground);
+    padding: 4px 10px;
+    border-radius: 3px;
+    font-size: 12px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    transition: background 0.2s;
+}
+
+.raw-logs-modal-copy:hover,
+.raw-logs-modal-close:hover {
+    background: var(--vscode-button-secondaryHoverBackground);
+    color: var(--vscode-button-secondaryForeground);
+}
+
+.raw-logs-modal-body {
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+}
+
+.raw-logs-monaco-container {
+    width: 100%;
+    height: 100%;
+}
+
+.raw-logs-fallback {
+    margin: 0;
+    padding: 16px;
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--vscode-editor-foreground);
+    white-space: pre-wrap;
+    overflow: auto;
+    height: 100%;
+}
+
+.raw-csv-header {
+    padding: 8px 12px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--vscode-descriptionForeground);
+    background: var(--vscode-sideBar-background);
+    border-bottom: 1px solid var(--vscode-panel-border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.raw-csv-table-wrapper {
+    max-height: 200px;
+    overflow: auto;
+    background: var(--vscode-editor-background);
+}
+
+.raw-csv-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    font-family: var(--vscode-editor-font-family, monospace);
+}
+
+.raw-csv-table th {
+    position: sticky;
+    top: 0;
+    background: var(--vscode-editorWidget-background);
+    color: var(--vscode-foreground);
+    font-weight: 600;
+    text-align: left;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--vscode-panel-border);
+    white-space: nowrap;
+}
+
+.raw-csv-table td {
+    padding: 5px 10px;
+    border-bottom: 1px solid var(--vscode-panel-border);
+    color: var(--vscode-editor-foreground);
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.raw-csv-table tr:hover td {
+    background: var(--vscode-list-hoverBackground);
+}
+
+.raw-csv-table tr:last-child td {
+    border-bottom: none;
+}
+
+/* Response Headers Table */
+.raw-headers-container {
+    overflow: auto;
+}
+
+.raw-headers-container.hidden {
+    display: none;
+}
+
+.raw-headers-table-wrapper {
+    max-height: none;
+}
+
+.raw-headers-table .raw-headers-key {
+    font-weight: 600;
+    color: var(--vscode-descriptionForeground);
+    white-space: nowrap;
+    max-width: none;
+    overflow: visible;
+    text-overflow: clip;
+}
+
+.raw-headers-table .raw-headers-value {
+    color: var(--vscode-editor-foreground);
+    white-space: normal;
+    word-break: break-all;
+    max-width: none;
+    overflow: visible;
+    text-overflow: clip;
+}
+
+.raw-headers-empty {
+    padding: 12px 10px;
+    color: var(--vscode-descriptionForeground);
+    font-style: italic;
+    font-size: 12px;
+}
+
+.raw-compact-view {
+    padding: 8px 16px;
+    text-align: center;
+    color: var(--vscode-descriptionForeground);
+    font-size: 12px;
+    font-style: italic;
+    align-self: center;
+}
+
+/* Search highlight */
+.raw-search-highlight {
+    background: var(--vscode-editor-findMatchHighlightBackground, #ffff00);
+    color: var(--vscode-editor-foreground);
+    padding: 1px 2px;
+    border-radius: 2px;
+}
+
+/* (Removed .raw-toast styles — the console RAW tab now uses the shared
+ * DbmnToast overlay, see shared/toast.css.) */
+
+/* Loading state */
+.raw-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 60px 20px;
+    color: var(--vscode-descriptionForeground);
+}
+
+/* Issue #312: end-of-window marker of the Raw list; the next chunk renders when it scrolls into view */
+.raw-cards-more {
+    padding: 12px;
+    text-align: center;
+    font-size: 12px;
+    color: var(--vscode-descriptionForeground);
+}

@@ -1,0 +1,21 @@
+{
+  "name": "dbmn-web",
+  "private": true,
+  "description": "DBMN web app (app.dbmn.io). Same screens as the VS Code extension (../src/webviews), a web host, and core from ../src. Own dependencies so web tooling never touches the extension's.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build --config scripts/vite.web.config.ts",
+    "build:test": "DBMN_WEB_BUILD_BACKEND=test vite build --config scripts/vite.web.config.ts",
+    "preview:test": "vite preview --outDir dist-test --host 127.0.0.1 --strictPort",
+    "build:desktop": "DBMN_DESKTOP_CHANNEL=${DBMN_DESKTOP_CHANNEL:-dev} vite build --config scripts/vite.desktop.config.ts",
+    "preview": "vite preview",
+    "typecheck": "../node_modules/.bin/tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "vite": "^8.3.2"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.117.2"
+  }
+}

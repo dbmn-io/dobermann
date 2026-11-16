@@ -1,0 +1,7 @@
+# Built output and staging folders (npm run build, build:test, build:desktop)
+dist/
+dist-local/
+dist-test/
+dist-desktop/
+.web-build/
+.desktop-build/

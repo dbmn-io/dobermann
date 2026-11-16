@@ -1,0 +1,242 @@
+{
+  "name": "dobermann",
+  "displayName": "DBMN",
+  "description": "Your database for REST APIs. Bulk load from CSV or Excel, extract to tables, compare results. Free and open source.",
+  "keywords": [
+    "rest",
+    "api",
+    "bulk",
+    "batch",
+    "csv",
+    "excel",
+    "json",
+    "data migration",
+    "test data",
+    "compare"
+  ],
+  "version": "0.4.0",
+  "icon": "images/DBMNLogo.png",
+  "publisher": "dbmn",
+  "license": "AGPL-3.0-only",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dbmn-io/dobermann.git"
+  },
+  "engines": {
+    "vscode": "^1.74.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onView:dbmnContainer",
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "dbmnContainer",
+          "title": "Dobermann",
+          "icon": "images/Dobermann.svg"
+        }
+      ]
+    },
+    "views": {
+      "dbmnContainer": [
+        {
+          "id": "dbmnHubLauncher",
+          "name": "DBMN Hub"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "dbmnHubLauncher",
+        "contents": " "
+      }
+    ],
+    "uriHandlers": [
+      {
+        "authority": "dbmn.dobermann",
+        "path": "/oauth-callback"
+      },
+      {
+        "authority": "dbmn.dobermann",
+        "path": "/dbmn-auth-callback"
+      }
+    ],
+    "commands": [
+      {
+        "command": "dbmn.openHub",
+        "title": "Open Hub",
+        "category": "DBMN",
+        "icon": "$(book)"
+      },
+      {
+        "command": "dbmn.hub.closeActiveTab",
+        "title": "Close Active Hub Tab",
+        "category": "DBMN"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "dbmn.hub.closeActiveTab",
+        "key": "ctrl+w",
+        "mac": "cmd+w",
+        "when": "activeWebviewPanelId == 'hub'"
+      },
+      {
+        "command": "dbmn.hub.closeActiveTab",
+        "key": "alt+w",
+        "when": "activeWebviewPanelId == 'hub'"
+      }
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "dbmn.hub.closeActiveTab",
+          "when": "false"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "DBMN",
+      "properties": {
+        "dbmn.preloadHubOnStartup": {
+          "type": "boolean",
+          "default": true,
+          "description": "Pre-open the DBMN Hub in the editor when VS Code starts. Makes the first activity-bar click instant. Turn off if you don't want a DBMN Hub tab appearing on every launch."
+        },
+        "dbmn.ui.confirmTransactionDeletion": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show confirmation dialog when deleting transactions and files"
+        },
+        "dbmn.execution.criticalErrorCodes": {
+          "type": "array",
+          "default": [
+            401,
+            403
+          ],
+          "items": {
+            "type": "number"
+          },
+          "description": "HTTP status codes that immediately stop batch execution regardless of error tolerance settings (e.g., authentication failures). Set to empty array [] to disable."
+        },
+        "dbmn.execution.treatNetworkErrorsAsCritical": {
+          "type": "boolean",
+          "default": true,
+          "description": "Treat network connectivity issues (timeouts, DNS failures, connection refused) as critical errors that stop batch execution immediately"
+        },
+        "dbmn.execution.autoOpenConsoleOnCompletion": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically open the console when transactions complete (both individual transactions and batches)"
+        },
+        "dbmn.execution.maxCsvRows": {
+          "type": "number",
+          "default": 100000,
+          "maximum": 1000000,
+          "markdownDescription": "Maximum number of rows allowed in CSV uploads for batch execution.\n\n**Default:** `100,000` rows\n\n**Note:** Very large uploads (>500k rows) may impact performance. Consider splitting into multiple batches if you experience issues."
+        },
+        "dbmn.telemetry.enabled": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Optional. Share usage counts with DBMN while signed in: calls, batches, rows and run time, one total per day. Never an environment's address, an API's path, or any request or response content. Signed out, or with VS Code's own telemetry off, nothing is sent. What is sent: https://dbmn.io/docs/telemetry/"
+        },
+        "dbmn.oauth.redirectUri": {
+          "type": "string",
+          "default": "vscode://dbmn.dobermann/oauth-callback",
+          "markdownDescription": "OAuth redirect URI for authentication callbacks. Must match exactly what's configured in your OAuth provider.\n\n**Default:** `vscode://dbmn.dobermann/oauth-callback`\n\n**Note:** Some OAuth servers are case-sensitive. If authentication fails with 'invalid redirect_uri', try:\n- `vscode://dbmn.dobermann/oauth-callback` (mixed case)\n- `vscode://dbmn.dobermann/oauth-callback` (lowercase)"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "webpack --mode production",
+    "build": "npm run compile && webpack --mode development",
+    "build:watch": "npm run compile && webpack --mode development --watch",
+    "build:prod": "npm run compile && webpack --mode production",
+    "compile": "tsc -p ./ && npm run copy-assets",
+    "package:dev": "npm run build && vsce package",
+    "package:prod": "npm run build:prod && node scripts/update-package-main.js && vsce package",
+    "copy-assets": "node scripts/copy-webview-assets.js",
+    "watch": "tsc -watch -p ./",
+    "test": "npm run test:unit",
+    "test:unit": "npm run compile && mocha --require out/test/helpers/vscode-mock.js \"out/test/unit/core-logic/**/*.test.js\" \"out/test/unit/data-loading/**/*.test.js\" \"out/test/unit/services/format-converter/**/*.test.js\" \"out/test/unit/services/export-service*.test.js\" \"out/test/unit/services/csv-sorting/**/*.test.js\" \"out/test/unit/services/template-engine.service.test.js\" \"out/test/unit/services/import-export/**/*.test.js\" \"out/test/unit/services/pagination/**/*.test.js\" \"out/test/unit/services/dbmn-auth/**/*.test.js\" \"out/test/unit/services/console/**/*.test.js\" \"out/test/unit/services/execution/batch-reprocess-*.test.js\" \"out/test/unit/services/execution/batch-queue-*.test.js\" \"out/test/unit/services/execution/batch-resume-*.test.js\" \"out/test/unit/services/execution/batch-member-counts.test.js\" \"out/test/unit/services/execution/startup-recovery*.test.js\" \"out/test/unit/services/environment/environment-auth-gate*.test.js\" \"out/test/unit/services/progress-adapter/**/*.test.js\" \"out/test/unit/services/transaction-preparation/batch-chunk-threads.test.js\" \"out/test/unit/services/transaction-preparation/jit-nested-grouping.test.js\" \"out/test/unit/services/transaction-preparation/batch-query-param-pagination.test.js\" \"out/test/unit/services/notifications/**/*.test.js\" \"out/test/unit/services/ui/**/*.test.js\" \"out/test/unit/services/badges/**/*.test.js\" \"out/test/unit/services/recent-endpoints/**/*.test.js\" \"out/test/unit/services/systems/**/*.test.js\" \"out/test/unit/services/hub-preferences/**/*.test.js\" \"out/test/unit/services/workspace/**/*.test.js\" \"out/test/unit/services/release-notes/**/*.test.js\" \"out/test/unit/services/chain/**/*.test.js\" \"out/test/unit/webviews/**/*.test.js\" --recursive --reporter spec",
+    "test:core": "npm run compile && mocha --require out/test/core/helpers/no-vscode-guard.js \"out/test/core/**/*.test.js\" --reporter spec",
+    "test:webview": "npm run compile && mocha \"out/test/integration/webview-interactions/**/*.test.js\" --recursive --timeout 30000",
+    "test:single": "npm run compile && mocha --require out/test/helpers/vscode-mock.js $TEST_FILE --timeout 30000",
+    "test:commands": "npm run compile && mocha \"out/test/integration/command-execution/**/*.test.js\" --recursive --timeout 30000",
+    "test:watch": "npm run compile && mocha \"out/test/unit/core-logic/**/*.test.js\" \"out/test/unit/services/format-converter/**/*.test.js\" \"out/test/unit/services/export-service*.test.js\" \"out/test/unit/webviews/**/*.test.js\" --recursive --watch",
+    "test:coverage": "npm run compile && nyc mocha \"out/test/**/*.test.js\" --recursive",
+    "test:all": "npm run test:unit && npm run test:integration && echo '✅ All tests completed!'",
+    "test:ui": "playwright test --project=ui",
+    "test:ui:update": "playwright test --project=ui --update-snapshots",
+    "test:ui:headed": "playwright test --project=ui --headed",
+    "test:ui:report": "playwright show-report test-results/ui-report",
+    "validate:architecture": "node scripts/validate-architecture.js",
+    "lint:architecture": "eslint --config eslint.config.architecture.js src/",
+    "lint:core": "eslint --config eslint.config.core.js --no-warn-ignored $(node -p \"require('./scripts/core-modules.json').modules.map(m=>'src/'+m+'.ts').join(' ')\")",
+    "report:vscode": "node scripts/vscode-coupling-report.js",
+    "precommit": "npm run validate:architecture && npm run lint:architecture",
+    "prepare": "husky",
+    "web:install": "npm --prefix web install",
+    "web:dev": "npm --prefix web run dev",
+    "spdx:check": "node scripts/spdx-headers.mjs check",
+    "spdx:add": "node scripts/spdx-headers.mjs add",
+    "test:e2e:console": "playwright test --config e2e/console/playwright.config.mjs",
+    "test:e2e:webview": "playwright test --config e2e/webview/playwright.config.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@types/chai": "^4.3.19",
+    "@types/jsdom": "^21.1.7",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "18.x",
+    "@types/sinon": "^17.0.4",
+    "@types/sinon-chai": "^4.0.0",
+    "@types/sql.js": "^1.4.9",
+    "@types/uuid": "^10.0.0",
+    "@types/vscode": "^1.74.0",
+    "@typescript-eslint/eslint-plugin": "^8.39.0",
+    "@typescript-eslint/parser": "^8.39.0",
+    "@vscode/test-cli": "^0.0.11",
+    "@vscode/test-electron": "^2.5.2",
+    "@vscode/vsce": "^4.1.0",
+    "copy-webpack-plugin": "^13.0.1",
+    "eslint": "^9.32.0",
+    "husky": "^9.1.7",
+    "jsdom": "^26.1.0",
+    "lint-staged": "^16.1.2",
+    "mocha": "^11.7.1",
+    "monaco-editor": "^0.45.0",
+    "sinon": "^21.0.0",
+    "sinon-chai": "^3.7.0",
+    "ts-loader": "^9.5.4",
+    "typescript": "^4.9.4",
+    "webpack-cli": "^6.0.1"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.117.2",
+    "chai": "^4.3.10",
+    "csv-parser": "^3.0.0",
+    "fflate": "0.8.2",
+    "glob": "^11.0.3",
+    "jsonc-parser": "^3.3.1",
+    "jsonwebtoken": "^9.0.2",
+    "jszip": "^3.10.1",
+    "marked": "^16.4.1",
+    "sql.js": "^1.12.0",
+    "uuid": "^11.1.0",
+    "xlsx": "^0.18.5",
+    "zod": "^3.25.67"
+  },
+  "bugs": {
+    "url": "https://github.com/dbmn-io/dobermann/issues"
+  },
+  "homepage": "https://dbmn.io"
+}

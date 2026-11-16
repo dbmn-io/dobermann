@@ -1,0 +1,21 @@
+{
+  "//": "Type-checks the web app with the core it imports (npm --prefix web run typecheck). Vite itself doesn't type-check.",
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Node",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["vite/client"],
+    "strict": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "baseUrl": ".",
+    "paths": {
+      "fs": ["src/shell/node/fs.ts"],
+      "fs/promises": ["src/shell/node/fs-promises.ts"],
+      "path": ["src/shell/node/path.ts"]
+    }
+  },
+  "include": ["src"]
+}

@@ -1,0 +1,53 @@
+{
+  "executionId": "batch-001-member-1",
+  "duration": 156,
+  "httpStatus": 201,
+  "httpStatusText": "Created",
+  "headers": {
+    "content-type": "application/json",
+    "location": "/api/shipments/SH-001"
+  },
+  "data": {
+    "shipmentId": "SH-001",
+    "status": "created",
+    "trackingNumber": "TRK123456789",
+    "warehouse": {
+      "warehouseId": "WH-BOSTON",
+      "name": "Boston Distribution Center",
+      "address": "100 Industrial Way, Boston, MA"
+    },
+    "items": [
+      {
+        "sku": "ITEM-A",
+        "description": "Premium Widget",
+        "quantity": 100,
+        "weight": 2.5,
+        "dimensions": {
+          "length": 10,
+          "width": 8,
+          "height": 4
+        }
+      },
+      {
+        "sku": "ITEM-B", 
+        "description": "Standard Gadget",
+        "quantity": 50,
+        "weight": 1.8,
+        "dimensions": {
+          "length": 8,
+          "width": 6,
+          "height": 3
+        }
+      }
+    ],
+    "totals": {
+      "totalItems": 150,
+      "totalWeight": 340.0,
+      "totalVolume": 1184.0
+    },
+    "timestamps": {
+      "created": "2024-01-15T10:30:00Z",
+      "lastUpdated": "2024-01-15T10:30:00Z"
+    }
+  }
+}

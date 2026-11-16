@@ -1,0 +1,59 @@
+{
+  "executionId": "exec-002",
+  "duration": 189,
+  "httpStatus": 200,
+  "httpStatusText": "OK",
+  "headers": {
+    "content-type": "application/json"
+  },
+  "data": {
+    "order": {
+      "orderId": "ORD-001",
+      "orderDate": "2024-01-15T10:30:00Z",
+      "status": "processing",
+      "customer": {
+        "customerId": "CUST-123",
+        "name": "ACME Corporation",
+        "email": "orders@acme.com",
+        "address": {
+          "street": "123 Main Street",
+          "city": "Boston",
+          "state": "MA",
+          "zipCode": "02101",
+          "country": "USA"
+        },
+        "phone": "+1-555-0123"
+      },
+      "items": [
+        {
+          "sku": "ABC-123",
+          "productName": "Widget Pro",
+          "quantity": 10,
+          "unitPrice": 50.00,
+          "totalPrice": 500.00,
+          "category": "Hardware"
+        },
+        {
+          "sku": "XYZ-456",
+          "productName": "Gadget Plus",
+          "quantity": 5,
+          "unitPrice": 75.00,
+          "totalPrice": 375.00,
+          "category": "Electronics"
+        }
+      ],
+      "pricing": {
+        "subtotal": 875.00,
+        "tax": 87.50,
+        "shipping": 15.00,
+        "total": 977.50
+      },
+      "shipping": {
+        "method": "express",
+        "carrier": "FedEx",
+        "trackingNumber": "1234567890",
+        "estimatedDelivery": "2024-01-18T17:00:00Z"
+      }
+    }
+  }
+}

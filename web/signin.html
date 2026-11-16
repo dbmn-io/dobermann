@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign in · Dobermann</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="stylesheet" href="/theme.css">
+    <link rel="stylesheet" href="/webviews/shared/atomic.css">
+    <link rel="stylesheet" href="/webviews/shared/core.css">
+    <link rel="stylesheet" href="/webviews/shared/modals.css">
+    <link rel="stylesheet" href="/signin.css">
+    <script src="/backend.js"></script>
+</head>
+<body>
+    <!-- Readable buttons in every theme (shared/button-contrast.js): first in the body, so it applies before anything is painted -->
+    <script src="/webviews/shared/button-contrast.js"></script>
+    <main class="signin">
+        <h1>Sign in to DBMN</h1>
+        <form id="signin-form">
+            <label for="email">Email</label>
+            <input id="email" type="email" autocomplete="email" required>
+            <label for="password">Password</label>
+            <input id="password" type="password" autocomplete="current-password">
+            <div class="signin-actions">
+                <button type="submit" class="btn btn-primary" id="signin-password">Sign in</button>
+                <button type="button" class="btn btn-secondary" id="signin-link">Email me a sign-in link</button>
+            </div>
+            <p id="signin-message" class="signin-message" role="status"></p>
+        </form>
+        <p class="signin-backend" id="signin-backend"></p>
+    </main>
+    <script type="module" src="/src/signin.ts"></script>
+</body>
+</html>

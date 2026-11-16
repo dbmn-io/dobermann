@@ -1,0 +1,6 @@
+name,department,salary,hire_date,is_manager
+"John Smith","Engineering",85000,2023-01-15,TRUE
+"Jane Doe","Marketing",72000,2023-02-20,FALSE
+"Bob Wilson","Engineering",78000,2023-03-10,FALSE
+"Alice Brown","Sales",68000,2023-04-05,TRUE
+"Mike Davis","HR",65000,2023-05-12,FALSE

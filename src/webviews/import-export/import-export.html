@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dobermann - Import/Export</title>
+    {{SHARED_STYLES}}
+</head>
+<body>
+    <!-- Readable buttons in every theme (shared/button-contrast.js): first in the body, so it applies before anything is painted -->
+    <script src="{{BUTTON_CONTRAST_SCRIPT}}"></script>
+    <div class="container">
+        <!-- Landing Page: Choose Import or Export -->
+        <div id="landingPage" class="page active">
+            <div class="page-header">
+                <h1>Import/Export Configuration</h1>
+                <p class="description">Share endpoints and environments with your team or migrate between machines</p>
+            </div>
+
+            <div class="choice-container">
+                <div class="choice-card" id="exportChoice">
+                    <div class="choice-icon">📤</div>
+                    <h2>Export</h2>
+                    <p>Create a ZIP file with selected endpoints, environments, and settings</p>
+                    <button class="btn btn-primary">Start Export</button>
+                </div>
+
+                <div class="choice-card" id="importChoice">
+                    <div class="choice-icon">📥</div>
+                    <h2>Import</h2>
+                    <p>Import endpoints and environments from a Dobermann export file</p>
+                    <button class="btn btn-primary">Start Import</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Export Page: Select Items to Export -->
+        <div id="exportPage" class="page">
+            <div class="page-header">
+                <h1>Export Configuration</h1>
+                <p class="description">Select items to export</p>
+            </div>
+
+            <div class="export-content">
+                <!-- Export Filename -->
+                <div class="form-group">
+                    <label for="exportFilename">Export Filename</label>
+                    <input type="text" id="exportFilename" class="input" placeholder="dobermann-export" value="dobermann-export">
+                    <small class="help-text">Filename without extension (.dbmn.zip will be added)</small>
+                </div>
+
+                <!-- Credentials opt-in (GitHub Issue #289) -->
+                <div class="form-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="exportIncludeCredentials">
+                        <span>Include environment credentials</span>
+                    </label>
+                    <small class="help-text">
+                        Off by default. OAuth client secrets and Google service-account private keys are
+                        removed, so the file is safe to share or commit — recipients enter their own.
+                        Tick this only when you are sending the file somewhere you would send a password.
+                    </small>
+                </div>
+
+                <!-- Side-by-Side Selection Grid -->
+                <div class="selection-grid">
+                    <!-- Environments Column -->
+                    <div class="selection-column">
+                        <h3>Environments</h3>
+                        <div class="selection-header">
+                            <button class="btn btn-sm btn-secondary" id="selectAllEnvironments">Select All</button>
+                            <button class="btn btn-sm btn-secondary" id="deselectAllEnvironments">Deselect All</button>
+                        </div>
+                        <div id="environmentTree" class="checkbox-tree"></div>
+                    </div>
+
+                    <!-- Endpoints Column -->
+                    <div class="selection-column">
+                        <h3>Endpoints</h3>
+                        <div class="selection-header">
+                            <button class="btn btn-sm btn-secondary" id="selectAllEndpoints">Select All</button>
+                            <button class="btn btn-sm btn-secondary" id="deselectAllEndpoints">Deselect All</button>
+                        </div>
+                        <div id="endpointTree" class="checkbox-tree"></div>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Export Footer -->
+            <div class="webview-footer">
+                <div class="footer-content">
+                    <div class="footer-button-container">
+                        <button class="btn btn-secondary" id="backToLandingFromExport">← Back</button>
+                        <div class="footer-spacer"></div>
+                        <button class="btn btn-primary" id="executeExport" disabled>
+                            Export Selected Items
+                        </button>
+                    </div>
+                    <div id="exportFooterNotification" class="footer-notification hidden">
+                        <span class="notification-icon">⚠️</span>
+                        <span class="notification-message"></span>
+                        <button class="notification-dismiss" onclick="clearFooterNotification()" title="Dismiss">&times;</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Import Page: Upload and Resolve Conflicts -->
+        <div id="importPage" class="page">
+            <div class="page-header">
+                <h1>Import Configuration</h1>
+                <p class="description">Upload a Dobermann export file (.dbmn.zip) or a Postman collection (.json)</p>
+            </div>
+
+            <div class="import-content">
+                <!-- File Upload Section -->
+                <div id="uploadSection" class="upload-section active">
+                    <div id="dropZone" class="drop-zone">
+                        <div class="drop-zone-content">
+                            <div class="drop-zone-icon">📁</div>
+                            <h3>Drag & Drop File Here</h3>
+                            <p>or</p>
+                            <button class="btn btn-secondary" id="browseFile">Browse Computer</button>
+                            <input type="file" id="fileInput" accept=".zip,.dbmn.zip,.json" style="display: none;">
+                            <p class="help-text mt-20">Supported formats: <code>.dbmn.zip</code>, Postman <code>.json</code> collections</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Validation & Conflicts Section -->
+                <div id="conflictsSection" class="conflicts-section">
+                    <!-- Postman Options Panel (only shown for Postman uploads) -->
+                    <div id="postmanOptionsPanel" class="postman-options-panel hidden">
+                        <h3 data-help="import-export#importing-from-postman-collections">
+                            Postman Import Options
+                        </h3>
+                        <p class="postman-options-summary" id="postmanOptionsSummary"></p>
+
+                        <!-- Contextual data-loss warning - only rendered when the parser detects something -->
+                        <div id="postmanUnsupportedFeatures" class="postman-unsupported hidden">
+                            <div class="postman-unsupported-header">
+                                <span class="postman-unsupported-icon">⚠️</span>
+                                <span class="postman-unsupported-title">This collection contains features that won't be imported:</span>
+                            </div>
+                            <ul id="postmanUnsupportedList" class="postman-unsupported-list"></ul>
+                            <p class="postman-unsupported-help">
+                                <a href="#" class="postman-help-link"
+                                   data-help-doc="import-export"
+                                   data-help-section="what-is-not-imported-and-why">See what is and isn't imported, and why</a>.
+                            </p>
+                        </div>
+
+                        <div class="postman-option-row">
+                            <label class="postman-option-label">
+                                <input type="checkbox" id="postmanIncludeHeaders">
+                                <span>Include headers from collection</span>
+                                <span class="postman-option-hint" id="postmanHeaderHint"></span>
+                            </label>
+                        </div>
+
+                        <div class="postman-option-row">
+                            <div class="postman-option-label">Folder destination:</div>
+                            <div class="postman-folder-options">
+                                <label class="postman-radio">
+                                    <input type="radio" name="postmanFolderMode" id="postmanFolderModeFromCollection" value="from-collection" checked>
+                                    <span>Use folders from collection</span>
+                                    <span class="postman-option-hint" id="postmanCollectionFoldersHint"></span>
+                                </label>
+                                <label class="postman-radio">
+                                    <input type="radio" name="postmanFolderMode" id="postmanFolderModeAllInto" value="all-into">
+                                    <span>Import all into folder:</span>
+                                    <input type="text" id="postmanTargetFolder" class="postman-target-folder-input" list="postmanExistingFolders" placeholder="folder name (blank = root)" disabled>
+                                    <datalist id="postmanExistingFolders"></datalist>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Items to Import List - Side-by-Side Layout -->
+                    <div id="importItemsList" class="import-items-list">
+                        <h3>Items to Import</h3>
+
+                        <!-- Side-by-Side Selection Grid (same as Export) -->
+                        <div class="selection-grid">
+                            <!-- Environments Column -->
+                            <div class="selection-column">
+                                <h3>Environments</h3>
+                                <div class="selection-header">
+                                    <button class="btn btn-sm btn-secondary" id="selectAllImportEnvironments">Select All</button>
+                                    <button class="btn btn-sm btn-secondary" id="deselectAllImportEnvironments">Deselect All</button>
+                                </div>
+                                <div id="importEnvironmentTree" class="checkbox-tree"></div>
+                            </div>
+
+                            <!-- Endpoints Column -->
+                            <div class="selection-column">
+                                <h3>Endpoints</h3>
+                                <div class="selection-header">
+                                    <button class="btn btn-sm btn-secondary" id="selectAllImportEndpoints">Select All</button>
+                                    <button class="btn btn-sm btn-secondary" id="deselectAllImportEndpoints">Deselect All</button>
+                                </div>
+                                <div id="importEndpointTree" class="checkbox-tree"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Import Footer -->
+            <div class="webview-footer">
+                <div class="footer-content">
+                    <div class="footer-button-container">
+                        <button class="btn btn-secondary" id="backToLandingFromImport">← Back</button>
+                        <div class="footer-spacer"></div>
+                        <button class="btn btn-primary" id="executeImport" disabled>
+                            Import Configuration
+                        </button>
+                    </div>
+                    <div id="importFooterNotification" class="footer-notification hidden">
+                        <span class="notification-icon">⚠️</span>
+                        <span class="notification-message"></span>
+                        <button class="notification-dismiss" onclick="clearFooterNotification()" title="Dismiss">&times;</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Success Page -->
+        <div id="successPage" class="page">
+            <div class="page-header">
+                <div class="success-icon">✅</div>
+                <h1 id="successTitle">Success!</h1>
+                <p id="successMessage" class="description"></p>
+            </div>
+
+            <div class="success-content">
+                <!-- Summary Table -->
+                <div id="successSummary" class="success-summary"></div>
+
+                <!-- Action Info (file path for export, breakdown for import) -->
+                <div id="successDetails" class="success-details"></div>
+            </div>
+
+            <!-- Success Footer -->
+            <div class="webview-footer">
+                <div class="footer-content">
+                    <div class="footer-button-container">
+                        <button class="btn btn-secondary" id="closeSuccess">Close</button>
+                        <div class="footer-spacer"></div>
+                        <button class="btn btn-secondary" id="importExportMore">Import/Export More</button>
+                        <button class="btn btn-secondary" id="openLocation" style="display:none;">Open Folder</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script src="{{DBMN_TOAST_SCRIPT}}"></script>
+    <script src="{{DBMN_CLIPBOARD_SCRIPT}}"></script>
+    <script src="{{SCRIPT_URI}}"></script>
+    <script src="{{DOCUMENTATION_HELPERS_SCRIPT}}"></script>
+    <script src="{{HELP_MODE_SCRIPT}}"></script>
+</body>
+</html>

@@ -1,0 +1,122 @@
+/*
+ * DbmnToast — styles for the single standard toast component (dbmn-toast.js).
+ *
+ * Fixed-position overlay anchored bottom-right. It is OUTSIDE document flow, so
+ * toasts never shift page content or break layouts when space is tight — the
+ * problem the old in-flow footer notifications caused. Toasts stack upward,
+ * newest at the bottom.
+ */
+
+.dbmn-toast-container {
+    position: fixed;
+    /* dbmn-toast.js raises this to clear a visible .webview-footer — the
+     * page's controls live there and toasts used to cover them. */
+    bottom: 16px;
+    right: 16px;
+    transition: bottom 150ms ease;
+    /* Above every blocking overlay in the codebase (modals, the export and
+     * logs overlays, the docs modal — all 10000). A notification the user
+     * can't see is no notification; the container is click-through anyway. */
+    z-index: 10050;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 8px;
+    pointer-events: none; /* container is click-through; toasts re-enable below */
+    max-width: min(420px, calc(100vw - 32px));
+}
+
+.dbmn-toast {
+    pointer-events: auto;
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 9px 13px;
+    border-radius: 4px;
+    font-size: 12px;
+    line-height: 1.4;
+    /* Solid base from VS Code's own (opaque) notification colours so the toast
+     * never looks washed-out. Per-level differentiation is a coloured left
+     * accent, not a translucent tinted background. */
+    background: var(--vscode-notifications-background, var(--vscode-editor-background));
+    color: var(--vscode-notifications-foreground, var(--vscode-foreground));
+    border: 1px solid var(--vscode-notifications-border, var(--vscode-panel-border));
+    border-left-width: 3px;
+    box-shadow: 0 3px 12px rgba(0, 0, 0, 0.4);
+    word-break: break-word;
+    animation: dbmn-toast-in 0.2s ease;
+}
+
+.dbmn-toast.is-leaving {
+    opacity: 0;
+    transform: translateY(6px);
+    transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.dbmn-toast-message {
+    flex: 1 1 auto;
+}
+
+/* #268: optional trailing link (e.g. "Read more"), so a notification can point
+ * at the docs without the message itself ever carrying markup. */
+.dbmn-toast-link {
+    flex: 0 0 auto;
+    color: var(--vscode-textLink-foreground, var(--vscode-charts-blue));
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.dbmn-toast-link:hover,
+.dbmn-toast-link:focus-visible {
+    color: var(--vscode-textLink-activeForeground, var(--vscode-textLink-foreground));
+    text-decoration: underline;
+}
+
+.dbmn-toast-close {
+    flex: 0 0 auto;
+    background: transparent;
+    border: none;
+    color: inherit;
+    opacity: 0.7;
+    cursor: pointer;
+    font-size: 11px;
+    line-height: 1;
+    padding: 1px 3px;
+}
+
+.dbmn-toast-close:hover {
+    opacity: 1;
+}
+
+/* ── Levels — solid background (above), coloured left accent here ────────── */
+
+.dbmn-toast.is-info {
+    border-left-color: var(--vscode-charts-blue, var(--vscode-focusBorder));
+}
+
+.dbmn-toast.is-success {
+    border-left-color: var(--vscode-charts-green, var(--vscode-terminal-ansiGreen));
+}
+
+.dbmn-toast.is-warning {
+    border-left-color: var(--vscode-editorWarning-foreground, var(--vscode-inputValidation-warningBorder));
+}
+
+.dbmn-toast.is-error {
+    border-left-color: var(--vscode-errorForeground, var(--vscode-inputValidation-errorBorder));
+}
+
+@keyframes dbmn-toast-in {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+.dbmn-toast.is-shaking {
+    animation: dbmn-toast-in 0.2s ease, dbmn-toast-shake 0.4s ease 0.2s;
+}
+
+@keyframes dbmn-toast-shake {
+    0%, 100% { transform: translateX(0); }
+    20%, 60% { transform: translateX(-4px); }
+    40%, 80% { transform: translateX(4px); }
+}

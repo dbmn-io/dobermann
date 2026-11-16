@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dobermann - Environment</title>
+    <meta name="dbmn-host" content="{{HOST}}">
+    {{SHARED_STYLES}}
+</head>
+<body class="editor-slide-in">
+    <!-- Readable buttons in every theme (shared/button-contrast.js): first in the body, so it applies before anything is painted -->
+    <script src="{{BUTTON_CONTRAST_SCRIPT}}"></script>
+    <div class="editor-window-controls">
+        <button type="button" class="editor-window-btn icon" data-window-action="maximize" data-icon="maximize-2" title="Maximise" aria-label="Maximise"></button>
+        <button type="button" class="editor-window-btn icon" data-window-action="close" data-icon="x" title="Close" aria-label="Close"></button>
+    </div>
+    <h2>Environment Management</h2>
+
+    <!-- Tab Navigation -->
+    <div class="webview-tabs" id="environment-tabs">
+        <div class="tab-item active" data-tab="environment" data-click="switchTab" data-arg="environment">
+            <span class="tab-label">General</span>
+        </div>
+        <div class="tab-item" data-tab="authentication" data-click="switchTab" data-arg="authentication">
+            <span class="tab-label">Authentication</span>
+        </div>
+        <div class="tab-item" data-tab="configuration" data-click="switchTab" data-arg="configuration">
+            <span class="tab-label">Headers & Variables</span>
+        </div>
+    </div>
+
+    <!-- Tab Panels -->
+    <div class="tab-content">
+
+        <!-- General Tab -->
+        <div id="tab-panel-environment" class="tab-panel">
+
+            <!-- Environment Details Section -->
+            <div class="section">
+                <!-- #415: once the System and the URL are fixed (chosen in the New environment
+                     dialog, or saved), they are the heading, "System: URL", and their rows go.
+                     Until then (an older environment with no System) the rows are the inputs.
+                     #424: the pencil opens the URL again, to change its path (the host stays). -->
+                <div class="env-details-heading-row">
+                    <h3 id="envDetailsHeading" class="env-details-heading" data-help="environments#environment-details">Environment Details</h3>
+                    <button type="button" id="envBaseUrlEdit" class="env-details-heading-edit icon" data-icon="pencil" data-click="editBaseUrlPath" title="Change the URL's path (the host stays)" aria-label="Change the URL's path" hidden></button>
+                </div>
+
+                <div class="flex align-center gap-10 mb-10">
+                    <label class="inline-block min-w-200" data-help="environments#environment-details">Environment Name:</label>
+                    <input type="text" id="envName" class="flex-1" placeholder="e.g., Production, Staging, Development" />
+                </div>
+
+                <div id="envSystemRow" class="flex align-center gap-10 mb-10 env-identity-row">
+                    <label class="inline-block min-w-200" data-help="hub#systems">System:</label>
+                    <div class="flex-1">
+                        <div id="envSystemPicker" class="w-full">
+                            <!-- Populated by SystemPicker.render() on first systemsList message -->
+                        </div>
+                        <small id="envSystemLocked" hidden class="color-description font-size-12 env-locked-note">
+                            System cannot be changed after creation. Create a new environment for a different System.
+                        </small>
+                    </div>
+                </div>
+
+                <div id="envBaseUrlRow" class="flex align-center gap-10 mb-10 env-identity-row">
+                    <label class="inline-block min-w-200" data-help="environments#environment-details">Base URL:</label>
+                    <div class="flex-1">
+                        <input type="url" id="envBaseUrl" placeholder="e.g., https://api.dbmn.io/functions/v1/playground" />
+                        <small id="envBaseUrlHint" class="color-description font-size-12 env-locked-note">
+                            The primary API endpoint for this environment
+                        </small>
+                        <small id="envBaseUrlLocked" hidden class="color-description font-size-12 env-locked-note">
+                            The host is fixed. The path can change, and part of it can be a variable: /{{version}}/ takes this environment's version.
+                        </small>
+                    </div>
+                </div>
+
+                <div class="flex align-start gap-10 mb-10">
+                    <label class="inline-block min-w-200 mt-8" data-help="environments#environment-type">Environment Type:</label>
+                    <div class="flex-1">
+                        <select id="envType" class="w-full" data-help="environments#environment-type">
+                            <option value="production">Production - Live production systems</option>
+                            <option value="staging">Staging - Pre-production testing</option>
+                            <option value="uat">UAT - User acceptance testing</option>
+                            <option value="qa">QA/Testing - Quality assurance</option>
+                            <option value="development" selected>Development - Active development</option>
+                            <option value="sandbox">Sandbox - Experimental/demo</option>
+                            <option value="training">Training - Training environment</option>
+                            <option value="integration">Integration - Integration testing</option>
+                            <option value="performance">Performance - Performance testing</option>
+                            <option value="local">Local - Local development</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="flex align-start gap-10 mb-10">
+                    <label class="inline-block min-w-200 mt-8" data-help="environments#environment-details">Description:</label>
+                    <textarea id="envDescription" class="flex-1" rows="2"></textarea>
+                </div>
+            </div>
+
+            <!-- Execution Settings Section (moved from Configuration tab) -->
+            <div class="section">
+                <h3 data-help="environments#parallel-processing">Execution Settings
+                </h3>
+
+                <!-- One control: Sequential is 1 (parallelProcessing.enabled is always saved true) -->
+                <div id="maxConcurrencyGroup" class="flex align-center gap-10 mb-10">
+                    <label class="inline-block min-w-200" data-help="environments#parallel-processing">Max Concurrency:</label>
+                    <select id="maxConcurrency" class="flex-1">
+                        <option value="1">Sequential - 1 request at a time (safest)</option>
+                        <option value="2">Light Parallel - 2 concurrent requests</option>
+                        <option value="4">Moderate Parallel - 4 concurrent requests</option>
+                        <option value="8">Heavy Parallel - 8 concurrent requests</option>
+                        <option value="16">Extreme Parallel - 16 concurrent requests</option>
+                    </select>
+                </div>
+
+                <div class="flex align-center gap-10 mb-10">
+                    <label class="inline-block min-w-200" data-help="environments#target-timezone">Target Timezone:
+                    </label>
+                    <select id="targetTimezone" class="flex-1">
+                        <option value="UTC">UTC (Coordinated Universal Time)</option>
+                        <option value="GMT">GMT (Greenwich Mean Time)</option>
+                        <option value="America/New_York">America/New_York (Eastern Time)</option>
+                        <option value="America/Chicago">America/Chicago (Central Time)</option>
+                        <option value="America/Denver">America/Denver (Mountain Time)</option>
+                        <option value="America/Los_Angeles">America/Los_Angeles (Pacific Time)</option>
+                        <option value="Europe/London">Europe/London (UK)</option>
+                        <option value="Europe/Paris">Europe/Paris (Central European)</option>
+                        <option value="Europe/Berlin">Europe/Berlin (Central European)</option>
+                        <option value="Asia/Tokyo">Asia/Tokyo (Japan)</option>
+                        <option value="Asia/Shanghai">Asia/Shanghai (China)</option>
+                        <option value="Asia/Singapore">Asia/Singapore</option>
+                        <option value="Asia/Kolkata">Asia/Kolkata (India)</option>
+                        <option value="Australia/Sydney">Australia/Sydney (AEST)</option>
+                        <option value="Australia/Melbourne">Australia/Melbourne (AEST)</option>
+                        <option value="Australia/Brisbane">Australia/Brisbane (AEST, no DST)</option>
+                        <option value="Australia/Perth">Australia/Perth (AWST)</option>
+                        <option value="Pacific/Auckland">Pacific/Auckland (New Zealand)</option>
+                    </select>
+                </div>
+
+                <!-- #344: where this environment's runs happen. Only the web app uses it for now: its local
+                     agent is DBMN for VS Code. VS Code and the desktop app are local agents themselves and
+                     send every request (Cloud worker will be everyone's). Shown everywhere, as it's saved
+                     with the environment; #runOnHostNote says what it means here. -->
+                <div class="flex align-start gap-10 mb-10" id="runOnRow">
+                    <label class="inline-block min-w-200 mt-8" for="runOn" data-help="environments#run-in">Run in:</label>
+                    <div class="flex-1">
+                        <select id="runOn" class="w-full">
+                            <option value="browser">Browser</option>
+                            <option value="local-agent">Local agent</option>
+                            <option value="cloud" disabled>Cloud worker (coming soon)</option>
+                        </select>
+                        <!-- Written by environment.js (applyRunOnNote) -->
+                        <small id="runOnHostNote" class="color-description font-size-12 block mt-8 hidden"></small>
+                    </div>
+                </div>
+
+                <!-- #344: where its execution data (requests, responses, logs, history) is kept: local only for now -->
+                <div class="flex align-center gap-10 mb-10" id="storeResultsInRow">
+                    <label class="inline-block min-w-200" for="storeResultsIn">Store results in:</label>
+                    <select id="storeResultsIn" class="flex-1">
+                        <option value="local">Local storage (this machine)</option>
+                        <option value="cloud" disabled>Cloud storage (coming soon)</option>
+                    </select>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Authentication Tab -->
+        <div id="tab-panel-authentication" class="tab-panel hidden">
+
+            <!-- Auth Method -->
+            <div class="flex align-center gap-10 mb-15">
+                <label class="inline-block min-w-200" data-help="environments#authentication">Authentication Method:</label>
+                <select id="authMethod" class="flex-1" data-help="environments#authentication">
+                    <option value="none">No Authentication</option>
+                    <option value="jwt">Manual JWT Token</option>
+                    <option value="oauth">OAuth</option>
+                    <option value="google-service-account">Google Service Account</option>
+                    <option value="dbmn">DBMN</option>
+                </select>
+            </div>
+            <!-- #344 (web app): secrets of a Browser environment are this browser's alone -->
+            <div class="info-banner hidden" id="secretsInBrowserNote"><span class="info-icon">!</span><span>Secrets for this environment (token, client secret, key) are saved in this browser on this computer only, never on dbmn.io. Anyone using this browser profile can use them.</span></div>
+
+            <!-- No Auth Configuration -->
+            <div id="noAuthConfig" class="hidden">
+                <div class="info-banner">
+                    <span class="info-icon">i</span>
+                    No authentication will be used. Requests will be sent without an Authorization header.
+                </div>
+            </div>
+
+            <!-- DBMN Auth Configuration -->
+            <div id="dbmnAuthConfig" class="hidden">
+                <div class="info-banner">
+                    <span class="info-icon">i</span>
+                    Uses your DBMN account. Sign in via the Account tab.
+                    The Authorization header is injected automatically at execution time.
+                </div>
+            </div>
+
+            <!-- JWT Token Configuration -->
+            <div id="jwtConfig" class="hidden">
+                <div class="section">
+                    <h3>Token</h3>
+
+                    <div class="info-banner hidden" data-secret-note="token"><span class="info-icon">i</span><span class="secret-note-text"></span></div>
+                    <div class="flex align-start gap-10 mb-10" id="jwtTokenGroup">
+                        <label class="inline-block min-w-200 mt-8" data-help="environments#authentication">JWT Token:</label>
+                        <textarea id="jwtToken" class="flex-1 font-mono" rows="3" placeholder="Paste your JWT token here..."></textarea>
+                    </div>
+
+                </div>
+            </div>
+
+            <!-- OAuth Configuration -->
+            <div id="oauthConfig" class="hidden">
+                <div class="section">
+                    <h3>OAuth Configuration</h3>
+
+                    <div class="flex align-center gap-10 mb-10">
+                        <label class="inline-block min-w-200" data-help="oauth-setup">Client ID:</label>
+                        <input type="text" id="clientId" class="flex-1" placeholder="OAuth client ID" />
+                    </div>
+
+                    <div class="info-banner hidden" data-secret-note="client secret"><span class="info-icon">i</span><span class="secret-note-text"></span></div>
+                    <div class="flex align-center gap-10 mb-10" id="clientSecretGroup">
+                        <label class="inline-block min-w-200" data-help="oauth-setup">Client Secret:</label>
+                        <input type="password" id="clientSecret" class="flex-1" placeholder="OAuth client secret (optional)" />
+                        <button type="button" data-click="toggleClientSecretVisibility" id="toggleSecretBtn" class="btn btn-secondary" style="padding: 4px 10px; font-size: 11px;" title="Show client secret">Show</button>
+                    </div>
+
+                    <div class="flex align-center gap-10 mb-10" id="authUrlGroup">
+                        <label class="inline-block min-w-200" data-help="oauth-setup">Authorization URL: <span id="authUrlIndicator" class="color-success font-size-10"></span></label>
+                        <input type="text" id="authorizationUrl" class="flex-1" placeholder="https://auth.example.com/oauth/authorize" />
+                    </div>
+
+                    <div class="flex align-center gap-10 mb-10" id="tokenUrlGroup">
+                        <label class="inline-block min-w-200" data-help="oauth-setup">Token URL: <span id="tokenUrlIndicator" class="color-success font-size-10"></span></label>
+                        <input type="text" id="tokenUrl" class="flex-1" placeholder="https://auth.example.com/oauth/token" />
+                    </div>
+
+                    <div class="flex align-center gap-10 mb-10">
+                        <label class="inline-block min-w-200" data-help="oauth-setup">OAuth Flow:</label>
+                        <select id="oauthFlow" class="flex-1">
+                            <option value="authorization_code_pkce">Authorization Code with PKCE (Recommended)</option>
+                            <option value="authorization_code">Authorization Code</option>
+                            <option value="client_credentials">Client Credentials</option>
+                        </select>
+                    </div>
+
+                    <div class="flex align-center gap-10 mb-10" id="clientAuthGroup">
+                        <label class="inline-block min-w-200" data-help="oauth-setup">Client authentication:</label>
+                        <select id="clientAuth" class="flex-1">
+                            <option value="body">In the request body (client_secret_post)</option>
+                            <option value="basic">Basic header (client_secret_basic)</option>
+                        </select>
+                    </div>
+
+                    <div class="flex align-center gap-10 mb-10" id="scopesGroup">
+                        <label class="inline-block min-w-200" data-help="oauth-setup">Scopes (optional):</label>
+                        <input type="text" id="scopes" class="flex-1" placeholder="read write admin (space-separated)" />
+                    </div>
+
+                    <button data-click="autoConfigureOAuth" id="autoConfigBtn" class="hidden">Auto-Configure</button>
+
+                </div>
+            </div>
+
+            <!-- Google Service Account Configuration -->
+            <div id="serviceAccountConfig" class="hidden">
+                <div class="section">
+                    <h3>Service Account</h3>
+
+                    <div class="info-banner mb-10">
+                        <span class="info-icon">i</span>
+                        Upload a Google Cloud service account JSON key file for machine-to-machine authentication.
+                    </div>
+
+                    <div class="info-banner hidden" data-secret-note="service account key"><span class="info-icon">i</span><span class="secret-note-text"></span></div>
+                    <div class="flex align-start gap-10 mb-10" id="serviceAccountJsonGroup">
+                        <label class="inline-block min-w-200 mt-8" data-help="oauth-setup">Service Account JSON:</label>
+                        <textarea id="serviceAccountJson" class="flex-1 font-mono font-size-12" rows="5" placeholder="Paste your service account JSON here or use the upload button..."></textarea>
+                        <div class="flex flex-col gap-4">
+                            <button type="button" data-click="uploadServiceAccountFile" class="btn btn-secondary" style="padding: 4px 10px; font-size: 11px;">Upload</button>
+                            <button type="button" data-click="clearServiceAccount" class="btn btn-secondary" style="padding: 4px 10px; font-size: 11px;">Clear</button>
+                        </div>
+                    </div>
+                    <input type="file" id="serviceAccountFileInput" accept=".json" class="hidden" data-change="serviceAccountFileSelected" />
+
+                    <div id="serviceAccountStatus" class="hidden mb-10" style="padding: 8px 12px; border-radius: 4px;"></div>
+
+                    <div class="flex align-center gap-10 mb-10">
+                        <label class="inline-block min-w-200" data-help="oauth-setup">OAuth Scopes:</label>
+                        <select id="serviceAccountScopePreset" class="flex-1" data-change="handleScopePresetChange">
+                            <option value="cloud-platform">Cloud Platform (Full Access)</option>
+                            <option value="pubsub">Pub/Sub</option>
+                            <option value="storage">Cloud Storage</option>
+                            <option value="bigquery">BigQuery</option>
+                            <option value="custom">Custom Scopes</option>
+                        </select>
+                    </div>
+
+                    <div id="customScopesGroup" class="hidden mb-10">
+                        <div class="flex align-start gap-10">
+                            <label class="inline-block min-w-200 mt-8" data-help="oauth-setup">Custom Scopes:</label>
+                            <textarea id="serviceAccountScopes" class="flex-1 font-mono font-size-12" rows="3" placeholder="https://www.googleapis.com/auth/cloud-platform"></textarea>
+                        </div>
+                    </div>
+
+                    <button type="button" data-click="testServiceAccountAuth" class="btn btn-secondary" id="testServiceAccountBtn" style="padding: 8px 16px; font-size: 12px;">Test Authentication</button>
+                </div>
+            </div>
+
+            <!-- Shared Token Details (all auth methods) -->
+            <div id="tokenDetails" class="section hidden">
+                <div class="flex align-center justify-between mb-10">
+                    <div class="flex align-center gap-10">
+                        <h3 class="mt-0 mb-0">Token Details</h3>
+                        <span id="tokenStatusPill" class="status-pill-generic success hidden">Valid</span>
+                    </div>
+                    <div class="flex align-center gap-8">
+                        <div id="tokenViewToggle" class="toggle-group hidden">
+                            <button class="toggle-btn active" data-view="decoded" data-click="switchTokenView" data-arg="decoded">Decoded</button>
+                            <button class="toggle-btn" data-view="encoded" data-click="switchTokenView" data-arg="encoded">Encoded</button>
+                        </div>
+                        <button data-click="copyTokenView" class="btn btn-secondary" style="padding: 4px 10px; font-size: 11px;">Copy</button>
+                    </div>
+                </div>
+
+                <!-- Decoded View -->
+                <div id="tokenDecodedView">
+                    <div class="kv-grid" id="tokenClaimsGrid">
+                        <!-- Populated by JS -->
+                    </div>
+                    <div class="border-top mt-10">
+                        <button data-click="toggleRawJson" class="collapse-toggle">
+                            <span id="rawJsonArrow">&#9654;</span> Raw JSON
+                        </button>
+                        <div id="rawJsonContent" class="hidden p-10">
+                            <pre class="token-display" id="rawJsonPre"></pre>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Encoded View -->
+                <div id="tokenEncodedView" class="hidden">
+                    <div class="token-encoded-view" id="tokenEncodedText"></div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Headers & Variables Tab -->
+        <div id="tab-panel-configuration" class="tab-panel hidden">
+            <!-- Headers Section (Issue #126) -->
+            <div class="section" id="headersSection">
+                <h3 data-help="environments#headers">Environment Headers
+                </h3>
+                <p class="section-description">
+                    Headers defined here are automatically applied to all endpoints in this environment.
+                    Use <code>{{ENV:variableName}}</code> syntax for variable substitution.
+                </p>
+
+                <div class="editable-table-container">
+                    <table id="headersTable" class="editable-table">
+                        <thead>
+                            <tr>
+                                <th class="col-checkbox">Enabled</th>
+                                <th class="col-name">Name</th>
+                                <th class="col-value">Value</th>
+                                <th class="col-actions"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="headersTableBody">
+                            <!-- Headers will be dynamically populated -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <button data-click="addHeaderRow" class="btn btn-secondary mt-10">
+                    + Add Header
+                </button>
+            </div>
+
+            <!-- Variables Section (Issue #126) -->
+            <div class="section" id="variablesSection">
+                <h3 data-help="environments#variables">Environment Variables
+                </h3>
+                <p class="section-description">
+                    Variables defined here can be used in headers, URLs, and request bodies with <code>{{ENV:variableName}}</code> syntax.
+                    These values bypass user prompts during execution. Give a variable <strong>Options</strong> to pick its value from a list,
+                    and tick <strong>Header</strong> to switch it from the Hub header.
+                </p>
+
+                <div class="editable-table-container">
+                    <table id="variablesTable" class="editable-table">
+                        <thead>
+                            <tr>
+                                <th class="col-name">Variable Name</th>
+                                <th class="col-value">Value</th>
+                                <th class="col-options" data-help="environments#variables">Options</th>
+                                <th class="col-header" data-help="environments#variables">Header</th>
+                                <th class="col-actions"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="variablesTableBody">
+                            <!-- Variables will be dynamically populated -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <button data-click="addVariableRow" class="btn btn-secondary mt-10">
+                    + Add Variable
+                </button>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Sticky Footer with Action Buttons -->
+    <div class="webview-footer">
+        <div class="footer-content">
+            <div class="footer-button-container">
+                <button data-click="initiateOAuthFlow" id="signInBtn" class="btn btn-secondary hidden" data-help="environments#authentication">Sign In</button>
+                <button data-click="requestNewToken" id="requestTokenBtn" class="btn btn-secondary hidden" data-help="environments#authentication">Sign In (New Token)</button>
+                <button data-click="signOutOAuth" id="signOutBtn" class="btn btn-secondary hidden" data-help="environments#authentication">Sign Out</button>
+                <button data-click="refreshOAuthToken" id="refreshBtn" class="btn btn-secondary hidden" data-help="environments#authentication">Refresh Token</button>
+                <button data-click="setAsActive" id="activateBtn" class="btn btn-secondary hidden" data-help="hub#environment-selector">Set as Active</button>
+                <button data-click="deleteEnvironment" id="deleteEnvBtn" class="btn btn-secondary hidden" style="color: var(--vscode-errorForeground);" data-help="environments">Delete Environment</button>
+                <button data-click="saveEnvironment" id="saveEnvBtn" class="btn btn-primary" data-help="environments">Save Environment</button>
+            </div>
+            <div id="footerNotification" class="footer-notification hidden">
+                <span class="notification-icon"></span>
+                <span class="notification-message"></span>
+                <button class="notification-dismiss" data-click="clearFooterNotification">&times;</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{DBMN_ACTIONS_SCRIPT}}"></script>
+    <script src="{{DOCUMENTATION_HELPERS_URI}}"></script>
+    <script src="{{HELP_MODE_SCRIPT}}"></script>
+    <script src="{{ICONS_SCRIPT}}"></script>
+    <script src="{{EDITOR_WINDOW_CONTROLS_SCRIPT}}"></script>
+    <!-- DbmnModal — auto-bridge listens for ext-host modal requests -->
+    <script src="{{ROW_PASTE_SCRIPT}}"></script>
+    <script src="{{DBMN_MODAL_SCRIPT}}"></script>
+    <script src="{{DBMN_TOAST_SCRIPT}}"></script>
+    <script src="{{DBMN_CLIPBOARD_SCRIPT}}"></script>
+    <script src="{{SYSTEM_PICKER_SCRIPT}}"></script>
+    <script src="{{TEMPLATE_AUTOCOMPLETE_SCRIPT}}"></script>
+    <script src="{{ENVIRONMENT_SCRIPT}}"></script>
+</body>
+</html>

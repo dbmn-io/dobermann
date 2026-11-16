@@ -1,0 +1,1204 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Copyright (C) 2026 Flexion Tech Pty Ltd */
+/* Compare (#298): what has no pattern elsewhere. The rest is the shared step layout
+   (data-transformer.css), stat cards, .data-table and the Console's toolbar pieces.
+
+   Each result has one colour throughout: BL the theme's blue, C1 its orange, C2 green, C3
+   purple. A result's heading, its button and a value of its that differs share the colour:
+   a soft tint with the colour underneath. DIFF is the theme's red, as a tint, which no result uses. */
+
+/* ==========================================================================
+   Compare (#298), step 2: the columns on the left, "Which rows?" on the right. The join is
+   picked from a short list, each with a two-circle picture of the rows it keeps: BL in the
+   theme's blue, C1 in its orange, the rows found in both in the middle.
+   ========================================================================== */
+.compare-split {
+    display: grid;
+    /* The key's columns need only their names: the match gets the room */
+    grid-template-columns: minmax(240px, 2fr) minmax(300px, 3fr);
+    gap: 20px;
+    align-items: start;
+}
+
+/* Select: the picker on the screen, its list of results as tall as the window allows */
+.compare-select .compare-picker-runs {
+    flex: none;
+    margin: 0;
+    min-height: 150px;
+    max-height: calc(100vh - 360px);
+}
+
+.compare-select .compare-picker-panel {
+    min-height: 0;
+}
+
+/* The footer: Back and Next, the steps, then Beta at the right */
+#compareStepper {
+    flex: 1;
+}
+
+/* Step 2: the columns get the room (a match style may join them); which rows is a short list */
+#compareColumnsStep .compare-split {
+    grid-template-columns: minmax(0, 2fr) minmax(220px, 1fr);
+}
+
+/* Tight rows: the Strict / Relaxed select sets their height */
+#compareColumns td {
+    padding-top: 2px;
+    padding-bottom: 2px;
+    vertical-align: middle;
+}
+
+#compareColumns select,
+#compareColumns input {
+    margin: 0;
+    vertical-align: middle;
+}
+
+#compareColumns select {
+    padding: 1px 4px;
+    height: auto;
+    font-size: 12px;
+}
+
+@media (max-width: 900px) {
+    .compare-split,
+    #compareColumnsStep .compare-split {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+.compare-joins {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+    width: 100%;
+}
+
+.compare-join {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 10px;
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 6px;
+    background: var(--vscode-editor-background);
+    color: var(--vscode-foreground);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.compare-join:hover {
+    background: var(--vscode-list-hoverBackground);
+}
+
+.compare-join:focus-visible {
+    outline: 1px solid var(--vscode-focusBorder);
+    outline-offset: 1px;
+}
+
+.compare-join[aria-pressed="true"] {
+    border-color: var(--vscode-textLink-foreground);
+    background: color-mix(in srgb, var(--vscode-textLink-foreground) 14%, transparent);
+}
+
+.compare-join-name {
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.compare-venn {
+    flex: none;
+    width: 46px;
+    height: 24px;
+}
+
+.compare-venn circle {
+    fill: none;
+    stroke-width: 2;
+}
+
+.compare-venn .venn-a { stroke: var(--vscode-charts-blue, #4fa3ff); }
+.compare-venn .venn-b { stroke: var(--vscode-charts-orange, #e8a33d); }
+.compare-venn .venn-a.is-in { fill: var(--vscode-charts-blue, #4fa3ff); fill-opacity: 0.45; }
+.compare-venn .venn-b.is-in { fill: var(--vscode-charts-orange, #e8a33d); fill-opacity: 0.45; }
+
+.compare-venn .venn-both {
+    fill: var(--vscode-foreground);
+    fill-opacity: 0.55;
+    stroke: none;
+}
+
+/* The Status column's filter (Excel style): one tick box per kind of row, its count on the right */
+.compare-status-menu {
+    min-width: 240px;
+}
+
+/* The Status header: its name and the funnel on one line */
+.compare-status-head {
+    white-space: nowrap;
+}
+
+.compare-status-option {
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.compare-status-option .tab-count {
+    margin-left: auto;
+}
+
+/* The Status filter: Show (tick box) and Only (radio) side by side, then the pill and its count */
+#compareStatusMenu {
+    min-width: 0;
+    padding: 4px 0;
+}
+
+.compare-status-line {
+    display: grid;
+    grid-template-columns: 28px 28px auto 1fr;
+    align-items: center;
+    column-gap: 4px;
+    padding: 2px 12px 2px 8px;
+}
+
+.compare-status-heading {
+    padding-bottom: 4px;
+    color: var(--vscode-descriptionForeground);
+    font-size: 11px;
+}
+
+.compare-status-heading span {
+    text-align: center;
+}
+
+.compare-status-control {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: var(--dbmn-radius, 4px);
+    cursor: pointer;
+    transition: background-color 0.1s;
+}
+
+/* The hover says what a click does: the tick box lights for its name too; Only lights its own cell.
+ * The headings never change */
+.compare-status-line > * {
+    transition: background-color 0.1s, box-shadow 0.1s;
+}
+
+.compare-status-control:hover,
+.compare-status-line:has(.compare-status-name:hover) .compare-status-tick {
+    background: var(--vscode-toolbar-hoverBackground, var(--vscode-list-hoverBackground));
+    box-shadow: inset 0 0 0 1px var(--vscode-focusBorder);
+}
+
+.compare-status-line:has(.compare-status-name:hover) .compare-status-name {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+
+.compare-status-control input {
+    margin: 0;
+    cursor: pointer;
+}
+
+.compare-status-name {
+    margin-left: 8px;
+    cursor: pointer;
+}
+
+.compare-status-count {
+    justify-self: end;
+    padding-left: 24px;
+    color: var(--vscode-descriptionForeground);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Match: the View's columns scroll down in their own box, never sideways: the table is the
+   panel's width, a long name or sample cut short (the whole of it on hover) */
+.compare-key-list {
+    max-height: calc(100vh - 240px);
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+.compare-key-list table {
+    table-layout: fixed;
+    width: 100%;
+}
+.compare-key-list th:first-child {
+    width: 45%;
+}
+.compare-key-list td:first-child label {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+}
+.compare-key-list td:first-child label span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* A value from BL beside each column: grey, one line, the whole of it on hover */
+.compare-key-sample {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--vscode-descriptionForeground);
+}
+
+/* Every row of height for the data: the steps start near the top (the body's own top padding
+   goes), and Results closer still */
+body:has(#compareStepper) {
+    padding-top: 0;
+}
+
+#csvBatchContainer > .csv-step {
+    padding-top: 12px;
+}
+
+#csvBatchContainer > #compareResultsStep {
+    padding-top: 6px;
+}
+
+/* Match: how B's records meet another result's. B is the theme's blue and C its orange, as in
+   Which rows?'s circles; each kind of key has its little picture. The keys that match more than
+   one record sit apart in a warning box; the verdict closes the panel. */
+/* Match: the match and Match on half each, shrinking together at the same rate, then one under
+   the other once a half would be under 360px (a window under 792px: 2 x 360 + the 32px gap + the
+   step's 20px sides; the media query below says the same). The slots across the top take the
+   match's half, so its four columns stay under them. */
+.compare-match-layout {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 16px 32px;
+}
+.compare-match-panel,
+.compare-key-panel {
+    flex: 1 1 0;
+    min-width: 360px;
+}
+#csvBatchContainer:has(#compareMatchStep:not(.hidden)) .compare-results-bar {
+    flex: 0 1 calc((100% - 32px) / 2);
+}
+@media (max-width: 791px) {
+    .compare-match-panel,
+    .compare-key-panel {
+        flex-basis: 100%;
+        min-width: 0;
+    }
+    #csvBatchContainer:has(#compareMatchStep:not(.hidden)) .compare-results-bar {
+        flex-basis: 100%;
+    }
+}
+.compare-step-title {
+    margin: 0 0 6px;
+    font-size: 14px;
+    font-weight: 600;
+}
+.compare-match-group-title {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--vscode-textLink-foreground);
+    margin: 14px 0 4px;
+}
+.compare-match-many {
+    margin-top: 14px;
+    padding: 0 0 4px;
+    border: 1px solid var(--vscode-editorWarning-foreground);
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--vscode-editorWarning-foreground) 6%, transparent);
+}
+.compare-match-many .compare-match-group-title {
+    color: var(--vscode-editorWarning-foreground);
+    margin: 10px 10px 4px;
+}
+.compare-match-table {
+    display: flex;
+    flex-direction: column;
+}
+.compare-match-row {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+    align-items: center;
+    border-bottom: 1px solid var(--vscode-panel-border);
+}
+.compare-match-row:last-child {
+    border-bottom: none;
+}
+/* Under BL: the kind's picture and name */
+.compare-match-kind {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 0;
+    min-width: 0;
+}
+.compare-match-many .compare-match-kind {
+    padding-left: 10px;
+}
+/* Under each result: its count, at the slot's right edge */
+.compare-match-count {
+    text-align: right;
+    white-space: nowrap;
+    padding: 8px 10px 8px 0;
+    font-family: var(--vscode-editor-font-family, monospace);
+}
+.compare-match-many .compare-match-count.is-some {
+    color: var(--vscode-editorWarning-foreground);
+}
+/* Compare's hints and notes: the text colour, a little softer, never the theme's faint grey */
+#csvBatchContainer .form-hint,
+.compare-match-note {
+    color: color-mix(in srgb, var(--vscode-foreground) 80%, transparent);
+}
+/* Relationship in Results: Match's pictures, small, the name on hover */
+.compare-relation-head,
+.compare-relation-cell {
+    width: 1%;
+    white-space: nowrap;
+}
+.compare-relation-head .compare-glyph,
+.compare-relation-cell .compare-glyph,
+.compare-relation-option .compare-glyph {
+    display: inline-block;
+    width: 26px;
+    height: 15px;
+    vertical-align: middle;
+}
+.compare-relation-option {
+    display: inline-flex;
+    align-items: center;
+    flex: 1;
+}
+/* A repeated value's records: BL's, the picture, then the result's ("36 ●< 200"), a little
+   smaller so 105,010 ✕ 105,000 fits a slot */
+.compare-match-pair {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.92em;
+}
+.compare-match-pair .compare-glyph {
+    width: 28px;
+    height: 17px;
+}
+/* A count of records whose key value repeats: click it to see them */
+.compare-match-drill {
+    font: inherit;
+    color: inherit;
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+.compare-match-drill:hover,
+.compare-match-drill:focus-visible {
+    color: var(--vscode-foreground);
+}
+
+/* Match's drill-in: a row a value (the "one" side's record), opened for the "many" side's records
+   in the Console's inset panel */
+.compare-drill-none {
+    margin: 4px 0;
+}
+.compare-drill-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    margin: 16px 0 6px;
+}
+.compare-drill-key {
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-weight: 600;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+.compare-drill-open {
+    display: flex;
+    gap: 8px;
+    margin-left: auto;
+    flex-wrap: wrap;
+}
+.compare-drill-pager {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    white-space: nowrap;
+}
+.compare-drill-pane-head {
+    padding: 4px 8px;
+    border-radius: 4px 4px 0 0;
+    background: color-mix(in srgb, var(--compare-c) 26%, var(--vscode-editor-background));
+    box-shadow: inset 0 -2px 0 var(--compare-c);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.compare-drill-table {
+    margin: 0;
+    max-height: 60vh;
+    overflow: auto;
+}
+.compare-drill-list .expand-toggle {
+    white-space: nowrap;
+}
+.compare-drill-detail > td {
+    padding: 0 8px 8px 24px;
+}
+.compare-drill-many + .compare-drill-many {
+    margin-top: 8px;
+}
+.compare-drill-table td,
+.compare-drill-table th {
+    white-space: nowrap;
+}
+.compare-drill-alone {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-bottom: 8px;
+    cursor: pointer;
+}
+/* The drill-in keeps its width however small its table: the records open inside it */
+.compare-drill-body {
+    width: min(1100px, 80vw);
+    max-width: 100%;
+}
+/* A table's headings in its result's colour, as the slots */
+.data-table tr.compare-drill-tinted th {
+    background: color-mix(in srgb, var(--compare-c) 22%, var(--vscode-editor-background));
+    box-shadow: inset 0 -2px 0 var(--compare-c);
+}
+.compare-drill-keycell {
+    font-weight: 600;
+}
+.compare-drill-records {
+    max-height: 50vh;
+    overflow: auto;
+}
+.compare-glyph {
+    display: block;
+    width: 40px;
+    height: 24px;
+    flex: none;
+}
+.compare-glyph .g-b { fill: var(--vscode-charts-blue, #4fa3ff); }
+.compare-glyph .g-c { fill: var(--vscode-charts-orange, #e8a33d); }
+.compare-glyph .g-line {
+    stroke: var(--vscode-descriptionForeground);
+    stroke-width: 1.5;
+}
+.compare-match-verdict {
+    margin-top: 14px;
+    padding: 10px 14px;
+    border-radius: 6px;
+    border: 1px solid var(--vscode-panel-border);
+}
+.compare-match-verdict.is-ok {
+    border-color: var(--vscode-terminal-ansiGreen);
+    background: color-mix(in srgb, var(--vscode-terminal-ansiGreen) 10%, transparent);
+}
+.compare-match-verdict.is-warn {
+    border-color: var(--vscode-editorWarning-foreground);
+    background: color-mix(in srgb, var(--vscode-editorWarning-foreground) 10%, transparent);
+}
+/* One to many, compared: its count in the warning colour */
+.compare-match-count.is-repeat {
+    color: var(--vscode-editorWarning-foreground);
+}
+.compare-match-verdict.is-bad {
+    border-color: var(--vscode-errorForeground);
+    background: color-mix(in srgb, var(--vscode-errorForeground) 12%, transparent);
+}
+.compare-match-empty {
+    margin: 14px 0 4px;
+    color: var(--vscode-descriptionForeground);
+}
+
+/* ==========================================================================
+   Results: one colour per result, the result buttons, the grid's headings, Status and pills
+   ========================================================================== */
+.compare-r0 { --compare-c: var(--vscode-charts-blue, #4fa3ff); }
+.compare-r1 { --compare-c: var(--vscode-charts-orange, #e8a33d); }
+.compare-r2 { --compare-c: var(--vscode-charts-green, #6cc070); }
+.compare-r3 { --compare-c: var(--vscode-charts-purple, #b180d7); }
+
+/* Results keep their height for rows: the results' line, the toolbar and the grid sit close */
+#compareResultsStep {
+    gap: 6px;
+}
+
+/* The grid lines up with the toolbar above it (the Console's table has its own side margins) */
+#compareResultsStep > #compareTableContainer {
+    margin: 0;
+}
+
+/* The slots across the top of every step, in line with the step below (its side padding). On
+   Results the toolbar joins them, with its room kept, Find's open box included: opening or closing
+   Find moves nothing (it closes as a click elsewhere starts, so a moving toolbar would make that
+   click miss). In a narrow window (below) the toolbar has a line of its own under the slots */
+#csvBatchContainer > .compare-results-tools {
+    flex: none;
+    flex-wrap: nowrap;
+    row-gap: 6px;
+    padding: 8px 20px 0;
+    border-bottom: none;
+}
+
+/* Four slots of one width, BL's too, whether filled, empty or incomplete: the names end in "…"
+   (the full name is in their tooltip) */
+.compare-results-bar {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    flex: 0 1 640px;
+    min-width: 0;
+    gap: 8px;
+}
+
+.compare-results-bar:has(~ #compareResultsControls:not(.hidden)) {
+    max-width: calc(100% - 640px);
+}
+
+.compare-results-controls {
+    display: flex;
+    flex: 1 0 auto;
+    align-items: center;
+    gap: 10px;
+}
+
+@media (max-width: 1280px) {
+    #csvBatchContainer > .compare-results-tools {
+        flex-wrap: wrap;
+    }
+
+    .compare-results-bar:has(~ #compareResultsControls:not(.hidden)) {
+        max-width: none;
+    }
+
+    .compare-results-controls {
+        flex-basis: 100%;
+    }
+}
+
+/* Side by side over Compact: a small two-row toggle */
+.compare-view-toggle {
+    flex: none;
+    flex-direction: column;
+}
+
+/* (the shared .toggle-btn sets its padding and borders !important) */
+.compare-view-toggle .toggle-btn {
+    padding: 0 8px !important;
+    line-height: 17px;
+    text-align: left;
+}
+
+.compare-view-toggle .toggle-btn + .toggle-btn {
+    border-left: none !important;
+    border-top: 1px solid var(--vscode-input-border) !important;
+}
+
+/* Find: an icon until opened, then the box takes the room */
+.compare-search {
+    flex: none;
+    min-width: 0;
+}
+
+.compare-search .search-input-wrapper {
+    display: none;
+}
+
+.compare-search.is-open {
+    flex: 1 1 200px;
+}
+
+.compare-search.is-open .search-input-wrapper {
+    display: block;
+    flex: 1;
+}
+
+.compare-search.is-open #compareSearchBtn {
+    display: none;
+}
+
+/* The count and Export at the right: they and the toggles keep their size */
+.compare-count {
+    flex: none;
+    margin-left: auto;
+    white-space: nowrap;
+}
+
+.compare-tool-btn {
+    flex: none;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    background: transparent;
+    color: var(--vscode-descriptionForeground);
+    padding: 4px;
+    line-height: 0;
+    cursor: pointer;
+}
+
+.compare-tool-btn:hover,
+.compare-tool-btn[aria-expanded="true"] {
+    border-color: var(--vscode-panel-border);
+    color: var(--vscode-foreground);
+}
+
+.compare-tool-btn.is-active {
+    color: var(--vscode-textLink-foreground);
+}
+
+.compare-tool-btn:disabled {
+    opacity: 0.35;
+    cursor: default;
+    border-color: transparent;
+}
+
+.compare-tool-btn svg {
+    width: 16px;
+    height: 16px;
+}
+
+.compare-result {
+    display: flex;
+    min-width: 0;
+    border-radius: 3px;
+    background: color-mix(in srgb, var(--compare-c) 26%, var(--vscode-editor-background));
+    box-shadow: inset 0 -2px 0 var(--compare-c);
+}
+
+.compare-result.is-off {
+    background: color-mix(in srgb, var(--vscode-foreground) 6%, var(--vscode-editor-background));
+    box-shadow: none;
+}
+
+/* Not picked: a dashed outline in the slot's colour, the same size as a filled one */
+.compare-result.is-empty {
+    background: transparent;
+    box-shadow: none;
+    outline: 1px dashed color-mix(in srgb, var(--compare-c) 60%, transparent);
+    outline-offset: -1px;
+}
+
+.compare-result.is-empty .compare-result-btn {
+    color: var(--vscode-descriptionForeground);
+}
+
+/* "No compare" alone: centred on the slot's two lines */
+.compare-result.is-empty .compare-result-name:last-child {
+    grid-row: 1 / span 2;
+}
+
+/* Incomplete (not every page fetched): a barber pole in the slot's own colour */
+.compare-result.is-incomplete {
+    background-image: repeating-linear-gradient(-45deg,
+        color-mix(in srgb, var(--compare-c) 30%, transparent) 0 6px,
+        transparent 6px 14px);
+}
+
+/* Letter on the left; the name over a grey line saying when it ran; on Results a ▾ for its menu */
+.compare-result-btn {
+    display: grid;
+    flex: 1;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    /* Two lines, always: a slot is one height filled or empty */
+    grid-template-rows: 16px 14px;
+    min-width: 0;
+    column-gap: 8px;
+    align-items: center;
+    padding: 3px 8px 4px 10px;
+    border: none;
+    background: transparent;
+    color: var(--vscode-foreground);
+    font: inherit;
+    font-size: 12px;
+    text-align: left;
+}
+
+button.compare-result-btn {
+    cursor: pointer;
+}
+
+.compare-result-btn:focus-visible {
+    outline: 1px solid var(--vscode-focusBorder);
+    outline-offset: -1px;
+}
+
+.compare-result-letter {
+    grid-row: 1 / span 2;
+    font-weight: 700;
+}
+
+.compare-result-name {
+    line-height: 16px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* On the result's tint the theme's grey can fade out: the foreground, a little softer */
+.compare-result-when,
+.compare-result-caret {
+    color: color-mix(in srgb, var(--vscode-foreground) 75%, transparent);
+}
+
+.compare-result-when {
+    grid-column: 2;
+    min-height: 14px;
+    font-size: 11px;
+    line-height: 14px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-variant-numeric: tabular-nums;
+}
+
+.compare-result-caret {
+    grid-row: 1 / span 2;
+    grid-column: 3;
+    font-size: 10px;
+}
+
+.compare-result.is-off .compare-result-btn {
+    color: var(--vscode-descriptionForeground);
+}
+
+/* A slot's menu: the result, why it is incomplete, then what can be done with it */
+.compare-menu-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px 6px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.compare-menu-title .compare-result-when {
+    font-weight: 400;
+}
+
+.compare-menu-warning {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin: 0 8px 4px;
+    padding: 6px 8px;
+    border-radius: 3px;
+    background: color-mix(in srgb, var(--vscode-editorWarning-foreground, #cca700) 12%, transparent);
+    font-size: 12px;
+    max-width: 300px;
+}
+
+.compare-menu-warning .status-pill-generic {
+    flex: none;
+}
+
+/* The slot menu's items; BL's lists another result as Baseline */
+.compare-baseline-menu {
+    min-width: 300px;
+}
+
+.compare-menu-head {
+    padding: 6px 12px 3px;
+    color: var(--vscode-descriptionForeground);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.compare-menu-note {
+    margin: 0;
+    padding: 4px 12px 6px;
+    color: var(--vscode-descriptionForeground);
+    font-size: 12px;
+    max-width: 280px;
+}
+
+.compare-baseline-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.compare-baseline-option .compare-result-when {
+    margin-left: auto;
+}
+
+/* The second line: Side by side | Compact, the find box taking the room, the count, Export */
+.compare-results-tools .search-container {
+    flex: 1;
+    min-width: 160px;
+}
+
+/* Find, closed, is only its icon (the shared rule above would stretch it) */
+.compare-results-tools .compare-search:not(.is-open) {
+    flex: none;
+    min-width: 0;
+}
+
+/* The headings stick while the rows scroll under them: each on a solid base (a theme's header
+   colour can be see-through), its own colour over it */
+#compareHead th {
+    background-color: var(--vscode-editor-background);
+    background-image: linear-gradient(var(--vscode-list-headerBackground, transparent), var(--vscode-list-headerBackground, transparent));
+}
+
+/* The key's columns first, lightly shaded */
+.data-table td.compare-key-col {
+    background: color-mix(in srgb, var(--vscode-foreground) 4%, transparent);
+}
+
+#compareHead th.compare-key-col {
+    background-image: linear-gradient(color-mix(in srgb, var(--vscode-foreground) 6%, transparent), color-mix(in srgb, var(--vscode-foreground) 6%, transparent)),
+        linear-gradient(var(--vscode-list-headerBackground, transparent), var(--vscode-list-headerBackground, transparent));
+}
+
+.data-table th.compare-field-head {
+    text-align: center;
+}
+
+.data-table th.compare-field-head .column-name {
+    margin: 0 auto;
+    /* The count pill stays beside the name: the column widens rather than the heading growing */
+    white-space: nowrap;
+}
+
+/* Remove from Compare (×) shows on hover, as the Console's, on the column name too (in Side by side it does not sort) */
+#compareHead th.compare-field-head:hover .column-hide-btn {
+    opacity: 1;
+}
+
+/* A compared column's DIFF count: a pill that filters to the rows differing there; a funnel while on */
+.compare-col-filter {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 8px;
+    vertical-align: middle;
+}
+
+.compare-col-count {
+    border: 1px solid transparent;
+    font: inherit;
+    cursor: pointer;
+}
+
+.compare-col-count:hover {
+    border-color: var(--vscode-focusBorder);
+}
+
+.compare-col-count.is-active {
+    background: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+}
+
+/* A filter's funnel: after its arrow or count pill while it filters; a click clears that filter */
+.compare-funnel {
+    display: inline-flex;
+    margin-left: 4px;
+    padding: 2px;
+    border: none;
+    border-radius: 3px;
+    background: none;
+    color: var(--vscode-textLink-foreground);
+    line-height: 0;
+    vertical-align: middle;
+    cursor: pointer;
+}
+.compare-funnel:hover,
+.compare-funnel:focus-visible {
+    background: var(--vscode-toolbar-hoverBackground, color-mix(in srgb, var(--vscode-foreground) 12%, transparent));
+}
+
+.compare-col-filter .compare-funnel {
+    margin-left: 0;
+}
+
+.compare-funnel svg {
+    width: 12px;
+    height: 12px;
+}
+
+/* Status's filter: always the arrow */
+.compare-head-btn {
+    margin-left: 6px;
+    padding: 2px;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    background: transparent;
+    color: var(--vscode-descriptionForeground);
+    line-height: 0;
+    vertical-align: middle;
+    cursor: pointer;
+}
+
+.compare-head-btn:hover,
+.compare-head-btn[aria-expanded="true"] {
+    border-color: var(--vscode-panel-border);
+    color: var(--vscode-foreground);
+}
+
+.compare-head-btn svg {
+    width: 14px;
+    height: 14px;
+}
+
+/* A result's sub-heading: its letter on its tint, underlined in its colour */
+#compareHead th.compare-sub,
+.data-table th.compare-sub {
+    padding: 2px 6px;
+    font-size: 11px;
+    font-weight: 700;
+    text-align: center;
+    background: color-mix(in srgb, var(--compare-c) 26%, var(--vscode-editor-background));
+    box-shadow: inset 0 -2px 0 var(--compare-c);
+}
+
+/* The results' row is only each result's coloured line under the columns' names, always the same
+   size. Hovering the headings drops each result's letter below its line, over the first rows (to
+   sort by one): nothing moves, so the rows never jump and the hover cannot flicker on and off. */
+#compareHead th.compare-sub {
+    height: 3px;
+    padding: 0;
+    font-size: 0;
+    line-height: 0;
+    background: var(--compare-c);
+    box-shadow: none;
+}
+
+#compareHead th.compare-sub .column-header-content {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 20px;
+    padding: 0 6px;
+    box-sizing: border-box;
+    font-size: 11px;
+    line-height: 20px;
+    background: color-mix(in srgb, var(--compare-c) 26%, var(--vscode-editor-background));
+    box-shadow: inset 0 -2px 0 var(--compare-c), 0 2px 4px rgba(0, 0, 0, 0.25);
+    opacity: 0;
+    transform: translateY(-4px);
+    pointer-events: none;
+    transition: opacity 0.14s ease, transform 0.14s ease;
+}
+
+#compareHead th.compare-sub .column-name {
+    margin: 0 auto;
+}
+
+#compareHead:hover th.compare-sub .column-header-content {
+    opacity: 1;
+    transform: none;
+    pointer-events: auto;
+    transition-delay: 0.1s;
+}
+
+#compareHead th.compare-sub:hover .column-header-content {
+    background: color-mix(in srgb, var(--compare-c) 40%, var(--vscode-editor-background));
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #compareHead th.compare-sub .column-header-content {
+        transition: none;
+    }
+}
+
+.data-table .compare-first {
+    border-left: 1px solid var(--vscode-panel-border);
+}
+
+/* Drag a column's heading onto another to move it there */
+.data-table th[draggable="true"] {
+    cursor: grab;
+}
+
+.data-table th.is-dragging {
+    opacity: 0.45;
+}
+
+.data-table th.is-drop-before {
+    box-shadow: inset 3px 0 0 var(--vscode-focusBorder);
+}
+
+/* A value that differs: its result's tint, underlined in its colour */
+.data-table td.compare-differs {
+    background: color-mix(in srgb, var(--compare-c) 26%, transparent);
+    box-shadow: inset 0 -2px 0 var(--compare-c);
+}
+
+/* Status: a red DIFF and a pill per result that differs; Missing and a pill per result without
+   the record. Each is a group on one line; a row with both wraps to a second line (the column is
+   as wide as one group, sizeStatus) */
+.compare-status {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 8px;
+    max-width: var(--compare-status-width, none);
+}
+
+.compare-status-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+}
+
+/* DIFF: the theme's red (charts.red), as a soft tint like the results' pills, not a solid block */
+.status-pill-generic.compare-diff {
+    background: color-mix(in srgb, var(--vscode-charts-red, #e06c75) 22%, transparent);
+    border: 1px solid color-mix(in srgb, var(--vscode-charts-red, #e06c75) 65%, transparent);
+    color: var(--vscode-charts-red, #e06c75);
+}
+
+.status-pill-generic.compare-missing,
+.status-pill-generic.compare-same {
+    background: transparent;
+    border: 1px solid var(--vscode-panel-border);
+    color: var(--vscode-foreground);
+}
+
+.status-pill-generic.compare-same {
+    color: var(--vscode-descriptionForeground);
+}
+
+.compare-tag {
+    display: inline-flex;
+    align-items: center;
+    padding: 0 5px;
+    border-radius: 8px;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 16px;
+    background: var(--compare-c);
+    color: var(--vscode-editor-background);
+}
+
+/* Compact: a value that differs in a pill naming who holds it, in the first one's colour */
+.compare-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin: 1px 6px 1px 0;
+    padding: 0 8px 0 2px;
+    border: 1px solid var(--compare-c);
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--compare-c) 20%, transparent);
+}
+
+.compare-pill.is-bare {
+    padding-left: 8px;
+}
+
+.compare-pill-who {
+    display: inline-flex;
+    gap: 2px;
+}
+
+.compare-plain {
+    margin-right: 6px;
+}
+
+/* The record window: Table or JSON, and whether to mark differences in columns not compared */
+.compare-record-bar {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 8px;
+}
+
+.compare-record-all {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.compare-record-label {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--vscode-descriptionForeground);
+}
+
+/* A difference in a column not compared: a fainter tint, dashed, so it reads as "not counted" */
+.data-table td.compare-uncompared-diff {
+    background: color-mix(in srgb, var(--vscode-editor-selectionHighlightBackground) 45%, transparent);
+    box-shadow: inset 2px 0 0 color-mix(in srgb, var(--vscode-descriptionForeground) 60%, transparent);
+}
+
+/* JSON: each result's record a field to a line, lined up across the results */
+.data-table.compare-json td.compare-json-line {
+    padding: 0 12px;
+    border: none;
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 12px;
+    line-height: 18px;
+    white-space: pre;
+    vertical-align: top;
+    max-width: none;
+    overflow: visible;
+    text-overflow: clip;
+}
+
+.data-table.compare-json td.compare-json-line + td.compare-json-line {
+    border-left: 1px solid var(--vscode-panel-border);
+}
+
+.data-table.compare-json tr:first-child td.compare-json-line {
+    padding-top: 6px;
+}
+
+.data-table.compare-json tr:last-child td.compare-json-line {
+    padding-bottom: 6px;
+}
+
+/* Maximised, the record fills the window: the results share its width */
+.dbmn-modal.is-maximised .compare-record .data-table {
+    width: 100%;
+}
+
+/* A column shown, not compared (Don't compare): looks like any column (no count, never tinted) */
+.data-table td.compare-shown-cell .compare-tag {
+    margin-right: 4px;
+}
+
+/* Off screen: measures the widest Status (sizeStatus) */
+.data-table.compare-status-probe {
+    position: absolute;
+    visibility: hidden;
+    pointer-events: none;
+    top: 0;
+    left: 0;
+    width: auto;
+}
+
+/* The record window's result headings: one line each */
+.data-table th.compare-record-head {
+    white-space: nowrap;
+}
+
+.data-table.compare-json {
+    width: 100%;
+}

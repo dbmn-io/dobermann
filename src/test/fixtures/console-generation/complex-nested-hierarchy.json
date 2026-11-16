@@ -1,0 +1,116 @@
+{
+  "executionId": "exec-003",
+  "duration": 312,
+  "httpStatus": 200,
+  "httpStatusText": "OK",
+  "headers": {
+    "content-type": "application/json"
+  },
+  "data": {
+    "warehouseId": "WH-001",
+    "warehouseName": "Main Distribution Center",
+    "location": {
+      "address": "1000 Industrial Drive",
+      "city": "Chicago",
+      "state": "IL",
+      "zipCode": "60601"
+    },
+    "zones": [
+      {
+        "zoneId": "Z1",
+        "zoneName": "Electronics Storage",
+        "temperature": {
+          "current": 68.5,
+          "target": 70.0,
+          "unit": "F"
+        },
+        "racks": [
+          {
+            "rackId": "R1-1",
+            "rackType": "Standard",
+            "maxCapacity": 1000,
+            "shelves": [
+              {
+                "shelfId": "S1",
+                "level": 1,
+                "capacity": 100,
+                "used": 85,
+                "items": [
+                  { "sku": "ELC-001", "qty": 25, "reserved": 5 },
+                  { "sku": "ELC-002", "qty": 35, "reserved": 10 },
+                  { "sku": "ELC-003", "qty": 25, "reserved": 0 }
+                ]
+              },
+              {
+                "shelfId": "S2", 
+                "level": 2,
+                "capacity": 100,
+                "used": 92,
+                "items": [
+                  { "sku": "ELC-004", "qty": 42, "reserved": 8 },
+                  { "sku": "ELC-005", "qty": 50, "reserved": 15 }
+                ]
+              }
+            ]
+          },
+          {
+            "rackId": "R1-2",
+            "rackType": "Heavy-duty", 
+            "maxCapacity": 1500,
+            "shelves": [
+              {
+                "shelfId": "S3",
+                "level": 1,
+                "capacity": 150,
+                "used": 143,
+                "items": [
+                  { "sku": "ELC-006", "qty": 75, "reserved": 25 },
+                  { "sku": "ELC-007", "qty": 68, "reserved": 12 }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "zoneId": "Z2",
+        "zoneName": "Accessories",
+        "temperature": {
+          "current": 72.0,
+          "target": 72.0,
+          "unit": "F"
+        },
+        "racks": [
+          {
+            "rackId": "R2-1",
+            "rackType": "Mobile",
+            "maxCapacity": 500,
+            "shelves": [
+              {
+                "shelfId": "S4",
+                "level": 1,
+                "capacity": 75,
+                "used": 60,
+                "items": [
+                  { "sku": "ACC-001", "qty": 30, "reserved": 5 },
+                  { "sku": "ACC-002", "qty": 30, "reserved": 8 }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "summary": {
+      "totalZones": 2,
+      "totalRacks": 3,
+      "totalShelves": 4,
+      "totalCapacity": 425,
+      "totalUsed": 380,
+      "utilizationPercent": 89.4,
+      "totalItems": 12,
+      "totalQuantity": 380,
+      "totalReserved": 88
+    }
+  }
+}

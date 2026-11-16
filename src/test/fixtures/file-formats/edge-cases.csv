@@ -1,0 +1,8 @@
+field1,field2,field3,field4,field5
+"","Normal Value",123,true,2024-01-01
+"Value with, comma","Quote""d Value",0,false,
+"Multi
+Line
+Value","   Spaces   ",-456,TRUE,2024-12-31
+"Special !@#$%","NaN",999999,Yes,invalid-date
+"Unicode: 中文","Infinity",-0,No,2024/02/29

@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dobermann - API Execution</title>
+    {{SHARED_STYLES}}
+    <style>
+        /* Execution-specific styles */
+        .execution-container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .execution-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid var(--vscode-input-border);
+        }
+        
+        .execution-title {
+            font-size: 18px;
+            font-weight: bold;
+            color: var(--vscode-foreground);
+        }
+        
+        .execution-info {
+            font-size: 14px;
+            color: var(--vscode-descriptionForeground);
+        }
+        
+        .execution-environment {
+            font-size: 14px;
+            margin-top: 5px;
+        }
+        
+        .env-label {
+            color: var(--vscode-descriptionForeground);
+            font-weight: normal;
+        }
+        
+        .env-value {
+            font-weight: bold;
+            padding: 2px 8px;
+            border-radius: 4px;
+            margin-left: 8px;
+        }
+        
+        .env-dev {
+            background: var(--vscode-charts-blue);
+            color: var(--vscode-editor-background);
+        }
+        
+        .env-test {
+            background: var(--vscode-charts-yellow);
+            color: var(--vscode-editor-background);
+        }
+        
+        .env-prod {
+            background: var(--vscode-charts-red);
+            color: var(--vscode-editor-background);
+        }
+        
+        .single-api-component {
+            background: var(--vscode-editor-background);
+            border: 1px solid var(--vscode-input-border);
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .component-section {
+            margin-bottom: 20px;
+        }
+        
+        .component-section:last-child {
+            margin-bottom: 0;
+        }
+        
+        .component-title {
+            font-size: 16px;
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: var(--vscode-foreground);
+        }
+        
+        /* Validation Component Styles */
+        .validation-status {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        
+        .validation-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 4px 0;
+        }
+        
+        .validation-label {
+            font-weight: bold;
+            color: var(--vscode-foreground);
+        }
+        
+        .validation-value {
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        
+        .validation-checking {
+            background: var(--vscode-charts-blue);
+            color: var(--vscode-editor-background);
+        }
+        
+        .validation-success {
+            background: var(--vscode-charts-green);
+            color: var(--vscode-editor-background);
+        }
+        
+        .validation-error {
+            background: var(--vscode-charts-red);
+            color: var(--vscode-editor-background);
+        }
+        
+        .validation-warning {
+            background: var(--vscode-charts-yellow);
+            color: var(--vscode-editor-background);
+        }
+        
+        /* Timer Component Styles */
+        .timer-display {
+            font-size: 24px;
+            font-family: monospace;
+            font-weight: bold;
+            color: var(--vscode-charts-blue);
+            text-align: center;
+            padding: 10px;
+            background: var(--vscode-input-background);
+            border: 1px solid var(--vscode-input-border);
+            border-radius: 4px;
+        }
+        
+        /* Status Component Styles */
+        .status-row {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        
+        .status-display {
+            font-size: 16px;
+            font-weight: bold;
+            color: var(--vscode-foreground);
+        }
+        
+        .http-status {
+            font-size: 16px;
+            font-weight: bold;
+            padding: 4px 8px;
+            border-radius: 4px;
+            min-width: 60px;
+            text-align: center;
+        }
+        
+        .status-success {
+            background: var(--vscode-charts-green);
+            color: var(--vscode-editor-background);
+        }
+        
+        .status-client-error {
+            background: var(--vscode-charts-orange);
+            color: var(--vscode-editor-background);
+        }
+        
+        .status-server-error {
+            background: var(--vscode-charts-red);
+            color: var(--vscode-editor-background);
+        }
+        
+        .status-info {
+            background: var(--vscode-charts-blue);
+            color: var(--vscode-editor-background);
+        }
+        
+        .cancel-button {
+            background: var(--vscode-button-secondaryBackground);
+            color: var(--vscode-button-secondaryForeground);
+            border: 1px solid var(--vscode-button-border);
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        
+        .cancel-button:hover:not(:disabled) {
+            background: var(--vscode-button-secondaryHoverBackground);
+        }
+        
+        .cancel-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .error-message {
+            color: var(--vscode-errorForeground);
+            background: var(--vscode-inputValidation-errorBackground);
+            border: 1px solid var(--vscode-inputValidation-errorBorder);
+            padding: 8px;
+            border-radius: 4px;
+            margin-top: 10px;
+        }
+        
+        /* File Viewer Component Styles */
+        .file-viewer-row {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+        }
+        
+        .file-link {
+            color: var(--vscode-textLink-foreground);
+            cursor: pointer;
+            text-decoration: underline;
+        }
+        
+        .file-link:hover {
+            color: var(--vscode-textLink-activeForeground);
+        }
+        
+        .file-path {
+            font-family: monospace;
+            font-size: 12px;
+            color: var(--vscode-descriptionForeground);
+        }
+        
+        /* Responsive design */
+        @media (max-width: 600px) {
+            .execution-container {
+                padding: 10px;
+            }
+            
+            .status-row {
+                flex-direction: column;
+                gap: 10px;
+                align-items: stretch;
+            }
+            
+            .file-viewer-row {
+                flex-direction: column;
+                gap: 10px;
+                align-items: stretch;
+            }
+        }
+    </style>
+</head>
+<body data-endpoint-id="{{ENDPOINT_ID}}">
+    <div class="execution-container">
+        <!-- Header -->
+        <div class="execution-header">
+            <div class="execution-title">API Execution Monitor</div>
+            <div class="execution-info">{{ENDPOINT_NAME}} - {{ENDPOINT_METHOD}} {{ENDPOINT_PATH}}</div>
+            <div class="execution-environment">
+                <span class="env-label">Environment:</span>
+                <span id="environment-display" class="env-value">{{ENVIRONMENT_NAME}}</span>
+            </div>
+        </div>
+        
+        <!-- Single API Component -->
+        <div class="single-api-component">
+            <!-- Pre-execution Validation -->
+            <div class="component-section" id="validation-section">
+                <div class="component-title">Pre-execution Validation</div>
+                <div id="validation-status" class="validation-status">
+                    <div class="validation-item">
+                        <span class="validation-label">Environment:</span>
+                        <span id="validation-env" class="validation-value">Checking...</span>
+                    </div>
+                    <div class="validation-item" id="jwt-validation" style="display: none;">
+                        <span class="validation-label">JWT Token:</span>
+                        <span id="validation-jwt" class="validation-value">Checking...</span>
+                    </div>
+                    <div class="validation-item" id="org-validation" style="display: none;">
+                        <span class="validation-label">Organization:</span>
+                        <span id="validation-org" class="validation-value">Checking...</span>
+                    </div>
+                    <div class="validation-item" id="loc-validation" style="display: none;">
+                        <span class="validation-label">Location:</span>
+                        <span id="validation-loc" class="validation-value">Checking...</span>
+                    </div>
+                </div>
+                <div id="validation-error" class="error-message" style="display: none;"></div>
+            </div>
+            
+            <!-- Timer Component -->
+            <div class="component-section">
+                <div class="component-title">Execution Time</div>
+                <div id="timer-display" class="timer-display">00:00.000</div>
+            </div>
+            
+            <!-- Status Component -->
+            <div class="component-section">
+                <div class="component-title">Status</div>
+                <div class="status-row">
+                    <div id="status-display" class="status-display">Ready</div>
+                    <div id="http-status" class="http-status">-</div>
+                    <button id="cancel-button" class="cancel-button" disabled>Cancel</button>
+                </div>
+                <div id="error-message" class="error-message" style="display: none;"></div>
+            </div>
+            
+            <!-- File Viewer Component -->
+            <div class="component-section">
+                <div class="component-title">Request & Response Files</div>
+                <div class="file-viewer-row">
+                    <div>
+                        <span class="file-link" id="request-file-link" style="display: none;">View Request</span>
+                        <div id="request-file-path" class="file-path" style="display: none;"></div>
+                    </div>
+                    <div>
+                        <span class="file-link" id="response-file-link" style="display: none;">View Response</span>
+                        <div id="response-file-path" class="file-path" style="display: none;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Action Buttons -->
+        <div class="section">
+            <button id="start-execution-btn" onclick="startExecution()" style="margin-right: 10px;">Start Execution</button>
+            <button id="reset-btn" onclick="resetExecution()" class="secondary-btn">Reset</button>
+        </div>
+    </div>
+
+    <!-- Basic JavaScript for testing -->
+    <script>
+        // Initialize execution webview
+        const vscode = acquireVsCodeApi();
+        
+        // Timer variables
+        let timerInterval = null;
+        let startTime = null;
+        
+        // Basic message handling
+        window.addEventListener('message', event => {
+            const message = event.data;
+            console.log('Received message:', message);
+            
+            switch (message.type) {
+                case 'validationResult':
+                    handleValidationResult(message);
+                    break;
+                case 'executionStarted':
+                    handleExecutionStarted(message);
+                    break;
+                case 'executionCompleted':
+                    handleExecutionCompleted(message);
+                    break;
+                case 'executionCancelled':
+                    handleExecutionCancelled(message);
+                    break;
+                case 'executionError':
+                    handleExecutionError(message);
+                    break;
+                case 'statusUpdate':
+                    handleStatusUpdate(message);
+                    break;
+                case 'timerUpdate':
+                    handleTimerUpdate(message);
+                    break;
+                case 'fileOpened':
+                    handleFileOpened(message);
+                    break;
+            }
+        });
+        
+        // Basic UI functions for testing
+        function startExecution() {
+            console.log('Starting execution...');
+            
+            // Start execution button should directly proceed to execution
+            // Validation should already be displayed from window open
+            document.getElementById('start-execution-btn').disabled = true;
+            document.getElementById('status-display').textContent = 'Starting...';
+            document.getElementById('cancel-button').disabled = false;
+            
+            // Send message to backend to start actual execution
+            vscode.postMessage({
+                type: 'executeAfterValidation',
+                endpointId: document.body.dataset.endpointId || 'test-endpoint'
+            });
+        }
+        
+        function resetValidation() {
+            // Reset all validation states
+            document.getElementById('validation-env').textContent = 'Checking...';
+            document.getElementById('validation-env').className = 'validation-value validation-checking';
+            document.getElementById('validation-jwt').textContent = 'Checking...';
+            document.getElementById('validation-jwt').className = 'validation-value validation-checking';
+            document.getElementById('validation-org').textContent = 'Checking...';
+            document.getElementById('validation-org').className = 'validation-value validation-checking';
+            document.getElementById('validation-loc').textContent = 'Checking...';
+            document.getElementById('validation-loc').className = 'validation-value validation-checking';
+            
+            // Hide JWT validation items initially
+            document.getElementById('jwt-validation').style.display = 'none';
+            document.getElementById('org-validation').style.display = 'none';
+            document.getElementById('loc-validation').style.display = 'none';
+            document.getElementById('validation-error').style.display = 'none';
+        }
+        
+        function resetExecution() {
+            console.log('Resetting execution...');
+            
+            // Stop and reset timer
+            stopTimer();
+            document.getElementById('timer-display').textContent = '00:00.000';
+            
+            document.getElementById('status-display').textContent = 'Ready';
+            document.getElementById('http-status').textContent = '-';
+            document.getElementById('http-status').className = 'http-status';
+            document.getElementById('start-execution-btn').disabled = false;
+            document.getElementById('cancel-button').disabled = true;
+            document.getElementById('error-message').style.display = 'none';
+            document.getElementById('request-file-link').style.display = 'none';
+            document.getElementById('response-file-link').style.display = 'none';
+            document.getElementById('request-file-path').style.display = 'none';
+            document.getElementById('response-file-path').style.display = 'none';
+        }
+        
+        function cancelExecution() {
+            console.log('Cancelling execution...');
+            document.getElementById('status-display').textContent = 'Cancelling...';
+            
+            vscode.postMessage({
+                type: 'cancelExecution',
+                executionId: 'current'
+            });
+        }
+        
+        function viewRequestFile() {
+            vscode.postMessage({
+                type: 'viewRequestFile',
+                filePath: document.getElementById('request-file-path').textContent
+            });
+        }
+        
+        function viewResponseFile() {
+            vscode.postMessage({
+                type: 'viewResponseFile',
+                filePath: document.getElementById('response-file-path').textContent
+            });
+        }
+        
+        // Event handlers for backend messages
+        function handleValidationResult(message) {
+            // Update environment validation
+            document.getElementById('validation-env').textContent = message.environment.name;
+            document.getElementById('validation-env').className = 'validation-value validation-success';
+            
+            // Set environment class for header display
+            const envDisplay = document.getElementById('environment-display');
+            envDisplay.className = 'env-value env-' + message.environment.name.toLowerCase();
+            
+            // Check the JWT token
+            document.getElementById('jwt-validation').style.display = 'block';
+            document.getElementById('org-validation').style.display = 'block';
+            document.getElementById('loc-validation').style.display = 'block';
+            
+            if (message.validation.jwtValid) {
+                document.getElementById('validation-jwt').textContent = 'Valid';
+                document.getElementById('validation-jwt').className = 'validation-value validation-success';
+            } else {
+                document.getElementById('validation-jwt').textContent = 'Invalid';
+                document.getElementById('validation-jwt').className = 'validation-value validation-error';
+            }
+            
+            if (message.validation.orgValid) {
+                document.getElementById('validation-org').textContent = 'Valid';
+                document.getElementById('validation-org').className = 'validation-value validation-success';
+            } else {
+                document.getElementById('validation-org').textContent = 'Missing';
+                document.getElementById('validation-org').className = 'validation-value validation-error';
+            }
+            
+            if (message.validation.locValid) {
+                document.getElementById('validation-loc').textContent = 'Valid';
+                document.getElementById('validation-loc').className = 'validation-value validation-success';
+            } else {
+                document.getElementById('validation-loc').textContent = 'Missing';
+                document.getElementById('validation-loc').className = 'validation-value validation-error';
+            }
+            
+            if (message.validation.canExecute) {
+                // Enable start execution button
+                document.getElementById('start-execution-btn').disabled = false;
+                // Keep validation section visible
+            } else {
+                // Keep start execution button disabled
+                document.getElementById('validation-error').textContent = message.validation.error;
+                document.getElementById('validation-error').style.display = 'block';
+                document.getElementById('start-execution-btn').disabled = true;
+            }
+        }
+        
+        function proceedWithExecution() {
+            document.getElementById('status-display').textContent = 'Starting...';
+            document.getElementById('cancel-button').disabled = false;
+            
+            // Send message to backend to start actual execution after validation
+            vscode.postMessage({
+                type: 'executeAfterValidation',
+                endpointId: document.body.dataset.endpointId || 'test-endpoint'
+            });
+        }
+        
+        function handleExecutionStarted(message) {
+            document.getElementById('status-display').textContent = 'Running...';
+            document.getElementById('start-execution-btn').disabled = true;
+            document.getElementById('cancel-button').disabled = false;
+            
+            // Start the timer
+            startTimer();
+        }
+        
+        function handleExecutionCompleted(message) {
+            document.getElementById('status-display').textContent = 'Completed';
+            document.getElementById('start-execution-btn').disabled = false;
+            document.getElementById('cancel-button').disabled = true;
+            
+            // Stop the timer
+            stopTimer();
+            
+            if (message.httpStatus) {
+                document.getElementById('http-status').textContent = message.httpStatus;
+                document.getElementById('http-status').className = 'http-status ' + getStatusClass(message.httpStatus);
+            }
+            
+            if (message.requestFile) {
+                document.getElementById('request-file-link').style.display = 'inline';
+                document.getElementById('request-file-path').style.display = 'block';
+                document.getElementById('request-file-path').textContent = message.requestFile;
+            }
+            
+            if (message.responseFile) {
+                document.getElementById('response-file-link').style.display = 'inline';
+                document.getElementById('response-file-path').style.display = 'block';
+                document.getElementById('response-file-path').textContent = message.responseFile;
+            }
+        }
+        
+        function handleExecutionCancelled(message) {
+            document.getElementById('status-display').textContent = 'Cancelled';
+            document.getElementById('start-execution-btn').disabled = false;
+            document.getElementById('cancel-button').disabled = true;
+            
+            // Stop the timer
+            stopTimer();
+        }
+        
+        function handleExecutionError(message) {
+            document.getElementById('status-display').textContent = 'Error';
+            document.getElementById('start-execution-btn').disabled = false;
+            document.getElementById('cancel-button').disabled = true;
+            
+            // Stop the timer
+            stopTimer();
+            
+            if (message.error) {
+                document.getElementById('error-message').textContent = message.error;
+                document.getElementById('error-message').style.display = 'block';
+            }
+        }
+        
+        function handleStatusUpdate(message) {
+            if (message.status) {
+                document.getElementById('status-display').textContent = message.status;
+            }
+            
+            if (message.httpStatus) {
+                document.getElementById('http-status').textContent = message.httpStatus;
+                document.getElementById('http-status').className = 'http-status ' + getStatusClass(message.httpStatus);
+            }
+        }
+        
+        function handleTimerUpdate(message) {
+            if (message.time) {
+                document.getElementById('timer-display').textContent = message.time;
+            }
+        }
+        
+        function handleFileOpened(message) {
+            console.log('File opened:', message.filePath);
+        }
+        
+        // Timer functions
+        function startTimer() {
+            if (timerInterval) {
+                clearInterval(timerInterval);
+            }
+            
+            startTime = Date.now();
+            document.getElementById('timer-display').textContent = '00:00.000';
+            
+            timerInterval = setInterval(() => {
+                const elapsed = Date.now() - startTime;
+                const formattedTime = formatElapsedTime(elapsed);
+                document.getElementById('timer-display').textContent = formattedTime;
+            }, 100); // Update every 100ms
+        }
+        
+        function stopTimer() {
+            if (timerInterval) {
+                clearInterval(timerInterval);
+                timerInterval = null;
+            }
+        }
+        
+        function formatElapsedTime(milliseconds) {
+            const totalSeconds = Math.floor(milliseconds / 1000);
+            const minutes = Math.floor(totalSeconds / 60);
+            const seconds = totalSeconds % 60;
+            const ms = milliseconds % 1000;
+            
+            return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}.${ms.toString().padStart(3, '0')}`;
+        }
+        
+        function getStatusClass(status) {
+            const code = parseInt(status);
+            if (code >= 200 && code < 300) return 'status-success';
+            if (code >= 400 && code < 500) return 'status-client-error';
+            if (code >= 500) return 'status-server-error';
+            if (code >= 100 && code < 200) return 'status-info';
+            return '';
+        }
+        
+        // Set up event listeners
+        document.getElementById('cancel-button').addEventListener('click', cancelExecution);
+        document.getElementById('request-file-link').addEventListener('click', viewRequestFile);
+        document.getElementById('response-file-link').addEventListener('click', viewResponseFile);
+        
+        // Initialize UI
+        console.log('Execution webview initialized');
+        
+        // Auto-validate on window open
+        setTimeout(() => {
+            console.log('Auto-running validation on window open...');
+            resetValidation();
+            document.getElementById('validation-section').style.display = 'block';
+            
+            // Send message to backend to start validation
+            vscode.postMessage({
+                type: 'validateExecution',
+                endpointId: document.body.dataset.endpointId || 'test-endpoint'
+            });
+        }, 100);
+    </script>
+</body>
+</html>

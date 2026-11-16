@@ -1,0 +1,37 @@
+{
+    "html.format.enable": false,
+    "html.validate.scripts": false,
+    "html.validate.styles": false,
+    "files.associations": {
+        "**/webviews/**/*.html": "plaintext"
+    },
+    "[html]": {
+        "editor.formatOnSave": false
+    },
+    "emmet.includeLanguages": {
+        "plaintext": "html"
+    },
+    // Test execution settings
+    "mochaExplorer.files": "out/test/integration/**/*.test.js",
+    "mochaExplorer.env": {
+        "NODE_ENV": "test"
+    },
+    "mochaExplorer.timeout": 60000,
+    "mochaExplorer.ui": "bdd",
+    "mochaExplorer.require": "source-map-support/register",
+    // TypeScript and debugging
+    "typescript.preferences.includePackageJsonAutoImports": "auto",
+    "debug.allowBreakpointsEverywhere": true,
+    "debug.showBreakpointsInOverviewRuler": true,
+    // Architecture validation
+    "editor.codeActionsOnSave": {
+        "source.fixAll.eslint": "explicit"
+    },
+    "eslint.validate": [
+        "typescript",
+        "javascript"
+    ],
+    "eslint.options": {
+        "overrideConfigFile": ".eslintrc.architecture.js"
+    }
+}
