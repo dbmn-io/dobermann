@@ -83,14 +83,17 @@ export function devStack(name: string, variable: string): BackendConfig {
     if (name !== 'local' && name !== 'test') {
         throw new Error(`${variable} must be local or test, not ${name}`);
     }
+    // The stack's project: this repo's supabase/ by default, or another checkout's (DBMN_STACK_WORKDIR),
+    // e.g. a backend that runs more functions than the public baseline
+    const workdir = path.resolve(process.env.DBMN_STACK_WORKDIR || repo);
     const [command, args] = name === 'test'
-        ? ['node', [path.join(repo, 'scripts', 'supabase-test-stack.mjs'), 'status']]
-        : ['supabase', ['status', '-o', 'json', '--workdir', repo]];
+        ? ['node', [path.join(workdir, 'scripts', 'supabase-test-stack.mjs'), 'status']]
+        : ['supabase', ['status', '-o', 'json', '--workdir', workdir]];
     let status: { API_URL: string; ANON_KEY: string };
     try {
         status = JSON.parse(execFileSync(command, args as string[], { encoding: 'utf8', stdio: 'pipe' }));
     } catch {
-        throw new Error(name === 'test' ? 'Test stack not running: npm run test-stack:start' : 'Local stack not running: npm run dev:local');
+        throw new Error(name === 'test' ? `Test stack not running (${workdir})` : `Local stack not running in ${workdir}: supabase start (or set DBMN_STACK_WORKDIR)`);
     }
     // The website (Puppy School, pricing): the local site from `npm run dev:local`, as the extension's local profile
     const siteUrl = (process.env.DBMN_SITE_URL || 'http://127.0.0.1:4000').replace(/\/+$/, '');
