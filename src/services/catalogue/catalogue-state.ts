@@ -56,7 +56,16 @@ const SEEDED_KEY = 'runCounters:seeded';
 const ENDPOINT_DEVICE_FIELDS = ['sequenceCounter', 'arraySequenceCounters'] as const;
 /** Where an environment's secrets are kept in the vault. */
 export const secretKey = (environmentId: string) => `catalogue-secrets:environment:${environmentId}`;
-const sameJson = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+/**
+ * The same JSON, whatever order the keys are in. #454: the account hands items back in Postgres
+ * jsonb key order, so comparing the text found every environment changed, and each switch
+ * re-saved them all (slow, and it raised every version until two laptops made "(copy)"s).
+ */
+const sortedKeys = (value: unknown): unknown => Array.isArray(value) ? value.map(sortedKeys)
+    : value && typeof value === 'object'
+        ? Object.fromEntries(Object.keys(value).sort().map(key => [key, sortedKeys((value as Record<string, unknown>)[key])]))
+        : value;
+const sameJson = (a: unknown, b: unknown) => JSON.stringify(sortedKeys(a)) === JSON.stringify(sortedKeys(b));
 
 /** The fields of an item that are this device's alone (never secrets: those are the vault's). */
 function deviceFields(kind: Kind, item: Record<string, unknown>): Record<string, unknown> | undefined {

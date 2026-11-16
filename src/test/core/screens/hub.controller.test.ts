@@ -578,6 +578,76 @@ describe('HubController: a header pick is drawn at once (2026-11-13)', () => {
         expect(after.environments.find(e => e.id === env.id)!.headerVariables[0].value, 'back to what is stored').to.equal('A');
     });
 
+    // James, on 0.4.0 (2026-11-16): changing environment is "annoyingly SLOW", about 5 s the
+    // first time, under 2 s after. The header waited for the save and a rebuild of the Hub.
+    it('switching environment: drawn at once, before it is saved', async () => {
+        const h = hub();
+        const first = await h.environments.addEnvironment({ name: 'Sample Dev', baseUrl: 'https://dev.samplewms.test' });
+        const second = await h.environments.addEnvironment({ name: 'Sample Prod', baseUrl: 'https://prod.samplewms.test', environmentType: 'production' });
+        await h.environments.setActiveEnvironment(first.id);
+        await h.controller.handle({ type: 'ready' });
+        h.posted.length = 0;
+        const save = gated(h.environments, 'setActiveEnvironment');
+        const done = h.controller.handle({ type: 'setActiveEnvironment', environmentId: second.id });
+        await tick();
+
+        expect(h.of('activeEnvironmentPicked'), 'drawn while the save is still going').to.deep.equal([{ type: 'activeEnvironmentPicked', environmentId: second.id }]);
+        expect(h.of('hubState'), 'the full state waits for the save').to.deep.equal([]);
+
+        save.open();
+        await done;
+        expect(h.of('hubState').pop()).to.include({ activeEnvironmentId: second.id });
+    });
+
+    it('switching environment: a failed save says so and puts the header back', async () => {
+        const h = hub();
+        const first = await h.environments.addEnvironment({ name: 'Sample Dev', baseUrl: 'https://dev.samplewms.test' });
+        const second = await h.environments.addEnvironment({ name: 'Sample Prod', baseUrl: 'https://prod.samplewms.test' });
+        await h.environments.setActiveEnvironment(first.id);
+        h.environments.setActiveEnvironment = async () => { throw new Error('Could not save'); };
+        await h.controller.handle({ type: 'setActiveEnvironment', environmentId: second.id });
+        expect(h.of('activeEnvironmentPicked')).to.have.length(1);
+        expect(h.of('setActiveEnvironmentError')).to.deep.equal([{ type: 'setActiveEnvironmentError', error: 'Could not save' }]);
+        expect(h.of('hubState').pop(), 'back to what is stored').to.include({ activeEnvironmentId: first.id });
+    });
+
+    // Measured 2026-11-16: reading the history takes ~70 ms for 3,000 runs and ~220 ms for 10,000
+    // (sql.js, this laptop), and a switch read it twice: once for its own refresh and once for
+    // the environments-changed event. A switch doesn't change the history.
+    it('switching environment doesn\'t read the history again; a run changing it, or a delete, does', async () => {
+        let reads = 0;
+        let fire: () => void = () => undefined;
+        const executions = {
+            metadata: {
+                getAllTransactions: async () => { reads++; return []; },
+                getExecution: async () => null,
+                deleteExecutions: async () => 1,
+                onExecutionChanged: { event: (listener: () => void) => { fire = listener; return { dispose: () => undefined }; } }
+            }
+        } as unknown as HubPorts['executions'];
+        const h = hub({ executions });
+        h.settings.set('ui.confirmTransactionDeletion', false);
+        const first = await h.environments.addEnvironment({ name: 'Sample Dev', baseUrl: 'https://dev.samplewms.test' });
+        const second = await h.environments.addEnvironment({ name: 'Sample Prod', baseUrl: 'https://prod.samplewms.test' });
+        await h.controller.handle({ type: 'ready' });
+        await tick();
+        const afterReady = reads;
+        expect(afterReady, 'the page gets the history when it opens').to.be.greaterThan(0);
+
+        await h.controller.handle({ type: 'setActiveEnvironment', environmentId: second.id });
+        await h.controller.handle({ type: 'setActiveEnvironment', environmentId: first.id });
+        await tick();
+        expect(reads, 'two switches').to.equal(afterReady);
+        expect(h.of('hubState').pop(), 'the page still gets its History').to.have.property('transactions');
+
+        fire();                                              // a run changed
+        await new Promise(r => setTimeout(r, 300));
+        expect(reads, 'a run changed the history').to.equal(afterReady + 1);
+
+        await h.controller.handle({ type: 'bulkDeleteTransactions', ids: ['tx-1'] });
+        expect(reads, 'deleted from History').to.equal(afterReady + 2);
+    });
+
     it('the Hub\'s state reads the environments once, however many there are', async () => {
         const h = hub();
         for (let i = 0; i < 30; i++) {

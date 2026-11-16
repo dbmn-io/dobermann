@@ -20,6 +20,8 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npm run lint:core
+      - run: npm run validate:architecture
+      - run: npm run lint:architecture
       - run: npm run spdx:check
       - run: npm run test:core
       - run: npm run test:unit

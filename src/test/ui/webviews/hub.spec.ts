@@ -99,6 +99,22 @@ test.describe('Hub', () => {
         expect(state.environments.find(e => e.isActive)?.id).toBe('env-test-001');
     });
 
+    // 2026-11-16, James on 0.4.0: changing environment was "annoyingly SLOW". The host now says
+    // which environment was picked before it saves; the header draws it from that alone.
+    test('a picked environment is drawn from the pick alone, before the full state arrives', async ({ dbmn, page }) => {
+        dbmn.seed.isSignedIn = true;
+        await dbmn.openHub();
+        await expect(page.locator('#hubEnvCurrent')).toContainText('Development');
+        await expect(page.locator('.hub-header')).not.toHaveClass(/is-production/);
+
+        await dbmn.push({ type: 'activeEnvironmentPicked', environmentId: 'env-prod-001' });
+        await expect(page.locator('#hubEnvCurrent')).toContainText('Production');
+        await expect(page.locator('.hub-header')).toHaveClass(/is-production/);
+
+        await dbmn.push({ type: 'activeEnvironmentPicked', environmentId: 'no-such-environment' });
+        await expect(page.locator('#hubEnvCurrent'), 'an unknown one changes nothing').toContainText('Production');
+    });
+
     test('each environment in the header list has its own Edit pencil, which does not switch to it', async ({ dbmn, page }) => {
         dbmn.seed.isSignedIn = true;
         await dbmn.openHub();

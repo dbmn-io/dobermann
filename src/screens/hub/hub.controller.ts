@@ -70,6 +70,13 @@ export class HubController {
     private broadcasts = 0;
     private subscribed = false;
     private transactionsTimer?: ReturnType<typeof setTimeout>;
+    /**
+     * History as last read, kept until it changes (a run, a delete, the page reloading). Reading
+     * it is the costly part of the Hub's state (measured 2026-11-16: ~70 ms for 3,000 runs,
+     * ~220 ms for 10,000), and most refreshes (an environment switch, an endpoint saved) don't
+     * change it.
+     */
+    private history?: Promise<unknown[]>;
     /** Section to show once the page is ready (deep links, e.g. startup recovery → History). */
     private pendingSection?: string;
     /** Standalone editors closed by a swap: their close events don't reach the page. */
@@ -86,6 +93,7 @@ export class HubController {
      * tabs from last time rather than reopening them by itself.
      */
     async onReady(): Promise<void> {
+        this.history = undefined;   // a page (re)opening reads the history afresh
         await this.broadcastState();
         this.subscribe();
         this.announceStartupRecovery();
@@ -328,7 +336,7 @@ export class HubController {
             systemStore.getAllSystems(),
             environmentStore.getAllEnvironments(),
             environmentStore.getActiveEnvironment(),
-            this.ports.executions?.metadata.getAllTransactions().catch(() => []) ?? Promise.resolve([])
+            this.readHistory()
         ]);
         // #424: each environment with the variables its header shows, their values and options
         // (from the environments just read: asking the store per environment read them all again each time)
@@ -359,6 +367,16 @@ export class HubController {
             // GitHub Issue #396: the header's "DBMN sign-in expired" warning
             dbmnSessionExpired: this.ports.auth.isSignedIn() && this.ports.auth.sessionExpired?.() === true
         };
+    }
+
+    private readHistory(): Promise<unknown[]> {
+        const metadata = this.ports.executions?.metadata;
+        if (!metadata) return Promise.resolve([]);
+        this.history ??= metadata.getAllTransactions().catch(() => {
+            this.history = undefined;   // not kept: the next refresh tries again
+            return [];
+        });
+        return this.history;
     }
 
     /**
@@ -408,6 +426,7 @@ export class HubController {
         // History and the header's "2 paused" waited for everything to stop. Found 2026-11-12.)
         // (No disposable; the listener just posts to a page that may be gone.)
         executions?.metadata.onExecutionChanged.event(() => {
+            this.history = undefined;
             if (this.transactionsTimer) return;
             this.transactionsTimer = setTimeout(() => {
                 this.transactionsTimer = undefined;
@@ -485,17 +504,23 @@ export class HubController {
         }
     }
 
+    /**
+     * The header shows the new environment the moment it is picked; the full state follows once
+     * it is saved. James, on 0.4.0 (2026-11-16): changing environment was "annoyingly SLOW",
+     * about 5 s the first time and under 2 s after, with nothing on screen until it was done.
+     */
     private async setActiveEnvironment(environmentId?: string): Promise<void> {
         if (!environmentId) return;
         const store = this.ports.environments;
         try {
             const env = await store.getEnvironment(environmentId);
             if (!env) return;
+            this.session.post({ type: 'activeEnvironmentPicked', environmentId: env.id });
             await store.setActiveEnvironment(env.id);
-            // The change event rebroadcasts too; this updates the selector at once
             await this.broadcastState();
         } catch (error) {
             this.session.post({ type: 'setActiveEnvironmentError', error: message(error) });
+            await this.broadcastState().catch(() => undefined);   // the header back to what is stored
         }
     }
 
@@ -751,6 +776,7 @@ export class HubController {
         try {
             // The storage count includes batch members; the user ticked ids.length rows
             await executions.metadata.deleteExecutions(ids);
+            this.history = undefined;
             let closed = 0;
             for (const id of ids) {
                 if (this.tabs.has(`console:${id}`)) {

@@ -1636,6 +1636,14 @@
                 }
                 break;
             }
+            case 'activeEnvironmentPicked':
+                // A switch drawn at once (name, header colour, its variables); the full state
+                // follows when it is saved (2026-11-16: "annoyingly SLOW")
+                if ((hubState.environments || []).some(e => e.id === message.environmentId)) {
+                    hubState.activeEnvironmentId = message.environmentId;
+                    renderEnvSelector();
+                }
+                break;
             case 'setActiveEnvironmentError':
                 // Switching environment or saving a header pick failed: say so (the state is put back)
                 if (window.DbmnToast) window.DbmnToast.show('error', message.error || 'That change wasn\'t saved.');

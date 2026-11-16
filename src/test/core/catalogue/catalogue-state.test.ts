@@ -5,6 +5,7 @@ import { CatalogueState } from '../../../services/catalogue/catalogue-state';
 import { KeyValueCatalogStore } from '../../../services/catalogue/key-value-catalog-store';
 import { MemoryKeyValueStore } from '../../../platform/memory/memory-key-value-store';
 import type { ISecretStore } from '../../../platform/interfaces/secret-store.interface';
+import { EnvironmentManager } from '../../../environmentManager';
 
 /**
  * #342/#362: the catalogue for both hosts. Shared items go to the catalogue in the safe form;
@@ -291,5 +292,70 @@ describe('Uploading a device\'s catalogue once (#342)', () => {
         await state.reload();
         expect(state.globalState.get<{ endpoints: unknown[] }>('apiEndpoints')!.endpoints).to.have.length(1);
         await saving;
+    });
+
+    // 2026-11-16: the Hub draws a switch before it is saved. A run started in that moment must
+    // already go to the new environment: the switch is in memory at once, only storing it waits.
+    it('a switch is the active environment at once, while it is still being stored', async () => {
+        const catalogue = new KeyValueCatalogStore(new MemoryKeyValueStore());
+        const { device, vault } = deviceFor();
+        const state = new CatalogueState(catalogue, device, vault);
+        await state.load();
+        const environments = new EnvironmentManager(state as never);
+        const dev = await environments.addEnvironment({ name: 'Sample Dev', baseUrl: 'https://dev.samplewms.test' });
+        const prod = await environments.addEnvironment({ name: 'Sample Prod', baseUrl: 'https://prod.samplewms.test', environmentType: 'production' });
+        await environments.setActiveEnvironment(prod.id);
+
+        // A slow account write ahead of the switch in the queue (a save over a slow connection)
+        let release!: () => void;
+        const slow = new Promise<void>(resolve => { release = resolve; });
+        const save = catalogue.endpoints.save.bind(catalogue.endpoints);
+        catalogue.endpoints.save = async (...args: Parameters<typeof save>) => { await slow; return save(...args); };
+        const endpointSave = state.globalState.update('apiEndpoints', { endpoints: [endpoint], folders: [], version: '1.1.0' });
+
+        const switching = environments.setActiveEnvironment(dev.id);
+        let stored = false;
+        void switching.then(() => { stored = true; });
+        await new Promise(resolve => setTimeout(resolve, 20));
+        expect(stored, 'still waiting to be stored').to.equal(false);
+        expect((await environments.getActiveEnvironment())?.id, 'a run now goes to the new environment').to.equal(dev.id);
+
+        release();
+        await Promise.all([endpointSave, switching]);
+        expect((await environments.getActiveEnvironment())?.id).to.equal(dev.id);
+    });
+
+    // #454 (2026-11-16): the account hands an item back with its keys in Postgres jsonb order, so
+    // comparing JSON text found every environment changed. A switch re-saved all of them, one
+    // round trip each (the 2-5 s switch), and raised every version: two laptops then each had
+    // "changed" every environment, and signing in kept 13 of them twice as "(copy)".
+    it('a save that changes nothing sends nothing, whatever order the account keeps the fields in', async () => {
+        const jsonbOrder = (value: unknown): unknown => Array.isArray(value) ? value.map(jsonbOrder)
+            : value && typeof value === 'object'
+                ? Object.fromEntries(Object.keys(value).sort((a, b) => a.length - b.length || (a < b ? -1 : 1))
+                    .map(key => [key, jsonbOrder((value as Record<string, unknown>)[key])]))
+                : value;
+        const catalogue = new KeyValueCatalogStore(new MemoryKeyValueStore());
+        const list = catalogue.environments.list.bind(catalogue.environments);
+        catalogue.environments.list = async () => (await list()).map(row => ({ ...row, item: jsonbOrder(row.item) as typeof row.item }));
+        const { vault } = deviceFor();
+        const ids: string[] = [];
+        const first = new EnvironmentManager(new CatalogueState(catalogue, new MemoryKeyValueStore(), vault) as never);
+        for (let i = 0; i < 5; i++) {
+            ids.push((await first.addEnvironment({ name: `Env ${i}`, baseUrl: `https://e${i}.samplewms.test`, variables: { org: 'A' },
+                headers: { Organization: { value: '{{org}}', enabled: true } } })).id);
+        }
+
+        const loaded = new CatalogueState(catalogue, new MemoryKeyValueStore(), vault);
+        await loaded.load();
+        const saved: string[] = [];
+        const save = catalogue.environments.save.bind(catalogue.environments);
+        catalogue.environments.save = async (...args: Parameters<typeof save>) => { saved.push(args[0].name ?? ''); return save(...args); };
+        const environments = new EnvironmentManager(loaded as never);
+        await environments.setActiveEnvironment(ids[2]);
+        expect(saved, 'a switch is this device\'s alone').to.deep.equal([]);
+
+        await environments.updateEnvironment(ids[3], { name: 'Env 3 renamed' });
+        expect(saved, 'only the one that changed').to.deep.equal(['Env 3 renamed']);
     });
 });
