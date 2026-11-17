@@ -23,6 +23,10 @@
     "typescript.preferences.includePackageJsonAutoImports": "auto",
     "debug.allowBreakpointsEverywhere": true,
     "debug.showBreakpointsInOverviewRuler": true,
+    // VS Code 1.145: the debugger's Network view turns on network tracking in the Extension
+    // Development Host's extension process, which aborts it (SIGABRT in
+    // node::inspector::Agent::ToggleNetworkTracking) and the dev host never starts.
+    "debug.javascript.enableNetworkView": false,
     // Architecture validation
     "editor.codeActionsOnSave": {
         "source.fixAll.eslint": "explicit"
