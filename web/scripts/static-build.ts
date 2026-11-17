@@ -178,7 +178,7 @@ export function staticBuildConfig(build: StaticBuild, recordFile: string): UserC
         base: '/',
         plugins: [finish],
         resolve: { alias: nodeShims() },
-        define: { __DBMN_BAKED_BACKEND__: JSON.stringify(build.baked) },
+        define: { __DBMN_BAKED_BACKEND__: JSON.stringify(build.baked), __DBMN_APP_VERSION__: JSON.stringify(packageVersion()) },
         build: {
             outDir: build.outDir,
             emptyOutDir: true,

@@ -19,7 +19,7 @@ import path from 'node:path';
 import { defineConfig, type Plugin } from 'vite';
 import { backendLabel, type BackendConfig, type DevStackBackend } from '../src/services/dbmn-backend/backend-config';
 import { securityHeaders } from './scripts/security-headers';
-import { BASE_HEAD, FILES, MIME, RELEASE_NOTES_URL, bootstrapTag, devStack, hubPage, moduleTag, nodeShims, releaseNotes, repo, webviews } from './scripts/shell-config';
+import { BASE_HEAD, FILES, MIME, RELEASE_NOTES_URL, bootstrapTag, devStack, hubPage, moduleTag, nodeShims, packageVersion, releaseNotes, repo, webviews } from './scripts/shell-config';
 
 /** The dev server's Hub: the backend hand-over (/backend.js) runs before the shell's bootstrap and entry. */
 function devHubPage(dbmnBackend: BackendConfig): string {
@@ -88,7 +88,7 @@ export default defineConfig({
     plugins: [dbmnScreens()],
     resolve: { alias: nodeShims() },
     // The dev server hands its page the backend at run time (/backend.js): nothing baked in
-    define: { __DBMN_BAKED_BACKEND__: 'null' },
+    define: { __DBMN_BAKED_BACKEND__: 'null', __DBMN_APP_VERSION__: JSON.stringify(packageVersion()) },
     // The built site (`npm run preview:test`, the e2e's built mode) under the policy users get.
     // DBMN_WEB_CSP=report: report what it would block, block nothing (while screens move off inline scripts)
     preview: { headers: securityHeaders({ reportOnly: process.env.DBMN_WEB_CSP === 'report' }) },

@@ -29,6 +29,7 @@ import { HubPreferencesService } from '../../../src/services/hub-preferences/hub
 import { RecentEndpointsService } from '../../../src/services/recent-endpoints/recent-endpoints.service';
 import { signInLinkProblem, supabase, takeSignInLink } from '../supabase';
 import { accountSection } from './account';
+import { webTelemetry } from './telemetry';
 import { screenHost } from './browser-host';
 import { accountSettings } from './account-settings';
 import { CatalogueState, conflictMessage } from '../../../src/services/catalogue/catalogue-state';
@@ -208,11 +209,15 @@ async function start(): Promise<void> {
     const snapshotKey = 'hubTabsSnapshot';
     let hub: HubController;
     const settings = await accountSettings(client, state);   // #281: the account's, this browser's for the rest
+    // 0.4.1: runs here count towards Weekly Usage, as VS Code's do
+    const telemetry = webTelemetry(client, settings, desktop ? 'desktop' : 'web');
+    window.addEventListener('pagehide', () => { void telemetry.flush(); });
     const execution = await startExecution({
         client,
         environments,
         endpoints,
         settings,
+        telemetry: () => telemetry,
         openConsole: (executionId, isBatch, focus) => hub.openConsoleTab(executionId, isBatch, focus),
         onHistoryChangedElsewhere: () => { void hub?.broadcastState(); },
         // #344: a run for DBMN for VS Code waits for it; say so (and when it's come)
@@ -274,7 +279,8 @@ async function start(): Promise<void> {
         confirmProduction: (environment, action) => confirmProductionExecution(environment as never, action, hubSession),
         workspaceRoot: async () => WORKSPACE_ROOT,
         links: () => execution.store,
-        toast: { error: toast.error }
+        toast: { error: toast.error },
+        telemetry: () => telemetry
     });
     const runEndpoint = (endpoint: APIEndpointConfig) => runs.runApiEndpointCommand(endpoint);
 

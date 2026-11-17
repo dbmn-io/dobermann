@@ -11,6 +11,7 @@ import * as vscode from 'vscode';
 import { IServiceContainer } from './service-container.interface';
 import { DbmnAuthService } from '../services/dbmn-auth/dbmn-auth.service';
 import { DbmnTelemetryService } from '../services/dbmn-auth/dbmn-telemetry.service';
+import { vscodeTelemetryOptions } from '../services/dbmn-auth/vscode-telemetry-options';
 
 /**
  * DBMN service tokens for dependency injection
@@ -39,6 +40,6 @@ export function registerDbmnServices(
 
     // Register telemetry service
     container.registerFactory(DbmnServiceTokens.DbmnTelemetry, () => {
-        return new DbmnTelemetryService(extensionContext);
+        return new DbmnTelemetryService(extensionContext, vscodeTelemetryOptions());
     });
 }

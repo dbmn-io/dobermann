@@ -15,15 +15,34 @@
  * (default on; signed out nothing is sent anyway), and VS Code's own telemetry setting turns it
  * off too. Off, nothing is recorded, nothing is sent and nothing is kept waiting.
  *
+ * EVERY HOST (0.4.1). No `vscode` import: the host hands in where unsent counts wait, the
+ * switch and what the rows say about the client (vscode-telemetry-options.ts for VS Code,
+ * web/src/shell/telemetry.ts for the web and desktop apps), so a run counts wherever it ran.
+ *
  * Following Architecture.md: service interface + DI pattern.
  */
 
-import * as vscode from 'vscode';
 import { DbmnBatchProgressDelta, DbmnTelemetryEntry, DbmnTelemetryStats } from '../../types/dbmn-auth';
 import { IDbmnTelemetry } from './dbmn-auth.interface';
 import { IDbmnAuthService } from './dbmn-auth.interface';
 import { dbmnStorageKeys, getBackend, reportedExtensionVersion } from '../dbmn-backend/backend-config';
-import { telemetryEventsPayload } from './telemetry-payload';
+import { telemetryEventsPayload, TelemetryClientInfo } from './telemetry-payload';
+import type { IKeyValueStore } from '../../platform/interfaces/key-value-store.interface';
+
+/** Where unsent counts wait between sessions: VS Code's globalState, or the browser's storage. */
+export interface TelemetryHostContext {
+    globalState: Pick<IKeyValueStore, 'get' | 'update'>;
+}
+
+export interface TelemetryOptions {
+    /** #419: the switch. Without one, telemetry is on (signed out nothing is sent anyway). */
+    enabled?: () => boolean;
+    /** What each row says about the client: the app's version, the host, the platform. */
+    client?: () => TelemetryClientInfo;
+}
+
+/** The only part of the sign-in telemetry needs: a token that is still good. */
+export type TelemetrySessionSource = Pick<IDbmnAuthService, 'ensureValidSession'>;
 
 /** Backstop flush interval: 5 minutes */
 export const FLUSH_INTERVAL_MS = 5 * 60 * 1000;
@@ -36,15 +55,14 @@ export class DbmnTelemetryService implements IDbmnTelemetry {
     private buffer: Map<string, DbmnTelemetryEntry> = new Map();
     private flushTimer: ReturnType<typeof setInterval> | null = null;
     private debounceTimer: ReturnType<typeof setTimeout> | null = null;
-    private authService: IDbmnAuthService | null = null;
+    private authService: TelemetrySessionSource | null = null;
     /** Sent to the server, but not yet reflected in the stats the Account view last fetched. */
     private flushedSinceSync: Map<string, DbmnTelemetryEntry> = new Map();
     private listeners: Set<() => void> = new Set();
 
     constructor(
-        private context: vscode.ExtensionContext,
-        /** #419: the switch; by default `dbmn.telemetry.enabled` and VS Code's own telemetry setting. */
-        private readonly options: { enabled?: () => boolean } = {}
+        private context: TelemetryHostContext,
+        private readonly options: TelemetryOptions = {}
     ) {
         // 0.4.0: per-endpoint usage is no longer kept; drop whatever an older version left waiting
         Promise.resolve(this.context.globalState.update(dbmnStorageKeys().telemetryEndpointPending, undefined))
@@ -54,15 +72,10 @@ export class DbmnTelemetryService implements IDbmnTelemetry {
         this.startFlushTimer();
     }
 
-    /**
-     * #419: whether anything is recorded or sent: DBMN's own switch, and VS Code's telemetry
-     * setting (`telemetry.telemetryLevel` off means off here too).
-     */
+    /** #419: whether anything is recorded or sent (the host's switch; VS Code's includes its own setting). */
     isEnabled(): boolean {
         try {
-            if (this.options.enabled) return this.options.enabled();
-            if (vscode.env?.isTelemetryEnabled === false) return false;
-            return vscode.workspace.getConfiguration('dbmn.telemetry').get<boolean>('enabled', true) !== false;
+            return this.options.enabled ? this.options.enabled() : true;
         } catch {
             return true;
         }
@@ -78,7 +91,7 @@ export class DbmnTelemetryService implements IDbmnTelemetry {
      * Set the auth service reference (avoids circular DI dependency).
      * Anything restored from a previous session can now be sent.
      */
-    setAuthService(authService: IDbmnAuthService): void {
+    setAuthService(authService: TelemetrySessionSource): void {
         this.authService = authService;
         if (this.buffer.size > 0) {
             this.scheduleFlush();
@@ -174,16 +187,16 @@ export class DbmnTelemetryService implements IDbmnTelemetry {
         this.buffer.clear();
         this.persistPending();
 
-        // Get extension metadata
-        // A dev build tags its rows ("1.2.3-dev") so development noise can be filtered out of
-        // production stats. See backend-config.ts.
-        const extensionVersion = reportedExtensionVersion(
-            vscode.extensions.getExtension('dbmn.dobermann')?.packageJSON?.version || 'unknown');
-        const vscodeVersion = vscode.version;
-        const osPlatform = process.platform;
+        // What the rows say about the client. A dev build tags its version ("1.2.3-dev") so
+        // development noise can be filtered out of production stats (backend-config.ts).
+        const client = this.options.client?.() ?? {
+            extensionVersion: reportedExtensionVersion('unknown'),
+            vscodeVersion: 'unknown',
+            osPlatform: typeof process !== 'undefined' && process.platform ? process.platform : 'unknown'
+        };
 
         // The rows, exactly as TELEMETRY.md lists them (no user_id: the RPC uses auth.uid())
-        const payload = telemetryEventsPayload(entries, { extensionVersion, vscodeVersion, osPlatform });
+        const payload = telemetryEventsPayload(entries, client);
 
         try {
             const response = await fetch(`${getBackend().apiUrl}/rest/v1/rpc/upsert_telemetry_events`, {

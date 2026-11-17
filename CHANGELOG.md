@@ -10,6 +10,7 @@ All notable changes to Dobermann are documented here.
 - **The last of the licence code is gone** — The Account page's name and Weekly Usage come from a new account summary instead of the old licence check, and the public backend no longer has licence or trial tables. Older versions keep working.
 
 ### Fixed
+- **Runs in the web and desktop apps count towards Weekly Usage** — Until now only VS Code counted them. The usage switch on the Account page covers them too.
 - **Weekly Usage in the web app no longer spins for ever** — The Account page's usage numbers stopped loading once they arrived.
 - **Switching environment is instant** — The header changes as you pick, and switching no longer re-saves every environment to your DBMN account, which took seconds with many environments. (GitHub Issue #454)
 - **No more "(copy)" environments after signing in** — With endpoints saved to your account, signing in on a second computer could keep every environment twice, as "<name> (copy)". (GitHub Issue #454)

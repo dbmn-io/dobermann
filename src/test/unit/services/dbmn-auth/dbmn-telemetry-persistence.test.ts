@@ -5,6 +5,7 @@ import { describe, it, beforeEach, afterEach } from 'mocha';
 import * as sinon from 'sinon';
 import { DbmnTelemetryService, FLUSH_DEBOUNCE_MS, FLUSH_INTERVAL_MS } from '../../../../services/dbmn-auth/dbmn-telemetry.service';
 import { dbmnStorageKeys } from '../../../../services/dbmn-backend/backend-config';
+import { vscodeTelemetryOptions } from '../../../../services/dbmn-auth/vscode-telemetry-options';
 import { DbmnTelemetryEntry } from '../../../../types/dbmn-auth';
 
 /**
@@ -74,7 +75,7 @@ describe('DbmnTelemetryService persistence and prompt flush', () => {
         expect(sent).to.have.length(1);
         expect(sent[0].batch_runs).to.equal(1);
         expect(sent[0].batch_records).to.equal(200);
-        expect(pending()).to.equal(undefined);
+        expect(store.get(dbmnStorageKeys().telemetryPending)).to.equal(undefined);
         service.dispose();
     });
 
@@ -96,7 +97,7 @@ describe('DbmnTelemetryService persistence and prompt flush', () => {
         expect(sent[0].batch_runs).to.equal(1);
         expect(sent[0].batch_records).to.equal(12);
         expect(sent[0].execution_time_ms).to.equal(1500);
-        expect(pending()).to.equal(undefined);
+        expect(store.get(dbmnStorageKeys().telemetryPending)).to.equal(undefined);
         first.dispose();
         second.dispose();
     });
@@ -227,7 +228,7 @@ describe('DbmnTelemetryService persistence and prompt flush', () => {
             service.recordApiCall();
             await clock.tickAsync(FLUSH_DEBOUNCE_MS);
             expect(fetchStub.called).to.equal(false);
-            expect(pending()).to.have.length(1);
+            expect(store.get(dbmnStorageKeys().telemetryPending)).to.have.length(1);
             service.dispose();
         });
     }
@@ -294,7 +295,7 @@ describe('#419 the telemetry switch', () => {
         const before = vscodeApi.env;
         vscodeApi.env = { isTelemetryEnabled: false };
         try {
-            const service = new DbmnTelemetryService(context);
+            const service = new DbmnTelemetryService(context, vscodeTelemetryOptions());
             service.setAuthService(authService);
             service.recordApiCall();
             await clock.tickAsync(FLUSH_INTERVAL_MS + FLUSH_DEBOUNCE_MS);
@@ -312,5 +313,39 @@ describe('#419 the telemetry switch', () => {
         service.recordApiCall();
         await clock.tickAsync(FLUSH_DEBOUNCE_MS + 1);
         expect(fetchStub.called).to.equal(true);
+    });
+
+    // 0.4.1: the same counter runs in the web and desktop apps, so a run counts wherever it ran
+    it('every host: the rows say which app sent them', async () => {
+        const service = new DbmnTelemetryService(context, {
+            enabled: () => true,
+            client: () => ({ extensionVersion: '0.4.1', vscodeVersion: 'web', osPlatform: 'win32' })
+        });
+        service.setAuthService(authService);
+        service.recordApiCall();
+        await clock.tickAsync(FLUSH_DEBOUNCE_MS + 1);
+        expect(JSON.parse(fetchStub.getCall(0).args[1].body).p_events[0]).to.include({ api_calls: 1, extension_version: '0.4.1', vscode_version: 'web', os_platform: 'win32' });
+        service.dispose();
+    });
+
+    it('every host: the host\'s switch off records and sends nothing', async () => {
+        const service = new DbmnTelemetryService(context, { enabled: () => false });
+        service.setAuthService(authService);
+        service.recordApiCall();
+        await clock.tickAsync(FLUSH_INTERVAL_MS + FLUSH_DEBOUNCE_MS);
+        expect(fetchStub.called).to.equal(false);
+        expect(store.get(dbmnStorageKeys().telemetryPending)).to.equal(undefined);
+        service.dispose();
+    });
+
+    it('every host: signed out, the counts wait for a sign-in instead of going', async () => {
+        const signedOut = { ensureValidSession: sinon.stub().resolves({ status: 'auth_error', httpStatus: 401 }) };
+        const service = new DbmnTelemetryService(context);
+        service.setAuthService(signedOut);
+        service.recordApiCall();
+        await clock.tickAsync(FLUSH_DEBOUNCE_MS + 1);
+        expect(fetchStub.called).to.equal(false);
+        expect(store.get(dbmnStorageKeys().telemetryPending)).to.have.length(1);
+        service.dispose();
     });
 });

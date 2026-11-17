@@ -38,6 +38,7 @@ import { performFlexionTechMigration, FlexionTechMigrationData } from './service
 import { DbmnAuthService } from './services/dbmn-auth/dbmn-auth.service';
 import { registerDbmnServices, DbmnServiceTokens } from './container/dbmn-services-registry';
 import { DbmnTelemetryService } from './services/dbmn-auth/dbmn-telemetry.service';
+import { vscodeTelemetryOptions } from './services/dbmn-auth/vscode-telemetry-options';
 import { BadgeService, earnedMessage } from './services/badges/badge.service';
 import { fetchMyBadges } from './services/badges/badge-api';
 import { resolveBackend, initBackend, getBackend, backendLabel, isBackendReachable, backendUnreachableMessage } from './services/dbmn-backend/backend-config';
@@ -251,7 +252,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
         // Wire telemetry service (GitHub Issue #211)
         // On while `dbmn.telemetry.enabled` and VS Code's own telemetry setting are both on
-        const telemetryService = new DbmnTelemetryService(context);
+        const telemetryService = new DbmnTelemetryService(context, vscodeTelemetryOptions());
         telemetryService.setAuthService(dbmnAuthService);
         (global as Record<string, unknown>).dbmnTelemetryService = telemetryService;
         context.subscriptions.push({ dispose: () => telemetryService.dispose() });

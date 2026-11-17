@@ -33,6 +33,7 @@ import { FetchRequestExecutor } from '../../../src/services/execution/fetch-requ
 import { IndividualExecutionEngine } from '../../../src/services/execution/individual-execution-engine.service';
 import type { IRequestExecutor, RequestEnvironment, RequestEnvironmentLookup } from '../../../src/services/execution/request-executor.interface';
 import type { BatchExecutionEngineDependencies } from '../../../src/services/execution/batch-execution-engine.interface';
+import type { IDbmnTelemetry } from '../../../src/services/dbmn-auth/dbmn-auth.interface';
 import type { IExtensionDiagnosticLogger } from '../../../src/services/logging/extension-diagnostic-logger.interface';
 import { DatabaseAdapter } from '../../../src/services/storage/database-adapter';
 import { SqlJsEngineLoadError, SqlJsExecutionStorage } from '../../../src/services/storage/sqljs-execution-storage.service';
@@ -131,6 +132,8 @@ export interface StartExecutionDeps {
     ensureAuthenticated?(environment: EnvironmentConfig): Promise<boolean>;
     /** #359: after a 401, new credentials for the environment (its id, or a single run's name for it) without asking (true: try again). */
     refreshCredentials?(environmentId: string): Promise<boolean>;
+    /** 0.4.1: Weekly Usage counts batches run here too (telemetry.ts). */
+    telemetry?(): IDbmnTelemetry | undefined;
 }
 
 /**
@@ -273,7 +276,8 @@ export async function startExecution(deps: StartExecutionDeps): Promise<WebExecu
         progressSink,
         configuration: deps.settings,
         readiness,
-        refreshCredentials: deps.refreshCredentials
+        refreshCredentials: deps.refreshCredentials,
+        dbmnTelemetry: deps.telemetry
     }, logger);
 
     const individualEngine = new IndividualExecutionEngine({ executionMetadataService: metadata, executionService, progressSink, refreshCredentials: deps.refreshCredentials }, logger);
