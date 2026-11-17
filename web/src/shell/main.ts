@@ -27,7 +27,7 @@ import { confirmProductionExecution } from '../../../src/services/ui/production-
 import type { APIEndpointConfig } from '../../../src/apiConfigManager';
 import { HubPreferencesService } from '../../../src/services/hub-preferences/hub-preferences.service';
 import { RecentEndpointsService } from '../../../src/services/recent-endpoints/recent-endpoints.service';
-import { signInLinkProblem, supabase, takeSignInLink } from '../supabase';
+import { signInLinkProblem, supabase, takeHandedOverSignIn, takeSignInLink } from '../supabase';
 import { accountSection } from './account';
 import { webTelemetry } from './telemetry';
 import { screenHost } from './browser-host';
@@ -73,6 +73,8 @@ startTheme();
 
 async function start(): Promise<void> {
     const client = supabase();
+    // A sign-in handed over by dbmn.io after a VS Code sign-in, out of the address bar either way
+    await takeHandedOverSignIn(client);
     const session = (await client.auth.getSession()).data.session;
     // #376: an email link's code is spent (or refused) by now; out of the address bar either way
     const link = takeSignInLink();

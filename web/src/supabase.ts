@@ -55,3 +55,26 @@ export function takeSignInLink(): { fromLink: boolean; failed: boolean } {
     }
     return { fromLink, failed };
 }
+
+/** Where dbmn.io puts a sign-in it hands over (account/shared.js). Not a name supabase-js reads, so the client leaves it alone. */
+export const HANDOVER_KEY = 'dbmn_link';
+
+/**
+ * A sign-in handed over by dbmn.io. After a VS Code sign-in, the site's "Open DBMN in your
+ * browser" link carries a one-time code for a session made for this app alone (the
+ * handoff-session function), so one sign-in covers VS Code, the site and this app, and none can
+ * sign the others out. The code is spent here, at once, so the copy the browser's history keeps
+ * is worthless (#376: no address holds a session), and it leaves the address bar either way. A
+ * page that is already signed in keeps its own sign-in.
+ * @returns true when this page is now signed in with the handed-over sign-in
+ */
+export async function takeHandedOverSignIn(client: SupabaseClient): Promise<boolean> {
+    const url = new URL(location.href);
+    const tokenHash = new URLSearchParams(url.hash.slice(1)).get(HANDOVER_KEY);
+    if (tokenHash === null) return false;
+    history.replaceState(history.state, '', url.pathname + url.search);
+    if (!tokenHash || (await client.auth.getSession()).data.session) return false;
+    const { error } = await client.auth.verifyOtp({ token_hash: tokenHash, type: 'magiclink' });
+    if (error) console.warn('[dbmn] The sign-in from dbmn.io was not accepted:', error.message);
+    return !error;
+}

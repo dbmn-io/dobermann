@@ -6,6 +6,9 @@ All notable changes to Dobermann are documented here.
 
 ## [Unreleased]
 
+### Added
+- **Signing in to VS Code also signs in the web app, if you want it** — After a VS Code sign-in, the browser tab says "You're signed in to VS Code. You can close this tab." Its "Open DBMN in your browser" link opens the web app already signed in, with a sign-in of its own, so signing out of one never signs you out of the other.
+
 ### Changed
 - **The last of the licence code is gone** — The Account page's name and Weekly Usage come from a new account summary instead of the old licence check, and the public backend no longer has licence or trial tables. Older versions keep working.
 
