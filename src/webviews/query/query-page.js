@@ -1569,7 +1569,8 @@
             ui.sort = m.sort || null;
             ui.totals = !!m.totals;
             $('querySearch').value = ui.search;
-            window.SearchMatcher.renderHighlight($('querySearchMirror'), ui.search);
+            // (a column name that Results does not have shows in red, as in every table's search)
+            window.SearchMatcher.renderHighlight($('querySearchMirror'), ui.search, searchHeadings());
             renderReads();
             $('queryTotals').checked = ui.totals;
             if (m.ownSql || m.sqlError) openSql(true);
@@ -1653,6 +1654,7 @@
     }
     /** The search in words, under Results' tools: "Reading this as: poDate (date) after 12 Nov 2026". */
     function renderReads() {
+        if ($('querySearch').value) window.SearchMatcher.renderHighlight($('querySearchMirror'), $('querySearch').value, searchHeadings());
         const says = ui.step === 4 && window.SearchMatcher.describeSearch ? window.SearchMatcher.describeSearch($('querySearch').value, searchHeadings(), searchType) : '';
         $('queryReads').textContent = says;
         $('queryReads').classList.toggle('hidden', !says);
@@ -1661,7 +1663,7 @@
     window.SearchMatcher.attachColumnSuggest({ input: $('querySearch'), headings: searchHeadings, types: searchType });
     $('querySearch').addEventListener('input', () => {
         renderReads();
-        window.SearchMatcher.renderHighlight($('querySearchMirror'), $('querySearch').value);
+        window.SearchMatcher.renderHighlight($('querySearchMirror'), $('querySearch').value, searchHeadings());
         clearTimeout(searchTimer);
         searchTimer = setTimeout(() => { ui.search = $('querySearch').value; loadRows(); }, 200);
     });
