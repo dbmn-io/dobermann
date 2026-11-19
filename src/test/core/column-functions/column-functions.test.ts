@@ -10,13 +10,14 @@ import * as assert from 'assert';
 import initSqlJs from 'sql.js';
 import type { Database, SqlJsStatic } from 'sql.js';
 import { applyColumnFns, columnFnSql, ColumnFn } from '../../../services/column-functions/column-functions';
+import { toSql, valueSql } from '../../../services/query/query-engine';
 import { SQL_WASM_PATH } from '../fixtures/temp-storage';
 
 /** Values from results and files: text of every shape, numbers, yes/no, blanks. */
 const VALUES: unknown[] = [
     'WOOF-033', '  WOOF-033  ', '\tpadded\t', '0WOOF-033', '000123', '0', '', 'each', 'Kibble 10kg',
     'café', 'ÉCLAIR', 'naïve 😀 dog', '12abc', ' 42 ', '1.50', '2.0', '1e3', '-0.5', '.5', 'abc',
-    54, 0, -7, 1.5, 2.25, 0.1, 1e21, 123456789012, true, false, null
+    '123456789012', '1234567890123.0', 54, 0, -7, 1.5, 2.25, 0.1, 1e21, 123456789012, 1234567890123, 98765432109876, -2147483649, true, false, null
 ];
 
 const FNS: ColumnFn[][] = [
@@ -37,12 +38,11 @@ describe('Functions on a column', () => {
     });
     after(() => db.close());
 
-    /** What SQLite makes of a value (bound with the type SQLite would hold it as). */
+    /** What SQLite makes of a value held as Query's tables hold it (toSql, then valueSql). */
     function sqlite(value: unknown, fns: ColumnFn[]): unknown {
-        const bound = typeof value === 'boolean' ? (value ? 1 : 0) : value === undefined ? null : value;
-        const stmt = db.prepare(`SELECT ${columnFnSql('?', fns)}`);
+        const stmt = db.prepare(`SELECT ${columnFnSql(`(${valueSql('?1')})`, fns)}`);
         try {
-            stmt.bind([bound as number | string | null]);
+            stmt.bind([toSql(value)]);
             stmt.step();
             return stmt.get()[0];
         } finally {
@@ -62,6 +62,12 @@ describe('Functions on a column', () => {
             }
         }
         assert.deepStrictEqual(wrong, []);
+    });
+
+    it('a barcode held as a number becomes the same text as the barcode written as text', () => {
+        assert.strictEqual(applyColumnFns(1234567890123, [{ fn: 'text' }]), '1234567890123');
+        assert.strictEqual(sqlite(1234567890123, [{ fn: 'text' }]), '1234567890123');
+        assert.strictEqual(applyColumnFns(true, [{ fn: 'text' }]), 'true');
     });
 
     it('a blank stays blank, and no functions leave a value as it is', () => {

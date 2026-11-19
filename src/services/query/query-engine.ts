@@ -19,7 +19,11 @@ import type { QueryJoinStats, QueryRelationship, QueryRows, QueryValue, QuerySpe
 
 export type QueryRowData = Record<string, unknown>;
 
-function toSql(value: unknown): SqlValue {
+/**
+ * A value as Query's tables hold it: numbers as numbers, text as text, yes/no as the text "true"
+ * or "false", blank as NULL, a list or object as its JSON. column-functions.ts reads values the same way.
+ */
+export function toSql(value: unknown): SqlValue {
     if (value === null || value === undefined) return null;
     if (typeof value === 'number') return Number.isFinite(value) ? value : null;
     if (typeof value === 'string') return value;
@@ -29,6 +33,16 @@ function toSql(value: unknown): SqlValue {
 }
 
 const INSERT_CHUNK = 5000;
+
+/**
+ * How a value goes into a table, around its parameter (`?1`). sql.js stores a JavaScript number
+ * that does not fit 32 bits as a decimal (REAL), so a 13-digit barcode would read back as
+ * "1234567890123.0" and never meet the same barcode written as text. A decimal that is a whole
+ * number SQLite can hold exactly is stored as the whole number it is.
+ */
+export function valueSql(param: string): string {
+    return `CASE WHEN typeof(${param}) = 'real' AND ${param} = CAST(${param} AS INTEGER) THEN CAST(${param} AS INTEGER) ELSE ${param} END`;
+}
 
 export class QuerySession {
     private readonly db: Database;
@@ -50,7 +64,7 @@ export class QuerySession {
         if (!view.columns.length) throw new Error(`Query: "${view.name}" has no columns`);
         this.db.run(`DROP TABLE IF EXISTS ${quoteName(table)}`);
         this.db.run(`CREATE TABLE ${quoteName(table)} (${view.columns.map(quoteName).join(', ')})`);
-        const insert = this.db.prepare(`INSERT INTO ${quoteName(table)} VALUES (${view.columns.map(() => '?').join(', ')})`);
+        const insert = this.db.prepare(`INSERT INTO ${quoteName(table)} VALUES (${view.columns.map((_, i) => valueSql(`?${i + 1}`)).join(', ')})`);
         try {
             for (let start = 0; start < rows.length; start += INSERT_CHUNK) {
                 this.db.run('BEGIN');

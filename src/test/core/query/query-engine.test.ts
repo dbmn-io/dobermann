@@ -65,6 +65,22 @@ describe('Query', () => {
         return session;
     }
 
+    describe('long numbers', () => {
+        it('a whole number past 32 bits (a barcode) is a whole number: As text meets the same barcode written as text', async () => {
+            const spec: QuerySpec = {
+                views: [{ id: 'a', name: 'stock', columns: ['gtin'] }, { id: 'b', name: 'sheet', columns: ['gtin', 'qty'] }],
+                joins: [{ view: 'b', kind: 'inner', on: [{ left: { parts: [{ view: 'a', column: 'gtin', fns: [{ fn: 'text' }] }] }, right: col('b', 'gtin') }] }],
+                select: [{ view: 'a', column: 'gtin' }, { view: 'b', column: 'qty' }]
+            };
+            const session = await open(spec, { a: [{ gtin: 1234567890123 }, { gtin: 54 }], b: [{ gtin: '1234567890123', qty: '7' }, { gtin: '54', qty: '1' }] });
+            assert.deepStrictEqual(session.rows().rows, [[1234567890123, '7'], [54, '1']]);
+            assert.deepStrictEqual(session.run('SELECT typeof(gtin), CAST(gtin AS TEXT) FROM stock').rows, [['integer', '1234567890123'], ['integer', '54']]);
+            // A number with a fraction stays one
+            const frac = await open({ views: [{ id: 'a', name: 'p', columns: ['v'] }], joins: [], select: [{ view: 'a', column: 'v' }] }, { a: [{ v: 1.5 }, { v: 1e21 }] });
+            assert.deepStrictEqual(frac.run('SELECT typeof(v) FROM p').rows, [['real'], ['real']]);
+        });
+    });
+
     describe('a sample of its rows', () => {
         it('spreads up to the number asked for from the first row to the last, its own columns only', async () => {
             const spec: QuerySpec = { views: [{ id: 'a', name: 'a', columns: ['n'] }], joins: [], select: [{ view: 'a', column: 'n' }] };

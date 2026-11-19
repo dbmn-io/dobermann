@@ -83,30 +83,31 @@ export function columnFnSql(sql: string, fns: ColumnFn[] | undefined): string {
     return out;
 }
 
-/** What a value is, as SQLite holds it: a number, text, or blank. A yes/no is 1 or 0. */
+/** What a value is, as Query's tables hold it: a number, text, or blank. */
 export type ColumnValue = string | number | null;
 
-/** A value from a result or a file, as SQLite would hold it. */
+/**
+ * A value from a result or a file, as Query's tables hold it (query-engine.ts toSql): yes/no is
+ * the text "true" or "false", a list or object its JSON.
+ */
 export function asColumnValue(value: unknown): ColumnValue {
     if (value === null || value === undefined) return null;
     if (typeof value === 'number') return Number.isFinite(value) ? value : null;
-    if (typeof value === 'boolean') return value ? 1 : 0;
+    if (typeof value === 'boolean') return value ? 'true' : 'false';
     if (typeof value === 'string') return value;
+    if (typeof value === 'bigint') return value.toString();
     return JSON.stringify(value);
 }
 
 /**
- * A number as SQLite writes it as text. A value is stored as sql.js stores a JavaScript number: a
- * whole number that fits 32 bits as a whole number ("54"), anything else as a real, written to 15
- * significant digits with at least one decimal ("1.5", "123456789012.0", "1.0e+21").
+ * A number as SQLite writes it as text. A whole number is held as one (query-engine.ts valueSql),
+ * so it is written plainly: a 13-digit barcode is "1234567890123". Anything else is a decimal,
+ * written to 15 significant digits with at least one decimal place ("1.5", "1.0e+21").
  */
 function numberText(n: number): string {
-    if (n === (n | 0)) return String(n);
+    if (Number.isInteger(n) && Math.abs(n) < 2 ** 63) return String(n);
     const exp = n === 0 ? 0 : Math.floor(Math.log10(Math.abs(n)));
-    const tidy = (digits: string): string => {
-        const t = digits.includes('.') ? digits.replace(/0+$/, '').replace(/\.$/, '.0') : `${digits}.0`;
-        return t;
-    };
+    const tidy = (digits: string): string => (digits.includes('.') ? digits.replace(/0+$/, '').replace(/\.$/, '.0') : `${digits}.0`);
     if (exp < -4 || exp >= 15) {
         const [mantissa, power] = n.toExponential(14).split('e');
         const p = Number(power);
