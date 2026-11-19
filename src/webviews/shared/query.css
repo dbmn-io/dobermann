@@ -111,16 +111,13 @@
 /* Results: the Console's headings (sort on hover, × to take a column out), only the rows in view
    drawn, each column held at the width its first page needed, and a column dragged by its heading
    (column-drag.css) */
-.query-results.is-sized { table-layout: fixed; }
-.query-results th.compare-sub { text-align: left; cursor: default; overflow: hidden; white-space: nowrap; }
-/* The heading's controls are every table's (column-head.css) */
-.query-results th .column-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.query-results th .header-actions { padding-right: 6px; }
-.query-results #queryBody tr { height: 22px; }
-.query-results .query-spacer td { padding: 0; border: 0; }
+/* Results: the design system's table, filling the step (its rows scroll inside it) */
+#queryTable { flex: 1; min-height: 0; }
+#queryTable .dbmn-table-scroll { flex: 1; min-height: 0; max-height: none; margin: 0; }
+/* (a view's colour class centres its headings in Compare: Results' read from the left) */
+.query-results th.compare-sub { text-align: left; }
 .query-results td.col-lift { --col-lift-bg: color-mix(in srgb, var(--compare-c, transparent) 14%, var(--vscode-editor-background)); }
 .query-results th.col-lift { --col-lift-bg: color-mix(in srgb, var(--compare-c, transparent) 40%, var(--vscode-editor-background)); }
-.query-results tfoot td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* Columns: each view's under its slot, a value of each under its name */
 .query-cols { display: grid; gap: 10px; align-content: start; }

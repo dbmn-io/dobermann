@@ -1385,335 +1385,133 @@
 
     /* ---------- Results ---------- */
 
-    /* Only the rows in view are drawn (the Console's windowing, virtual-window.js), from rows
-     * fetched a page at a time and kept by page. The spacers above and below stand in for the
-     * rest, so the scroll bar is the whole report's from the first page. */
-    const ROW_H = 22;
+    /* The design system's table (shared/dbmn-table.js) over rows that stay with the host: it asks
+     * for the pages in view, says what was sorted, moved, removed or resized, and this page passes
+     * each on. The search is this page's own box (Results' tools), so the host is asked with what
+     * it holds. */
+    const table = $('queryTable');
     const grid = {
-        pages: new Map(),   // rows fetched, by page number
-        asked: new Set(),   // pages on their way
-        fresh: false,       // a new search, sort or query: the table is swapped when its first page arrives
-        keep: false,        // ...and stays scrolled where it is (a column was taken out)
-        sizedFor: '',       // the columns the widths were measured for: a sort or a search keeps them
-        rowH: 0,
-        rendered: { start: -1, end: -1 },
-        lastTop: 0,
-        frame: 0
+        key: '',            // the columns the table was last given
+        waiting: new Map(), // pages asked for and not yet in, by their number
+        asked: 0,
+        sorting: false
     };
 
-    /** Results from the top: after a search, a sort, or a change to the query. What is on screen stays until the new rows arrive. */
-    function loadRows() {
-        if (!ui.state) return;
-        ui.seq++;
-        grid.pages.clear();
-        grid.asked.clear();
-        grid.fresh = true;
-        if (!$('queryHead').firstChild) drawHead();
-        ask(0);
-    }
-    function ask(page) {
-        if (grid.asked.has(page) || grid.pages.has(page)) return;
-        grid.asked.add(page);
-        post({ type: 'query.rows', seq: ui.seq, offset: page * PAGE, limit: PAGE, search: ui.search, sort: ui.sort, totals: ui.totals });
-    }
+    function colId(c) { return `${c.view}:${c.column}`; }
+    function columnsKey() { return resultCols().map(c => `${colId(c)}#${c.type || ''}`).join('\u0001') + (ui.state && ui.state.ownSql ? '\u0002own' : ''); }
 
-    function drawHead() {
+    /** The table's columns: each in its view's colour, the same name in two views saying whose it is. */
+    function tableColumns() {
         const columns = resultCols();
         const names = columns.map(c => c.column);
-        const own = !!ui.state.ownSql;
-        const tr = el('tr');
-        columns.forEach(c => {
+        return columns.map(c => {
             const v = view(c.view);
             const name = v && v.name;
-            // The same name in two views: each says whose it is
             const text = names.indexOf(c.column) !== names.lastIndexOf(c.column) && v ? (name ? `${c.column} (${name})` : `${v.table}.${c.column}`) : c.column;
-            const th = el('th', `compare-sub sortable-header ${colour(c.view)}`);
-            const content = el('div', 'flex align-center column-header-content');
-            const actions = el('span', 'header-actions');
-            // Each place its own job (column-head.js): the name drags, the icon sorts, x takes the column out, the right edge resizes
-            actions.appendChild(window.ColumnHead.sortButton({ label: text }));
-            if (!own && columns.length > 1) actions.appendChild(window.ColumnHead.hideButton({ label: text, title: 'Remove this column (Columns brings it back)' }));
-            const label = el('span', 'column-name', text);
-            const movable = !own && columns.length > 1;
-            label.classList.toggle('is-movable', movable);
-            label.title = (movable ? 'Hold and drag to move this column. ' : '') + (name ? `@${name}.${c.column} searches it` : '');
-            content.append(label, actions);
-            th.append(content, window.ColumnHead.edge());
-            tr.appendChild(th);
-        });
-        $('queryHead').replaceChildren(tr);
-        injectIcons(tr);
-        markSort();
-    }
-
-    /** A column of numbers (going by the first page): its sort reads 0 to 1, not A to Z. */
-    function isNumbers(i) {
-        const rows = grid.pages.get(0) || [];
-        let any = false;
-        for (const r of rows) {
-            const v = r[i];
-            if (v === null || v === undefined || v === '') continue;
-            if (typeof v !== 'number') return false;
-            any = true;
-        }
-        return any;
-    }
-    function markSort() {
-        const head = $('queryHead').firstChild;
-        if (!head) return;
-        Array.from(head.cells).forEach((th, i) => {
-            th.classList.toggle('sort-asc', !!ui.sort && ui.sort.column === i && ui.sort.dir === 'asc');
-            th.classList.toggle('sort-desc', !!ui.sort && ui.sort.column === i && ui.sort.dir === 'desc');
-            const dir = ui.sort && ui.sort.column === i ? ui.sort.dir : '';
-            window.ColumnHead.setSort(th.querySelector('.col-sort-btn'), dir, isNumbers(i));
+            // (the host says what kind of values a column holds: a column of numbers sorts 0 to 1, not A to Z)
+            return { id: colId(c), name: text, className: `compare-sub ${colour(c.view)}`, numbers: c.type === 'number' };
         });
     }
-
-    /** One row; with no values yet (its page is on its way), its cells empty. */
-    function rowEl(columns, values) {
-        const tr = el('tr');
-        columns.forEach((c, i) => {
-            const value = values ? values[i] : null;
-            const text = cellText(value);
-            const td = el('td', `query-cell ${colour(c.view)}` + (typeof value === 'number' ? ' text-right' : ''), text);
-            if (text.length > 40) { td.classList.add('cell-expandable'); td.title = 'Click to see it all'; }
-            tr.appendChild(td);
-        });
-        return tr;
+    function sortOf() {
+        const c = ui.sort && resultCols()[ui.sort.column];
+        return c ? { id: colId(c), dir: ui.sort.dir } : null;
     }
 
-    /** Each column as wide as the first page's values need (long ones cut off), then held there: scrolling never shifts a column. */
-    function sizeColumns(rows) {
-        const table = $('queryTable');
+    /** Give the table its columns when they are not the ones it has, with the widths and sort kept for them. */
+    function drawTable() {
+        const key = columnsKey();
+        if (key === grid.key) return;
+        grid.key = key;
         const columns = resultCols();
-        table.classList.remove('is-sized');
-        table.style.removeProperty('width');
-        $('queryCols').replaceChildren();
-        $('queryAbove').replaceChildren();
-        $('queryBelow').replaceChildren();
-        $('queryBody').replaceChildren(...rows.map(r => rowEl(columns, r)));
-        const head = $('queryHead').firstChild;
-        if (!head || !rows.length) return;
-        // Not on screen (its tab is behind another, or another step is up): nothing has a width to
-        // measure, and columns held at 0 would vanish beside one the user had set. Sized when seen
-        if (!$('queryTableContainer').clientWidth) { grid.sizedFor = ''; return; }
-        grid.rowH = $('queryBody').firstChild.getBoundingClientRect().height || ROW_H;
-        let widths = Array.from(head.cells).map(th => Math.ceil(th.getBoundingClientRect().width));
-        // A width the user set is the query's: kept as set. With none set, a narrow report fills the window
-        const set = (ui.state && ui.state.widths) || {};
-        const mine = columns.map(c => set[widthKey(c)] || 0);
-        const sum = widths.reduce((a, b) => a + b, 0);
-        const room = $('queryTableContainer').clientWidth;
-        if (!mine.some(Boolean) && sum < room) widths = widths.map(w => Math.floor(w * room / sum));
-        widths = widths.map((w, i) => mine[i] || w);
-        $('queryCols').replaceChildren(...widths.map(w => { const col = el('col'); col.style.width = `${w}px`; return col; }));
-        table.style.width = `${widths.reduce((a, b) => a + b, 0)}px`;
-        table.classList.add('is-sized');
-        grid.sizedFor = columnsKey();
+        // The user's own SQL makes its own columns: they are neither moved nor taken out here
+        table.toggleAttribute('locked', !!ui.state.ownSql || columns.length < 2);
+        table.columns = tableColumns();
+        const kept = (ui.state && ui.state.widths) || {};
+        const widths = {};
+        columns.forEach(c => { if (kept[colId(c)]) widths[colId(c)] = kept[colId(c)]; });
+        table.layout = { widths, sort: sortOf() };
     }
 
-    // Rows that arrived while the table was out of sight are sized when it comes back
-    if (window.ResizeObserver) new ResizeObserver(() => {
-        const first = grid.pages.get(0);
-        if (!$('queryTableContainer').clientWidth || $('queryTable').classList.contains('is-sized') || !first || !first.length) return;
-        sizeColumns(first);
-        grid.rendered = { start: -1, end: -1 };
-        render(true);
-    }).observe($('queryTableContainer'));
-
-    function widthKey(c) { return `${c.view}:${c.column}`; }
-
-    /** One column's width, set: only it changes, the columns after it move along. */
-    function setWidth(i, width) {
-        const col = $('queryCols').children[i];
-        const table = $('queryTable');
-        if (!col) return 0;
-        const w = Math.max(window.ColumnHead.MIN_WIDTH, Math.round(width));
-        table.style.width = `${parseFloat(table.style.width) - parseFloat(col.style.width) + w}px`;
-        col.style.width = `${w}px`;
-        return w;
-    }
-    /** ...and kept with the query. */
-    function saveWidth(i, width) {
-        const c = resultCols()[i];
-        if (!c || !width) return;
-        ui.state.widths = Object.assign({}, ui.state.widths, { [widthKey(c)]: width });
-        post({ type: 'query.setWidth', key: widthKey(c), width });
-    }
-    /** As wide as its name and the values on screen need. */
-    function fitColumn(i) {
-        const th = $('queryHead').firstChild.cells[i];
-        const name = th.querySelector('.column-name');
-        const actions = th.querySelector('.header-actions');
-        // The text itself is measured (a cell is never narrower than its column, so it cannot say)
-        const wide = window.ColumnHead.textWidth;
-        let need = wide(name, name.textContent) + actions.offsetWidth + 22;
-        Array.from($('queryBody').rows).forEach(r => { if (r.cells[i]) need = Math.max(need, wide(r.cells[i], r.cells[i].textContent) + 20); });
-        saveWidth(i, setWidth(i, Math.min(window.ColumnHead.MAX_FIT, need)));
+    /** One page of rows, asked of the host: the answer comes back as query.rowsData. */
+    function page(start, limit) {
+        const id = ++grid.asked;
+        post({ type: 'query.rows', seq: id, offset: start, limit, search: ui.search, sort: ui.sort, totals: ui.totals });
+        return new Promise(resolve => grid.waiting.set(id, { resolve, ids: resultCols().map(colId) }));
     }
 
-    /** A column to another place without a drag (the heading's menu): its cells on screen move, then as a drag's end. */
-    function moveTo(from, to) {
-        if (from === to || grid.fresh) return;
-        const count = resultCols().length;
-        const move = parent => { const kids = parent.children; parent.insertBefore(kids[from], to > from ? kids[to].nextSibling : kids[to]); };
-        Array.from($('queryTable').rows).filter(r => r.cells.length === count).forEach(move);
-        if ($('queryCols').children.length === count) move($('queryCols'));
-        columnMoved(from, to);
-    }
-
-    /** Sort by a column (null: as the query made them). The heading answers at once: its icon is a
-     * ticking clock until the sorted rows arrive (a long report takes a moment). */
-    function sortBy(sort) {
-        if (grid.fresh || grid.sorting) return;   // one sort at a time
-        const was = ui.sort;
-        ui.sort = sort;
-        const th = $('queryHead').firstChild.cells[(sort || was || { column: 0 }).column];
-        if (th) window.ColumnHead.wait(th.querySelector('.col-sort-btn'), sort ? sort.dir : 'asc');
-        grid.sorting = true;
-        setBusy(`Sorting ${count(ui.shown)} rows…`);
-        // Drawn before the sort is asked for
-        requestAnimationFrame(() => setTimeout(loadRows, 0));
-    }
-
-    /** Right-click a heading: everything it can do, by name. */
-    function headMenu(event, i) {
-        if (!window.DbmnContextMenu || !ui.state) return;
-        const last = resultCols().length - 1;
-        const own = !!ui.state.ownSql;
-        window.ColumnHead.menu(event, {
-            numbers: isNumbers(i),
-            dir: ui.sort && ui.sort.column === i ? ui.sort.dir : '',
-            sorted: !!ui.sort,
-            first: i === 0, last: i === last,
-            sort: dir => sortBy(dir ? { column: i, dir } : null),
-            move: own || last === 0 ? null : where => moveTo(i, where === 'start' ? 0 : last),
-            fit: () => fitColumn(i),
-            remove: own || last === 0 ? null : () => hideColumn(i)
-        });
-    }
-
-    function columnsKey() { return resultCols().map(c => `${c.view}\u0000${c.column}`).join('\u0001'); }
-
-    function spacer(body, height, span) {
-        if (!height) return body.replaceChildren();
-        const td = el('td');
-        td.colSpan = span;
-        td.style.height = `${height}px`;
-        const tr = el('tr');
-        tr.appendChild(td);
-        body.replaceChildren(tr);
-    }
-
-    /** Draw the rows in view (and a little past them). `force`: even when the ones drawn still cover it. */
-    function render(force) {
-        if (!ui.state || grid.fresh || ui.step !== 4 || drag.isDragging()) return;
-        const box = $('queryTableContainer');
-        const at = { scrollTop: box.scrollTop, viewportHeight: box.clientHeight, rowHeight: grid.rowH || ROW_H, totalRows: ui.shown };
-        if (!force && !window.VirtualWindow.needsRender(Object.assign({ rendered: grid.rendered, marginPx: 150 }, at))) return;
-        const direction = Math.sign(box.scrollTop - grid.lastTop);
-        grid.lastTop = box.scrollTop;
-        const win = window.VirtualWindow.computeWindow(Object.assign({ overscanAhead: 700, overscanBehind: 350, direction }, at));
-        const start = win.start - (win.start % 2);
-        const columns = resultCols();
-        const rows = [];
-        for (let i = start; i < win.end; i++) {
-            const page = Math.floor(i / PAGE);
-            const got = grid.pages.get(page);
-            if (!got) ask(page);
-            rows.push(rowEl(columns, got && got[i - page * PAGE]));
-        }
-        $('queryBody').replaceChildren(...rows);
-        const pad = window.VirtualWindow.paddings({ start, end: win.end, totalRows: ui.shown, rowHeight: at.rowHeight });
-        spacer($('queryAbove'), pad.top, columns.length);
-        spacer($('queryBelow'), pad.bottom, columns.length);
-        grid.rendered = { start, end: win.end };
-        // Pages far from here are let go
-        if (grid.pages.size > 60) {
-            const here = Math.floor(start / PAGE);
-            Array.from(grid.pages.keys()).sort((a, b) => Math.abs(b - here) - Math.abs(a - here)).slice(0, grid.pages.size - 40).forEach(k => grid.pages.delete(k));
-        }
+    /** Results from the top: after a search, a sort, or a change to the query. `keep`: staying scrolled where it is (a column was taken out). */
+    function loadRows(keep) {
+        if (!ui.state) return;
+        drawTable();
+        if (!table.source) table.source = { page };
+        else table.reload(keep ? { keep: true } : undefined);
     }
 
     function rowsArrived(m) {
-        if (m.seq !== ui.seq) return;
-        const page = Math.floor(m.offset / PAGE);
-        grid.asked.delete(page);
-        grid.pages.set(page, m.rows);
+        const asked = grid.waiting.get(m.seq);
+        if (!asked) return;
+        grid.waiting.delete(m.seq);
         ui.shown = m.shown;
         ui.total = m.total;
-        if (grid.fresh) {
-            // The new table, all at once: headings, widths, rows
-            grid.fresh = false;
-            if (grid.sorting) { grid.sorting = false; setBusy(''); }
-            drawHead();
-            // Widths are measured once for a set of columns: sorting or searching never moves them
-            if (grid.sizedFor !== columnsKey() || !$('queryTable').classList.contains('is-sized')) sizeColumns(m.rows);
-            if (!grid.keep) $('queryTableContainer').scrollTop = 0;
-            grid.keep = false;
-            grid.rendered = { start: -1, end: -1 };
-            if (!m.totals) $('queryFoot').replaceChildren();
-        }
-        if (m.totals) {
+        if (grid.sorting) { grid.sorting = false; setBusy(''); }
+        if (m.offset === 0) {
             // A total under each column of numbers, for the rows shown: as many decimals as its values have, two at most
-            const tr = el('tr');
-            m.totals.forEach((t, i) => {
-                const places = (m.places && m.places[i]) || 0;
-                tr.appendChild(el('td', 'text-right font-bold', t === null ? (i === 0 ? 'Total' : '') : t.toLocaleString(undefined, { minimumFractionDigits: places, maximumFractionDigits: places })));
-            });
-            $('queryFoot').replaceChildren(tr);
+            if (m.totals) {
+                const totals = {};
+                m.totals.forEach((t, i) => {
+                    const places = (m.places && m.places[i]) || 0;
+                    totals[asked.ids[i]] = t === null ? (i === 0 ? 'Total' : '') : t.toLocaleString(undefined, { minimumFractionDigits: places, maximumFractionDigits: places });
+                });
+                table.totals = totals;
+            } else table.totals = null;
         }
         // The rows on screen, in the footer's summary (the one place the count shows): a search changes it
         ui.shownText = m.shown === m.total ? `${count(m.total)} rows` : `${count(m.shown)} of ${count(m.total)} rows`;
         ui.arrived = true;
         renderBar();
-        render(true);
+        asked.resolve({ rows: m.rows.map(r => { const row = {}; asked.ids.forEach((id, i) => { row[id] = r[i]; }); return row; }), total: m.shown });
     }
 
     function moved(list, from, to) { list.splice(to, 0, list.splice(from, 1)[0]); return list; }
 
-    /** A column was dragged to a new place (column-drag.js moved its cells): the rows held here and
-     * the saved order follow. Nothing is read again: the rows are the same. */
-    function columnMoved(from, to) {
-        const columns = moved(resultCols().slice(), from, to);
-        if (ui.sort) {
-            const s = ui.sort.column;
-            const gone = s > from ? s - 1 : s;
-            ui.sort = { column: s === from ? to : gone >= to ? gone + 1 : gone, dir: ui.sort.dir };
+    /** What the user did to the table's headings, passed on: the host keeps the order, the widths and the columns shown. */
+    function tableChanged(detail) {
+        if (!ui.state) return;
+        const at = id => resultCols().findIndex(c => colId(c) === id);
+        if (detail.change === 'sorted') {
+            const sort = detail.layout && detail.layout.sort;
+            ui.sort = sort && at(sort.id) >= 0 ? { column: at(sort.id), dir: sort.dir } : null;
+            grid.sorting = true;
+            setBusy(`Sorting ${count(ui.shown)} rows…`);
+        } else if (detail.change === 'moved') {
+            const from = at(detail.id);
+            const to = detail.to;
+            if (from < 0 || from === to) return;
+            const sorted = sortOf();
+            const columns = moved(resultCols().slice(), from, to);
+            ui.state.resultColumns = columns;
+            ui.state.columns = columns;
+            ui.sort = sorted ? { column: at(sorted.id), dir: sorted.dir } : null;
+            grid.key = columnsKey();
+            post({ type: 'query.moveColumn', from, to });
+        } else if (detail.change === 'removed') {
+            const i = at(detail.id);
+            const columns = resultCols().filter((_, n) => n !== i);
+            if (i < 0 || !columns.length) return;
+            const sorted = sortOf();
+            ui.state.resultColumns = columns;
+            ui.sort = sorted && sorted.id !== detail.id ? { column: at(sorted.id), dir: sorted.dir } : null;
+            grid.key = columnsKey();
+            grid.keep = true;
+            // Said once: where a column taken out comes back from
+            if (!grid.toldHide && window.DbmnToast) { grid.toldHide = true; window.DbmnToast.info('Column removed. Tick it on the Columns step to bring it back.'); }
+            setBusy('Updating…');
+            post({ type: 'query.setSelect', select: columns.map(c => ({ view: c.view, column: c.column })) });
+        } else if (detail.change === 'resized' && detail.width) {
+            // A width the user set is the query's: kept with it
+            ui.state.widths = Object.assign({}, ui.state.widths, { [detail.id]: detail.width });
+            post({ type: 'query.setWidth', key: detail.id, width: detail.width });
         }
-        ui.state.resultColumns = columns;
-        ui.state.columns = columns;
-        grid.sizedFor = columnsKey();
-        grid.pages.forEach(rows => rows.forEach(r => moved(r, from, to)));
-        // Pages on their way are in the old order: they are asked for again
-        const waiting = grid.asked.size > 0;
-        ui.seq++;
-        grid.asked.clear();
-        post({ type: 'query.moveColumn', from, to });
-        if (waiting) render(true);
-    }
-
-    /** × on a heading: the column goes at once; the rows follow (Distinct and the search may keep different ones). */
-    function hideColumn(i) {
-        const columns = resultCols().filter((_, n) => n !== i);
-        if (!columns.length) return;
-        if (ui.sort) ui.sort = ui.sort.column === i ? null : { column: ui.sort.column - (ui.sort.column > i ? 1 : 0), dir: ui.sort.dir };
-        Array.from($('queryTable').rows).forEach(r => { if (r.cells.length === columns.length + 1) r.deleteCell(i); });
-        // The other columns keep their widths: the table is narrower by this one
-        const col = $('queryCols').children[i];
-        if (col) {
-            const table = $('queryTable');
-            table.style.width = `${Math.max(0, parseFloat(table.style.width) - parseFloat(col.style.width))}px`;
-            col.remove();
-        }
-        grid.pages.forEach(rows => rows.forEach(r => r.splice(i, 1)));
-        ui.state.resultColumns = columns;
-        grid.sizedFor = columnsKey();
-        grid.keep = true;
-        // Said once: where a column taken out comes back from
-        if (!grid.toldHide && window.DbmnToast) { grid.toldHide = true; window.DbmnToast.info('Column removed. Tick it on the Columns step to bring it back.'); }
-        setBusy('Updating…');
-        post({ type: 'query.setSelect', select: columns.map(c => ({ view: c.view, column: c.column })) });
     }
 
     /* ---------- The SQL: read it, or write your own ---------- */
@@ -1784,7 +1582,7 @@
         if (settled && ui.start === 'results') goTo(joinsReady() ? 4 : m.views.length > 1 ? 2 : 1);
         else if (firstState && ui.start !== 'results') goTo(1);
         else if (waitsFor(ui.step)) goTo(m.views.length ? 2 : 1);
-        else { renderBar(); updatePeek(); if (ui.step === 4 && !m.reading) loadRows(); }
+        else { renderBar(); updatePeek(); if (ui.step === 4 && !m.reading) { loadRows(grid.keep); grid.keep = false; } }
     }
 
     window.DbmnActions.register({
@@ -1792,7 +1590,6 @@
         'query:addFile': () => $('queryAddFile').click(),
         'query:back': () => goTo(ui.step - 1),
         'query:next': () => goTo(ui.step + 1),
-        'query:back': () => goTo(ui.step - 1),
         'query:copySql': () => {
             const sql = (ui.state && (ui.state.ownSql || ui.state.sql)) || '';
             if (window.DbmnClipboard) window.DbmnClipboard.writeText(sql).then(() => window.DbmnToast && window.DbmnToast.success('SQL copied'));
@@ -1853,46 +1650,8 @@
         clearTimeout(searchTimer);
         searchTimer = setTimeout(() => { ui.search = $('querySearch').value; loadRows(); }, 200);
     });
-    $('queryTableContainer').addEventListener('scroll', () => {
-        if (grid.frame) return;
-        grid.frame = requestAnimationFrame(() => { grid.frame = 0; render(false); });
-    });
-    window.addEventListener('resize', () => render(false));
-    // A heading: its arrow sorts, its × takes the column out (its name drags: column-drag.js)
-    $('queryHead').addEventListener('click', event => {
-        const th = event.target.closest('th');
-        if (!th) return;
-        if (event.target.closest('.col-hide-btn')) return hideColumn(th.cellIndex);
-        if (!event.target.closest('.col-sort-btn')) return;
-        const i = th.cellIndex;
-        sortBy(!ui.sort || ui.sort.column !== i ? { column: i, dir: 'asc' } : ui.sort.dir === 'asc' ? { column: i, dir: 'desc' } : null);
-    });
-    $('queryHead').addEventListener('contextmenu', event => {
-        const th = event.target.closest('th');
-        if (th) headMenu(event, th.cellIndex);
-    });
-    // The right edge of a heading: drag for the column's width (the columns after it move along), double-click to fit
-    window.ColumnHead.attachResize($('queryHead'), {
-        canResize: () => $('queryTable').classList.contains('is-sized'),
-        widthOf: th => th.getBoundingClientRect().width,
-        setWidth: (th, width) => setWidth(th.cellIndex, width),
-        done: (th, width) => saveWidth(th.cellIndex, width),
-        fit: th => fitColumn(th.cellIndex)
-    });
-    // A long or structured value opens in full, as in the Console
-    $('queryBody').addEventListener('click', event => {
-        const td = event.target.closest('td.cell-expandable');
-        if (!td || !window.CellDetail || String(window.getSelection())) return;
-        const c = resultCols()[td.cellIndex];
-        window.CellDetail.open(td.dataset.full || td.textContent, { title: c ? c.column : undefined });
-    });
-    const drag = window.ColumnDrag.attach({
-        table: $('queryTable'),
-        scroller: $('queryTableContainer'),
-        canDrag: (th, event) => !!event.target.closest('.column-name.is-movable') && !grid.fresh,
-        onMove: columnMoved,
-        onEnd: () => render(false)
-    });
+    // The table says what was done to its headings (sorted, moved, removed, resized)
+    table.addEventListener('dbmn-table-layout', event => tableChanged(event.detail));
 
     window.addEventListener('message', event => {
         const m = event.data || {};
@@ -1932,7 +1691,7 @@
             case 'query.viewRowsData': if (ui.viewRows) ui.viewRows(m); break;
             case 'query.error':
                 // A sort that failed leaves the table as it was
-                if (grid.sorting) { grid.sorting = false; grid.fresh = false; drawHead(); }
+                if (grid.sorting) { grid.sorting = false; ui.sort = null; grid.key = ''; loadRows(true); }
                 setBusy('');
                 if (window.DbmnToast) window.DbmnToast.error(m.message);
                 break;

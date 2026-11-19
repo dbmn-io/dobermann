@@ -27,6 +27,7 @@ import { QueryRowData, QuerySession } from '../../services/query/query-engine';
 import { allColumns, columnSql, defaultColumns, fromSql, joinKeyColumns, quoteName, tableNames, writeSql } from '../../services/query/query-sql';
 import { reportNameProblem } from '../../services/compare/report-name';
 import { cleanViewName, getQuery, guessViewName, MAX_QUERY_VIEWS, moveView, moveViewFirst, nameViews, newSourceId, QuerySource, renameView, saveQuery, SavedQuery, untickBlanks, untickClashes } from '../../services/query/query-store';
+import { columnTypes, type ColumnType } from '../../services/query/column-types';
 import { CALC_VIEW } from '../../services/query/query-types';
 import type { ColumnRef, QueryFn, QueryJoin, QueryJoinStats, QuerySpec } from '../../services/query/query-types';
 import { ConsoleExportService } from '../../services/console/export.service';
@@ -678,6 +679,8 @@ export class QueryController {
         let failure = '';
         let sqlError = '';
         let resultColumns: ColumnRef[] | undefined;
+        // What kind of values each of Results' columns holds, going by its first rows
+        let resultTypes: ColumnType[] = [];
         let sampleRow: { view: string; column: string; value: string }[] = [];
         let duplicates = 0;
         if (spec.views.length) {
@@ -692,6 +695,7 @@ export class QueryController {
                 duplicates = Math.abs(other - total);
                 stats = spec.joins.map((_, i) => session.joinStats(i));
                 preview = session.rows({ limit: PREVIEW_ROWS }).rows;
+                resultTypes = columnTypes(preview, columns.length);
                 sampleRow = this.sampleRow(session, spec);
                 if (query.sql) {
                     // The user's own SQL: Results shows what it makes
@@ -699,6 +703,7 @@ export class QueryController {
                         const own = this.read(session, spec);
                         total = own.rows.length;
                         resultColumns = own.columns;
+                        resultTypes = columnTypes(own.rows.slice(0, PREVIEW_ROWS), own.columns.length);
                     } catch (error) {
                         sqlError = error instanceof Error ? error.message : String(error);
                     }
@@ -711,7 +716,7 @@ export class QueryController {
             query.rows = total;
             await saveQuery(this.ports.state, query);
         }
-        this.postState({ waiting, stats: new Map(spec.joins.map((j, i) => [j.view, stats[i]])), columns, resultColumns, sampleRow, duplicates, sql, total, preview, error: failure, sqlError });
+        this.postState({ waiting, stats: new Map(spec.joins.map((j, i) => [j.view, stats[i]])), columns, resultColumns, resultTypes, sampleRow, duplicates, sql, total, preview, error: failure, sqlError });
     }
 
     /** How many of a view's rows have a value in each column (counted once for the rows as loaded). */
@@ -755,7 +760,7 @@ export class QueryController {
     }
 
     /** Everything the steps show. `reading`: a view was just added and its rows are still being read. */
-    private postState(now: { reading?: boolean; waiting?: string[]; stats?: Map<string, QueryJoinStats | null>; columns?: ColumnRef[]; resultColumns?: ColumnRef[]; sampleRow?: { view: string; column: string; value: string }[]; duplicates?: number; sql?: string; total?: number; preview?: unknown[][]; error?: string; sqlError?: string }): void {
+    private postState(now: { reading?: boolean; waiting?: string[]; stats?: Map<string, QueryJoinStats | null>; columns?: ColumnRef[]; resultColumns?: ColumnRef[]; resultTypes?: ColumnType[]; sampleRow?: { view: string; column: string; value: string }[]; duplicates?: number; sql?: string; total?: number; preview?: unknown[][]; error?: string; sqlError?: string }): void {
         const query = this.query;
         if (!query) return;
         const tables = tableNames(query.sources.map(s => ({ id: s.id, name: s.name, columns: [] })));
@@ -789,7 +794,7 @@ export class QueryController {
             duplicates: now.duplicates ?? 0,
             maxViews: MAX_QUERY_VIEWS,
             // Results' columns: the steps', or what the user's own SQL makes
-            resultColumns: (now.resultColumns ?? now.columns ?? []).map(c => ({ view: c.view, column: c.column })),
+            resultColumns: (now.resultColumns ?? now.columns ?? []).map((c, i) => ({ view: c.view, column: c.column, type: now.resultTypes?.[i] ?? 'text' })),
             calc: query.calc ?? [],
             ownSql: query.sql ?? '', sqlError: now.sqlError ?? '',
             search: query.search ?? '', sort: query.sort ?? null, totals: !!query.totals,

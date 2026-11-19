@@ -21,7 +21,7 @@ export function buildQueryPage(asset: AssetUrl, config: { queryId: string; name:
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Query: ${attr(config.name)}</title>
-    ${sharedStyleLinks(asset, ['atomic', 'core', 'buttons', 'modals', 'tables', 'tabs', 'toast', 'console', 'data-transformer', 'compare', 'column-drag', 'column-head', 'query', 'dbmn-footer'])}
+    ${sharedStyleLinks(asset, ['atomic', 'core', 'buttons', 'modals', 'tables', 'tabs', 'toast', 'console', 'data-transformer', 'compare', 'column-drag', 'column-head', 'query', 'dbmn-footer', 'dbmn-table'])}
 </head>
 <body class="editor-slide-in">
     <script src="${asset('shared/button-contrast.js')}"></script>
@@ -99,17 +99,8 @@ export function buildQueryPage(asset: AssetUrl, config: { queryId: string; name:
                     <span class="form-hint" id="querySqlHint"></span>
                 </p>
             </section>
-            <div id="queryTableContainer" class="table-container">
-                <table class="data-table query-results" id="queryTable">
-                    <colgroup id="queryCols"></colgroup>
-                    <thead id="queryHead"></thead>
-                    <!-- Only the rows in view are drawn: the two spacers stand in for the rest, so the scroll bar is the whole report's -->
-                    <tbody id="queryAbove" class="query-spacer" aria-hidden="true"></tbody>
-                    <tbody id="queryBody"></tbody>
-                    <tbody id="queryBelow" class="query-spacer" aria-hidden="true"></tbody>
-                    <tfoot id="queryFoot"></tfoot>
-                </table>
-            </div>
+            <!-- The design system's table (shared/dbmn-table.js): the rows stay with the host and are asked for as they scroll into view -->
+            <dbmn-table id="queryTable" class="query-results" label="Results" removable></dbmn-table>
         </div>
 
         <!-- The design system's footer (shared/dbmn-footer.js): what you can do on the left, how far
@@ -138,6 +129,7 @@ export function buildQueryPage(asset: AssetUrl, config: { queryId: string; name:
     ${script('shared/dbmn-clipboard.js')}
     ${script('shared/icons.js')}
     ${script('shared/dbmn-footer.js')}
+    ${script('shared/dbmn-table.js')}
     ${script('shared/editor-window-controls.js')}
     <!-- The Console's Chain dialog, as it is: Chain here posts the same messages -->
     ${script('console/modules/console-chain.js')}
