@@ -1131,6 +1131,15 @@
         const message = event.data;
 
         switch (message.type) {
+            case 'dbmnRenamed':
+                // Renamed from the Hub's list while open here with nothing unsaved: the name follows, still saved
+                if (!hasUnsavedChanges && typeof message.name === 'string') {
+                    const field = document.getElementById('endpointName');
+                    if (field) field.value = message.name;
+                    if (currentEndpointData) currentEndpointData.name = message.name;
+                    resetChangeTracking();
+                }
+                break;
             case 'endpointData':
                 // Store the endpoint data globally
                 currentEndpointData = message.endpoint;

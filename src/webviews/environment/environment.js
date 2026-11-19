@@ -711,6 +711,14 @@
         const message = event.data;
         
         switch (message.type) {
+            case 'dbmnRenamed':
+                // Renamed from the Hub's list while open here with nothing unsaved: the name follows, still saved
+                if (!hasUnsavedChanges && typeof message.name === 'string') {
+                    const field = document.getElementById('envName');
+                    if (field) field.value = message.name;
+                    resetChangeTracking();
+                }
+                break;
             case 'tokenDecoded':
                 handleTokenDecoded(message.token, message.decodedToken);
                 break;

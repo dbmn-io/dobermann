@@ -3,7 +3,7 @@
 /**
  * <dbmn-name>: a report's name on its own screen (the design system: src/webviews/design-system).
  * It sits where the screen's top row starts, quiet, and a click makes it a box to type a new one
- * in: Enter keeps it, Esc or leaving puts the old one back. A name not yet given shows in
+ * in: Enter, Tab or clicking elsewhere keeps it; only Esc puts the old one back. A name not yet given shows in
  * italics ("New query"), so it reads as unnamed and can be named from the first step.
  *
  *   <dbmn-name id="name" label="Query name" max="30"></dbmn-name>
@@ -79,7 +79,8 @@
                 if (event.key === 'Enter') { event.preventDefault(); this._done(true); }
                 else if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); this._done(false); }
             });
-            this._input.addEventListener('blur', () => { if (this._editing) this._done(false); });
+            // Leaving the box (Tab, a click elsewhere) keeps what was typed: only Esc gives it up
+            this._input.addEventListener('blur', () => { if (this._editing) this._done(true, true); });
         }
 
         _draw() {
@@ -100,8 +101,8 @@
             this._input.select();
         }
 
-        /** Enter asks for the name typed; Esc, or leaving the box, keeps the one it has. */
-        _done(keep) {
+        /** Enter or leaving asks for the name typed; Esc keeps the one it has. `left`: the focus has gone elsewhere, and stays there. */
+        _done(keep, left) {
             if (!this._editing) return;
             this._editing = false;
             const name = clean(this._input.value, this.max);
@@ -114,7 +115,7 @@
                 this.dispatchEvent(new CustomEvent('dbmn-name-change', { bubbles: true, detail: { name } }));
             }
             this._draw();
-            this._show.focus({ preventScroll: true });
+            if (!left) this._show.focus({ preventScroll: true });
         }
     }
 

@@ -188,8 +188,8 @@
     /* ── The list of pieces: what exists, and where each stands ── */
     const C = 'Component', M = 'Shared module', S = 'Shared styles', R = 'Being replaced', P = 'Planned';
     const PIECES = [
-        ['<dbmn-footer>', 'A screen\'s footer: actions left, progress right', C, 'Query', 'shared/dbmn-footer.js'],
-        ['<dbmn-actions>', 'The footer\'s buttons, the main one last', C, 'Query', 'shared/dbmn-footer.js'],
+        ['<dbmn-footer>', 'A screen\'s footer: actions left, progress right', C, 'Query, Compare, Run Batch, Console, Edit Endpoint, Edit Environment', 'shared/dbmn-footer.js'],
+        ['<dbmn-actions>', 'The footer\'s buttons, the main one last', C, 'Query, Compare, Run Batch, Console, Edit Endpoint, Edit Environment', 'shared/dbmn-footer.js'],
         ['<dbmn-steps>', 'A wizard\'s steps in one line, and the summary they fold into', C, 'Query, Compare, Run Batch', 'shared/dbmn-footer.js'],
         ['<dbmn-progress>', 'The system\'s progress: the box is the bar', C, 'Console', 'shared/dbmn-footer.js'],
         ['<dbmn-status>', 'A few words of status (Saved, Not saved yet)', C, 'Edit Endpoint, Edit Environment', 'shared/dbmn-footer.js'],
@@ -213,7 +213,7 @@
         ['Rename dialog', 'Right-click → Rename in the Hub\'s lists: reports, endpoints, environments, runs', M, 'Hub lists', 'hub/hub-tabs.js (askRename)'],
         ['Tabs in a screen', 'A screen\'s own tabs (Environment, Console)', S, 'Environment, Console', 'shared/tabs.css'],
 
-        ['<dbmn-table>', 'A table of rows: search, sort, move, resize, only the rows in view drawn; rows the page holds, or asked for as they scroll', C, 'Design system, <dbmn-log>', 'shared/dbmn-table.js'],
+        ['<dbmn-table>', 'A table of rows: search, sort, move, resize, only the rows in view drawn; rows the page holds, or asked for as they scroll', C, 'Query, Design system, <dbmn-log>', 'shared/dbmn-table.js'],
         ['<dbmn-log>', 'Log lines as a table: the newest in view, followed until you scroll up', C, 'Logs', 'shared/dbmn-log.js'],
         ['<dbmn-level>', 'How serious a log line is: an icon and a word', C, 'Logs, <dbmn-log>', 'shared/dbmn-level.js'],
         ['Rows inside a row', 'A list of records in a cell, opened inside it (part of <dbmn-table>)', C, 'Design system; the Console has its own today', 'shared/dbmn-table.js'],
@@ -243,7 +243,7 @@
         ['Edit Environment', 'Footer and status', ON, 'dbmn-footer, dbmn-status', ''],
         ['Design system', 'Table', ON, 'dbmn-table', ''],
         ['Logs', 'Footer and log', ON, 'dbmn-footer, dbmn-log', ''],
-        ['Query', 'Table', MOVE, 'Wires the shared table pieces itself; rows come from the host a page at a time', 'dbmn-table asks for rows as they scroll now: swap it in'],
+        ['Query', 'Table', ON, 'dbmn-table, its rows asked for as they scroll', ''],
         ['Compare', 'Table', WAIT, 'Wires the shared table pieces itself; coloured columns and difference marks', 'After Query: its grouped headings and difference marks'],
         ['Console', 'Table', WAIT, 'Its own table: nested rows, grouped headings, Views', 'Last: needs nested rows and grouped headings in dbmn-table'],
         ['Hub', 'Banner, menu, list, tabs', WAIT, 'Its own markup and styles', 'Described and split into components as each is next worked on']

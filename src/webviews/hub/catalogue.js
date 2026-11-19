@@ -647,6 +647,11 @@
             window.DbmnContextMenu.show(ev, items, (action) => {
                 if (action === 'open') openEndpoint(false);
                 else if (action === 'rename') {
+                    // Open with changes not saved: those first (renaming now would lose them, or be lost)
+                    if (window.HubTabs?.unsavedIn?.('endpoint', endpoint.id)) {
+                        window.DbmnToast?.warn('It has changes not saved: save or discard them, then rename it.');
+                        return;
+                    }
                     // The one Rename dialog (hub-tabs.js); the host saves it, by the endpoint's own rules
                     window.HubTabs?.askRename?.(endpoint.name || '', 50).then(name => { if (name) host.postMessage({ type: 'renameEndpoint', endpointId: endpoint.id, name }); });
                 }

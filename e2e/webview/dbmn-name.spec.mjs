@@ -18,7 +18,7 @@ ${read('shared/atomic.css')}${read('shared/dbmn-name.css')} body{margin:0;paddin
 <script>window.asked = []; document.getElementById('n').addEventListener('dbmn-name-change', e => window.asked.push(e.detail.name));</script>
 </body></html>`;
 
-test('the name renames in place: click, type, Enter; Esc or leaving keeps the old one', async ({ page: p }) => {
+test('the name renames in place: click, type, then Enter, Tab or a click elsewhere keeps it; Esc gives it up', async ({ page: p }) => {
     await p.setContent(page());
     const name = p.locator('#n');
     const shown = name.locator('.dbmn-name-show');
@@ -31,6 +31,8 @@ test('the name renames in place: click, type, Enter; Esc or leaving keeps the ol
     await shown.click();
     await expect(box).toBeVisible();
     await expect(box).toBeFocused();
+    // The box takes the name's place: the name is not shown beside it
+    await expect(shown).toBeHidden();
     expect(await box.evaluate(el => [el.selectionStart, el.selectionEnd])).toEqual([0, 'New query'.length]);
     // No password manager in it
     await expect(box).toHaveAttribute('data-1p-ignore', 'true');
@@ -47,12 +49,17 @@ test('the name renames in place: click, type, Enter; Esc or leaving keeps the ol
     await box.fill('Something else');
     await box.press('Escape');
     await expect(shown).toHaveText('Open orders by item');
-    // Leaving the box: the same
+    // Leaving the box keeps what was typed: Tab, and a click elsewhere
     await shown.click();
-    await box.fill('Something else');
+    await box.fill('Open orders by site');
+    await p.keyboard.press('Tab');
+    await expect(shown).toHaveText('Open orders by site');
+    await expect(p.locator('#other')).toBeFocused();
+    await shown.click();
+    await box.fill('Open orders by week');
     await p.locator('#other').click();
-    await expect(shown).toHaveText('Open orders by item');
-    expect(await p.evaluate(() => window.asked)).toEqual(['Open orders by item']);
+    await expect(shown).toHaveText('Open orders by week');
+    expect(await p.evaluate(() => window.asked)).toEqual(['Open orders by item', 'Open orders by site', 'Open orders by week']);
     // Too long: cut to the limit; the controller's answer is set back as value
     await shown.click();
     await box.fill('x'.repeat(50));

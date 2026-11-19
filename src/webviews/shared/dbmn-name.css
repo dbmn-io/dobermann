@@ -49,3 +49,6 @@ dbmn-name[unnamed] .dbmn-name-text { font-style: italic; font-weight: 400; color
     border-radius: 3px;
     outline: none;
 }
+/* Renaming: the box in place of the name, never both (a display above outranks [hidden]) */
+dbmn-name .dbmn-name-show[hidden],
+dbmn-name .dbmn-name-input[hidden] { display: none; }

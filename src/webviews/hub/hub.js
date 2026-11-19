@@ -987,6 +987,10 @@
             ], action => {
                 if (action === 'open') row.click();
                 else if (action === 'rename') {
+                    if (window.HubTabs?.unsavedIn?.('environment', env.id)) {
+                        window.DbmnToast?.warn('It has changes not saved: save or discard them, then rename it.');
+                        return;
+                    }
                     window.HubTabs?.askRename?.(env.name || '', 50).then(name => { if (name) vscode.postMessage({ type: 'renameEnvironment', environmentId: env.id, name }); });
                 }
             });

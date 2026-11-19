@@ -446,6 +446,11 @@ const state = {
         return String(text || '').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max).trim();
     }
 
+    /** Whether a thing open in a tab has changes not saved there (Rename from a list waits for them). */
+    function unsavedIn(type, refId) {
+        // (a tab opened for a new one holds it under its draft id: `savedId` once it is saved)
+        return (state.tabs || []).some(t => t.type === type && (t.refId === refId || t.savedId === refId) && t.dirty);
+    }
     /** A saved report, open in a tab or not (the Reporting list's Rename): the host checks and keeps the name. */
     function renameSavedReport(compareId, current) {
         if (!compareId || !window.DbmnModal || !window.vscode) return;
@@ -999,12 +1004,18 @@ const state = {
                 // fires on close.
                 if (message.tabId) markDirty(message.tabId, !!message.dirty);
                 return true;
+            case 'renamedOpen':
+                // Renamed from the Hub's list while its editor is open (with nothing unsaved): the editor's name follows
+                if (message.tabId && message.name) dispatchToTab(message.tabId, { type: 'dbmnRenamed', name: message.name });
+                return true;
             case 'embeddedTabName': {
                 // Host pushes the saved entity's current name (after
                 // user saves an endpoint/env). Update the tab label
                 // without remounting the iframe.
                 if (message.tabId && message.name) {
                     const t = (state.tabs || []).find(x => x.id === message.tabId);
+                    // A new one's tab, since saved: the endpoint or environment it now holds
+                    if (t && message.savedId) t.savedId = message.savedId;
                     // (a tab its screen has named keeps that name)
                     if (t && !t.ownName && t.name !== message.name) {
                         t.name = message.name;
@@ -1329,6 +1340,7 @@ const state = {
         init,
         renameSavedReport,
         askRename,
+        unsavedIn,
         getState,
         subscribe,
         openOrFocusTab,

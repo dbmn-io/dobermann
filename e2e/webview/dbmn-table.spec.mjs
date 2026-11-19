@@ -780,3 +780,26 @@ test('a plain table\'s column is dragged to another place by its name; held agai
     await page.mouse.up();
     await expect.poll(() => names(page)).toEqual(['notes', 'order_no', 'customer', 'qty']);
 });
+
+test('rows the screen acts on: a class on a row, a mark on a cell, and a click or right-click told with the row', async ({ page }) => {
+    await page.setContent(tablePage());
+    await page.evaluate(() => {
+        const t = document.getElementById('t');
+        window.clicked = []; window.menus = [];
+        t.addEventListener('dbmn-table-row', e => window.clicked.push(e.detail.row.order_no));
+        t.addEventListener('dbmn-table-row-menu', e => window.menus.push(e.detail.row.order_no));
+        t.rowClass = row => (row.qty > 45 ? 'is-big' : '');
+        t.columns = [{ id: 'order_no', name: 'order_no' }, { id: 'qty', name: 'qty', numbers: true, cell: (td, value) => { if (value > 45) td.classList.add('is-over'); } }, { id: 'notes', name: 'notes' }];
+    });
+    const first = page.locator('#t .dbmn-table-body tr').first();
+    await expect(page.locator('#t .dbmn-table-body tr.is-big').first()).toBeVisible();
+    await expect(page.locator('#t .dbmn-table-body tr.is-big td.is-over').first()).toBeVisible();
+    await expect(page.locator('#t .dbmn-table-body tr:not(.is-big) td.is-over')).toHaveCount(0);
+    await first.locator('td').first().click();
+    await first.locator('td').first().click({ button: 'right' });
+    expect(await page.evaluate(() => [window.clicked, window.menus])).toEqual([['SO-10000'], ['SO-10000']]);
+    // A long value's own click opens it, and is not a click on the row
+    await page.locator('#t .dbmn-table-body tr').nth(1).locator('td.cell-expandable').click();
+    await expect(page.locator('.cell-detail, .dbmn-modal').first()).toBeVisible();
+    expect(await page.evaluate(() => window.clicked)).toEqual(['SO-10000']);
+});

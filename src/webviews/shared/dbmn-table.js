@@ -29,7 +29,16 @@
  *   group: { id, name, head(th) }   consecutive columns with one group share a heading over theirs (a field,
  *                           and BL, C1, C2 under it): the group moves and is removed as one; each column
  *                           under it sorts and resizes on its own
- *   head(th)                adds what the screen wants to the column's heading (a count, a filter) `type` ('text', 'number', 'yesno', 'date', 'nested') is what the
+ *   head(th)                adds what the screen wants to the column's heading (a count, a filter)
+ *   cell(td, value, row)    after the cell is drawn: the screen marks it (a value that differs, its tint)
+ *
+ * Rows the screen acts on:
+ *   orders.rowClass = row => 'is-flagged';       a class on a row's <tr>
+ *   orders.emptyText = ({ searched }) => 'No rows match the filters.';   what an empty table says (else its own words)
+ *   orders.addEventListener('dbmn-table-row', e => open(e.detail.row));        a click on a row
+ *   orders.addEventListener('dbmn-table-row-menu', e => …e.detail.row…);       a right-click on a row
+ *       (not a click that opens a long value, a list of records or anything with its own action;
+ *       a right-click is the screen's to show a menu for: the browser's own is kept from it) `type` ('text', 'number', 'yesno', 'date', 'nested') is what the
  * search box says the column is and which operators it offers; left out, the table looks at the
  * values (a date is ISO 8601 text). No type is ever shown in a heading. `numbers` says the column sorts as numbers (its sort icon is 0 to
  * 1, where text's is A to Z); left out, the table looks at the values: a column of numbers or of
@@ -380,10 +389,14 @@
             this._body.addEventListener('click', event => {
                 if (this._nestClick(event)) return;
                 const td = event.target.closest('td.cell-expandable');
-                if (!td || !window.CellDetail || String(window.getSelection())) return;
+                if (!td) { this._rowEvent('dbmn-table-row', event); return; }
+                if (!window.CellDetail || String(window.getSelection())) return;
                 const column = this._columns[td.cellIndex];
                 window.CellDetail.open(td.dataset.full || td.textContent, { title: column ? column.name || column.id : undefined });
             });
+
+            // A right-click on a row is the screen's (its record, its menu), when it listens for it
+            this._body.addEventListener('contextmenu', event => this._rowEvent('dbmn-table-row-menu', event));
 
             const head = window.ColumnHead;
             if (head) {
@@ -818,6 +831,10 @@
         _row(row) {
             // (a row whose page is on its way: empty, and as tall as any other)
             const tr = make('tr', row ? '' : 'dbmn-table-waiting');
+            if (row && typeof this.rowClass === 'function') {
+                const extra = this.rowClass(row);
+                if (extra) tr.className = String(extra);
+            }
             this._columns.forEach(column => {
                 const value = row ? row[column.id] : null;
                 const td = make('td', (column.numbers || typeof value === 'number' ? 'text-right' : '') + (column.className ? ` ${column.className}` : ''));
@@ -842,6 +859,7 @@
                         td.dataset.full = typeof value === 'object' && value ? JSON.stringify(value) : text;
                     }
                 }
+                if (typeof column.cell === 'function') column.cell(td, value, row);
                 tr.append(td);
             });
             return tr;
@@ -1061,7 +1079,10 @@
             if (!total) {
                 this._above.replaceChildren();
                 this._below.replaceChildren();
-                const td = make('td', 'dbmn-table-none', this._source && this._fresh ? '' : (this._source ? this.search.trim() : this._rows.length) ? 'No rows match the search.' : 'No rows.');
+                const searched = !!(this._source ? this.search.trim() : this._rows.length);
+                // The screen may say it better (its own filters: "No rows match the filters.")
+                const said = typeof this.emptyText === 'function' ? this.emptyText({ searched }) : '';
+                const td = make('td', 'dbmn-table-none', this._source && this._fresh ? '' : said || (searched ? 'No rows match the search.' : 'No rows.'));
                 td.colSpan = Math.max(1, this._columns.length);
                 const tr = make('tr');
                 tr.append(td);
@@ -1257,6 +1278,18 @@
             }
             return true;
         },
+        /** A click (or right-click) on a row, not on anything with its own action: told with the row. */
+        _rowEvent(type, event) {
+            const tr = event.target.closest('tr');
+            if (!tr || !this._body.contains(tr) || tr.classList.contains('dbmn-table-waiting')) return;
+            if (event.target.closest('button, a, input, select, td.has-nested') || String(window.getSelection())) return;
+            const index = this._rendered.start + Array.prototype.indexOf.call(this._body.rows, tr);
+            const row = this._rowAt(index);
+            if (!row) return;
+            if (type === 'dbmn-table-row-menu') event.preventDefault();
+            this.dispatchEvent(new CustomEvent(type, { bubbles: true, detail: { row, index } }));
+        },
+
         /** The rows shown that have records open, in order, each with how much taller it is: [{ index, state… }]. */
         _openList() {
             if (!this._open.size) return [];

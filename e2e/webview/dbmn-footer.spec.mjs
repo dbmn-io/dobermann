@@ -385,7 +385,7 @@ test('the design system page draws every section from the real files, with no er
     // Which screen is on which component, in the same table
     await expect(page.locator('#dsMoving .dbmn-table-count')).toHaveText('12 rows');
     await page.locator('#dsMoving .search-input').fill('@screen=query');
-    await expect(page.locator('#dsMoving .dbmn-table-body .ds-chip')).toHaveText(['On it', 'To move']);
+    await expect(page.locator('#dsMoving .dbmn-table-body .ds-chip')).toHaveText(['On it', 'On it']);
 
     // The wizard on show walks to its last step and folds into the summary, and back
     await page.locator('#dsNext').click();

@@ -312,6 +312,19 @@ describe('HubController', () => {
         expect(h.posted.pop()).to.deep.equal({ type: '__embeddedToTab__', tabId, payload: { type: 'environmentSaved' } });
     });
 
+    // A new environment's tab keeps its draft id once saved: the Hub is told which it holds, so
+    // Rename in the list knows it is open there (with changes not saved, it waits for them)
+    it('a new environment\'s tab, saved, tells the Hub which environment it now holds', async () => {
+        const h = hub();
+        await h.controller.openEnvironmentTab(undefined);
+        const tabId = (h.of('mountEmbeddedTab')[0] as { tabId: string }).tabId;
+        expect(tabId).to.match(/^environment:new-/);
+        const env = await h.environments.addEnvironment({ name: 'Puppy School', baseUrl: 'http://127.0.0.1:54321/functions/v1/playground' });
+        h.tabs[tabId].channel.post({ type: 'environmentSaved', environment: { id: env.id } });
+        await new Promise(resolve => setTimeout(resolve, 10));
+        expect(h.of('embeddedTabName').at(-1)).to.deep.include({ tabId, name: 'Puppy School', savedId: env.id });
+    });
+
     it('a page\'s close control inside a tab closes the tab (tabs are always full width, #349)', async () => {
         const h = hub();
         await h.controller.openEnvironmentTab(undefined);
@@ -664,11 +677,11 @@ describe('HubController: a header pick is drawn at once (2026-11-13)', () => {
         await h.controller.handle({ type: 'renameEndpoint', endpointId: b.id, name: 'Get open orders' });
         expect((await h.endpoints.getAllEndpoints()).find(e => e.id === b.id)?.name).to.equal('Get items');
         expect(h.events.some(e => e.startsWith('warn ') && e.includes('already exists'))).to.equal(true);
-        // Open in its editor: renamed there instead, so unsaved edits are never overwritten
+        // Open in its editor (the list refuses first when it has changes not saved): renamed, and the editor told
         await h.controller.handle({ type: 'openEndpointAsTab', endpointId: b.id });
         await h.controller.handle({ type: 'renameEndpoint', endpointId: b.id, name: 'Get every item' });
-        expect((await h.endpoints.getAllEndpoints()).find(e => e.id === b.id)?.name).to.equal('Get items');
-        expect(h.events.some(e => e.startsWith('info ') && e.includes('rename it in its editor'))).to.equal(true);
+        expect((await h.endpoints.getAllEndpoints()).find(e => e.id === b.id)?.name).to.equal('Get every item');
+        expect(h.of('renamedOpen').at(-1)).to.include({ tabId: `endpoint:${b.id}`, name: 'Get every item' });
 
         const env = await h.environments.addEnvironment({ name: 'Test', baseUrl: 'https://test.example.com' } as never);
         await h.controller.handle({ type: 'renameEnvironment', environmentId: env.id, name: 'Test (Sydney)' });

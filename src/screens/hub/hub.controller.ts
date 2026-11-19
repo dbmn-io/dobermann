@@ -1242,28 +1242,32 @@ export class HubController {
     /**
      * Rename from the Hub's lists (the one Rename dialog, hub-tabs.js). The thing's own rules hold:
      * the managers refuse a name another endpoint (or environment in its folder) has, and say why.
-     * Open in a tab, it is renamed there, so an editor's unsaved name is never overwritten.
+     * Open in an editor with nothing unsaved, it is renamed and its editor's name follows
+     * (renamedOpen → the tab's dbmnRenamed); with changes not saved, the Hub's list refuses before
+     * asking (it knows which tabs are dirty), so an editor's own edits are never overwritten.
      */
-    private openIn(kind: 'endpoint' | 'environment' | 'console', id: string): boolean {
+    private openIn(kind: 'endpoint' | 'environment' | 'console', id: string): string | undefined {
         for (const tabId of this.tabs.keys()) {
             const [k, refId] = splitTabId(tabId);
-            if (k === kind && (refId === id || this.savedIdByTabId.get(tabId) === id)) return true;
+            if (k === kind && (refId === id || this.savedIdByTabId.get(tabId) === id)) return tabId;
         }
-        return false;
+        return undefined;
     }
     private async renameEndpoint(id: string, raw: string): Promise<void> {
         const name = cleanName(raw, 50);
         if (!name) return;
-        if (this.openIn('endpoint', id)) { this.ports.toast.info('It is open: rename it in its editor, then save.'); return; }
         try { await this.ports.endpoints.updateEndpoint(id, { name }); }
-        catch (error) { this.ports.toast.warn(message(error)); }
+        catch (error) { this.ports.toast.warn(message(error)); return; }
+        const tabId = this.openIn('endpoint', id);
+        if (tabId) this.session.post({ type: 'renamedOpen', tabId, name });
     }
     private async renameEnvironment(id: string, raw: string): Promise<void> {
         const name = cleanName(raw, 50);
         if (!name) return;
-        if (this.openIn('environment', id)) { this.ports.toast.info('It is open: rename it in its editor, then save.'); return; }
         try { await this.ports.environments.updateEnvironment(id, { name }); }
-        catch (error) { this.ports.toast.warn(message(error)); }
+        catch (error) { this.ports.toast.warn(message(error)); return; }
+        const tabId = this.openIn('environment', id);
+        if (tabId) this.session.post({ type: 'renamedOpen', tabId, name });
     }
     /** A batch run's own name (#445): History lists it by it; its endpoint's name stays its endpoint's. */
     private async renameRun(id: string, raw: string): Promise<void> {
@@ -1393,7 +1397,9 @@ export class HubController {
                     const ep = endpoints.find(e => e.id === refId);
                     if (ep?.name) name = `Batch: ${ep.name}`;
                 }
-                if (name) this.session.post({ type: 'embeddedTabName', tabId, name });
+                // (a new one's tab, since saved: which it now is, so the Hub's lists know it is open there)
+                const savedId = this.savedIdByTabId.get(tabId);
+                if (name) this.session.post({ type: 'embeddedTabName', tabId, name, ...(savedId ? { savedId } : {}) });
             }
         }).catch(() => undefined);
     }
