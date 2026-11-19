@@ -678,3 +678,105 @@ test('busy by itself while a source\'s rows are on their way', async ({ page }) 
     await expect(glass).toHaveClass(/is-busy/);
     await expect(glass).not.toHaveClass(/is-busy/, { timeout: 3000 });
 });
+
+/* ── Columns in groups (a field with BL and C1 under it), and pinned columns ── */
+
+const groupedPage = () => `<!doctype html><html><head>
+<style>:root{--vscode-foreground:#ccc;--vscode-editor-background:#1e1e1e;--vscode-panel-border:#444;--vscode-input-background:#2a2a2a}
+${STYLES.map(read).join('\n')}
+body{margin:0;padding:16px;width:1100px;background:#1e1e1e;color:#ccc;font:13px sans-serif}</style>
+${SCRIPTS.map(rel => `<script>${read(rel)}</script>`).join('\n')}</head><body>
+<dbmn-table id="t" label="Compared" searchable removable></dbmn-table>
+<script>
+  const t = document.getElementById('t');
+  window.told = [];
+  t.addEventListener('dbmn-table-layout', e => window.told.push(e.detail));
+  const qty = { id: 'qty', name: 'qty', head: th => { const pill = document.createElement('span'); pill.className = 'diff-pill'; pill.textContent = '3'; th.querySelector('.column-header-content').append(pill); } };
+  const desc = { id: 'desc', name: 'description' };
+  t.columns = [
+      { id: 'sku', name: 'sku', pinned: true }, { id: 'status', name: 'Status', pinned: true },
+      { id: 'qty|0', name: 'BL', group: qty, numbers: true }, { id: 'qty|1', name: 'C1', group: qty, numbers: true },
+      { id: 'desc|0', name: 'BL', group: desc }, { id: 'desc|1', name: 'C1', group: desc }
+  ];
+  t.rows = Array.from({ length: 50 }, (_, i) => ({ sku: 'SKU-' + String(i).padStart(3, '0'), status: i % 5 ? 'Same' : 'DIFF', 'qty|0': (i * 7) % 40, 'qty|1': (i * 11) % 40, 'desc|0': 'Item ' + i, 'desc|1': 'Item ' + (i % 5 ? i : i + 1) }));
+</script></body></html>`;
+
+test('columns in groups: the group\'s name over its columns, each sorting on its own; pinned columns stay put', async ({ page }) => {
+    await page.setContent(groupedPage());
+    const rows = page.locator('#t thead tr');
+    await expect(rows).toHaveCount(2);
+    await expect(rows.nth(0).locator('th')).toHaveText(['sku', 'Status', 'qty3', 'description']);
+    await expect(rows.nth(1).locator('th .column-name')).toHaveText(['BL', 'C1', 'BL', 'C1']);
+    expect(await rows.nth(0).locator('th[data-group="qty"]').evaluate(th => th.colSpan)).toBe(2);
+    expect(await rows.nth(0).locator('th[data-col="sku"]').evaluate(th => th.rowSpan)).toBe(2);
+    // The screen's own addition to a heading (a count of differences)
+    await expect(rows.nth(0).locator('th[data-group="qty"] .diff-pill')).toHaveText('3');
+    // Pinned: no remove, not movable
+    await expect(page.locator('#t th[data-col="sku"] .col-hide-btn')).toHaveCount(0);
+    await expect(page.locator('#t th[data-col="sku"] .column-name.is-movable')).toHaveCount(0);
+    // The second row sits under the first while the rows scroll
+    await page.locator('#t .dbmn-table-scroll').evaluate(box => { box.scrollTop = 400; });
+    const [first, second] = await Promise.all([rows.nth(0).locator('th').nth(2).boundingBox(), rows.nth(1).locator('th').first().boundingBox()]);
+    expect(Math.abs(second.y - (first.y + first.height))).toBeLessThan(2);
+    // Each column under a group sorts on its own: C1 of qty, largest first
+    const sub = page.locator('#t th[data-col="qty|1"]');
+    await sub.locator('.col-sort-btn').click();
+    await sub.locator('.col-sort-btn').click();
+    await page.locator('#t .dbmn-table-scroll').evaluate(box => { box.scrollTop = 0; });
+    await expect(page.locator('#t .dbmn-table-body tr').first().locator('td').nth(3)).toHaveText('39');
+    expect(await page.evaluate(() => window.told.at(-1).layout.sort)).toEqual({ id: 'qty|1', dir: 'desc' });
+    // The right edge of one column under a group resizes only it
+    const widths = () => page.locator('#t th[data-col]').evaluateAll(ths => ths.map(th => Math.round(th.getBoundingClientRect().width)));
+    const before = await widths();
+    const edge = await page.locator('#t th[data-col="desc|0"] .col-edge').boundingBox();
+    await page.mouse.move(edge.x + edge.width / 2, edge.y + edge.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(edge.x + 70, edge.y + edge.height / 2, { steps: 4 });
+    await page.mouse.up();
+    const after = await widths();
+    expect(after[4]).toBeGreaterThan(before[4] + 50);
+    expect([after[0], after[1], after[2], after[3], after[5]]).toEqual([before[0], before[1], before[2], before[3], before[5]]);
+});
+
+test('a group moves and is removed as one, never past a pinned column', async ({ page }) => {
+    await page.setContent(groupedPage());
+    const ids = () => page.locator('#t th[data-col]').evaluateAll(ths => ths.map(th => th.dataset.col));
+    // Move to start: first after the pinned columns, its columns together
+    await page.locator('#t th[data-group="desc"]:not([data-col])').click({ button: 'right' });
+    await page.locator('.dbmn-context-menu-item', { hasText: 'Move to start' }).click();
+    expect(await ids()).toEqual(['sku', 'status', 'desc|0', 'desc|1', 'qty|0', 'qty|1']);
+    expect(await page.evaluate(() => { const d = window.told.at(-1); return [d.change, d.id]; })).toEqual(['moved', 'desc']);
+    // Dragged by its name: it moves past the other group, and the cells follow
+    const from = await page.locator('#t th[data-group="desc"]:not([data-col]) .column-name').boundingBox();
+    const to = await page.locator('#t th[data-group="qty"]:not([data-col])').boundingBox();
+    await page.mouse.move(from.x + 10, from.y + from.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(to.x + to.width + 300, from.y + from.height / 2, { steps: 12 });
+    await page.mouse.up();
+    await expect.poll(ids).toEqual(['sku', 'status', 'qty|0', 'qty|1', 'desc|0', 'desc|1']);
+    await expect(page.locator('#t .dbmn-table-body tr').first().locator('td').nth(4)).toHaveText('Item 0');
+    // A column under a group cannot be moved or removed on its own; the group's x removes both
+    await page.locator('#t th[data-col="qty|0"]').click({ button: 'right' });
+    await expect(page.locator('.dbmn-context-menu-item', { hasText: 'Move to start' })).toHaveCount(0);
+    await expect(page.locator('.dbmn-context-menu-item', { hasText: 'Remove' })).toHaveCount(0);
+    await page.keyboard.press('Escape');
+    await page.locator('#t th[data-group="qty"]:not([data-col]) .col-hide-btn').click({ force: true });
+    expect(await ids()).toEqual(['sku', 'status', 'desc|0', 'desc|1']);
+    expect(await page.evaluate(() => { const d = window.told.at(-1); return [d.change, d.id, d.ids, d.layout.hidden]; })).toEqual(['removed', 'qty', ['qty|0', 'qty|1'], ['qty|0', 'qty|1']]);
+    // A pinned column's menu sorts and fits, nothing more
+    await page.locator('#t th[data-col="status"]').click({ button: 'right' });
+    await expect(page.locator('.dbmn-context-menu-item', { hasText: 'Sort' }).first()).toBeVisible();
+    await expect(page.locator('.dbmn-context-menu-item', { hasText: 'Move' })).toHaveCount(0);
+});
+
+test('a plain table\'s column is dragged to another place by its name; held against the end, it takes the end place, however wide', async ({ page }) => {
+    await page.setContent(tablePage());
+    const from = await page.locator('#t thead th').nth(3).locator('.column-name').boundingBox();
+    const to = await page.locator('#t thead th').nth(0).boundingBox();
+    await page.mouse.move(from.x + 8, from.y + from.height / 2);
+    await page.mouse.down();
+    // (far enough that its middle passes every other column's: it lands first)
+    await page.mouse.move(to.x - 300, from.y + from.height / 2, { steps: 12 });
+    await page.mouse.up();
+    await expect.poll(() => names(page)).toEqual(['notes', 'order_no', 'customer', 'qty']);
+});

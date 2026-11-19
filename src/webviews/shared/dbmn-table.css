@@ -68,3 +68,8 @@ dbmn-table [hidden] { display: none !important; }
 @media (prefers-reduced-motion: reduce) {
     .dbmn-table-glass.is-busy svg { animation: none; }
 }
+/* Two rows of headings (columns in groups): the group's name over its columns, both rows in view */
+.dbmn-table-grid thead tr + tr th { top: var(--table-head-1, 0px); }
+.dbmn-table-grid th.dbmn-table-group { text-align: center; }
+.dbmn-table-grid th.dbmn-table-group .column-header-content { justify-content: center; }
+.dbmn-table-grid th.dbmn-table-sub { font-weight: 400; }

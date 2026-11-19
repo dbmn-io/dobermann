@@ -24,7 +24,12 @@
  * screen reader), `placeholder` (the search box's).
  *
  * A column: { id, name, numbers, type, className (on its heading and its cells: a colour the screen
- * owns), render(value, row) }. `type` ('text', 'number', 'yesno', 'date', 'nested') is what the
+ * owns), render(value, row), pinned, group, head(th) }.
+ *   pinned: true            it stays where it is (a key, a status): never moved or removed, nothing moves past it
+ *   group: { id, name, head(th) }   consecutive columns with one group share a heading over theirs (a field,
+ *                           and BL, C1, C2 under it): the group moves and is removed as one; each column
+ *                           under it sorts and resizes on its own
+ *   head(th)                adds what the screen wants to the column's heading (a count, a filter) `type` ('text', 'number', 'yesno', 'date', 'nested') is what the
  * search box says the column is and which operators it offers; left out, the table looks at the
  * values (a date is ISO 8601 text). No type is ever shown in a heading. `numbers` says the column sorts as numbers (its sort icon is 0 to
  * 1, where text's is A to Z); left out, the table looks at the values: a column of numbers or of
@@ -356,16 +361,21 @@
             this._head.addEventListener('click', event => {
                 const th = event.target.closest('th');
                 if (!th) return;
-                const column = this._columns[th.cellIndex];
-                if (event.target.closest('.col-sort-btn')) {
+                if (event.target.closest('.col-hide-btn')) {
+                    if (th.dataset.group !== undefined && th.dataset.col === undefined) this._removeUnit(this._unitOf(th));
+                    else this._remove(this._indexOf(th));
+                    return;
+                }
+                const column = this._columns[this._indexOf(th)];
+                if (column && event.target.closest('.col-sort-btn')) {
                     const dir = this._sort && this._sort.id === column.id ? this._sort.dir : '';
                     // One way, the other, then as the rows were given
                     this._sortBy(column, dir === '' ? 'asc' : dir === 'asc' ? 'desc' : null);
-                } else if (event.target.closest('.col-hide-btn')) this._remove(th.cellIndex);
+                }
             });
             this._head.addEventListener('contextmenu', event => {
                 const th = event.target.closest('th');
-                if (th) this._menu(event, th.cellIndex);
+                if (th) this._menu(event, th);
             });
             this._body.addEventListener('click', event => {
                 if (this._nestClick(event)) return;
@@ -378,11 +388,11 @@
             const head = window.ColumnHead;
             if (head) {
                 head.attachResize(this._head, {
-                    canResize: () => !!this._sized,
+                    canResize: th => !!this._sized && th.dataset.col !== undefined,
                     widthOf: th => th.getBoundingClientRect().width,
-                    setWidth: (th, width) => this._setWidth(th.cellIndex, width),
-                    done: (th, width) => this._tell('resized', { id: this._columns[th.cellIndex].id, width }),
-                    fit: th => this._fit(th.cellIndex)
+                    setWidth: (th, width) => this._setWidth(this._indexOf(th), width),
+                    done: (th, width) => this._tell('resized', { id: th.dataset.col, width }),
+                    fit: th => this._fit(this._indexOf(th))
                 });
             }
             if (window.ColumnDrag) {
@@ -390,7 +400,11 @@
                     table: this._table,
                     scroller: this._scroll,
                     canDrag: (th, event) => !!event.target.closest('.column-name.is-movable') && !this._fresh,
-                    onMove: (from, to) => this._moved(from, to),
+                    // Grouped or pinned columns: the places are the groups and the single columns, and a
+                    // pinned one never moves (nor anything past it); the table draws itself again on a move
+                    units: th => (this._grouped() ? this._dragUnits() : this._plainUnits(th)),
+                    fixed: th => th.dataset.pinned === 'true',
+                    onMove: (from, to) => (this._grouped() ? this._movedUnit(this._freeAt(from), this._freeAt(to)) : this._moved(from, to)),
                     // (a press that moved nothing is a click or a right-click: nothing is drawn again, so a menu just opened stays)
                     onEnd: () => {
                         if (!this._dragged) return;
@@ -580,13 +594,91 @@
             this._sizedEmpty = false;
         }
 
+        /* ── Units: a group of columns, or a column on its own ── */
+
+        _grouped() { return this._columns.some(c => c.group || c.pinned); }
+        /** The columns shown, as the places they move between: a group's columns together, others one by one. */
+        _units() {
+            const units = [];
+            this._columns.forEach((column, index) => {
+                const last = units[units.length - 1];
+                if (column.group && last && last.group && last.group.id === column.group.id) last.columns.push({ column, index });
+                else units.push({ group: column.group || null, pinned: !!column.pinned, columns: [{ column, index }] });
+            });
+            return units;
+        }
+        _indexOf(th) {
+            const id = th && th.dataset.col;
+            return id === undefined ? -1 : this._columns.findIndex(c => c.id === id);
+        }
+        _unitOf(th) {
+            const id = th.dataset.group;
+            return this._units().find(u => u.group && u.group.id === id);
+        }
+        /** A place among the units that move, as a place among all of them (pinned ones never move). */
+        _freeAt(n) {
+            const free = this._units().map((u, i) => (u.pinned ? -1 : i)).filter(i => i >= 0);
+            return free[Math.max(0, Math.min(free.length - 1, n))];
+        }
+        /** Each unit that moves: its heading and every cell of its columns, the places a drag moves between (column-drag.js). */
+        _dragUnits() {
+            const rows = Array.from(this._body.rows).concat(Array.from(this._foot.rows));
+            return this._units().filter(unit => !unit.pinned).map(unit => {
+                const head = unit.group ? this._head.querySelector(`th[data-group="${CSS.escape(unit.group.id)}"]:not([data-col])`)
+                    : this._head.querySelector(`th[data-col="${CSS.escape(unit.columns[0].column.id)}"]`);
+                const cells = [];
+                unit.columns.forEach(({ column, index }) => {
+                    if (unit.group) { const sub = this._head.querySelector(`th[data-col="${CSS.escape(column.id)}"]`); if (sub) cells.push(sub); }
+                    rows.forEach(r => { if (r.cells.length === this._columns.length && r.cells[index]) cells.push(r.cells[index]); });
+                });
+                return { head, cells };
+            }).filter(u => u.head);
+        }
+        /** No groups: every heading of the row pressed is a place, its cells moved as the drag goes (column-drag.js's own way). */
+        _plainUnits(th) {
+            const ths = Array.from(th.parentElement.cells);
+            const all = Array.from(this._table.rows).filter(r => r.cells.length === ths.length);
+            return ths.map((head, i) => ({ head, index: i, cells: all.map(r => r.cells[i]) }));
+        }
+        _movedUnit(from, to) {
+            const units = this._units();
+            const moving = units[from];
+            if (!moving || moving.pinned) return;
+            units.splice(to, 0, units.splice(from, 1)[0]);
+            this._columns = units.flatMap(u => u.columns.map(x => x.column));
+            const id = moving.group ? moving.group.id : moving.columns[0].column.id;
+            this._heads();
+            this._rendered = { start: -1, end: -1 };
+            this._render(true);
+            this._tell('moved', { id, to });
+        }
+        _removeUnit(unit) {
+            if (!unit || unit.pinned || this.hasAttribute('locked')) return;
+            const gone = new Set(unit.columns.map(x => x.column.id));
+            if (gone.size >= this._columns.length) return;
+            this._columns = this._columns.filter(c => !gone.has(c.id));
+            const sorted = this._sort && gone.has(this._sort.id);
+            if (sorted) { this._sort = null; if (!this._source) this._apply(); }
+            this._heads();
+            this._render(true);
+            this._tell('removed', { id: unit.group ? unit.group.id : unit.columns[0].column.id, ids: [...gone] });
+            if (sorted && this._source) this._again(true);
+        }
+
         _heads() {
             const head = window.ColumnHead;
-            const many = this._columns.length > 1 && !this.hasAttribute('locked');
-            const tr = make('tr');
-            this._columns.forEach(column => {
+            const units = this._units();
+            const two = units.some(u => u.group);
+            const movable = units.filter(u => !u.pinned).length > 1 && !this.hasAttribute('locked');
+            const removable = this.hasAttribute('removable') && !this.hasAttribute('locked');
+            const top = make('tr');
+            const sub = make('tr');
+            // One column's heading: its name, its sort, and its edge; `own`: its name moves it
+            const columnHead = (column, own) => {
                 const name = column.name || column.id;
                 const th = make('th', 'sortable-header' + (column.className ? ` ${column.className}` : ''));
+                th.dataset.col = column.id;
+                if (column.pinned) th.dataset.pinned = 'true';
                 const content = make('div', 'flex align-center column-header-content');
                 const actions = make('span', 'header-actions');
                 const dir = this._sort && this._sort.id === column.id ? this._sort.dir : '';
@@ -594,17 +686,49 @@
                 th.classList.toggle('sort-desc', dir === 'desc');
                 if (head) {
                     actions.append(head.sortButton({ label: name, numbers: this._numbers(column), dir }));
-                    if (many && this.hasAttribute('removable')) actions.append(head.hideButton({ label: name }));
+                    if (own && movable && removable && !column.pinned) actions.append(head.hideButton({ label: name }));
                 }
-                const label = make('span', 'column-name' + (many ? ' is-movable' : ''), name);
-                label.title = (many ? 'Hold and drag to move this column. ' : '') + `@${name}= searches it`;
+                const moves = own && movable && !column.pinned;
+                const label = make('span', 'column-name' + (moves ? ' is-movable' : ''), name);
+                label.title = (moves ? 'Hold and drag to move this column. ' : '') + `@${name}= searches it`;
                 content.append(label, actions);
                 th.append(content);
                 if (head) th.append(head.edge());
-                tr.append(th);
+                if (typeof column.head === 'function') column.head(th);
+                return th;
+            };
+            units.forEach(unit => {
+                if (!unit.group) {
+                    const th = columnHead(unit.columns[0].column, true);
+                    if (two) th.rowSpan = 2;
+                    top.append(th);
+                    return;
+                }
+                // A group: its name over its columns; the group moves and is removed as one
+                const g = unit.group;
+                const th = make('th', 'dbmn-table-group' + (g.className ? ` ${g.className}` : ''));
+                th.colSpan = unit.columns.length;
+                th.dataset.group = g.id;
+                const content = make('div', 'flex align-center column-header-content');
+                const actions = make('span', 'header-actions');
+                if (head && movable && removable) actions.append(head.hideButton({ label: g.name || g.id }));
+                const label = make('span', 'column-name' + (movable ? ' is-movable' : ''), g.name || g.id);
+                label.title = movable ? 'Hold and drag to move these columns' : '';
+                content.append(label, actions);
+                th.append(content);
+                if (typeof g.head === 'function') g.head(th);
+                top.append(th);
+                unit.columns.forEach(({ column }) => {
+                    const s = columnHead(column, false);
+                    s.dataset.group = g.id;
+                    s.classList.add('dbmn-table-sub');
+                    sub.append(s);
+                });
             });
-            this._head.replaceChildren(tr);
-            if (window.Icons) window.Icons.injectIcons(tr);
+            this._head.replaceChildren(...(two ? [top, sub] : [top]));
+            if (window.Icons) window.Icons.injectIcons(this._head);
+            // The second row of headings sits under the first, both in view as the rows scroll
+            if (two) requestAnimationFrame(() => { this._table.style.setProperty('--table-head-1', `${top.getBoundingClientRect().height}px`); });
             this._colgroup();
             this._feet();
         }
@@ -650,10 +774,13 @@
             // (with no rows yet it is sized by its headings, and again when the first rows come)
             this._sizedEmpty = !sample.length;
             this._body.replaceChildren(...sample.map(row => this._row(row)));
-            const head = this._head.firstChild;
-            if (!head) return;
+            if (!this._head.firstChild) return;
             if (this._body.firstChild) this._rowH = this._body.firstChild.getBoundingClientRect().height || ROW_H;
-            let widths = Array.from(head.cells).map(th => Math.min(420, Math.ceil(th.getBoundingClientRect().width)));
+            // Each column's own heading (under its group's, when it has one), in column order
+            let widths = this._columns.map(c => {
+                const th = this._head.querySelector(`th[data-col="${CSS.escape(c.id)}"]`);
+                return th ? Math.min(420, Math.ceil(th.getBoundingClientRect().width)) : 80;
+            });
             const sum = widths.reduce((a, b) => a + b, 0);
             const room = this._scroll.clientWidth;
             // A table narrower than its box fills it
@@ -677,7 +804,8 @@
 
         /** As wide as its name and the values on screen need. */
         _fit(i) {
-            const th = this._head.firstChild.cells[i];
+            const th = this._columns[i] && this._head.querySelector(`th[data-col="${CSS.escape(this._columns[i].id)}"]`);
+            if (!th) return;
             const name = th.querySelector('.column-name');
             const actions = th.querySelector('.header-actions');
             const wide = window.ColumnHead.textWidth;
@@ -873,20 +1001,42 @@
             if (sorted && this._source) this._again(true);
         }
 
-        _menu(event, i) {
+        _menu(event, th) {
             if (!window.DbmnContextMenu || !window.ColumnHead) return;
+            const locked = this.hasAttribute('locked');
+            const units = this._units();
+            const movable = units.filter(u => !u.pinned).length > 1 && !locked;
+            // A group's heading: it moves and goes as one
+            if (th.dataset.group !== undefined && th.dataset.col === undefined) {
+                const at = units.findIndex(u => u.group && u.group.id === th.dataset.group);
+                const unit = units[at];
+                const firstFree = units.findIndex(u => !u.pinned);
+                window.ColumnHead.menu(event, {
+                    first: at === firstFree, last: at === units.length - 1,
+                    move: movable ? where => this._movedUnit(at, where === 'start' ? firstFree : units.length - 1) : null,
+                    remove: movable && this.hasAttribute('removable') ? () => this._removeUnit(unit) : null
+                });
+                return;
+            }
+            const i = this._indexOf(th);
             const column = this._columns[i];
+            if (!column) return;
             const last = this._columns.length - 1;
             const sorted = this._sort && this._sort.id === column.id;
+            // Under a group, or pinned: it sorts and fits; moving and removing are its group's
+            const own = !column.group && !column.pinned;
+            const grouped = this._grouped();
+            const unitAt = grouped ? units.findIndex(u => u.columns.some(x => x.column.id === column.id)) : i;
+            const firstFree = grouped ? units.findIndex(u => !u.pinned) : 0;
             window.ColumnHead.menu(event, {
                 numbers: this._numbers(column),
                 dir: sorted ? this._sort.dir : '',
                 sorted: !!this._sort,
-                first: i === 0, last: i === last,
+                first: unitAt === firstFree, last: grouped ? unitAt === units.length - 1 : i === last,
                 sort: dir => this._sortBy(column, dir),
-                move: last === 0 || this.hasAttribute('locked') ? null : where => this._moveTo(i, where === 'start' ? 0 : last),
+                move: !own || !movable ? null : where => (grouped ? this._movedUnit(unitAt, where === 'start' ? firstFree : units.length - 1) : this._moveTo(i, where === 'start' ? 0 : last)),
                 fit: () => this._fit(i),
-                remove: last === 0 || !this.hasAttribute('removable') || this.hasAttribute('locked') ? null : () => this._remove(i)
+                remove: !own || last === 0 || !this.hasAttribute('removable') || locked ? null : () => this._remove(i)
             });
         }
 

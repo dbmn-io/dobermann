@@ -98,6 +98,10 @@
             const centre = d.lefts[d.from] + dx + w / 2;
             let to = 0;
             d.lefts.forEach((left, j) => { if (j !== d.from && left + d.widths[j] / 2 < centre) to++; });
+            // Held against either end, it takes the end place: a column wider than its neighbour
+            // never gets its middle past theirs, and could not be made first (or last)
+            if (dx <= min) to = 0;
+            else if (dx >= max) to = last;
             if (to === d.to) return;
             d.to = to;
             d.shifts.forEach((was, j) => {
