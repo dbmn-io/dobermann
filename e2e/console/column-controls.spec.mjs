@@ -234,17 +234,20 @@ test('a column in a group moves within its group, past a group beside it, and ne
     expect(await column(4)).toEqual(['Rope Tug', 'Chew Ring', 'Slow Feeder Bowl']);
     expect(await levels()).toEqual(['sku', { location: ['bin', 'zone', 'aisle'] }, 'name', 'quantity']);
 
-    // Never out of its group: aisle dragged far to the left stops at the group's start, and says why
-    // (far: the table fills the window, so its columns are wide)
-    await drag(3, { by: -1500 });
-    await expect.poll(names).toEqual(['sku', 'aisle', 'bin', 'zone', 'name', 'quantity']);
-    expect(await levels()).toEqual(['sku', { location: ['aisle', 'bin', 'zone'] }, 'name', 'quantity']);
-    await expect(page.locator('.dbmn-toast').filter({ hasText: 'aisle can only move among the columns of' })).toBeVisible();
+    // Never out of its group: bin dragged well past the group's end (to the right, inside the
+    // window: a browser need not follow the pointer past the window's edge) stops at the group's
+    // end, and says why
+    const groupEnd = await heads.nth(3).boundingBox();
+    const binAt = await heads.nth(1).boundingBox();
+    await drag(1, { by: groupEnd.x + groupEnd.width - binAt.x + 150 });
+    await expect.poll(names).toEqual(['sku', 'zone', 'aisle', 'bin', 'name', 'quantity']);
+    expect(await levels()).toEqual(['sku', { location: ['zone', 'aisle', 'bin'] }, 'name', 'quantity']);
+    await expect(page.locator('.dbmn-toast').filter({ hasText: 'bin can only move among the columns of' })).toBeVisible();
 
     // The menu moves within the group too
     await heads.nth(1).locator('.column-name').click({ button: 'right' });
     await page.locator('.dbmn-context-menu').getByText('Move to end').click();
-    await expect.poll(names).toEqual(['sku', 'bin', 'zone', 'aisle', 'name', 'quantity']);
+    await expect.poll(names).toEqual(['sku', 'aisle', 'bin', 'zone', 'name', 'quantity']);
 
     // The sort icon: one way, the other, then no sort — as in Query and Compare
     const sort = heads.nth(0).locator('.col-sort-btn');

@@ -437,16 +437,6 @@ class DynamicReportManager {
     }
 
     /**
-     * Set the active view for a tab by name.
-     */
-    setActiveView(tab, viewName) {
-        if (!this.userSettings[tab]) {
-            this.userSettings[tab] = { activeView: '', views: [] };
-        }
-        this.userSettings[tab].activeView = viewName;
-    }
-
-    /**
      * Find or create a view for the given row basis path on a tab.
      * Issue #229: transitional helper — the editor in 1B drives creation
      * via the Manage Views UI; this is used only by legacy callers that
@@ -1987,46 +1977,6 @@ class DynamicReportManager {
         return map;
     }
 
-    /**
-     * Set visible columns from a { columnId: boolean } map.
-     * Converts into the active view's columns array format.
-     */
-    setVisibleColumns(tab, path, visibleColumns) {
-        const view = this.getOrCreateViewForPath(tab, path);
-        // Merge with existing column order: keep ordered columns that are still visible,
-        // append newly-visible columns at the end.
-        const existingOrder = (view.columns || []).map(c => c.id);
-        const newVisible = Object.entries(visibleColumns)
-            .filter(([key, v]) => v !== false && key !== '_isExplicit')
-            .map(([id]) => id);
-        const newVisibleSet = new Set(newVisible);
-
-        // Keep existing ordered columns that are still visible
-        const ordered = existingOrder.filter(id => newVisibleSet.has(id));
-        // Add newly visible columns not already in order
-        const orderedSet = new Set(ordered);
-        newVisible.forEach(id => {
-            if (!orderedSet.has(id)) {
-                ordered.push(id);
-            }
-        });
-
-        view.columns = ordered.map(id => ({ id, source: 'current' }));
-        this.userSettings[tab].activeView = view.name;
-    }
-
-    /**
-     * Set column order on the active view from an array of column IDs.
-     */
-    setColumnOrder(tab, orderedIds) {
-        const view = this.getActiveView(tab);
-        view.columns = orderedIds.map(id => {
-            // Preserve existing column metadata if present
-            const existing = (view.columns || []).find(c => c.id === id);
-            return existing || { id, source: 'current' };
-        });
-    }
-
     initialize(rawData) {
         // Preserve existing logs if they were streamed/loaded before refresh
         const existingLogs = this.rawData?.logContent;
@@ -2439,71 +2389,6 @@ class DynamicReportManager {
         this.extractAndRender(tabName);
     }
 
-    findRecommendedPath(tabName) {
-        // Use dynamic path discovery instead of backend paths
-        const discoveredPaths = this.getDiscoveredPaths();
-        if (!discoveredPaths || discoveredPaths.length === 0) return null;
-
-        // Get the raw data for this tab to validate paths against
-        let rawDataForTab;
-        if (tabName === 'input') {
-            rawDataForTab = this.rawData.inputData || [];
-        } else {
-            const classified = this.classifyResponses(this.rawData.responses);
-            rawDataForTab = classified[tabName] || [];
-        }
-
-        if (rawDataForTab.length === 0) return null;
-
-        // For success/error tabs, look for 'data' path, but validate it exists
-        if (tabName === 'success' || tabName === 'errors') {
-            const dataPath = discoveredPaths.find(p => p.path === 'data');
-            if (dataPath) {
-                // Test if the path actually extracts data
-                const extracted = this.extractAtPath(rawDataForTab, 'data');
-                if (extracted && extracted.length > 0) {
-                    return 'data';
-                }
-            }
-        }
-        
-        // Otherwise look for any recommended path that actually contains data
-        for (const pathInfo of discoveredPaths) {
-            if (pathInfo.recommended && pathInfo.path !== 'root') {
-                const extracted = this.extractAtPath(rawDataForTab, pathInfo.path);
-                if (extracted && extracted.length > 0) {
-                    return pathInfo.path;
-                }
-            }
-        }
-        
-        return null; // Fall back to 'root' if no valid path found
-    }
-
-    isValidRootPath(tabName, rootPath) {
-        if (!rootPath || rootPath === 'root') return true; // 'root' is always valid
-
-        // Get the raw data for this tab to validate path against
-        let rawDataForTab;
-        if (tabName === 'input') {
-            rawDataForTab = this.rawData.inputData || [];
-        } else {
-            const classified = this.classifyResponses(this.rawData.responses);
-            rawDataForTab = classified[tabName] || [];
-        }
-
-        if (rawDataForTab.length === 0) return false;
-
-        // FIX issue#100: Don't extract ALL data just to validate path exists!
-        // Just check if the path exists in the FIRST item
-        if (rawDataForTab.length > 0) {
-            const testResult = this.extractSingleAtPath(rawDataForTab[0], rootPath);
-            return testResult !== null && testResult !== undefined;
-        }
-
-        return false;
-    }
-
 
 
     /**
@@ -2692,11 +2577,6 @@ class DynamicReportManager {
         return true;
     }
     
-    getVisibleChildrenCount(childrenIds) {
-        const visibleChildren = childrenIds.filter(childId => this.isColumnVisible(childId));
-        return visibleChildren.length;
-    }
-    
     analyzeObjectStructure(obj, prefix, columnMap) {
         Object.keys(obj).forEach(key => {
             const value = obj[key];
@@ -2757,59 +2637,6 @@ class DynamicReportManager {
         });
     }
     
-    // GitHub Issue #229: Walk complete response from root, recursing INTO arrays
-    analyzeFullResponseStructure(obj, prefix, columnMap, depth = 0, maxDepth = 8) {
-        if (depth > maxDepth || !obj || typeof obj !== 'object') return;
-        Object.keys(obj).forEach(key => {
-            const value = obj[key];
-            const fullKey = prefix ? `${prefix}.${key}` : key;
-            const type = this.inferColumnType(value);
-
-            if (Array.isArray(value)) {
-                // Array → collapsible group, recurse into first item(s)
-                if (!columnMap.has(fullKey)) {
-                    columnMap.set(fullKey, {
-                        id: fullKey,
-                        name: this.formatColumnName(key),
-                        type: 'group',
-                        dataType: 'array',
-                        children: []
-                    });
-                }
-                const sample = Math.min(value.length, 3);
-                for (let i = 0; i < sample; i++) {
-                    if (typeof value[i] === 'object' && value[i] !== null) {
-                        this.analyzeFullResponseStructure(value[i], fullKey, columnMap, depth + 1, maxDepth);
-                    }
-                }
-            } else if (type === 'object' && value !== null) {
-                // Object → collapsible group, recurse
-                if (!columnMap.has(fullKey)) {
-                    columnMap.set(fullKey, {
-                        id: fullKey,
-                        name: this.formatColumnName(key),
-                        type: 'group',
-                        dataType: 'object',
-                        children: []
-                    });
-                }
-                this.analyzeFullResponseStructure(value, fullKey, columnMap, depth + 1, maxDepth);
-            } else {
-                // Primitive → leaf column
-                if (!columnMap.has(fullKey)) {
-                    columnMap.set(fullKey, {
-                        id: fullKey,
-                        name: this.formatColumnName(key),
-                        type: type,
-                        parent: prefix || null,
-                        sortable: true,
-                        filterable: true
-                    });
-                }
-            }
-        });
-    }
-
 
     buildColumnHierarchy(columnMap) {
         // GitHub Issue #110: Delegate to shared table builder utility
@@ -3006,70 +2833,6 @@ class DynamicReportManager {
         this.extractAndRender(this.currentTab, newPath);
     }
     
-    // Issue #229 Phase 1B.4: "New View" button inside expand-cells.
-    // Opens the editor pre-filled with rowBasis = pathContext, scalar
-    // descendants auto-seeded inside the proper nested wrapper chain,
-    // and a unique suggested name. User just hits Save.
-    setArrayAsRoot(pathContext) {
-        if (!this.currentTab || !pathContext) return;
-
-        // Open the editor in Create mode
-        this.openViewEditor(null);
-
-        const view = this.editorPendingView;
-        if (!view) return;
-
-        // Pin rowBasis to the array path
-        view.rowBasis = pathContext;
-        view._rowBasisPinned = true;
-
-        // Walk the first sample item at pathContext and collect scalar
-        // descendant ids — addLeafToView wires each into the right
-        // nested wrapper chain automatically.
-        const rawDataForTab = this.getRawDataForCurrentTab();
-        if (rawDataForTab && rawDataForTab.length > 0) {
-            let sampleItem;
-            for (const response of rawDataForTab) {
-                const extracted = this.tableBuilder.extractSingleAtPath(response, pathContext);
-                const candidate = Array.isArray(extracted) ? extracted[0] : extracted;
-                if (candidate && typeof candidate === 'object') {
-                    sampleItem = candidate;
-                    break;
-                }
-            }
-            if (sampleItem && typeof sampleItem === 'object') {
-                const prefix = pathContext + '.';
-                for (const key of Object.keys(sampleItem)) {
-                    const v = sampleItem[key];
-                    if (v === null || v === undefined) continue;
-                    const t = typeof v;
-                    if (t === 'string' || t === 'number' || t === 'boolean') {
-                        this.addLeafToView(prefix + key);
-                    }
-                }
-            }
-        }
-
-        // Suggest a unique name from the last path segment. Append a
-        // numeric suffix if the suggestion collides with existing views.
-        const lastSegment = pathContext.split('.').pop() || pathContext;
-        const existing = (this.userSettings[this.currentTab]?.views || []).map(v => v.name);
-        let suggested = lastSegment;
-        let counter = 2;
-        while (existing.includes(suggested)) {
-            suggested = `${lastSegment} ${counter}`;
-            counter++;
-        }
-        view.name = suggested;
-        const nameInput = document.getElementById('view-editor-name');
-        if (nameInput) nameInput.value = suggested;
-
-        this.updateSourcesForRowBasis();
-        this.renderRowBasisSelect();
-        this.renderEditorTree();
-        this.renderEditorSelected();
-    }
-
     // Issue #229 Phase 1B.12: "Set as Row" inside an expand-cell.
     // Drills the active view into that array by rebasing rowBasis in
     // place. Leaf sources (current/ancestor) are recomputed from the
