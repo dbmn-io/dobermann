@@ -1,0 +1,130 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Copyright (C) 2026 Flexion Tech Pty Ltd */
+/*
+ * <dbmn-map> (dbmn-map.js): a gutter, then a column per source; a line of boxes per thing lined
+ * up. A source's colour is its tone class's --compare-c (the screen's); the rest is the theme's.
+ */
+dbmn-map { display: block; min-width: 0; }
+.dbmn-map-grid {
+    display: grid;
+    grid-template-columns: var(--map-gutter, 170px) repeat(var(--map-sources, 2), minmax(160px, 1fr));
+    gap: 6px 8px;
+    align-items: stretch;
+}
+.dbmn-map-corner { min-height: 1px; }
+.dbmn-map-source {
+    padding: 6px 10px;
+    border-radius: 6px;
+    border-bottom: 2px solid var(--compare-c, var(--dbmn-panel-border));
+    background: color-mix(in srgb, var(--compare-c, transparent) 22%, var(--dbmn-editor-background));
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.dbmn-map-section {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px solid var(--dbmn-panel-border, rgba(128, 128, 128, 0.35));
+}
+.dbmn-map-section-title { margin: 0; font-size: 12px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--dbmn-descriptionForeground); }
+.dbmn-map-section-note { margin: 0; font-size: 12px; color: var(--dbmn-descriptionForeground); }
+.dbmn-map-section .dbmn-map-add { margin-left: auto; }
+
+/* The gutter: what the line is for, and × */
+.dbmn-map-lead {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--dbmn-descriptionForeground);
+}
+.dbmn-map-mode { display: inline-flex; border: 1px solid var(--dbmn-panel-border, rgba(128, 128, 128, 0.35)); border-radius: 4px; overflow: hidden; }
+.dbmn-map-mode button { padding: 2px 6px; border: 0; background: none; color: var(--dbmn-descriptionForeground); font: inherit; font-size: 11px; cursor: pointer; }
+.dbmn-map-mode button + button { border-left: 1px solid var(--dbmn-panel-border, rgba(128, 128, 128, 0.35)); }
+.dbmn-map-mode button[aria-pressed="true"] { background: color-mix(in srgb, var(--dbmn-focusBorder) 28%, transparent); color: var(--dbmn-foreground); font-weight: 600; }
+.dbmn-map-mode button:focus-visible,
+.dbmn-map-x:focus-visible { outline: 1px solid var(--dbmn-focusBorder); outline-offset: -1px; }
+.dbmn-map-x { padding: 2px 4px; border: 0; border-radius: 3px; background: none; color: var(--dbmn-descriptionForeground); font-size: 14px; line-height: 1; cursor: pointer; }
+.dbmn-map-x:hover:not(:disabled) { color: var(--dbmn-foreground); background: var(--dbmn-list-hoverBackground, rgba(128, 128, 128, 0.16)); }
+.dbmn-map-x:disabled { opacity: 0.35; cursor: default; }
+
+/* A box: the column, an example, its functions, how many agree */
+.dbmn-map-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+    padding: 5px 7px 6px;
+    border: 1px solid var(--dbmn-panel-border, rgba(128, 128, 128, 0.35));
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--compare-c, transparent) 7%, var(--dbmn-editor-background));
+}
+.dbmn-map-cell.is-key { border-color: color-mix(in srgb, var(--dbmn-focusBorder) 55%, var(--dbmn-panel-border, rgba(128, 128, 128, 0.35))); }
+.dbmn-map-cell.is-empty { background: transparent; border-style: dashed; }
+.dbmn-map-cell.is-fixed { justify-content: center; }
+.dbmn-map-pick {
+    width: 100%;
+    padding: 3px 4px;
+    border: 1px solid var(--dbmn-dropdown-border, var(--dbmn-panel-border));
+    border-radius: 4px;
+    background: var(--dbmn-dropdown-background);
+    color: var(--dbmn-dropdown-foreground);
+    font-family: var(--dbmn-editor-font-family, monospace);
+    font-size: 12.5px;
+}
+.dbmn-map-cell.is-empty .dbmn-map-pick { color: var(--dbmn-descriptionForeground); }
+.dbmn-map-name { font-family: var(--dbmn-editor-font-family, monospace); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dbmn-map-eg { font-family: var(--dbmn-editor-font-family, monospace); font-size: 11.5px; color: var(--dbmn-descriptionForeground); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dbmn-map-quiet { font-size: 11px; color: var(--dbmn-descriptionForeground); }
+.dbmn-map-fx { display: flex; flex-wrap: wrap; gap: 3px; align-items: center; }
+.dbmn-map-fn {
+    padding: 0 6px;
+    border: 1px solid color-mix(in srgb, var(--dbmn-focusBorder) 45%, transparent);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--dbmn-focusBorder) 18%, transparent);
+    font-size: 11px;
+}
+/* A function whose lookup table has gone: it will not run until it is changed */
+.dbmn-map-fn.is-missing { border-color: var(--dbmn-inputValidation-errorBorder); background: transparent; color: var(--dbmn-errorForeground); text-decoration: line-through; }
+.dbmn-map-fxbtn {
+    height: 20px;
+    padding: 0 6px;
+    border: 1px solid var(--dbmn-panel-border, rgba(128, 128, 128, 0.35));
+    border-radius: 4px;
+    background: none;
+    color: var(--dbmn-descriptionForeground);
+    font: italic 600 12px Georgia, serif;
+    cursor: pointer;
+}
+.dbmn-map-fxbtn:hover,
+.dbmn-map-fxbtn:focus-visible { color: var(--dbmn-foreground); border-color: var(--dbmn-focusBorder); }
+.dbmn-map-agree { font-size: 11px; color: var(--dbmn-descriptionForeground); font-variant-numeric: tabular-nums; }
+.dbmn-map-agree.is-good { color: var(--dbmn-testing-iconPassed, var(--dbmn-charts-green)); }
+.dbmn-map-agree.is-low { color: var(--dbmn-editorWarning-foreground); }
+
+/* Under the key: how many rows each source matches */
+.dbmn-map-matched { font-size: 11.5px; color: var(--dbmn-descriptionForeground); font-variant-numeric: tabular-nums; padding: 0 2px; }
+.dbmn-map-matched.is-ok { color: var(--dbmn-testing-iconPassed, var(--dbmn-charts-green)); }
+.dbmn-map-matched.is-warn { color: var(--dbmn-editorWarning-foreground); }
+
+/* Each source's columns no line uses: a click starts a line */
+.dbmn-map-left { display: flex; flex-wrap: wrap; gap: 4px; align-content: flex-start; }
+.dbmn-map-leftover {
+    padding: 1px 8px;
+    border: 1px solid var(--dbmn-panel-border, rgba(128, 128, 128, 0.35));
+    border-radius: 10px;
+    background: none;
+    color: var(--dbmn-foreground);
+    font-family: var(--dbmn-editor-font-family, monospace);
+    font-size: 11.5px;
+    cursor: pointer;
+}
+.dbmn-map-leftover::before { content: "+ "; color: var(--dbmn-focusBorder); }
+.dbmn-map-leftover:hover,
+.dbmn-map-leftover:focus-visible { border-color: var(--dbmn-focusBorder); }

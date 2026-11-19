@@ -194,6 +194,7 @@
         ['<dbmn-progress>', 'The system\'s progress: the box is the bar', C, 'Console', 'shared/dbmn-footer.js'],
         ['<dbmn-status>', 'A few words of status (Saved, Not saved yet)', C, 'Edit Endpoint, Edit Environment', 'shared/dbmn-footer.js'],
         ['DbmnModal', 'Dialogs: a question, a form, an alert', M, 'Every screen', 'shared/dbmn-modal.js'],
+        ['<dbmn-map>', 'Which column in each source is which, a line at a time: key, functions, how many agree', C, 'Design system; Compare and Run Batch next', 'shared/dbmn-map.js'],
         ['DbmnFunctions', 'Functions on a column, ticked in order, tried on its values before and after', M, 'Design system; Query, Compare and Run Batch next', 'shared/dbmn-functions.js'],
         ['DbmnToast', 'Messages in the corner', M, 'Every screen', 'shared/dbmn-toast.js'],
         ['DbmnContextMenu', 'A right-click menu', M, 'Hub lists, tables', 'shared/dbmn-context-menu.js'],
@@ -387,6 +388,52 @@
         };
     }
 
+    /* ── Lining columns up (<dbmn-map>): three made-up results, kept here as the screen would keep them ── */
+    function drawMap() {
+        const map = $('dsMap');
+        if (!map) return;
+        const cols = names => names.map(n => ({ id: n, name: n }));
+        const sources = [
+            { id: 'bl', name: 'BL · GET /items/stock · PROD', short: 'BL', tone: 'compare-r0', columns: cols(['sku', 'warehouse', 'onHand', 'uom', 'updated']) },
+            { id: 'c1', name: 'C1 · GET /inventory · UAT', short: 'C1', tone: 'compare-r1', columns: cols(['itemCode', 'warehouseCode', 'qtyOnHand', 'unit', 'lastChange']) },
+            { id: 'c2', name: 'C2 · stock-count.xlsx', short: 'C2', tone: 'compare-r2', columns: cols(['SKU', 'Site', 'Counted', 'Notes']) }
+        ];
+        const examples = { sku: 'A-2207', itemCode: 'a-2207 ', SKU: 'A-2207', warehouse: 'SYD1', warehouseCode: '01', Site: 'Sydney', onHand: 48, qtyOnHand: 48, Counted: 47, uom: 'EA', unit: 'EA', updated: '2026-11-19', lastChange: '2026-11-18' };
+        const agree = { qtyOnHand: 0.97, Counted: 0.82, unit: 1, lastChange: 0.12 };
+        let n = 0;
+        const line = (mode, picks, fns) => ({ id: `l${++n}`, mode, cells: Object.fromEntries(Object.entries(picks).map(([s, c]) => [s, { column: c, example: c ? examples[c] : undefined, agree: agree[c], fns: (fns && fns[s]) || [] }])) });
+        let lines = [
+            line('key', { bl: 'sku', c1: 'itemCode', c2: 'SKU' }, { c1: [{ id: 'trim', label: 'Trim spaces' }, { id: 'upper', label: 'Upper case' }] }),
+            line('strict', { bl: 'onHand', c1: 'qtyOnHand', c2: 'Counted' }),
+            line('relaxed', { bl: 'uom', c1: 'unit', c2: null }),
+            line('strict', { bl: 'updated', c1: 'lastChange', c2: null }, { c1: [{ id: 'translate', label: 'Lookup: Dates', missing: true }] })
+        ];
+        map.modes = [
+            { id: 'key', label: 'Key', title: 'Part of what says which rows are the same record' },
+            { id: 'strict', label: 'Strict', title: 'Compared exactly' },
+            { id: 'relaxed', label: 'Relaxed', title: 'Compared ignoring capitals, spaces and number formats' },
+            { id: 'skip', label: "Don't compare", title: 'Shown, not compared' }
+        ];
+        map.keyMode = 'key';
+        map.sources = sources;
+        const redraw = () => {
+            map.lines = lines;
+            map.matched = { bl: { text: '1,198 rows in BL', tone: '' }, c1: { text: '1,180 of 1,201 match BL', tone: 'ok' }, c2: { text: '298 of 312 match BL', tone: 'warn' } };
+        };
+        const find = id => lines.find(l => l.id === id);
+        map.addEventListener('dbmn-map-mode', e => { find(e.detail.line).mode = e.detail.mode; redraw(); });
+        map.addEventListener('dbmn-map-remove', e => { lines = lines.filter(l => l.id !== e.detail.line); redraw(); });
+        map.addEventListener('dbmn-map-pick', e => {
+            const c = find(e.detail.line).cells;
+            c[e.detail.source] = { column: e.detail.column, example: e.detail.column ? examples[e.detail.column] : undefined, agree: agree[e.detail.column], fns: [] };
+            redraw();
+        });
+        map.addEventListener('dbmn-map-add', () => { lines.splice(lines.filter(l => l.mode === 'key').length, 0, line('key', { bl: null, c1: null, c2: null })); redraw(); });
+        map.addEventListener('dbmn-map-leftover', e => { lines.push(line('strict', { [e.detail.source]: e.detail.column })); redraw(); });
+        map.addEventListener('dbmn-map-fn', e => { if (window.DbmnToast) window.DbmnToast.info(`ƒ on ${find(e.detail.line).cells[e.detail.source].column}: the screen opens Functions on a column`); });
+        redraw();
+    }
+
     /* ── Dialogs: functions on a column (DbmnFunctions), over a made-up column ── */
     async function openFunctionsDemo() {
         // A made-up column: C1's codes, written with leading zeros and spaces that BL's are not
@@ -485,6 +532,7 @@
     $('dsName').addEventListener('dbmn-name-change', event => { $('dsNameNote').textContent = `Asked to be called ${event.detail.name}`; });
     drawTable();
     drawNested();
+    drawMap();
     drawPaged();
     drawLog();
     if (window.Icons) window.Icons.injectIcons(document.body);

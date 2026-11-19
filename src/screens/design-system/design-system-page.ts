@@ -23,7 +23,7 @@ export function buildDesignSystemPage(asset: AssetUrl): string {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Design system</title>
-    ${sharedStyleLinks(asset, ['atomic', 'core', 'buttons', 'modals', 'tables', 'tabs', 'toast', 'console', 'data-transformer', 'compare', 'column-drag', 'column-head', 'query', 'dbmn-footer', 'dbmn-table', 'dbmn-log', 'dbmn-name', 'dbmn-functions'])}
+    ${sharedStyleLinks(asset, ['atomic', 'core', 'buttons', 'modals', 'tables', 'tabs', 'toast', 'console', 'data-transformer', 'compare', 'column-drag', 'column-head', 'query', 'dbmn-footer', 'dbmn-table', 'dbmn-log', 'dbmn-name', 'dbmn-functions', 'dbmn-map'])}
     <link rel="stylesheet" href="${asset('design-system/design-system.css')}">
 </head>
 <body class="editor-slide-in ds-page">
@@ -47,6 +47,7 @@ export function buildDesignSystemPage(asset: AssetUrl): string {
             <a href="#icons">Icons</a>
             <a href="#dialogs">Dialogs and messages</a>
             <a href="#tables">Tables</a>
+            <a href="#mapping">Lining columns up</a>
             <a href="#logs">Logs</a>
             <a href="#adding">Adding a component</a>
         </nav>
@@ -374,6 +375,22 @@ nested: { controls: (row, value) =&gt; button } // the screen's own buttons besi
 orders.layout = { recordsWide: ['lines'] };  // these columns' records full width, under their row (told: change 'records-wide')</code></pre>
     </section>
 
+    <section class="ds-section" id="mapping">
+        <h2>Lining columns up <span class="ds-chip is-component">Component</span></h2>
+        <p>Which column in each source is which, a line at a time: Compare's Map, Run Batch's Map, and later Query's Join. Each source has a column across the top; each line a box under every source with its column, an example, the functions on it (ƒ opens <a href="#dialogs">Functions on a column</a>) and how many of its values agree with the first source's. On the left, what the line is for: the screen's choices. The key's lines sit under "Match on" with how many rows each source matches. Columns no line uses wait under each source: a click starts a line. Try it: make a line part of the key, pick another column, take a line out.</p>
+        <div class="ds-demo">
+            <dbmn-map id="dsMap" label="Map the results' columns"></dbmn-map>
+        </div>
+        <pre class="ds-code"><code>map.sources = [{ id: 'bl', name: 'BL · GET /items · PROD', short: 'BL', tone: 'compare-r0', columns: [{ id: 'sku', name: 'sku' }, …] }, …];
+map.modes = [{ id: 'key', label: 'Key' }, { id: 'strict', label: 'Strict' }, { id: 'relaxed', label: 'Relaxed' }, { id: 'skip', label: "Don't compare" }];
+map.keyMode = 'key';                         // its lines under "Match on"; the last one can't leave it
+map.lines = [{ id, mode, cells: { bl: { column: 'sku', example: 'A-2207', fns: [{ id, label, missing }], title, agree: 0.93 } } }];
+map.matched = { c1: { text: '1,180 of 1,198 match BL', tone: 'ok' } };
+{ id: 'tpl', name: 'Template', fixed: true }  // a source whose column is the line itself (Run Batch's fields): no picker
+// told: dbmn-map-pick { line, source, column }, dbmn-map-mode { line, mode }, dbmn-map-fn { line, source },
+//       dbmn-map-add { mode }, dbmn-map-remove { line }, dbmn-map-leftover { source, column }</code></pre>
+    </section>
+
     <section class="ds-section" id="logs">
         <h2>Logs <span class="ds-chip is-component">Component</span></h2>
         <p>A log line looks the same wherever it shows: the Logs screen today, the Console's request log next.</p>
@@ -424,6 +441,7 @@ log.addEventListener('dbmn-log-open', e =&gt; …e.detail.open…);   // a line'
     ${script('shared/help-mode.js')}
     ${script('shared/dbmn-modal.js')}
     ${script('shared/dbmn-functions.js')}
+    ${script('shared/dbmn-map.js')}
     ${script('shared/dbmn-context-menu.js')}
     ${script('shared/dbmn-toast.js')}
     ${script('shared/dbmn-clipboard.js')}
