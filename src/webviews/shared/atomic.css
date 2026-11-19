@@ -1,5 +1,154 @@
 /* Atomic CSS Utilities */
 
+/*
+ * DBMN's names for the theme's colours: each is the VS Code theme colour of the same name
+ * (--dbmn-foreground is --vscode-foreground). Nothing about theming changes: a theme is still
+ * given as VS Code's colours (VS Code sets them itself, the web and desktop apps set them from the
+ * theme picked, the Hub copies them into each tab), and these only point at them, so a theme
+ * change reaches every one with nothing else to do.
+ *
+ * The design system's components (shared/dbmn-*.css) use these names; the rest of the app still
+ * uses the --vscode- names, which mean the same. A colour a theme leaves out is left out here
+ * too, so `var(--dbmn-panel-border, <fallback>)` falls back exactly as the --vscode- name does.
+ *
+ * (On the body as well as the root: buttons.css changes two hover colours on the body, and the
+ * names must follow them there.)
+ */
+:root,
+body {
+    --dbmn-badge-background: var(--vscode-badge-background);
+    --dbmn-badge-foreground: var(--vscode-badge-foreground);
+    --dbmn-button-background: var(--vscode-button-background);
+    --dbmn-button-border: var(--vscode-button-border);
+    --dbmn-button-foreground: var(--vscode-button-foreground);
+    --dbmn-button-hoverBackground: var(--vscode-button-hoverBackground);
+    --dbmn-button-secondaryBackground: var(--vscode-button-secondaryBackground);
+    --dbmn-button-secondaryForeground: var(--vscode-button-secondaryForeground);
+    --dbmn-button-secondaryHoverBackground: var(--vscode-button-secondaryHoverBackground);
+    --dbmn-charts-blue: var(--vscode-charts-blue);
+    --dbmn-charts-green: var(--vscode-charts-green);
+    --dbmn-charts-orange: var(--vscode-charts-orange);
+    --dbmn-charts-purple: var(--vscode-charts-purple);
+    --dbmn-charts-red: var(--vscode-charts-red);
+    --dbmn-charts-yellow: var(--vscode-charts-yellow);
+    --dbmn-checkbox-foreground: var(--vscode-checkbox-foreground);
+    --dbmn-contrastBorder: var(--vscode-contrastBorder);
+    --dbmn-debugTokenExpression-name: var(--vscode-debugTokenExpression-name);
+    --dbmn-debugTokenExpression-value: var(--vscode-debugTokenExpression-value);
+    --dbmn-descriptionForeground: var(--vscode-descriptionForeground);
+    --dbmn-diffEditor-insertedLineBackground: var(--vscode-diffEditor-insertedLineBackground);
+    --dbmn-diffEditor-insertedTextBackground: var(--vscode-diffEditor-insertedTextBackground);
+    --dbmn-disabledForeground: var(--vscode-disabledForeground);
+    --dbmn-dropdown-background: var(--vscode-dropdown-background);
+    --dbmn-dropdown-border: var(--vscode-dropdown-border);
+    --dbmn-dropdown-foreground: var(--vscode-dropdown-foreground);
+    --dbmn-editor-background: var(--vscode-editor-background);
+    --dbmn-editor-findMatchHighlightBackground: var(--vscode-editor-findMatchHighlightBackground);
+    --dbmn-editor-findMatchHighlightBorder: var(--vscode-editor-findMatchHighlightBorder);
+    --dbmn-editor-font-family: var(--vscode-editor-font-family);
+    --dbmn-editor-font-size: var(--vscode-editor-font-size);
+    --dbmn-editor-foreground: var(--vscode-editor-foreground);
+    --dbmn-editor-hoverHighlightBackground: var(--vscode-editor-hoverHighlightBackground);
+    --dbmn-editor-inactiveSelectionBackground: var(--vscode-editor-inactiveSelectionBackground);
+    --dbmn-editor-selectionHighlightBackground: var(--vscode-editor-selectionHighlightBackground);
+    --dbmn-editorGroupHeader-tabsBackground: var(--vscode-editorGroupHeader-tabsBackground);
+    --dbmn-editorHoverWidget-background: var(--vscode-editorHoverWidget-background);
+    --dbmn-editorHoverWidget-border: var(--vscode-editorHoverWidget-border);
+    --dbmn-editorHoverWidget-foreground: var(--vscode-editorHoverWidget-foreground);
+    --dbmn-editorInfo-background: var(--vscode-editorInfo-background);
+    --dbmn-editorLineNumber-foreground: var(--vscode-editorLineNumber-foreground);
+    --dbmn-editorSuggestWidget-background: var(--vscode-editorSuggestWidget-background);
+    --dbmn-editorSuggestWidget-border: var(--vscode-editorSuggestWidget-border);
+    --dbmn-editorSuggestWidget-foreground: var(--vscode-editorSuggestWidget-foreground);
+    --dbmn-editorSuggestWidget-selectedBackground: var(--vscode-editorSuggestWidget-selectedBackground);
+    --dbmn-editorSuggestWidget-selectedForeground: var(--vscode-editorSuggestWidget-selectedForeground);
+    --dbmn-editorWarning-background: var(--vscode-editorWarning-background);
+    --dbmn-editorWarning-border: var(--vscode-editorWarning-border);
+    --dbmn-editorWarning-foreground: var(--vscode-editorWarning-foreground);
+    --dbmn-editorWidget-background: var(--vscode-editorWidget-background);
+    --dbmn-editorWidget-border: var(--vscode-editorWidget-border);
+    --dbmn-errorBackground: var(--vscode-errorBackground);
+    --dbmn-errorBorder: var(--vscode-errorBorder);
+    --dbmn-errorForeground: var(--vscode-errorForeground);
+    --dbmn-errorList-errorForeground: var(--vscode-errorList-errorForeground);
+    --dbmn-focusBorder: var(--vscode-focusBorder);
+    --dbmn-font-family: var(--vscode-font-family);
+    --dbmn-font-size: var(--vscode-font-size);
+    --dbmn-foreground: var(--vscode-foreground);
+    --dbmn-icon-foreground: var(--vscode-icon-foreground);
+    --dbmn-input-background: var(--vscode-input-background);
+    --dbmn-input-border: var(--vscode-input-border);
+    --dbmn-input-foreground: var(--vscode-input-foreground);
+    --dbmn-input-placeholderForeground: var(--vscode-input-placeholderForeground);
+    --dbmn-inputValidation-errorBackground: var(--vscode-inputValidation-errorBackground);
+    --dbmn-inputValidation-errorBorder: var(--vscode-inputValidation-errorBorder);
+    --dbmn-inputValidation-errorForeground: var(--vscode-inputValidation-errorForeground);
+    --dbmn-inputValidation-infoBackground: var(--vscode-inputValidation-infoBackground);
+    --dbmn-inputValidation-infoBorder: var(--vscode-inputValidation-infoBorder);
+    --dbmn-inputValidation-infoForeground: var(--vscode-inputValidation-infoForeground);
+    --dbmn-inputValidation-warningBackground: var(--vscode-inputValidation-warningBackground);
+    --dbmn-inputValidation-warningBorder: var(--vscode-inputValidation-warningBorder);
+    --dbmn-inputValidation-warningForeground: var(--vscode-inputValidation-warningForeground);
+    --dbmn-list-activeSelectionBackground: var(--vscode-list-activeSelectionBackground);
+    --dbmn-list-activeSelectionForeground: var(--vscode-list-activeSelectionForeground);
+    --dbmn-list-dropBackground: var(--vscode-list-dropBackground);
+    --dbmn-list-headerBackground: var(--vscode-list-headerBackground);
+    --dbmn-list-headerForeground: var(--vscode-list-headerForeground);
+    --dbmn-list-hoverBackground: var(--vscode-list-hoverBackground);
+    --dbmn-list-inactiveSelectionBackground: var(--vscode-list-inactiveSelectionBackground);
+    --dbmn-menu-background: var(--vscode-menu-background);
+    --dbmn-menu-border: var(--vscode-menu-border);
+    --dbmn-menu-foreground: var(--vscode-menu-foreground);
+    --dbmn-menu-selectionBackground: var(--vscode-menu-selectionBackground);
+    --dbmn-menu-selectionForeground: var(--vscode-menu-selectionForeground);
+    --dbmn-menu-separatorBackground: var(--vscode-menu-separatorBackground);
+    --dbmn-merge-incomingHeaderBackground: var(--vscode-merge-incomingHeaderBackground);
+    --dbmn-notifications-background: var(--vscode-notifications-background);
+    --dbmn-notifications-border: var(--vscode-notifications-border);
+    --dbmn-notifications-foreground: var(--vscode-notifications-foreground);
+    --dbmn-notificationsErrorIcon-foreground: var(--vscode-notificationsErrorIcon-foreground);
+    --dbmn-notificationsInfoIcon-foreground: var(--vscode-notificationsInfoIcon-foreground);
+    --dbmn-notificationsWarningIcon-foreground: var(--vscode-notificationsWarningIcon-foreground);
+    --dbmn-panel-border: var(--vscode-panel-border);
+    --dbmn-progressBar-background: var(--vscode-progressBar-background);
+    --dbmn-sash-hoverBorder: var(--vscode-sash-hoverBorder);
+    --dbmn-scrollbarSlider-activeBackground: var(--vscode-scrollbarSlider-activeBackground);
+    --dbmn-scrollbarSlider-background: var(--vscode-scrollbarSlider-background);
+    --dbmn-scrollbarSlider-hoverBackground: var(--vscode-scrollbarSlider-hoverBackground);
+    --dbmn-sideBar-background: var(--vscode-sideBar-background);
+    --dbmn-sideBar-foreground: var(--vscode-sideBar-foreground);
+    --dbmn-statusBarItem-errorBackground: var(--vscode-statusBarItem-errorBackground);
+    --dbmn-statusBarItem-errorForeground: var(--vscode-statusBarItem-errorForeground);
+    --dbmn-symbolIcon-booleanForeground: var(--vscode-symbolIcon-booleanForeground);
+    --dbmn-symbolIcon-fileForeground: var(--vscode-symbolIcon-fileForeground);
+    --dbmn-symbolIcon-keyForeground: var(--vscode-symbolIcon-keyForeground);
+    --dbmn-symbolIcon-nullForeground: var(--vscode-symbolIcon-nullForeground);
+    --dbmn-symbolIcon-numberForeground: var(--vscode-symbolIcon-numberForeground);
+    --dbmn-symbolIcon-propertyForeground: var(--vscode-symbolIcon-propertyForeground);
+    --dbmn-symbolIcon-stringForeground: var(--vscode-symbolIcon-stringForeground);
+    --dbmn-tab-activeBackground: var(--vscode-tab-activeBackground);
+    --dbmn-tab-activeForeground: var(--vscode-tab-activeForeground);
+    --dbmn-tab-border: var(--vscode-tab-border);
+    --dbmn-tab-hoverBackground: var(--vscode-tab-hoverBackground);
+    --dbmn-tab-hoverForeground: var(--vscode-tab-hoverForeground);
+    --dbmn-tab-inactiveBackground: var(--vscode-tab-inactiveBackground);
+    --dbmn-tab-inactiveForeground: var(--vscode-tab-inactiveForeground);
+    --dbmn-terminal-ansiBlack: var(--vscode-terminal-ansiBlack);
+    --dbmn-terminal-ansiGreen: var(--vscode-terminal-ansiGreen);
+    --dbmn-testing-iconFailed: var(--vscode-testing-iconFailed);
+    --dbmn-testing-iconPassed: var(--vscode-testing-iconPassed);
+    --dbmn-testing-iconQueued: var(--vscode-testing-iconQueued);
+    --dbmn-textBlockQuote-background: var(--vscode-textBlockQuote-background);
+    --dbmn-textBlockQuote-border: var(--vscode-textBlockQuote-border);
+    --dbmn-textCodeBlock-background: var(--vscode-textCodeBlock-background);
+    --dbmn-textLink-activeForeground: var(--vscode-textLink-activeForeground);
+    --dbmn-textLink-foreground: var(--vscode-textLink-foreground);
+    --dbmn-textPreformat-foreground: var(--vscode-textPreformat-foreground);
+    --dbmn-toolbar-hoverBackground: var(--vscode-toolbar-hoverBackground);
+    --dbmn-widget-border: var(--vscode-widget-border);
+    --dbmn-widget-shadow: var(--vscode-widget-shadow);
+}
+
 /* Heading styles - Consistent across all webviews */
 h1,
 h2,

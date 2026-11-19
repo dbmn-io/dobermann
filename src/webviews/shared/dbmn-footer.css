@@ -12,18 +12,18 @@
  * are the user's (steps) or the system's (progress). Never both.
  *
  * The elements draw in the page (no shadow root), so the shared sheets and the theme's
- * --vscode-* colours reach them as they reach everything else.
+ * --dbmn-* colours reach them as they reach everything else.
  */
 
 dbmn-footer {
     --foot-row: 32px;
-    --foot-accent: var(--vscode-textLink-foreground);
+    --foot-accent: var(--dbmn-textLink-foreground);
     /* (as text, a status colour leans a little toward the text's own: readable on a light theme and a dark one) */
-    --foot-ok: color-mix(in srgb, var(--vscode-testing-iconPassed, #3fa35c) 78%, var(--vscode-foreground));
-    --foot-warn: color-mix(in srgb, var(--vscode-editorWarning-foreground, #cca700) 78%, var(--vscode-foreground));
-    --foot-error: color-mix(in srgb, var(--vscode-errorForeground, #f14c4c) 85%, var(--vscode-foreground));
-    --foot-dim: color-mix(in srgb, var(--vscode-foreground) 62%, transparent);
-    --foot-line: var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+    --foot-ok: color-mix(in srgb, var(--dbmn-testing-iconPassed, #3fa35c) 78%, var(--dbmn-foreground));
+    --foot-warn: color-mix(in srgb, var(--dbmn-editorWarning-foreground, #cca700) 78%, var(--dbmn-foreground));
+    --foot-error: color-mix(in srgb, var(--dbmn-errorForeground, #f14c4c) 85%, var(--dbmn-foreground));
+    --foot-dim: color-mix(in srgb, var(--dbmn-foreground) 62%, transparent);
+    --foot-line: var(--dbmn-panel-border, rgba(128, 128, 128, 0.35));
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -62,7 +62,7 @@ dbmn-status {
     margin-left: auto;
     border: 1px solid var(--foot-line);
     border-radius: var(--dbmn-radius, 4px);
-    color: var(--vscode-foreground);
+    color: var(--dbmn-foreground);
     white-space: nowrap;
 }
 
@@ -78,7 +78,7 @@ dbmn-status:empty { display: none; }
 
 /* ── Progress: the box is the bar ── */
 dbmn-progress {
-    --progress-c: var(--vscode-progressBar-background, var(--foot-accent));
+    --progress-c: var(--dbmn-progressBar-background, var(--foot-accent));
     justify-content: space-between;
     gap: 16px;
     min-width: 240px;
@@ -110,8 +110,8 @@ dbmn-progress .dbmn-progress-phase { font-weight: 600; }
 dbmn-progress .dbmn-progress-count { margin-left: auto; font-variant-numeric: tabular-nums; }
 /* With figures behind it, the box is a button: a click lists them */
 dbmn-progress.has-stats { cursor: pointer; }
-dbmn-progress.has-stats:hover { background: color-mix(in srgb, var(--vscode-foreground) 6%, transparent); }
-dbmn-progress:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 1px; }
+dbmn-progress.has-stats:hover { background: color-mix(in srgb, var(--dbmn-foreground) 6%, transparent); }
+dbmn-progress:focus-visible { outline: 1px solid var(--dbmn-focusBorder); outline-offset: 1px; }
 dbmn-progress .dbmn-progress-more { position: relative; display: inline-flex; margin: 0 -4px 0 -8px; color: var(--foot-dim); }
 dbmn-progress .dbmn-progress-more svg { width: 14px; height: 14px; }
 .dbmn-progress-stats {
@@ -125,8 +125,8 @@ dbmn-progress .dbmn-progress-more svg { width: 14px; height: 14px; }
     min-width: 100%;
     box-sizing: border-box;
     padding: 10px 12px;
-    background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
-    border: 1px solid var(--vscode-editorWidget-border, var(--foot-line));
+    background: var(--dbmn-editorWidget-background, var(--dbmn-editor-background));
+    border: 1px solid var(--dbmn-editorWidget-border, var(--foot-line));
     border-radius: 6px;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
     cursor: default;
@@ -142,7 +142,7 @@ dbmn-progress .dbmn-progress-more svg { width: 14px; height: 14px; }
     padding: 0;
     border: 1px solid var(--foot-line);
     border-radius: 9px;
-    background: color-mix(in srgb, var(--vscode-foreground) 10%, transparent);
+    background: color-mix(in srgb, var(--dbmn-foreground) 10%, transparent);
     cursor: pointer;
     transition: background-color 0.15s ease, border-color 0.15s ease;
 }
@@ -160,8 +160,8 @@ dbmn-progress .dbmn-progress-more svg { width: 14px; height: 14px; }
     border-color: var(--foot-accent);
     background: color-mix(in srgb, var(--foot-accent) 34%, transparent);
 }
-.dbmn-progress-switch[aria-checked="true"] .dbmn-progress-switch-thumb { transform: translateX(14px); background: var(--vscode-foreground); }
-.dbmn-progress-switch:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 1px; }
+.dbmn-progress-switch[aria-checked="true"] .dbmn-progress-switch-thumb { transform: translateX(14px); background: var(--dbmn-foreground); }
+.dbmn-progress-switch:focus-visible { outline: 1px solid var(--dbmn-focusBorder); outline-offset: 1px; }
 /* A figure with set choices: a button each, joined, the one in use filled */
 .dbmn-progress-stat-value.is-choices { display: inline-flex; }
 .dbmn-progress-choice {
@@ -187,7 +187,7 @@ dbmn-progress .dbmn-progress-more svg { width: 14px; height: 14px; }
     cursor: default;
 }
 .dbmn-progress-choice:disabled { opacity: 0.4; cursor: not-allowed; text-decoration: line-through; }
-.dbmn-progress-choice:focus-visible { position: relative; outline: 1px solid var(--vscode-focusBorder); }
+.dbmn-progress-choice:focus-visible { position: relative; outline: 1px solid var(--dbmn-focusBorder); }
 /* A figure that can be changed: less, the figure, more */
 .dbmn-progress-stat-value.is-stepped { display: inline-flex; align-items: center; gap: 6px; }
 .dbmn-progress-step-value { min-width: 2ch; text-align: center; }
@@ -207,7 +207,7 @@ dbmn-progress .dbmn-progress-more svg { width: 14px; height: 14px; }
 .dbmn-progress-step svg { width: 12px; height: 12px; }
 .dbmn-progress-step:hover:not(:disabled) { border-color: var(--foot-accent); background: color-mix(in srgb, var(--foot-accent) 14%, transparent); }
 .dbmn-progress-step:disabled { opacity: 0.4; cursor: default; }
-.dbmn-progress-step:focus-visible { outline: 1px solid var(--vscode-focusBorder); }
+.dbmn-progress-step:focus-visible { outline: 1px solid var(--dbmn-focusBorder); }
 /* No figure to show yet: the fill sweeps */
 dbmn-progress[busy] .dbmn-progress-fill {
     width: 35%;
@@ -257,13 +257,13 @@ dbmn-steps { padding: 0 4px; gap: 2px; }
 .dbmn-step.is-done,
 .dbmn-step.is-skipped { color: var(--foot-ok); }
 .dbmn-step.is-available,
-.dbmn-step.is-needs { color: var(--vscode-foreground); }
+.dbmn-step.is-needs { color: var(--dbmn-foreground); }
 .dbmn-step.has-warn { color: var(--foot-warn); }
 .dbmn-step.has-error { color: var(--foot-error); }
 .dbmn-step { position: relative; }
 /* The current step's highlight is one piece behind the steps: it slides to the step that takes over */
 .dbmn-step.is-current {
-    color: var(--vscode-foreground);
+    color: var(--dbmn-foreground);
     font-weight: 600;
 }
 .dbmn-steps-indicator {
@@ -287,7 +287,7 @@ dbmn-steps[folded] .dbmn-steps-indicator { display: none; }
 .dbmn-step:not(:disabled):not(.is-current):hover { background: color-mix(in srgb, currentColor 14%, transparent); }
 .dbmn-step:focus-visible,
 .dbmn-steps-summary:focus-visible,
-.dbmn-steps-item:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
+.dbmn-steps-item:focus-visible { outline: 1px solid var(--dbmn-focusBorder); outline-offset: -1px; }
 .dbmn-step-gap {
     display: inline-flex;
     color: var(--foot-dim);
@@ -320,7 +320,7 @@ dbmn-steps[folded] { padding: 0; border-color: transparent; }
 .dbmn-steps-summary:hover,
 .dbmn-steps-summary[aria-expanded="true"] {
     border-color: var(--foot-accent);
-    background: color-mix(in srgb, var(--vscode-foreground) 6%, transparent);
+    background: color-mix(in srgb, var(--dbmn-foreground) 6%, transparent);
 }
 .dbmn-steps-summary .dbmn-step-mark { color: var(--foot-ok); }
 .dbmn-steps-dot { color: var(--foot-dim); }
@@ -340,8 +340,8 @@ dbmn-steps[folded] { padding: 0; border-color: transparent; }
     max-width: min(480px, 90vw);
     box-sizing: border-box;
     padding: 6px;
-    background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
-    border: 1px solid var(--vscode-editorWidget-border, var(--foot-line));
+    background: var(--dbmn-editorWidget-background, var(--dbmn-editor-background));
+    border: 1px solid var(--dbmn-editorWidget-border, var(--foot-line));
     border-radius: 6px;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
     white-space: normal;
@@ -357,7 +357,7 @@ dbmn-steps[folded] { padding: 0; border-color: transparent; }
     cursor: pointer;
 }
 .dbmn-steps-item:disabled { cursor: default; opacity: 0.6; }
-.dbmn-steps-item:not(:disabled):hover { background: color-mix(in srgb, var(--vscode-foreground) 10%, transparent); }
+.dbmn-steps-item:not(:disabled):hover { background: color-mix(in srgb, var(--dbmn-foreground) 10%, transparent); }
 .dbmn-steps-item.is-current { background: color-mix(in srgb, var(--foot-accent) 22%, transparent); }
 .dbmn-steps-item .dbmn-step-mark { color: var(--foot-ok); }
 .dbmn-steps-item.is-current .dbmn-step-mark { color: var(--foot-accent); font-weight: 600; }
@@ -374,14 +374,14 @@ dbmn-steps.is-folding .dbmn-step,
 dbmn-steps.is-unfolding .dbmn-step {
     z-index: var(--fold-z, 1);
     opacity: 1;
-    background: var(--vscode-editor-background);
+    background: var(--dbmn-editor-background);
     box-shadow: 0 0 0 1px var(--foot-line);
 }
 dbmn-steps.is-folding .dbmn-step { transition: transform var(--fold-time, 0ms) linear var(--fold-wait, 0ms); }
 /* (the tinted card is the step they are on as the cards go, and the one they were on as they come back) */
 dbmn-steps.is-folding .dbmn-step.is-current,
 dbmn-steps.is-unfolding .dbmn-step[data-fold-from] {
-    background: color-mix(in srgb, var(--foot-accent) 24%, var(--vscode-editor-background));
+    background: color-mix(in srgb, var(--foot-accent) 24%, var(--dbmn-editor-background));
 }
 dbmn-steps.is-folding-go .dbmn-step { transform: translateX(var(--fold-x, 0)); }
 dbmn-steps.is-folding .dbmn-step-gap,

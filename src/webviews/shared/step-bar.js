@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Flexion Tech Pty Ltd
 /**
- * The step bar across the top of a stepped screen: Run Batch (Source, Map, Validate, Review,
- * Execute) and Compare (Pick, Match, Compare, Results, #298). One component, one look
+ * The step bar across the top of a stepped screen: Run Batch (Source, Map, Validate, Review;
+ * Execute is Review's main button) and Compare (Pick, Match, Compare, Results, #298). One component, one look
  * (data-transformer.css, .batch-stepper): the screen says what each step is, the bar draws it.
  *
  * The current step is tinted, filled and underlined, with one highlight that slides from step

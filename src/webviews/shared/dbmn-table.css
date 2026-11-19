@@ -37,4 +37,26 @@ dbmn-table [hidden] { display: none !important; }
 .dbmn-table-grid td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dbmn-table-body tr { height: 22px; }
 .dbmn-table-spacer td { padding: 0; border: 0; }
-.dbmn-table-none { padding: 16px 12px; color: var(--vscode-descriptionForeground); }
+.dbmn-table-none { padding: 16px 12px; color: var(--dbmn-descriptionForeground); }
+/* The totals the screen gave: under the rows, and in view however far they scroll */
+.dbmn-table-foot td {
+    position: sticky;
+    bottom: 0;
+    font-weight: 600;
+    background: var(--dbmn-editor-background);
+    border-top: 1px solid var(--dbmn-panel-border, rgba(128, 128, 128, 0.35));
+}
+/* A list of records in a cell ("3 records"), opened inside it (console.css draws the chevron
+   button, the panel and the small table: .expand-toggle, .array-content, .nested-data-table).
+   The cell grows down; records wider than their column scroll inside it */
+.dbmn-table-grid td.has-nested { white-space: normal; overflow: visible; max-width: none; }
+.dbmn-nest-toggle .expand-icon { display: inline-flex; }
+.dbmn-nest-toggle .expand-icon svg { width: 11px; height: 11px; }
+.dbmn-nest-toggle:focus-visible { outline: 1px solid var(--dbmn-focusBorder); outline-offset: 1px; }
+/* (console.css lets an opened list spill out of its panel: here it stays in its cell and scrolls) */
+.dbmn-table-grid .dbmn-nest { min-width: 0; max-width: 100%; }
+.dbmn-table-grid .dbmn-nest-content.array-content { max-width: 100%; overflow-x: auto; }
+.dbmn-nest-table { width: auto; }
+.dbmn-nest-table th { position: static; white-space: nowrap; }
+.dbmn-nest-table td { white-space: nowrap; max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
+.dbmn-nest-note { display: block; margin-top: 4px; color: var(--dbmn-descriptionForeground); }
