@@ -420,6 +420,8 @@
 
 /* A column term: @column in the link colour, its operator orange, its value as quoted text */
 .search-tok-col-name  { color: var(--vscode-textLink-foreground, #3794ff); }
+/* A column the table does not have (the box is given the table's column names): red, and underlined so it is not told by colour alone */
+.search-tok-col-unknown { color: var(--vscode-errorForeground, #f14c4c); text-decoration: underline wavy; text-decoration-skip-ink: none; }
 .search-tok-col-op    { color: var(--vscode-charts-orange, #d18616); }
 .search-tok-col-value { color: var(--vscode-charts-yellow, #dcdcaa); }
 

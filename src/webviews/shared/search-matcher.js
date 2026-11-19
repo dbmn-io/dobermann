@@ -678,12 +678,29 @@ function matchesWords(parsedTerms, row, columns, extractNestedValue) {
  * Characters in `term-N` segments include any literal `+`/`-`/whitespace that did
  * not qualify as an operator.
  *
+ * A column term is 'col-name', 'col-op', 'col-value'; with `headings` given (the table's column
+ * names), a name that is none of them is 'col-unknown'.
+ *
  * @param {string} searchString
+ * @param {string[]} [headings]
  * @returns {Array<{text: string, kind: string}>}
  */
 var DISPLAY_TERM_AT = new RegExp('^@("[^"]*"?|[^\\s=!~<>",]*)(\\s*)(!=|!~|>=|<=|=|~|>|<)?(\\s*)' + COLUMN_VALUE_SRC + '?');
-function tokenizeForDisplay(searchString) {
+function tokenizeForDisplay(searchString, headings) {
     if (!searchString) return [];
+    // With the table's columns given: a name that is none of them (nor a key inside one) is
+    // 'col-unknown', shown in red. Not while it is still being typed: a start of a column's
+    // name, with no operator yet, is on its way to being one
+    var known = (headings || []).filter(function (h) { return h; }).map(function (h) { return String(h).toLowerCase(); });
+    var nameKind = function (raw, hasOp) {
+        if (!headings) return 'col-name';
+        var name = unquote(raw).toLowerCase();
+        if (!name) return 'col-name';
+        var is = known.some(function (h) { return h === name || name.indexOf(h + '.') === 0; });
+        if (is) return 'col-name';
+        if (!hasOp && known.some(function (h) { return h.indexOf(name) !== -1; })) return 'col-name';
+        return 'col-unknown';
+    };
 
     var segments = [];
     var i = 0;
@@ -712,7 +729,7 @@ function tokenizeForDisplay(searchString) {
         // A column term at a word boundary: @column, its operator, its value
         if (ch === '@' && (i === 0 || /[\s,]/.test(searchString.charAt(i - 1)))) {
             var m = DISPLAY_TERM_AT.exec(searchString.slice(i));
-            push('@' + m[1], 'col-name', false);
+            push('@' + m[1], nameKind(m[1], !!m[3]), false);
             if (m[3]) {
                 push(m[2] + m[3] + m[4], 'col-op', false);
                 if (m[5]) push(m[5], 'col-value', false);
@@ -818,9 +835,9 @@ function tokenizeForDisplay(searchString) {
  * GitHub Issue #261: paint the find box's highlight mirror (the coloured copy of what is typed,
  * behind the transparent input). Shared by the Console and Compare (#298).
  */
-function renderHighlight(mirrorEl, value) {
+function renderHighlight(mirrorEl, value, headings) {
     if (!mirrorEl) return;
-    var segments = tokenizeForDisplay(value);
+    var segments = tokenizeForDisplay(value, headings);
     if (segments.length === 0) {
         mirrorEl.textContent = '';
         return;

@@ -783,7 +783,8 @@
             const input = this._box();
             const mirror = input === this._input ? this._mirror : this._outerMirror;
             const text = input ? input.value : '';
-            if (window.SearchMatcher && mirror) window.SearchMatcher.renderHighlight(mirror, text);
+            // (a column named that the table does not have shows red in the box)
+            if (window.SearchMatcher && mirror) window.SearchMatcher.renderHighlight(mirror, text, this._all.map(c => c.name || c.id));
             const reads = this._reading(text);
             if (input === this._input) { this._reads.textContent = reads; this._reads.hidden = !reads; }
             this.dispatchEvent(new CustomEvent('dbmn-table-search', { bubbles: true, detail: { text: text.trim(), reads } }));

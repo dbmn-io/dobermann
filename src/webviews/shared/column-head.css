@@ -123,6 +123,12 @@ th.col-narrow .col-sort-btn:not(.is-sorted):not(.is-sorting) {
     display: none;
 }
 
+/* ...and with no icon left in it, their holder goes too: its padding and the gap before it were
+   still taking room from the name (it was cut short with space to spare beside it) */
+th.col-narrow .header-actions:not(:has(.col-sort-btn.is-sorted, .col-sort-btn.is-sorting)) {
+    display: none;
+}
+
 .col-sizing,
 .col-sizing * {
     cursor: col-resize !important;

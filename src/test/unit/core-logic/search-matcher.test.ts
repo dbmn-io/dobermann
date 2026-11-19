@@ -1017,3 +1017,28 @@ describe('Search: suggestions that know what a column is', () => {
         expect(describeSearch('@poDate>', headings, types, NOW)).to.equal('');
     });
 });
+
+describe('Search: a column the table does not have shows as unknown', () => {
+    const headings = ['order_no', 'customer', 'lines'];
+    const kinds = (text: string) => tokenizeForDisplay(text, headings).filter((t: { kind: string }) => t.kind.startsWith('col-')).map((t: { text: string; kind: string }) => `${t.text}:${t.kind}`);
+
+    it('a name that is no column is col-unknown; a column, or a key inside one, is col-name', () => {
+        expect(kinds('@nothere=1')).to.deep.equal(['@nothere:col-unknown', '=:col-op', '1:col-value']);
+        expect(kinds('@customer=x')[0]).to.equal('@customer:col-name');
+        expect(kinds('@CUSTOMER=x')[0]).to.equal('@CUSTOMER:col-name');
+        expect(kinds('@lines.qty>4')[0]).to.equal('@lines.qty:col-name');
+        expect(kinds('@liness.qty>4')[0]).to.equal('@liness.qty:col-unknown');
+    });
+
+    it('not while a column name is still being typed', () => {
+        expect(kinds('@cust')).to.deep.equal(['@cust:col-name']);
+        expect(kinds('@')).to.deep.equal(['@:col-name']);
+        // ...but a start no column has, or a part-name with an operator after it, is unknown
+        expect(kinds('@zz')).to.deep.equal(['@zz:col-unknown']);
+        expect(kinds('@cust=x')[0]).to.equal('@cust:col-unknown');
+    });
+
+    it('with no column names given, every name is col-name as before', () => {
+        expect(tokenizeForDisplay('@nothere=1')[0].kind).to.equal('col-name');
+    });
+});

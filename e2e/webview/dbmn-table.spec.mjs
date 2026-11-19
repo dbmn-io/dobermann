@@ -532,6 +532,17 @@ test('the search box says what each column is, offers what fits, and says how th
     await expect(page.locator('#t .dbmn-table-count')).toHaveText('4 of 100 rows');
     await box.fill('kettle');
     await expect(page.locator('#t .dbmn-table-reads')).toBeHidden();
+    // A column the table does not have is red in the box (and underlined), and the line says so
+    await box.fill('@plcaed>7d @urgent=true');
+    const unknown = page.locator('#t .search-input-mirror .search-tok-col-unknown');
+    await expect(unknown).toHaveText('@plcaed');
+    const red = await unknown.evaluate(el => getComputedStyle(el).color);
+    expect(red).not.toBe(await page.locator('#t .search-input-mirror .search-tok-col-name').evaluate(el => getComputedStyle(el).color));
+    expect(await unknown.evaluate(el => getComputedStyle(el).textDecorationLine)).toBe('underline');
+    await expect(page.locator('#t .dbmn-table-reads')).toHaveText('Reading this as: no column called plcaed and urgent (yes/no) is yes');
+    // Not while a name is still being typed
+    await box.fill('@pla');
+    await expect(page.locator('#t .search-input-mirror .search-tok-col-unknown')).toHaveCount(0);
 });
 
 /* ── A live list: following the newest rows ── */
@@ -615,4 +626,32 @@ test('follow="bottom": the newest rows are at the bottom; without follow a table
     await page.evaluate(() => window.add(6));
     expect(await page.locator('#t .dbmn-table-scroll').evaluate(s => s.scrollTop)).toBe(1000);
     expect(await page.evaluate(() => window.follows.at(-1))).toEqual({ following: false, unseen: 6 });
+});
+
+test('a narrow heading gives its whole width to the name: nothing is kept back for the icons it has hidden', async ({ page }) => {
+    await page.setContent(tablePage());
+    const head = page.locator('#t thead th').nth(1);   // customer
+    const measure = () => head.evaluate(th => {
+        const name = th.querySelector('.column-name');
+        const css = getComputedStyle(th);
+        // (the width of the name's text itself, however wide its box is)
+        const textWidth = el => { const range = document.createRange(); range.selectNodeContents(el); return range.getBoundingClientRect().width; };
+        return { narrow: th.classList.contains('col-narrow'), cut: name.scrollWidth - name.clientWidth, name: name.clientWidth,
+            room: th.clientWidth - parseFloat(css.paddingLeft) - parseFloat(css.paddingRight), needs: Math.ceil(textWidth(name)) };
+    });
+    const wide = await measure();
+    // Just wide enough for the name alone (and a pixel): the icons are gone and the name is whole
+    await page.evaluate(w => { const t = document.getElementById('t'); t.layout = Object.assign(t.layout, { widths: { customer: w } }); }, wide.needs + 16 + 2);
+    await expect(head).toHaveClass(/col-narrow/);
+    const fits = await measure();
+    expect(fits.cut).toBe(0);
+    // Narrower still: the name is cut only by what is really missing, with no room left unused beside it
+    await page.evaluate(w => { const t = document.getElementById('t'); t.layout = Object.assign(t.layout, { widths: { customer: w } }); }, wide.needs - 4);
+    await expect.poll(async () => (await measure()).cut).toBeGreaterThan(0);
+    const cut = await measure();
+    expect(cut.room - cut.name).toBeLessThanOrEqual(1);
+    // A sort that is on still shows its icon in a narrow heading
+    await head.click({ button: 'right' });
+    await page.locator('.dbmn-context-menu-item', { hasText: 'Sort A to Z' }).click();
+    await expect(page.locator('#t thead th').nth(1).locator('.col-sort-btn.is-sorted')).toBeVisible();
 });
