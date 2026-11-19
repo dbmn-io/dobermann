@@ -62,6 +62,7 @@ describe('icon roles — ICON_ROLES matches the controls that render them', () =
             ['nav-reporting', 'Reporting'],
             ['nav-import', 'Import'],
             ['nav-export', 'Export'],
+            ['nav-logs', 'Logs'],
             ['nav-account', 'Account'],
             ['nav-settings', 'Settings']
         ];

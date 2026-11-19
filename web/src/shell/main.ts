@@ -94,6 +94,7 @@ async function start(): Promise<void> {
     await Promise.all([state.load(), mountBrowserFs(scope)]);
     // Dobermann issue 7: this user's log from before, kept in this browser from now on
     await startAppLog();
+    appLog.write({ level: 'info', source: 'start-up', message: `DBMN ${__DBMN_APP_VERSION__} started in ${desktopBridge() ? 'the desktop app' : 'the browser'}` });
 
     // The Hub's page gets messages the way a webview does: as window message events
     const hubSession = new ScreenSession({ post: message => window.postMessage(message, location.origin) }, screenHost);
@@ -213,6 +214,9 @@ async function start(): Promise<void> {
     const snapshotKey = 'hubTabsSnapshot';
     let hub: HubController;
     const settings = await accountSettings(client, state);   // #281: the account's, this browser's for the rest
+    // Dobermann issue 7: how long and how much the log keeps (Settings → Logs), checked again when they change
+    appLog.setRetention(() => ({ days: settings.get('dbmn', 'logs.keepDays', 14), megabytes: settings.get('dbmn', 'logs.mostMegabytes', 150) }));
+    settings.onDidChange(() => { void appLog.prune(); });
     // 0.4.1: runs here count towards Weekly Usage, as VS Code's do
     const telemetry = webTelemetry(client, settings, desktop ? 'desktop' : 'web');
     window.addEventListener('pagehide', () => { void telemetry.flush(); });

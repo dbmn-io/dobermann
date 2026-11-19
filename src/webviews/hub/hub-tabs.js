@@ -35,6 +35,7 @@
         batch:        'folder-tree-play',
         compare:      'scale',
         design:       'layers',
+        logs:         'scroll-text',
         page:         'settings'
     };
 

@@ -1,0 +1,21 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Copyright (C) 2026 Flexion Tech Pty Ltd */
+/* The Logs screen (logs-page.ts): the log list fills the window above the footer. */
+body.logs-body {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    overflow: hidden;
+}
+.logs-page {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    padding: 10px 10px 6px;
+}
+.logs-page > dbmn-log { flex: 1 1 auto; }
+.logs-footer { flex: 0 0 auto; }

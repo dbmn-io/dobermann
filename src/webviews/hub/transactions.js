@@ -185,6 +185,80 @@
         document.getElementById('transactionsBulkDelete')?.addEventListener('click', onBulkDeleteClick);
     }
 
+    // ─── Every run, not only the newest ──────────────────────────────────
+    // The Hub's state carries the newest runs (it is sent several times a second while a batch
+    // runs). A search, or Show all, asks the host for every run once; the newest from each state
+    // then go over them, so statuses stay current. A run deleted since makes the count fall:
+    // everything is asked for again.
+    let allRuns = null;
+    let allRunsAsked = false;
+    let showAll = false;
+
+    // ─── Rows drawn as they are scrolled to ──────────────────────────────
+    // A search, or Show all, can match thousands of runs: the first ROWS_AT_ONCE are drawn, the
+    // next as the list is scrolled near its end. And while a batch runs the Hub's state comes
+    // several times a second: the list is drawn again only when what it shows has changed.
+    const ROWS_AT_ONCE = 200;
+    let rowLimit = ROWS_AT_ONCE;
+    let drawnFor = '';      // the query the limit counts for: a new one starts again at the top
+    let drawnSig = '';      // what the list showed when last drawn
+    let scrollWired = false;
+
+    /** The groups cut to the first `limit` runs, keeping each group's heading. */
+    function firstOfGroups(groups, limit) {
+        const out = [];
+        let left = limit;
+        for (const group of groups) {
+            if (left <= 0) break;
+            const items = group.items.slice(0, left);
+            left -= items.length;
+            out.push(Object.assign({}, group, { items }));
+        }
+        return out;
+    }
+
+    /** What a drawn list depends on: if it is the same, nothing is drawn again. */
+    function listSig(rows) {
+        return [view.groupBy, rowLimit, selectMode ? 1 : 0, selectedTxId || '', Array.from(selectedIds).join(','),
+            rows.map(t => [t.id, t.status, t.httpStatus, t.runTime, t.environment, txTitle(t), t.completedAt].join('~')).join('|')].join('#');
+    }
+
+    function wireListScroll(list) {
+        if (scrollWired) return;
+        scrollWired = true;
+        list.addEventListener('scroll', () => {
+            if (list.scrollHeight - list.scrollTop - list.clientHeight > 400) return;
+            if (!lastFiltered || lastFiltered.length <= rowLimit) return;
+            rowLimit += ROWS_AT_ONCE;
+            render(host.getState());
+        }, { passive: true });
+    }
+
+    function wantsAll() {
+        return showAll || !!(view.query && String(view.query).trim());
+    }
+
+    function runsOf(state) {
+        const newest = (state && state.transactions) || [];
+        const total = state && typeof state.transactionsTotal === 'number' ? state.transactionsTotal : newest.length;
+        if (!wantsAll() || total <= newest.length) return newest;
+        if (!allRuns) {
+            if (!allRunsAsked) { allRunsAsked = true; host.postMessage({ type: 'historyAll' }); }
+            return newest;
+        }
+        const seen = new Set(newest.map(t => t.id));
+        const runs = newest.concat(allRuns.filter(t => !seen.has(t.id)));
+        if (runs.length > total) { allRuns = null; allRunsAsked = false; return runsOf(state); }
+        return runs;
+    }
+
+    function onHistoryAll(message) {
+        allRuns = (message && message.transactions) || [];
+        render(host.getState());
+        // A word in a body: look through the older runs' bodies too
+        maybeRequestContentSearch();
+    }
+
     function maybeRequestContentSearch() {
         // Content search is always on — the host reads the body files of the runs the chips
         // leave, for each typed word. Tiny words (< 2 chars) match too much to be worth a disk
@@ -194,7 +268,7 @@
             contentMatchIds = null;
             return;
         }
-        const candidates = applyFilters(scopeToCurrentEnv((host.getState().transactions || []).filter(t => t.executionType !== 'batch_member'), host.getState()),
+        const candidates = applyFilters(scopeToCurrentEnv(runsOf(host.getState()).filter(t => t.executionType !== 'batch_member'), host.getState()),
             Object.assign({}, view.filters, { search: '' }));
         const candidateIds = candidates.map(t => t.id);
         if (candidateIds.length === 0) return;
@@ -241,7 +315,7 @@
         searchWords = window.SearchWords ? window.SearchWords.parseWords(view.filters.search || '') : searchWords;
         // Strip batch members from the visible set — surface batches as a single
         // row; clicking opens the batch report which shows the members.
-        const all = (state.transactions || []).filter(t => t.executionType !== 'batch_member');
+        const all = runsOf(state).filter(t => t.executionType !== 'batch_member');
         const scoped = scopeToCurrentEnv(all, state);
         const filtered = applyFilters(scoped, view.filters);
         const grouped = groupTransactions(filtered, view.groupBy, state);
@@ -264,10 +338,20 @@
         if (all.length === 0) {
             list.hidden = true;
             empty.hidden = false;
+            drawnSig = '';
             return;
         }
         list.hidden = false;
         empty.hidden = true;
+        wireListScroll(list);
+
+        // A new search or filter starts again with the first rows
+        const forQuery = [view.query || '', view.groupBy, view.sysFilter ? 1 : 0, view.envFilter ? 1 : 0, view.showMode || '', showAll ? 1 : 0].join('|');
+        if (forQuery !== drawnFor) { drawnFor = forQuery; rowLimit = ROWS_AT_ONCE; list.scrollTop = 0; }
+        const drawn = filtered.slice(0, rowLimit);
+        const sig = listSig(drawn) + '#' + filtered.length;
+        if (sig === drawnSig) return;
+        drawnSig = sig;
         list.innerHTML = '';
 
         if (filtered.length === 0) {
@@ -281,9 +365,15 @@
         }
 
         if (view.groupBy === 'none') {
-            filtered.forEach(tx => list.appendChild(renderTxRow(tx, state)));
+            drawn.forEach(tx => list.appendChild(renderTxRow(tx, state)));
         } else {
-            grouped.forEach(group => list.appendChild(renderGroup(group, state)));
+            firstOfGroups(grouped, rowLimit).forEach(group => list.appendChild(renderGroup(group, state)));
+        }
+        if (filtered.length > drawn.length) {
+            const more = document.createElement('div');
+            more.className = 'catalogue-noresults tx-list-more';
+            more.textContent = drawn.length.toLocaleString() + ' of ' + filtered.length.toLocaleString() + ' shown · scroll for more';
+            list.appendChild(more);
         }
 
         if (window.Icons) window.Icons.injectIcons(list);
@@ -542,7 +632,7 @@
     /** What the box suggests: `@` `~` `!` `#`, methods and dates, with how many runs have each. */
     function queryCandidates() {
         const state = host.getState();
-        const all = (state.transactions || []).filter(t => t.executionType !== 'batch_member');
+        const all = runsOf(state).filter(t => t.executionType !== 'batch_member');
         const endpointsById = new Map((state.endpoints || []).map(e => [e.id, e]));
         const counts = {};
         const count = (sign, value) => {
@@ -573,7 +663,7 @@
     function showEndpointHistory(endpointId) {
         const state = host.getState();
         const ep = (state.endpoints || []).find(e => e.id === endpointId);
-        const tx = (state.transactions || []).find(t => t.endpointId === endpointId);
+        const tx = runsOf(state).find(t => t.endpointId === endpointId);
         const name = (ep && ep.name) || (tx && tx.endpointName) || endpointId;
         contentMatchIds = null;
         // its name as a phrase: the runs of that endpoint
@@ -653,7 +743,7 @@
         // SYS/ENV scope. Falling back to full transactions covers the
         // first-open-before-first-render case.
         const scoped = lastScoped.length > 0 ? lastScoped
-            : scopeToCurrentEnv((state.transactions || [])
+            : scopeToCurrentEnv(runsOf(state)
                 .filter(t => t.executionType !== 'batch_member'), state);
         const endpointOptions = buildEndpointOptions(scoped, state);
 
@@ -945,6 +1035,21 @@
         el.textContent = visibleCount === scopeCount
             ? scopeCount + ' ' + noun + within
             : visibleCount + ' of ' + scopeCount + ' ' + noun + within;
+        // Only the newest are listed until a search, or Show all, brings the rest
+        const total = typeof state.transactionsTotal === 'number' ? state.transactionsTotal : 0;
+        const listed = (state.transactions || []).length;
+        if (!wantsAll() && total > listed) {
+            el.textContent += ' · the newest ' + listed.toLocaleString() + ' of ' + total.toLocaleString() + ' runs';
+            const all = document.createElement('button');
+            all.type = 'button';
+            all.className = 'transactions-show-all';
+            all.textContent = 'Show all';
+            all.title = 'List every run. A search always looks through every run.';
+            all.addEventListener('click', () => { showAll = true; render(host.getState()); });
+            el.append(' ', all);
+        } else if (wantsAll() && total > listed && !allRuns) {
+            el.textContent += ' · reading every run…';
+        }
     }
 
     function groupTransactions(transactions, groupBy, state) {
@@ -1264,5 +1369,5 @@
         document.querySelectorAll('.tx-row.is-selected').forEach(r => r.classList.remove('is-selected'));
     }
 
-    window.Transactions = { init, update, applySettings, clearSelection, onContentSearchResult, showEndpointHistory };
+    window.Transactions = { init, update, applySettings, clearSelection, onContentSearchResult, onHistoryAll, showEndpointHistory };
 })();

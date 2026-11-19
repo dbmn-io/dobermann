@@ -41,14 +41,14 @@ describe('Secrets the app holds never reach the log', () => {
         environments.setSecretSink(value => log.addSecret(value));
         await environments.getAllEnvironments();
 
-        const logger = log.logger('run', { environment: 'Customer Test' });
+        const logger = log.logger('environments', { environment: 'Customer Test' });
         logger.info('Sent with X-Company-Key ck_live_9f8e7d6c5b and pin 77441122 for org NORTH');
         logger.warn('Request failed', { headers: { 'X-Company-Key': 'ck_live_9f8e7d6c5b', 'X-Org': 'NORTH' }, note: 'cs-Very-Private-1' });
 
-        const text = everything(log.lines());
+        const text = everything(log.recent());
         for (const secret of ['ck_live_9f8e7d6c5b', '77441122', 'cs-Very-Private-1']) expect(text, secret).to.not.contain(secret);
         expect(text).to.contain('NORTH');   // a variable that is not secret stays
-        expect(log.lines()[0].message).to.equal(`Sent with X-Company-Key ${REMOVED} and pin ${REMOVED} for org NORTH`);
+        expect(log.recent()[0].message).to.equal(`Sent with X-Company-Key ${REMOVED} and pin ${REMOVED} for org NORTH`);
     });
 
     it('a token set or read for an environment (OAuth, a pasted JWT)', async () => {
@@ -57,7 +57,7 @@ describe('Secrets the app holds never reach the log', () => {
         environments.setSecretSink(value => log.addSecret(value));
         await environments.setEnvironmentToken('env-1', 'opaque-token-not-a-jwt-123');
         log.write({ level: 'info', source: 'sign-in', message: 'got opaque-token-not-a-jwt-123 back' });
-        expect(log.lines()[0].message).to.equal(`got ${REMOVED} back`);
+        expect(log.recent()[0].message).to.equal(`got ${REMOVED} back`);
     });
 
     it('the token a request is sent with, whatever the sign-in (here the DBMN account\'s)', async () => {
@@ -71,8 +71,9 @@ describe('Secrets the app holds never reach the log', () => {
             logger: log.logger('run')
         });
         await executor.executeEndpoint({ id: 'e', name: 'Get', method: 'GET', path: '/items', headers: {} } as unknown as APIEndpointConfig, undefined, 'env-dbmn');
-        log.write({ level: 'error', source: 'run', message: 'echoed dbmn-session-token-abc123' });
-        expect(everything(log.lines())).to.not.contain('dbmn-session-token-abc123');
+        log.write({ level: 'error', source: 'app', message: 'echoed dbmn-session-token-abc123' });
+        expect(log.recent()).to.have.length.greaterThan(0);
+        expect(everything(log.recent())).to.not.contain('dbmn-session-token-abc123');
     });
 
     for (const [name, tokenUrl, usePKCE] of [
@@ -90,9 +91,9 @@ describe('Secrets the app holds never reach the log', () => {
             await new OAuthFlowHandler(log.logger('sign-in'), { redirectUri: () => 'https://app.example/cb' })
                 .exchangeCodeForToken({ config, code: 'one-time-code-xyz', state: 's', codeVerifier: 'verifier-abcdefgh', environmentId: 'env-1' })
                 .catch(() => undefined);
-            const text = everything(log.lines());
+            const text = everything(log.recent());
             const basic = Buffer.from('loader:cs-Very-Private-1').toString('base64');
-            expect(log.lines().length).to.be.greaterThan(0);
+            expect(log.recent().length).to.be.greaterThan(0);
             for (const secret of ['cs-Very-Private-1', basic, 'at-leaked-123456', 'rt-leaked-123456', 'verifier-abcdefgh']) {
                 expect(text, secret).to.not.contain(secret);
             }

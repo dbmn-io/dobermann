@@ -3,7 +3,7 @@
 import initSqlJs, { Database as SqlJsDatabase } from 'sql.js';
 import * as path from 'path';
 import * as fs from 'fs';
-import { IExecutionStorage, BatchMemberFile } from './execution-storage.interface';
+import { IExecutionStorage, BatchMemberFile, BatchMemberLogRow } from './execution-storage.interface';
 import { ExecutionLinkInput, ExecutionLinks, ExecutionLinkEnd } from '../chain/chain-types';
 import {
     ExecutionMetadata,
@@ -1628,6 +1628,34 @@ export class SqlJsExecutionStorage implements IExecutionStorage {
                 id: String(r.id), status: String(r.status), responseFile: r.response_file || undefined, createdAt: new Date(r.created_at),
                 ...(r.error_message ? { errorMessage: String(r.error_message) } : {}),
                 ...(r.test_status ? { testStatus: String(r.test_status) } : {})
+            });
+        }
+        stmt.free();
+        return rows;
+    }
+
+    /** Dobermann issue 7: a slice of a batch's requests, only the columns a log line needs — no fromRow. */
+    async getBatchMemberLogRows(batchId: string, offset: number, limit: number): Promise<BatchMemberLogRow[]> {
+        if (!this.db) throw new Error('Database not initialized');
+        const stmt = this.db.prepare(`
+            SELECT id, status, environment, endpoint_method, endpoint_path, rows, started_at, completed_at, http_status, http_status_text, error_message
+            FROM executions
+            WHERE batch_id = $batch_id AND execution_type = 'batch_member'
+            ORDER BY created_at ASC, id ASC
+            LIMIT $limit OFFSET $offset
+        `);
+        stmt.bind({ $batch_id: batchId, $limit: Math.max(0, Math.floor(limit)), $offset: Math.max(0, Math.floor(offset)) });
+        const rows: BatchMemberLogRow[] = [];
+        const when = (v: unknown) => (v === null || v === undefined || v === '' ? undefined : new Date(typeof v === 'number' ? v : String(v)));
+        const text = (v: unknown) => (v === null || v === undefined || v === '' ? undefined : String(v));
+        while (stmt.step()) {
+            const r = stmt.getAsObject() as Record<string, unknown>;
+            rows.push({
+                id: String(r.id), status: String(r.status),
+                environment: text(r.environment), endpointMethod: text(r.endpoint_method), endpointPath: text(r.endpoint_path), rows: text(r.rows),
+                startedAt: when(r.started_at), completedAt: when(r.completed_at),
+                httpStatus: r.http_status === null || r.http_status === undefined ? undefined : Number(r.http_status),
+                httpStatusText: text(r.http_status_text), errorMessage: text(r.error_message)
             });
         }
         stmt.free();

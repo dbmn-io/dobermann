@@ -65,7 +65,8 @@
         environment: 'environments',
         console: 'transactions',
         batchConsole: 'transactions',
-        compare: 'compare'
+        compare: 'compare',
+        logs: 'logs'
     };
 
     /**

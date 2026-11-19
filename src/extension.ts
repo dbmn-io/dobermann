@@ -4,7 +4,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import { AppLog } from './services/logging/app-log';
-import { AppLogFile } from './services/logging/app-log-file';
+import { AppLogDayFiles } from './services/logging/app-log-file';
 import { LoggerRegistry as AppLogRegistry } from './utils/logger-registry';
 import { Dobermann } from './dobermann';
 import { createDefaultEndpoint } from './apiConfigManager';
@@ -185,7 +185,16 @@ export async function activate(context: vscode.ExtensionContext) {
         initBackend(backend);
         // The log is kept per computer, apart for each backend profile (a dev host on the local
         // stack never mixes its lines into the installed app's)
-        void log.start(new AppLogFile(path.join(context.globalStorageUri.fsPath, 'logs', `app-log${backend.storageSuffix}.jsonl`)));
+        // a file per day, kept per profile (the dev build's local stack apart from production)
+        // How long and how much it keeps: the user's settings (Settings → Logs), checked again when they change
+        log.setRetention(() => {
+            const config = vscode.workspace.getConfiguration('dbmn');
+            return { days: config.get<number>('logs.keepDays', 14), megabytes: config.get<number>('logs.mostMegabytes', 150) };
+        });
+        context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(event => {
+            if (event.affectsConfiguration('dbmn.logs')) void log.prune();
+        }));
+        void log.start(new AppLogDayFiles(path.join(context.globalStorageUri.fsPath, `logs${backend.storageSuffix}`)));
         if (backend.isDevBuild) {
             console.log(`[DBMN] ${backendLabel(backend)} backend: ${backend.apiUrl} (site ${backend.siteUrl})`);
         }

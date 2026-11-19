@@ -2322,6 +2322,18 @@ mark.search-hit {
     text-align: right;
 }
 
+/* History lists the newest runs until a search or Show all brings the rest */
+.tx-list-summary .transactions-show-all {
+    background: none;
+    border: none;
+    padding: 0 2px;
+    color: var(--vscode-textLink-foreground);
+    font: inherit;
+    cursor: pointer;
+    text-decoration: underline;
+}
+.tx-list-summary .transactions-show-all:hover { color: var(--vscode-textLink-activeForeground); }
+
 /* Select-mode toggle in the transactions toolbar — uses the shared
  * `.hub-toggle` switch (track + thumb) so it reads as a true on/off
  * control, not a checkbox to be checked. */

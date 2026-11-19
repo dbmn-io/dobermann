@@ -3,6 +3,7 @@
 import { APIEndpointConfig } from '../../data-loading/types';
 import { ExecutionOptions } from './execution.interface';
 import { ExecutionMetadata, ExecutionStatus, StatusHelpers } from '../../storage/execution-metadata';
+import type { BatchMemberLogRow } from '../storage/execution-storage.interface';
 import { 
     IExecutionMetadataService, 
     ExecutionTableOptions, 
@@ -47,6 +48,7 @@ export interface ExecutionMetadataServiceDependencies {
         getBatchMemberExecutions: (batchId: string) => Promise<ExecutionMetadata[]>;
         countBatchMembersByStatus?: (batchId: string) => Promise<Record<string, number>>;
         getBatchMemberFiles?: (batchId: string) => Promise<Array<{ id: string; status: string; responseFile?: string; createdAt: Date; errorMessage?: string; testStatus?: string }>>;
+        getBatchMemberLogRows?: (batchId: string, offset: number, limit: number) => Promise<BatchMemberLogRow[]>;
         getActiveQueue: () => Promise<ExecutionMetadata[]>;
         getAllTransactions: () => Promise<ExecutionMetadata[]>;
         // GitHub Issue #67 - Bulk update method to prevent file corruption
@@ -557,6 +559,14 @@ export class ExecutionMetadataService implements IExecutionMetadataService {
         
         // Fallback implementation
         return [];
+    }
+
+    /** Dobermann issue 7: a slice of a batch's requests, only what a log line needs (whole rows, cut, where the store has no lean query). */
+    async getBatchMemberLogRows(batchId: string, offset: number, limit: number): Promise<BatchMemberLogRow[]> {
+        if (this.dependencies.executionMetadataManager?.getBatchMemberLogRows) {
+            return this.dependencies.executionMetadataManager.getBatchMemberLogRows(batchId, offset, limit);
+        }
+        return (await this.getBatchMemberExecutions(batchId)).slice(offset, offset + limit);
     }
 
     async getBatchMemberFiles(batchId: string): Promise<Array<{ id: string; status: string; responseFile?: string; createdAt: Date; errorMessage?: string; testStatus?: string }>> {

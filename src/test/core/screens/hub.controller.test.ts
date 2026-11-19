@@ -611,6 +611,39 @@ describe('HubController: a header pick is drawn at once (2026-11-13)', () => {
         expect(h.of('hubState').pop(), 'back to what is stored').to.include({ activeEnvironmentId: first.id });
     });
 
+    it('History: the state carries the newest runs and how many there are; asked, every run comes', async () => {
+        const runs = Array.from({ length: 1_200 }, (_, i) => ({ id: `run-${i}`, executionType: 'individual', status: 'completed', endpointName: `E${i}` }));
+        const executions = {
+            metadata: {
+                getAllTransactions: async () => runs,
+                getExecution: async () => null,
+                onExecutionChanged: { event: () => ({ dispose: () => undefined }) }
+            }
+        } as unknown as HubPorts['executions'];
+        const h = hub({ executions });
+        await h.controller.handle({ type: 'ready' });
+        await tick();
+        const state = h.of('hubState').pop() as { transactions: unknown[]; transactionsTotal: number };
+        expect(state.transactions).to.have.length(500);
+        expect(state.transactionsTotal).to.equal(1_200);
+        await h.controller.handle({ type: 'historyAll' });
+        const all = h.of('historyAll').pop() as { transactions: Array<{ id: string }> };
+        expect(all.transactions).to.have.length(1_200);
+        expect(all.transactions[1_199].id).to.equal('run-1199');
+    });
+
+    it('Logs: its rail item opens one tab; asked again with a search, that tab searches', async () => {
+        const page = (): HubTab => ({ html: '<p>tab</p>', handle: async () => undefined, dispose: () => undefined });
+        const searched: string[] = [];
+        let built = 0;
+        const h = hub({ tabs: { endpoint: async () => page(), environment: async () => page(), logs: async () => { built++; return { ...page(), search: (t: string) => { searched.push(t); } }; } } });
+        await h.controller.handle({ type: 'openLogs' });
+        await h.controller.handle({ type: 'openLogs', search: '@level=error' });
+        expect(built).to.equal(1);
+        expect(searched).to.deep.equal(['@level=error']);
+        expect(h.of('mountEmbeddedTab').map(m => [m.tabType, m.name])).to.deep.equal([['logs', 'Logs']]);
+    });
+
     // Measured 2026-11-16: reading the history takes ~70 ms for 3,000 runs and ~220 ms for 10,000
     // (sql.js, this laptop), and a switch read it twice: once for its own refresh and once for
     // the environments-changed event. A switch doesn't change the history.

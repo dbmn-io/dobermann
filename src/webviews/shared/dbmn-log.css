@@ -1,0 +1,44 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Copyright (C) 2026 Flexion Tech Pty Ltd */
+/*
+ * <dbmn-log> (dbmn-log.js) and <dbmn-level> (dbmn-level.js). The log is a <dbmn-table> that
+ * fills the height it is given; dbmn-table.css draws the table itself.
+ */
+dbmn-log {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    min-width: 0;
+}
+dbmn-log > dbmn-table {
+    flex: 1 1 auto;
+    min-height: 0;
+}
+dbmn-log .dbmn-table-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: none;
+}
+/* How many lines show is said once, by the screen (the Logs footer) */
+dbmn-log .dbmn-table-count { display: none; }
+dbmn-log td { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+dbmn-log td:first-child { font-variant-numeric: tabular-nums; }
+
+.dbmn-log-message.has-detail {
+    cursor: pointer;
+    text-decoration: underline dotted color-mix(in srgb, var(--dbmn-foreground, var(--vscode-foreground)) 45%, transparent);
+    text-underline-offset: 3px;
+}
+
+/* A level: an icon and a word, coloured by the theme for error and warn only */
+dbmn-level {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    vertical-align: middle;
+}
+.dbmn-level-icon { display: inline-flex; }
+.dbmn-level-icon svg { width: 13px; height: 13px; }
+dbmn-level[level="error"] { color: var(--dbmn-errorForeground, var(--vscode-errorForeground)); }
+dbmn-level[level="warn"] { color: var(--dbmn-editorWarning-foreground, var(--vscode-editorWarning-foreground)); }
+dbmn-level[level="debug"] { color: color-mix(in srgb, var(--dbmn-foreground, var(--vscode-foreground)) 62%, transparent); }

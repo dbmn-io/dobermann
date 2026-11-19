@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Flexion Tech Pty Ltd
-import { BatchMemberFile } from './execution-storage.interface';
+import { BatchMemberFile, BatchMemberLogRow } from './execution-storage.interface';
 import { Event, EventEmitter } from '../../platform/events';
 import { SqlJsExecutionStorage } from './sqljs-execution-storage.service';
 import { ExecutionMetadata, ExecutionFilters, TableOptions, ExecutionStats } from '../../storage/execution-metadata';
@@ -180,6 +180,11 @@ export class DatabaseAdapter {
 
     async getBatchMemberFiles(batchId: string): Promise<BatchMemberFile[]> {
         return this.storage.getBatchMemberFiles(batchId);
+    }
+
+    /** Dobermann issue 7: a slice of a batch's requests, as the Logs screen shows them. */
+    async getBatchMemberLogRows(batchId: string, offset: number, limit: number): Promise<BatchMemberLogRow[]> {
+        return this.storage.getBatchMemberLogRows(batchId, offset, limit);
     }
 
     /** GitHub Issue #247 */

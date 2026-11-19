@@ -17,7 +17,7 @@ import { TagManagerService } from '../../services/tags/tag-manager.service';
 import { promptNewSystemInModal } from '../new-system-prompt';
 import { promptNewEnvironmentInModal, type NewEnvironmentDraft } from '../new-environment-prompt';
 import type { ScreenSession } from '../screen-session';
-import { BatchTab, HubPorts, HubTab, HubTabsSnapshot, SerializedHubTab, TabChannel } from './hub.ports';
+import { BatchTab, HubPorts, HubTab, HubTabsSnapshot, LogsTab, SerializedHubTab, TabChannel } from './hub.ports';
 import { askBeforeCancellingBatch } from '../console/batch-cancel';
 import { askHowToResume } from '../console/batch-resume';
 import { headerVariablesOf, headerVariablesPicking, type VariableBearer } from '../../services/environment/variable-options';
@@ -33,10 +33,17 @@ const WRITABLE_SETTINGS: Record<string, 'boolean' | 'number' | 'number[]'> = {
     'execution.treatNetworkErrorsAsCritical': 'boolean',
     'execution.criticalErrorCodes': 'number[]',
     'execution.maxCsvRows': 'number',
-    'ui.confirmTransactionDeletion': 'boolean'
+    'ui.confirmTransactionDeletion': 'boolean',
+    // Dobermann issue 7: how long and how much of the app's log is kept
+    'logs.keepDays': 'number',
+    'logs.mostMegabytes': 'number'
 };
 
-/** Transactions in the Hub's list: the most recent N keeps the payload small. */
+/**
+ * The runs sent with every change of the Hub's state (several a second while a batch runs): the
+ * newest. History asks for the rest (`historyAll`) when a search needs them, or Show all is
+ * clicked, so a search always reaches every run.
+ */
 const TRANSACTION_LIMIT = 500;
 
 const message = (error: unknown) => error instanceof Error ? error.message : String(error);
@@ -199,6 +206,9 @@ export class HubController {
             case 'openDesignSystem':
                 await this.openDesignTab();
                 break;
+            case 'openLogs':
+                await this.openLogsTab(str('search'));
+                break;
             case 'openCompare': {
                 // #298: the Compare list's Open (Results) and Edit (its results dialog)
                 const start = str('start');
@@ -259,6 +269,10 @@ export class HubController {
                 break;
             case 'bulkDeleteTransactions':
                 await this.deleteTransactions(list('ids'));
+                break;
+            case 'historyAll':
+                // History searches every run, not only the newest sent with the state
+                this.session.post({ type: 'historyAll', transactions: await this.readHistory() });
                 break;
             case 'searchTransactionContent':
                 // #444: each typed word on its own (`terms`); `term` is the one-piece search from before
@@ -379,6 +393,7 @@ export class HubController {
             activeEnvironmentId: active?.id,
             activeSystemId: active?.systemId,
             transactions: transactions.slice(0, TRANSACTION_LIMIT),
+            transactionsTotal: transactions.length,
             compares: this.ports.compares ? savedCompares(this.ports.compares.state()) : [],
             queries: this.ports.compares ? listQueries(this.ports.compares.state()) : [],
             dbmnSettings: {
@@ -387,6 +402,8 @@ export class HubController {
                 criticalErrorCodes: settings.get('dbmn', 'execution.criticalErrorCodes', [401, 403]),
                 maxCsvRows: settings.get('dbmn', 'execution.maxCsvRows', 100000),
                 confirmTransactionDeletion: settings.get('dbmn', 'ui.confirmTransactionDeletion', true),
+                logsKeepDays: settings.get('dbmn', 'logs.keepDays', 14),
+                logsMostMegabytes: settings.get('dbmn', 'logs.mostMegabytes', 150),
                 telemetryEnabled: settings.get('dbmn', 'telemetry.enabled', true)
             },
             workspaceInfo: this.ports.workspace?.info() ?? {},
@@ -1122,6 +1139,23 @@ export class HubController {
         await this.mount(id, channel => factory(channel), { type: 'mountEmbeddedTab', tabType: 'design', refId: 'system', name: 'Design system' });
     }
 
+    /**
+     * Dobermann issue 7: the Logs screen, one tab. Asked for again with a search (a toast's Show in
+     * Logs), the open tab searches for it.
+     */
+    async openLogsTab(search?: string): Promise<void> {
+        const id = 'logs:app';
+        const open = this.tabs.get(id);
+        if (open) {
+            this.focus(id, 'app', 'Logs');
+            if (search) (open.tab as LogsTab).search?.(search);
+            return;
+        }
+        const factory = this.ports.tabs.logs;
+        if (!factory) return;
+        await this.mount(id, channel => factory({ search }, channel), { type: 'mountEmbeddedTab', tabType: 'logs', refId: 'app', name: 'Logs' });
+    }
+
     async openCompareTab(compareId: string, start: 'results' | 'match' | 'edit' = 'results'): Promise<void> {
         const state = this.ports.compares?.state();
         // A query is a report too: it opens in the same kind of tab, on its own screen
@@ -1344,6 +1378,7 @@ export class HubController {
                 else if (t.type === 'batch') await this.openBatchTab(t.refId);
                 else if (t.type === 'compare') await this.openCompareTab(t.refId);
                 else if (t.type === 'design') await this.openDesignTab();
+                else if (t.type === 'logs') await this.openLogsTab();
                 else if (t.type === 'console' || t.type === 'batchConsole') await this.openConsoleTab(t.refId, t.type === 'batchConsole');
                 else if (t.type === 'page') {
                     // Hub-native page tabs (Settings, Account, Import/Export, #292): the page re-hosts the section

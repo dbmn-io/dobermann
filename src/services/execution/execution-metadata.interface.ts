@@ -3,6 +3,7 @@
 import { APIEndpointConfig } from '../../data-loading/types';
 import { ExecutionOptions } from './execution.interface';
 import { ExecutionMetadata, ExecutionStatus } from '../../storage/execution-metadata';
+import type { BatchMemberLogRow } from '../storage/execution-storage.interface';
 import { BatchResumptionData } from '../../storage/execution-metadata';
 
 // Table pagination options
@@ -260,6 +261,9 @@ export interface IExecutionMetadataService {
 
     /** Issue #312: id / status / response file / created time per member, without whole rows. */
     getBatchMemberFiles(batchId: string): Promise<Array<{ id: string; status: string; responseFile?: string; createdAt: Date; errorMessage?: string; testStatus?: string }>>;
+
+    /** Dobermann issue 7: `limit` of a batch's requests from `offset`, only what a log line needs. */
+    getBatchMemberLogRows?(batchId: string, offset: number, limit: number): Promise<BatchMemberLogRow[]>;
 
     /**
      * Get all transactions (active + completed) in a single call

@@ -27,6 +27,11 @@ import type { ComparePorts } from '../../../src/screens/compare/compare.ports';
 import { QueryController } from '../../../src/screens/query/query.controller';
 import { buildQueryPage } from '../../../src/screens/query/query-page';
 import { buildDesignSystemPage } from '../../../src/screens/design-system/design-system-page';
+import { buildLogsPage } from '../../../src/screens/logs/logs-page';
+import { LogsController } from '../../../src/screens/logs/logs.controller';
+import { appLog } from './app-log';
+import { runHistory } from '../../../src/screens/logs/run-history';
+import { LogReader } from '../../../src/services/logging/log-reader';
 import { isQueryId } from '../../../src/services/query/query-store';
 import initSqlJs from 'sql.js';
 import sqlWasmUrl from 'sql.js/dist/sql-wasm.wasm?url';
@@ -179,6 +184,19 @@ export function webTabs(deps: WebTabDeps): HubTabFactory {
         },
         // The design system's page: components on show, nothing to run
         design: async channel => tab(buildDesignSystemPage(asset), sessionFor(channel), { handle: async () => undefined, dispose: () => undefined }),
+        // Dobermann issue 7: the app's log; Save is a download, as exports are
+        logs: async ({ search }, channel) => {
+            const session = sessionFor(channel);
+            const controller = new LogsController(session, {
+                reader: new LogReader(appLog.store(), runHistory(deps.execution.metadata), () => appLog.recent()),
+                requests: { events: id => deps.execution.logging.getExecutionLogs(id) },
+                redact: text => appLog.redactor.text(text),
+                files: { save: async (name, text) => { await download(name, new TextEncoder().encode(text)); return true; } },
+                toast: deps.toast
+            }, { search });
+            const screen = { handle: (m: Record<string, unknown>) => controller.handleMessage(m as never), dispose: () => controller.dispose() };
+            return { ...tab(buildLogsPage(asset), session, screen), search: text => controller.showSearch(text) };
+        },
         console: async ({ executionId, isBatch }, channel) => {
             const session = sessionFor(channel);
             const { execution } = deps;

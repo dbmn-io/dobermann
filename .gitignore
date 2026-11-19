@@ -17,6 +17,9 @@ yarn-error.log*
 # Logs
 logs
 *.log
+# (the Logs screen's code, Dobermann issue 7, is not a log)
+!src/screens/logs/
+!src/webviews/logs/
 
 # Runtime data
 pids

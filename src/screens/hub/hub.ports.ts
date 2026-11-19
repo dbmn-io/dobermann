@@ -67,10 +67,17 @@ export interface HubTabFactory {
     compare?(config: { compareId: string; endpointName: string; start?: 'results' | 'match' | 'edit' }, channel: TabChannel): Promise<HubTab>;
     /** The design system's page (design-system-page.ts): the reference for building screens, no data of its own. */
     design?(channel: TabChannel): Promise<HubTab>;
+    /** Dobermann issue 7: the Logs screen (src/screens/logs), one tab, opened on a search when asked. */
+    logs?(config: { search?: string }, channel: TabChannel): Promise<LogsTab>;
+}
+
+export interface LogsTab extends HubTab {
+    /** Already open, asked for again with a search (Show in Logs). */
+    search?(text: string): void;
 }
 
 export interface SerializedHubTab {
-    type: 'endpoint' | 'environment' | 'batch' | 'console' | 'batchConsole' | 'compare' | 'design' | 'page';
+    type: 'endpoint' | 'environment' | 'batch' | 'console' | 'batchConsole' | 'compare' | 'design' | 'logs' | 'page';
     refId: string;
     name?: string;
     /** Had unsaved changes when captured: restoring can't bring the edits back, so say so. */

@@ -20,6 +20,24 @@ export interface BatchMemberFile {
     testStatus?: string;
 }
 
+/**
+ * Dobermann issue 7: a batch's request as the Logs screen shows it, one line each: only the columns
+ * the line needs, read a slice at a time, so reading thousands never holds the page up.
+ */
+export interface BatchMemberLogRow {
+    id: string;
+    status: string;
+    environment?: string;
+    endpointMethod?: string;
+    endpointPath?: string;
+    rows?: string;
+    startedAt?: Date;
+    completedAt?: Date;
+    httpStatus?: number;
+    httpStatusText?: string;
+    errorMessage?: string;
+}
+
 export interface IExecutionStorage {
     /**
      * Initialize the storage (create DB, load data, etc.)
@@ -189,6 +207,9 @@ export interface IExecutionStorage {
      * a second per call, and the open path made two).
      */
     getBatchMemberFiles(batchId: string): Promise<BatchMemberFile[]>;
+
+    /** Dobermann issue 7: `limit` of a batch's requests from `offset`, in the order they were made, with only what a log line needs. */
+    getBatchMemberLogRows?(batchId: string, offset: number, limit: number): Promise<BatchMemberLogRow[]>;
 
     /** GitHub Issue #247: record that one run's rows became another run's input. */
     addExecutionLink(link: ExecutionLinkInput): Promise<string>;

@@ -276,6 +276,12 @@
     }
 
     function switchSection(sectionId) {
+        // Logs is a screen of its own, one tab (Dobermann issue 7)
+        if (sectionId === 'logs') {
+            closeDrawer();
+            vscode.postMessage({ type: 'openLogs' });
+            return;
+        }
         // Page-style sections open as tabs (Issue #292) and close the drawer.
         if (PAGE_SECTIONS[sectionId]) {
             closeDrawer();
@@ -851,6 +857,21 @@
             }, 400);
         });
 
+        // Dobermann issue 7: the log's age and size, saved a moment after typing stops, as maxCsvRows is
+        [['logsKeepDays', 'logs.keepDays'], ['logsMostMegabytes', 'logs.mostMegabytes']].forEach(([id, key]) => {
+            const input = document.getElementById(id);
+            let timer = null;
+            input?.addEventListener('input', () => {
+                clearTimeout(timer);
+                input.dataset.pending = 'true';
+                timer = setTimeout(() => {
+                    delete input.dataset.pending;
+                    const n = parseInt(input.value, 10);
+                    if (Number.isFinite(n) && n >= 1) vscode.postMessage({ type: 'setDbmnSetting', key, value: n });
+                }, 400);
+            });
+        });
+
         // criticalErrorCodes — comma-separated, parse on blur (commit) or Enter.
         const codesEl = document.getElementById('criticalErrorCodes');
         const commitCodes = () => {
@@ -1424,6 +1445,10 @@
         // them. A window in the background keeps its focused field, but nobody is typing
         // there: a change from another device must still show (#281, 2026-10-10).
         const typingIn = el => document.hasFocus() && document.activeElement === el;
+        [['logsKeepDays', settings.logsKeepDays], ['logsMostMegabytes', settings.logsMostMegabytes]].forEach(([id, value]) => {
+            const input = document.getElementById(id);
+            if (input && !typingIn(input) && !input.dataset.pending && value != null) input.value = String(value);
+        });
         if (maxRows && !typingIn(maxRows) && !maxRows.dataset.pending && settings.maxCsvRows != null) {
             maxRows.value = String(settings.maxCsvRows);
         }
@@ -1723,6 +1748,9 @@
                 if (window.Catalogue) {
                     window.Catalogue.acknowledgeSystemCreated(message.systemId);
                 }
+                break;
+            case 'historyAll':
+                window.Transactions?.onHistoryAll?.(message);
                 break;
             case 'transactionContentSearchResult':
                 // Issue #246: backend matched the search term against the

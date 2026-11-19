@@ -103,6 +103,11 @@
                 </button>
             </nav>
             <nav class="hub-nav-bottom" aria-label="Pinned">
+                <!-- Dobermann issue 7: everything the app writes, in one tab (src/screens/logs) -->
+                <button type="button" class="hub-nav-item" data-section="logs" title="Logs: everything DBMN writes, as it happens">
+                    <span class="hub-nav-icon icon" data-icon="scroll-text"></span>
+                    <span class="hub-nav-label">Logs</span>
+                </button>
                 <button type="button" class="hub-nav-item" data-section="account" title="DBMN account">
                     <span class="hub-nav-icon icon" data-icon="user"></span>
                     <span class="hub-nav-label">Account</span>
@@ -676,6 +681,21 @@
                         </div>
                     </div>
 
+                    <!-- Dobermann issue 7: how long and how much of the app's own log is kept (AppLog.prune) -->
+                    <div class="hub-settings-panel">
+                        <h3 class="hub-settings-panel-title">Logs</h3>
+                        <div class="hub-setting-row">
+                            <label class="hub-setting-label" for="logsKeepDays">Keep logs for (days)</label>
+                            <input type="number" id="logsKeepDays" class="hub-setting-control" min="1" max="3650" step="1">
+                            <p class="hub-setting-help">How long the app's own lines are kept: sign-ins, sync, batch events and errors. A run's requests stay with the run in History.</p>
+                        </div>
+                        <div class="hub-setting-row">
+                            <label class="hub-setting-label" for="logsMostMegabytes">Most space for logs (MB)</label>
+                            <input type="number" id="logsMostMegabytes" class="hub-setting-control" min="1" max="100000" step="10">
+                            <p class="hub-setting-help">Past it, the oldest days go first. Today's lines are never deleted.</p>
+                        </div>
+                    </div>
+
                     <div class="hub-settings-panel">
                         <h3 class="hub-settings-panel-title">UI</h3>
                         <!-- #373: the host's themes (the web and desktop apps). VS Code themes itself: the row stays hidden there. -->
@@ -766,6 +786,7 @@
                         <button type="button" class="hub-home-guide-item" data-home-section="export">Export</button>
                     </div>
                     <div class="hub-home-guide-bottom">
+                        <button type="button" class="hub-home-guide-item" data-home-section="logs">Logs</button>
                         <button type="button" class="hub-home-guide-item" data-home-section="account">Account</button>
                         <button type="button" class="hub-home-guide-item" data-home-section="settings">Settings</button>
                     </div>

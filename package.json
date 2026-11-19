@@ -141,6 +141,18 @@
           "maximum": 1000000,
           "markdownDescription": "Maximum number of rows allowed in CSV uploads for batch execution.\n\n**Default:** `100,000` rows\n\n**Note:** Very large uploads (>500k rows) may impact performance. Consider splitting into multiple batches if you experience issues."
         },
+        "dbmn.logs.keepDays": {
+          "type": "number",
+          "default": 14,
+          "minimum": 1,
+          "markdownDescription": "How many days the app's own log lines (sign-ins, sync, start-up, batch events and errors) are kept on this computer. A run's requests are kept with the run in History.\n\n**Default:** `14` days"
+        },
+        "dbmn.logs.mostMegabytes": {
+          "type": "number",
+          "default": 150,
+          "minimum": 1,
+          "markdownDescription": "The most space the app's own log lines may take on this computer. Past it, the oldest days go first; today's are never deleted.\n\n**Default:** `150` MB"
+        },
         "dbmn.telemetry.enabled": {
           "type": "boolean",
           "default": true,

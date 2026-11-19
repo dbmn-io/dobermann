@@ -25,6 +25,10 @@ import { EndpointWebviewManager } from '../endpoint/endpoint-manager';
 import { EnvironmentWebviewManager } from '../environment/environment-manager';
 import { CompareWebview, compareStateStore } from '../compare/compare-webview';
 import { DesignSystemWebview } from '../design-system/design-system-webview';
+import { LogsWebview } from '../logs/logs-webview';
+import type { IExecutionLoggingService } from '../../services/logging/execution-logging.interface';
+import { CoreServiceTokens } from '../../container/core-services-registry';
+import { LoggerRegistry as AppLogRegistry } from '../../utils/logger-registry';
 import { createVsCodeQueryFiles } from '../../platform/vscode/vscode-execution-storage';
 import { RunBatchWebview } from '../run-batch/run-batch-webview';
 import { ConsoleWebviewManager } from '../console/console-webview-manager';
@@ -535,6 +539,20 @@ export class HubWebviewManager extends WebviewBase {
                 const manager = new DesignSystemWebview(this.context);
                 const { html } = await manager.createWebviewEmbedded({ context: 'general' }, bridge);
                 return embed(manager, bridge, html);
+            },
+            // Dobermann issue 7: the app's log, the one every part of the app writes to
+            logs: async ({ search }, channel) => {
+                const log = AppLogRegistry.getAppLog();
+                if (!log) throw new Error('The log has not started');
+                const bridge = bridgeFor(channel);
+                const container = this.dobermannInstance?.serviceContainer;
+                let metadata: IExecutionMetadataService | undefined;
+                let executionLogging: IExecutionLoggingService | undefined;
+                try { metadata = container?.resolve<IExecutionMetadataService>(ServiceTokens.ExecutionMetadataService); } catch { metadata = undefined; }
+                try { executionLogging = container?.resolve<IExecutionLoggingService>(CoreServiceTokens.ExecutionLoggingService); } catch { executionLogging = undefined; }
+                const manager = new LogsWebview(this.context, log, metadata, executionLogging, { search });
+                const { html } = await manager.createWebviewEmbedded({ context: 'general' }, bridge);
+                return { ...embed(manager, bridge, html), search: text => manager.search(text) };
             },
             console: async ({ executionId, isBatch }, channel) => {
                 const container = this.dobermannInstance?.serviceContainer;
