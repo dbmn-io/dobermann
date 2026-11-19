@@ -1008,16 +1008,6 @@ export async function activate(context: vscode.ExtensionContext) {
         }
     });
 
-    // Transactions Command
-    // Alias for execution history (for backward compatibility with status bar calls)
-    const showExecutionHistoryCommand = vscode.commands.registerCommand('dbmn.showExecutionHistory', async () => {
-        try {
-            await dobermann.openExecutionHistory();
-        } catch (error) {
-            getToast()?.error(`Error opening execution history: ${error}`);
-        }
-    });
-
     // Command to open files in read-only mode
     const openFileReadOnlyCommand = vscode.commands.registerCommand('dbmn.openFileReadOnly', async (filePath: string) => {
         try {
@@ -1337,7 +1327,6 @@ export async function activate(context: vscode.ExtensionContext) {
         importConfigCommand,
         exportConfigCommand,
         testWorkspaceFileCommand,
-        showExecutionHistoryCommand,
         openFileReadOnlyCommand,
         viewTransactionReportCommand,
         oauthSignInCommand,

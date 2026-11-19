@@ -14,7 +14,6 @@ import { SystemMigrationService } from './services/migration/system-migration.se
 import { FolderToTagsMigrationService, FolderToTagsSummary } from './services/migration/folder-to-tags-migration.service';
 import { EnvironmentWebviewManager } from './webviews/environment/environment-manager';
 import { EndpointWebviewManager } from './webviews/endpoint/endpoint-manager';
-import { ExecutionWebviewManager } from './webviews/execution/execution-webview-manager';
 import { GeneralWebviewManager } from './webviews/general/general-manager';
 import { WebviewConfig } from './webviews/shared/types';
 import { DataLoadingOrchestrator } from './data-loading/data-loading-orchestrator';
@@ -81,10 +80,9 @@ export class Dobermann {
     // prompts when the user switches Hub sections.
     public environmentWebview: EnvironmentWebviewManager;
     public endpointWebview: EndpointWebviewManager;
-    private executionWebview: ExecutionWebviewManager;
     private generalWebview: GeneralWebviewManager;
 
-    private currentContext: 'environment' | 'endpoint' | 'execution' | 'general' = 'general';
+    private currentContext: 'environment' | 'endpoint' | 'general' = 'general';
     private currentItemId: string | undefined;
 
     // Legacy properties for public API compatibility
@@ -162,12 +160,6 @@ export class Dobermann {
         this.endpointWebview = new EndpointWebviewManager(context, this.endpointManager, this);
         this.endpointWebview.serviceContainer = this.serviceContainer;
 
-        this.executionWebview = new ExecutionWebviewManager({
-            serviceContainer: this.serviceContainer,
-            extensionContext: context,
-            componentName: 'ExecutionWebviewManager',
-            enableLogging: true
-        });
         this.generalWebview = new GeneralWebviewManager(context);
 
         // Start initialization process
@@ -359,7 +351,7 @@ export class Dobermann {
         }
     }
 
-    public setCurrentContext(context: 'environment' | 'endpoint' | 'execution' | 'general', itemId?: string): void {
+    public setCurrentContext(context: 'environment' | 'endpoint' | 'general', itemId?: string): void {
         this.currentContext = context;
         this.currentItemId = itemId;
     }
@@ -664,7 +656,7 @@ export class Dobermann {
         return JSON.stringify(fileContent, null, 2);
     }
 
-    async openDobermann(context: 'environment' | 'endpoint' | 'execution' | 'general' = 'general', itemId?: string, defaultFolder?: string) {
+    async openDobermann(context: 'environment' | 'endpoint' | 'general' = 'general', itemId?: string, defaultFolder?: string) {
         // Handle context switching with unsaved changes detection
         const currentWebview = this.getCurrentWebview();
 
@@ -710,9 +702,6 @@ export class Dobermann {
             case 'endpoint':
                 await this.endpointWebview.createWebview(config);
                 break;
-            case 'execution':
-                await this.executionWebview.createWebview(config);
-                break;
             default:
                 await this.generalWebview.createWebview(config);
                 break;
@@ -725,8 +714,6 @@ export class Dobermann {
                 return this.environmentWebview;
             case 'endpoint':
                 return this.endpointWebview;
-            case 'execution':
-                return this.executionWebview;
             case 'general':
                 return this.generalWebview;
             default:
@@ -855,24 +842,6 @@ export class Dobermann {
         if (this.executionMetadataManager && typeof (this.executionMetadataManager as DatabaseAdapter).close === 'function') {
             (this.executionMetadataManager as DatabaseAdapter).close();
         }
-    }
-
-    public async openExecutionHistory(): Promise<void> {
-        await this.waitForInitialization();
-
-        const config: WebviewConfig = {
-            context: 'execution',
-            itemId: 'execution-history',
-            data: { viewType: 'table' }
-        };
-
-        // console.log(`[Dobermann] Opening execution history table with config:`, config);
-
-        // Store context for this session
-        this.currentContext = 'execution';
-        this.currentItemId = 'execution-history';
-
-        await this.executionWebview.createWebview(config);
     }
 
     public async migrateExecutionFiles(): Promise<MigrationResult> {

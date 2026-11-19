@@ -138,7 +138,6 @@ export const ServiceTokens = {
     SystemManager: Symbol('SystemManager'),
     
     // UI Components
-    ExecutionWebviewManager: Symbol('ExecutionWebviewManager'),
 
     // DBMN Authentication (GitHub Issue #208)
     // Primary tokens defined in DbmnServiceTokens (src/container/dbmn-services-registry.ts)
