@@ -25,7 +25,8 @@ test.describe('Hub rail and page size', () => {
 
         await page.setViewportSize({ width: 900, height: 400 });
         await expect(more).toBeVisible();
-        for (const section of ['environments', 'catalogue', 'account', 'settings']) {
+        // (Logs, Account and Settings are pinned: they never move)
+        for (const section of ['environments', 'catalogue', 'logs', 'account', 'settings']) {
             const item = page.locator(`.hub-nav-item[data-section="${section}"]`);
             await expect(item).toBeVisible();
             expect(await item.evaluate(el => el.getBoundingClientRect().height)).toBe(fullHeight);
@@ -35,7 +36,8 @@ test.describe('Hub rail and page size', () => {
         await more.click();
         const popup = page.locator('#hubNavMorePopup');
         await expect(popup).toBeVisible();
-        await expect(popup.locator('.hub-env-popup-item')).toHaveText(['Reporting', 'Import', 'Export']);
+        // Logs pinned beside Account and Settings leaves room for two top items at this height
+        await expect(popup.locator('.hub-env-popup-item')).toHaveText(['History', 'Reporting', 'Import', 'Export']);
         await popup.locator('.hub-env-popup-item[data-section="export"]').click();
         await expect(popup).toBeHidden();
         await expect(page.locator('#hubTabStrip')).toContainText('Export');
