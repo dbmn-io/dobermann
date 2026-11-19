@@ -74,6 +74,21 @@ test('components take their colours from DBMN\'s names, which are the theme\'s',
     expect(light.accent).not.toBe(dark.accent);
 });
 
+test('the steps are one width whichever step is current: they never shift as the wizard walks', async ({ page }) => {
+    await page.setContent(footerPage());
+    const box = async () => { const b = await page.locator('#steps').boundingBox(); return [b.x, b.width]; };
+    const seen = [];
+    for (const current of [1, 2, 3, 4]) {
+        await page.evaluate(([states, n]) => window.show(states, n), [at(current), current]);
+        await page.waitForTimeout(350);   // (the highlight has slid)
+        seen.push(await box());
+    }
+    expect(seen.slice(1)).toEqual([seen[0], seen[0], seen[0]]);
+    // ...and a step that is working (a spinner for its number) is no wider either
+    await page.evaluate(states => window.show(states.map((s, i) => (i === 1 ? Object.assign({}, s, { checking: true }) : s)), 2), at(2));
+    expect(await box()).toEqual(seen[0]);
+});
+
 test('steps: one line, the current one marked, only open steps answer a click', async ({ page }) => {
     await page.setContent(footerPage());
     await page.evaluate(states => window.show(states, 2), at(2));

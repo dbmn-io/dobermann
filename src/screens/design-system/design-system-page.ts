@@ -23,7 +23,7 @@ export function buildDesignSystemPage(asset: AssetUrl): string {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Design system</title>
-    ${sharedStyleLinks(asset, ['atomic', 'core', 'buttons', 'modals', 'tables', 'tabs', 'toast', 'console', 'data-transformer', 'compare', 'column-drag', 'column-head', 'query', 'dbmn-footer', 'dbmn-table', 'dbmn-log'])}
+    ${sharedStyleLinks(asset, ['atomic', 'core', 'buttons', 'modals', 'tables', 'tabs', 'toast', 'console', 'data-transformer', 'compare', 'column-drag', 'column-head', 'query', 'dbmn-footer', 'dbmn-table', 'dbmn-log', 'dbmn-name'])}
     <link rel="stylesheet" href="${asset('design-system/design-system.css')}">
 </head>
 <body class="editor-slide-in ds-page">
@@ -42,6 +42,7 @@ export function buildDesignSystemPage(asset: AssetUrl): string {
             <a href="#screen">A screen</a>
             <a href="#theme">Theme and colours</a>
             <a href="#footer">Footer</a>
+            <a href="#names">Names</a>
             <a href="#buttons">Buttons</a>
             <a href="#icons">Icons</a>
             <a href="#dialogs">Dialogs and messages</a>
@@ -55,6 +56,7 @@ export function buildDesignSystemPage(asset: AssetUrl): string {
         <h2>Principles</h2>
         <ol class="ds-rules">
             <li><strong>The data gets the space.</strong> A screen owns one bar, its footer. Nothing sits between the Hub's tabs and the work.</li>
+            <li><strong>Rename in one place for every kind of thing.</strong> Right-click it in its Hub list, then Rename: one dialog for reports, endpoints, environments and runs. A report also shows its name first on its own screen, where a click renames it. Never in a tab or a footer.</li>
             <li><strong>One place for each job.</strong> Footer left: what you can do. Footer right: how far along you are. They never swap.</li>
             <li><strong>One component for each job.</strong> If a component here does the job, use it. A screen never draws its own version.</li>
             <li><strong>Components only draw.</strong> They show what they are given and report what was clicked. Deciding belongs to the screen's controller.</li>
@@ -230,6 +232,21 @@ progress.addEventListener('dbmn-progress-change', e =&gt; post({ type: 'console.
         <pre class="ds-code"><code>&lt;dbmn-status tone="ok"&gt;Saved&lt;/dbmn-status&gt;       tone: ok, warn, error, or none</code></pre>
     </section>
 
+    <section class="ds-section" id="names">
+        <h2>Names <span class="ds-chip is-component">Component</span></h2>
+        <p>A report's name is in its screen's top row (first in Query, straight after the slots in Compare), quiet, where it costs no height. A click makes it a box: Enter keeps the new name, Esc puts the old one back. A name not given yet reads in italics, so it can be named from the first step. Everywhere else a thing is renamed by right-click → Rename in its Hub list, which opens one dialog with the same rules: one line, single spaces, a length each kind allows, and a name another of its kind has is refused.</p>
+        <div class="ds-demo ds-row">
+            <dbmn-name id="dsName" label="Query name" max="30" value="New query" unnamed></dbmn-name>
+            <span class="form-hint" id="dsNameNote" role="status"></span>
+        </div>
+        <pre class="ds-code"><code>&lt;dbmn-name id="name" label="Query name" max="30"&gt;&lt;/dbmn-name&gt;
+
+name.value = 'Open orders by item';        // what the controller says it is called
+name.unnamed = true;                       // still the default name: italics
+name.addEventListener('dbmn-name-change', e =&gt; post({ type: 'query.rename', name: e.detail.name }));
+                                           // the controller checks it and answers with the name it kept</code></pre>
+    </section>
+
     <section class="ds-section" id="buttons">
         <h2>Buttons <span class="ds-chip">Shared styles</span></h2>
         <p>One size everywhere. One primary button in a group, last. Red only for what cannot be undone.</p>
@@ -402,6 +419,7 @@ log.addEventListener('dbmn-log-open', e =&gt; …e.detail.open…);   // a line'
     ${script('shared/dbmn-level.js')}
     ${script('shared/dbmn-log.js')}
     ${script('shared/dbmn-footer.js')}
+    ${script('shared/dbmn-name.js')}
     ${script('design-system/design-system.js')}
 </body>
 </html>`;

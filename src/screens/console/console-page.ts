@@ -29,6 +29,7 @@ const SCRIPTS: Record<string, string> = {
     DATA_NAVIGATOR_URI: 'console/modules/data-navigator.js',
     MONACO_THEME_URI: 'shared/monaco-theme.js',
     ICONS_SCRIPT: 'shared/icons.js',
+    DBMN_FOOTER_URI: 'shared/dbmn-footer.js',
     EDITOR_WINDOW_CONTROLS_SCRIPT: 'shared/editor-window-controls.js',
     DBMN_TOAST_URI: 'shared/dbmn-toast.js',
     DBMN_CLIPBOARD_URI: 'shared/dbmn-clipboard.js',
@@ -50,7 +51,7 @@ const SCRIPTS: Record<string, string> = {
 };
 
 /** The Raw tab's transaction card is shared with Run Batch Step 4 (GitHub Issue #308). */
-const STYLES = ['atomic', 'core', 'modals', 'tables', 'tabs', 'toast', 'console', 'transaction-card', 'column-drag', 'column-head'];
+const STYLES = ['atomic', 'core', 'modals', 'tables', 'tabs', 'toast', 'console', 'transaction-card', 'column-drag', 'column-head', 'dbmn-footer'];
 
 function base64Utf8(text: string): string {
     const bytes = new TextEncoder().encode(text);

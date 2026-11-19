@@ -7,6 +7,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dobermann - Endpoint</title>
     {{SHARED_STYLES}}
+    <link rel="stylesheet" href="{{DBMN_FOOTER_CSS}}">
 </head>
 
 <body class="editor-slide-in" data-endpoint-id="{{ENDPOINT_ID}}">
@@ -272,10 +273,11 @@ expect(response.json().data[0].itemId)
         </div>
     </div>
 
-    <!-- Sticky Footer with Action Buttons -->
-    <div class="webview-footer">
-        <div class="footer-content">
-            <div class="footer-button-container footer-button-container-overflow">
+    <!-- The design system's footer (shared/dbmn-footer.js): what you can do on the left (buttons that
+         don't fit go into More, setupFooterOverflow); on the right a few words: saved, or not yet.
+         Messages go to the toasts (dbmn-toast.js) -->
+    <dbmn-footer>
+            <dbmn-actions class="footer-button-container-overflow">
                 <!-- Add Section Button with Dropdown -->
                 <div class="add-section-dropdown">
                     <button id="add-section-btn" data-click="toggleAddSectionDropdown" class="btn btn-secondary" title="Add sections to endpoint">
@@ -334,15 +336,9 @@ expect(response.json().data[0].itemId)
                     </button>
                     <div id="more-actions-menu" class="dropdown-menu hidden"></div>
                 </div>
-            </div>
-            <!-- Footer Notification Area (right side) for validation errors/warnings -->
-            <div id="footerNotification" class="footer-notification hidden">
-                <span class="notification-icon"></span>
-                <span class="notification-message"></span>
-                <button class="notification-dismiss" data-click="clearFooterNotification" title="Dismiss">&times;</button>
-            </div>
-        </div>
-    </div>
+            </dbmn-actions>
+            <dbmn-status id="endpointStatus"></dbmn-status>
+    </dbmn-footer>
 
     <!-- CSV Modal removed - now self-contained in CSV Handler -->
 
@@ -363,6 +359,7 @@ expect(response.json().data[0].itemId)
     <script src="{{QUERY_PARAM_BUILDER_SCRIPT}}"></script>
     <!-- Shared icon registry + editor window controls -->
     <script src="{{ICONS_SCRIPT}}"></script>
+    <script src="{{DBMN_FOOTER_SCRIPT}}"></script>
     <script src="{{EDITOR_WINDOW_CONTROLS_SCRIPT}}"></script>
     <!-- DbmnModal — auto-bridge listens for ext-host modal requests -->
     <script src="{{ROW_PASTE_SCRIPT}}"></script>

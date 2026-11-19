@@ -283,6 +283,18 @@ dbmn-steps.is-ready .dbmn-steps-indicator {
 }
 dbmn-steps[folded] .dbmn-steps-indicator { display: none; }
 .dbmn-step.is-current .dbmn-step-mark { color: var(--foot-accent); }
+/* Every step is as wide as its name in bold, current or not: the steps box is one width however far
+   the wizard has walked, so it never moves by a pixel as the current step changes */
+.dbmn-step-label { display: inline-flex; flex-direction: column; align-items: flex-start; }
+.dbmn-step-label::after {
+    content: attr(data-text);
+    height: 0;
+    overflow: hidden;
+    visibility: hidden;
+    font-weight: 600;
+    pointer-events: none;
+    user-select: none;
+}
 .dbmn-step:not(:disabled) { cursor: pointer; }
 .dbmn-step:not(:disabled):not(.is-current):hover { background: color-mix(in srgb, currentColor 14%, transparent); }
 .dbmn-step:focus-visible,

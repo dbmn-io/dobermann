@@ -632,6 +632,49 @@ describe('HubController: a header pick is drawn at once (2026-11-13)', () => {
         expect(all.transactions[1_199].id).to.equal('run-1199');
     });
 
+    it('Rename from the Reporting list: a report not open is renamed by the same rules as its tab', async () => {
+        const { createQuery, getQuery } = await import('../../../services/query/query-store');
+        const state = new MemoryKeyValueStore();
+        const h = hub({ compares: { state: () => state } });
+        await h.controller.handle({ type: 'ready' });
+        const first = await createQuery(state);
+        const second = await createQuery(state);
+        // Cleaned: one line, single spaces, trimmed
+        await h.controller.handle({ type: 'renameReport', compareId: first.id, name: '  Stock\twith   products \n' });
+        expect(getQuery(state, first.id)?.name).to.equal('Stock with products');
+        // No two reports share a name: refused, said, and the name stays
+        await h.controller.handle({ type: 'renameReport', compareId: second.id, name: 'stock WITH products' });
+        expect(getQuery(state, second.id)?.name).to.equal(second.name);
+        expect(h.events.some(e => e.startsWith('warn ') && e.includes('already called'))).to.equal(true);
+        // Too long: cut to the limit
+        await h.controller.handle({ type: 'renameReport', compareId: second.id, name: 'x'.repeat(50) });
+        expect(getQuery(state, second.id)?.name).to.equal('x'.repeat(30));
+        // The list hears the new names
+        expect(h.of('hubState').length).to.be.greaterThan(1);
+    });
+
+    it('Rename from the Hub\'s lists: endpoints and environments by their own rules; not over an open editor', async () => {
+        const h = hub();
+        await h.controller.handle({ type: 'ready' });
+        const a = await h.endpoints.addEndpoint({ name: 'Get orders', method: 'GET', path: '/orders' } as never);
+        const b = await h.endpoints.addEndpoint({ name: 'Get items', method: 'GET', path: '/items' } as never);
+        await h.controller.handle({ type: 'renameEndpoint', endpointId: a.id, name: '  Get   open\torders ' });
+        expect((await h.endpoints.getAllEndpoints()).find(e => e.id === a.id)?.name).to.equal('Get open orders');
+        // Another endpoint's name: refused, said, kept
+        await h.controller.handle({ type: 'renameEndpoint', endpointId: b.id, name: 'Get open orders' });
+        expect((await h.endpoints.getAllEndpoints()).find(e => e.id === b.id)?.name).to.equal('Get items');
+        expect(h.events.some(e => e.startsWith('warn ') && e.includes('already exists'))).to.equal(true);
+        // Open in its editor: renamed there instead, so unsaved edits are never overwritten
+        await h.controller.handle({ type: 'openEndpointAsTab', endpointId: b.id });
+        await h.controller.handle({ type: 'renameEndpoint', endpointId: b.id, name: 'Get every item' });
+        expect((await h.endpoints.getAllEndpoints()).find(e => e.id === b.id)?.name).to.equal('Get items');
+        expect(h.events.some(e => e.startsWith('info ') && e.includes('rename it in its editor'))).to.equal(true);
+
+        const env = await h.environments.addEnvironment({ name: 'Test', baseUrl: 'https://test.example.com' } as never);
+        await h.controller.handle({ type: 'renameEnvironment', environmentId: env.id, name: 'Test (Sydney)' });
+        expect((await h.environments.getAllEnvironments()).find(e => e.id === env.id)?.name).to.equal('Test (Sydney)');
+    });
+
     it('Logs: its rail item opens one tab; asked again with a search, that tab searches', async () => {
         const page = (): HubTab => ({ html: '<p>tab</p>', handle: async () => undefined, dispose: () => undefined });
         const searched: string[] = [];

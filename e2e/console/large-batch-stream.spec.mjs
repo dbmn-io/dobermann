@@ -51,26 +51,26 @@ test('the page is usable on the first chunk and counts up as the rest stream in'
     await expect(page.locator('.tab-count[data-tab="success"]')).toHaveText('100');
     // The load shows in the execution progress bar, not a toast — the run's own progress
     // is already on the tab header and in the Activity drawer
-    await expect(page.locator('#progress-phase')).toHaveText('Loading transactions');
-    await expect(page.locator('#progress-count')).toHaveText('100/300');
-    await expect(page.locator('#progress-bar-fill')).toHaveClass(/loading/);
-    expect(await page.evaluate(() => document.getElementById('progress-bar-fill').style.width)).toBe('33%');
+    await expect(page.locator('#progress-display')).toHaveAttribute('phase', 'Loading transactions');
+    await expect(page.locator('#progress-display')).toHaveAttribute('count', '100/300');
+    await expect(page.locator('#progress-display')).toHaveAttribute('data-state', /loading/);
+    await expect(page.locator('#progress-display')).toHaveAttribute('value', '33');
 
     await page.evaluate(m => window.postMessage(m, '*'), envelope('console.raw_chunk', { responses: range(101, 201).map(i => response(i, i !== 150)), loaded: 200, total: 300 }));
     await expect(page.locator('.tab-count[data-tab="success"]')).toHaveText('199');
     await expect(page.locator('.tab-count[data-tab="errors"]')).toHaveText('1');
     await expect(page.locator('.tab-item[data-tab="errors"]')).toBeVisible();
-    await expect(page.locator('#progress-count')).toHaveText('200/300');
+    await expect(page.locator('#progress-display')).toHaveAttribute('count', '200/300');
     // An execution repaint while loading does not take the bar back
     await page.evaluate(m => window.postMessage(m, '*'), envelope('status_update', { status: 'completed', statusDisplay: '✅ Completed', progress: { completed: 300, total: 300, percentage: 100 } }));
-    await expect(page.locator('#progress-phase')).toHaveText('Loading transactions');
+    await expect(page.locator('#progress-display')).toHaveAttribute('phase', 'Loading transactions');
 
     await page.evaluate(m => window.postMessage(m, '*'), envelope('console.raw_chunk', { responses: range(201, 301).map(i => response(i)), loaded: 300, total: 300 }));
     await expect(page.locator('.tab-count[data-tab="success"]')).toHaveText('299');
     await expect(page.locator('.tab-count[data-tab="raw"]')).toHaveText('300');
     // Last chunk: the bar is handed back to the execution
-    await expect(page.locator('#progress-phase')).not.toHaveText('Loading transactions');
-    await expect(page.locator('#progress-bar-fill')).not.toHaveClass(/loading/);
+    await expect(page.locator('#progress-display')).not.toHaveAttribute('phase', 'Loading transactions');
+    await expect(page.locator('#progress-display')).not.toHaveAttribute('data-state', /loading/);
     expect(await page.evaluate(() => window.progressHandler.loading)).toBe(false);
     expect(await page.evaluate(() => window.dynamicReportManager.rawData.responses.length)).toBe(300);
     expect(pageErrors).toEqual([]);
@@ -113,7 +113,7 @@ test('a batch still running: results that land while the batch streams in merge,
     await page.evaluate(m => window.postMessage(m, '*'), envelope('batch_member_result_update', { result: response(240, false), classification: 'errors', memberIndex: 239, batchId: BATCH_ID, totalMembers: 251 }));
     await expect(page.locator('.tab-count[data-tab="success"]')).toHaveText('101');
     await expect(page.locator('.tab-count[data-tab="errors"]')).toHaveText('1');
-    await expect(page.locator('#progress-phase'), 'the bar still shows the load').toHaveText('Loading transactions');
+    await expect(page.locator('#progress-display'), 'the bar still shows the load').toHaveAttribute('phase', 'Loading transactions');
 
     await page.evaluate(m => window.postMessage(m, '*'), envelope('console.raw_chunk', { responses: range(101, 201).map(i => response(i)), loaded: 200, total: 250 }));
     // The last chunk carries exec_240 as it is on disk (an error) — it replaces the live row, not doubles it
@@ -126,7 +126,7 @@ test('a batch still running: results that land while the batch streams in merge,
     expect(new Set(ids).size).toBe(251);
     expect(ids).toContain('exec_251');
     // After the hand-back the bar's count is the batch's own tallies
-    await expect(page.locator('#progress-count')).toHaveText('251/251');
+    await expect(page.locator('#progress-display')).toHaveAttribute('count', '251/251');
     expect(pageErrors).toEqual([]);
 });
 
@@ -145,12 +145,12 @@ test('the input rows stream too, ahead of the responses, and the Input tab count
         streaming: { loaded: 3, total: 3, inputLoaded: 2, inputTotal: 6 }
     }));
     await expect(page.locator('.tab-count[data-tab="input"]')).toHaveText('2');
-    await expect(page.locator('#progress-phase')).toHaveText('Loading input rows');
-    await expect(page.locator('#progress-count')).toHaveText('2/6');
+    await expect(page.locator('#progress-display')).toHaveAttribute('phase', 'Loading input rows');
+    await expect(page.locator('#progress-display')).toHaveAttribute('count', '2/6');
 
     await page.evaluate(m => window.postMessage(m, '*'), envelope('console.raw_chunk', { inputRows: range(3, 7).map(inputRow), loaded: 3, total: 3, inputLoaded: 6, inputTotal: 6 }));
     await expect(page.locator('.tab-count[data-tab="input"]')).toHaveText('6');
-    await expect(page.locator('#progress-phase')).not.toHaveText(/Loading/);
+    await expect(page.locator('#progress-display')).not.toHaveAttribute('phase', /Loading/);
     expect(await page.evaluate(() => window.progressHandler.loading)).toBe(false);
     expect(await page.evaluate(() => window.dynamicReportManager.rawData.inputData.length)).toBe(6);
     expect(pageErrors).toEqual([]);

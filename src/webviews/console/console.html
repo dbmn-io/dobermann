@@ -40,6 +40,7 @@
     <!-- Monaco theme utility (must load after Monaco loader, before editors are created) -->
     <script src="{{MONACO_THEME_URI}}"></script>
     <script src="{{ICONS_SCRIPT}}"></script>
+    <script src="{{DBMN_FOOTER_URI}}"></script>
     <script src="{{EDITOR_WINDOW_CONTROLS_SCRIPT}}"></script>
 </head>
 <body class="editor-slide-in">
@@ -458,10 +459,12 @@
     <script src="{{CONSOLE_PAGE_URI}}" data-execution-id="{{EXECUTION_ID}}" data-batch-id="{{BATCH_ID}}" data-endpoint-method="{{ENDPOINT_METHOD}}" data-hide-input-tab="{{HIDE_INPUT_TAB}}" data-initial-concurrency="{{INITIAL_CONCURRENCY}}" data-max-concurrency="{{MAX_CONCURRENCY}}" data-report-type="{{REPORT_TYPE}}" data-execution-status="{{EXECUTION_STATUS}}" data-max-threads="{{MAX_THREADS}}" data-organization="{{ORGANIZATION}}" data-environment-id="{{ENVIRONMENT_ID}}" data-endpoint-id="{{ENDPOINT_ID}}" data-environment-variables-json="{{ENVIRONMENT_VARIABLES_JSON}}" data-http-status-display="{{HTTP_STATUS_DISPLAY}}" data-status-display="{{STATUS_DISPLAY}}"></script>
 
     <!-- Sticky Footer with Transaction Action Buttons -->
-    <div class="webview-footer">
-        <div class="footer-content">
+    <!-- The design system's footer (shared/dbmn-footer.js): what you can do on the left; on the right
+         the progress box (dbmn-progress, written only through ConsoleProgress in progress-handler.js):
+         what is happening, how far, and the time left (or the clock). Messages go to the toasts -->
+    <dbmn-footer>
             <!-- LEFT: Static/Dynamic Action Buttons -->
-            <div class="button-group" id="console-action-buttons">
+            <dbmn-actions class="button-group" id="console-action-buttons">
                 <!-- Static Buttons (for completed executions) -->
                 <button id="delete-transaction-btn" data-click="deleteTransaction" class="btn btn-danger" title="Delete this transaction">
                     Delete
@@ -494,39 +497,10 @@
                 <button id="cancel-preparation-btn" data-click="cancelExecution" class="btn btn-danger hidden" title="Cancel: stop now, and cut off the requests in flight">
                     <span class="btn-icon" data-icon="square"></span>Cancel
                 </button>
-            </div>
+            </dbmn-actions>
 
-            <!-- CENTER: Info Tab Notification (GitHub Issue #156) -->
-            <div id="info-notification" class="info-notification hidden">
-                <span class="notification-icon inline-icon" data-icon="info"></span>
-                <span class="notification-message" id="info-notification-message"></span>
-            </div>
-
-            <!-- GitHub Issue #159: Inline Error Notification (uses shared footer-notification from tables.css) -->
-            <div id="footerNotification" class="footer-notification notification-warning hidden">
-                <span class="notification-icon inline-icon" data-icon="triangle-alert"></span>
-                <span class="notification-message"></span>
-                <button class="notification-dismiss" data-click="clearFooterNotification" title="Dismiss">&times;</button>
-            </div>
-
-            <!-- RIGHT: Progress Display -->
-            <div id="progress-display" class="progress-display hidden">
-                <div class="progress-info">
-                    <span id="progress-phase" class="progress-phase">Preparing</span>
-                    <span id="progress-count" class="progress-count">0/0</span>
-                </div>
-                <div class="progress-bar-container">
-                    <div id="progress-bar" class="progress-bar">
-                        <div id="progress-bar-fill" class="progress-bar-fill preparing" style="width: 0%"></div>
-                    </div>
-                </div>
-                <div class="progress-timing">
-                    <span id="progress-elapsed" class="progress-elapsed"><span class="inline-icon" data-icon="timer"></span><span>00s</span></span>
-                    <span id="progress-eta" class="progress-eta"><span class="inline-icon" data-icon="timer"></span><span>Remaining: calculating...</span></span>
-                </div>
-            </div>
-        </div>
-    </div>
+            <dbmn-progress id="progress-display" class="hidden"></dbmn-progress>
+    </dbmn-footer>
 
 </body>
 </html>

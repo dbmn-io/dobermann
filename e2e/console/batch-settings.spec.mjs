@@ -57,9 +57,50 @@ test('the footer buttons and the progress row carry Lucide icons, not emoji (Iss
         expect(await page.locator(`#${id}`).textContent()).not.toMatch(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{2300}-\u{23FF}\u{25B6}]/u);
     }
     await page.evaluate(m => window.postMessage(m, '*'), envelope('progress_update', { status: 'running', startTime: Date.now() - 65000 }));
-    expect(await page.locator('#progress-elapsed svg').count()).toBe(1);
-    expect(await page.locator('#progress-elapsed').textContent()).toBe('1m 5s');
+    // The progress box shows the clock beside the count until there is an estimate of the time left
+    await expect(page.locator('#progress-display')).toHaveAttribute('note', '1m 5s');
     // A button whose label is rewritten at runtime keeps its icon
     await page.evaluate(() => window.updateButtonVisibility('pending'));
     expect(await page.locator('#cancel-preparation-btn svg').count()).toBe(1);
+});
+
+test('the progress box: Threads and Stop on next error are changed from its figures, in step with Settings', async ({ page }) => {
+    const file = join(ROOT, '.dev-local/console-harness-progress-box.html');
+    mkdirSync(dirname(file), { recursive: true });
+    writeFileSync(file, consolePage({ reportType: 'batch', batchId: BATCH_ID, executionId: BATCH_ID, statusDisplay: '🔄 Running', styles: true }));
+    await page.goto(pathToFileURL(file).href);
+    await page.waitForFunction(() => !!window.dynamicReportManager);
+    await page.evaluate(() => { maxThreadCount = 8; initInfoTab(true); document.getElementById('loading-overlay')?.classList.add('hidden'); });
+    await page.evaluate(m => window.postMessage(m, '*'), envelope('progress_update', { status: 'running', startTime: Date.now() - 5000 }));
+    await page.evaluate(m => window.postMessage(m, '*'), envelope('status_update', { status: 'running', statusDisplay: '🔄 Running', progress: { completed: 1, total: 3, percentage: 33 } }));
+    const box = page.locator('#progress-display');
+    await expect(box).not.toHaveClass(/hidden/);
+    await expect(box).toHaveAttribute('phase', 'Executing');
+    // The figures open with a click on the box
+    await box.click();
+    const choices = page.locator('.dbmn-progress-stats .dbmn-progress-choice');
+    await expect(choices).toHaveText(['1', '2', '4', '8', '16']);
+    await expect(choices.filter({ hasText: /^16$/ }), 'over the environment\'s limit: switched off').toBeDisabled();
+    await choices.filter({ hasText: /^4$/ }).click();
+    await expect(page.locator('#info-threads')).toHaveValue('4');
+    const stop = page.locator('.dbmn-progress-stats .dbmn-progress-switch');
+    await expect(stop).toHaveAttribute('aria-checked', 'false');
+    await stop.click();
+    await expect(page.locator('input[name="infoErrorMode"][value="stopOnFirst"]')).toBeChecked();
+    const posted = await page.evaluate(() => window.__posted.filter(m => /^updateBatch/.test(m.type)));
+    expect(posted).toContainEqual({ type: 'updateBatchConcurrency', payload: { batchId: BATCH_ID, concurrency: 4 } });
+    expect(posted).toContainEqual({ type: 'updateBatchErrorMode', payload: { batchId: BATCH_ID, stopOnFirstError: true } });
+    // And the other way: Settings changes the figures
+    await page.keyboard.press('Escape');
+    await page.evaluate(() => window.dynamicReportManager.switchTab('info'));
+    await page.locator('#info-threads').selectOption('2');
+    await box.click();
+    await expect(page.locator('.dbmn-progress-stats .dbmn-progress-choice[aria-pressed="true"]')).toHaveText('2');
+    // Done: plain figures, nothing to change
+    await page.evaluate(m => window.postMessage(m, '*'), envelope('status_update', { status: 'completed', statusDisplay: '✅ Completed', progress: { completed: 3, total: 3, percentage: 100 } }));
+    await expect(box).toHaveAttribute('tone', 'ok');
+    await page.keyboard.press('Escape');
+    await box.click();
+    await expect(page.locator('.dbmn-progress-stats .dbmn-progress-choice, .dbmn-progress-stats .dbmn-progress-switch')).toHaveCount(0);
+    await expect(page.locator('.dbmn-progress-stats')).toContainText('Stop on first error');
 });

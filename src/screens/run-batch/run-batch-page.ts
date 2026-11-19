@@ -61,6 +61,7 @@ export function buildRunBatchPage(asset: AssetUrl, batchConfig: { endpointId: st
     <link rel="stylesheet" href="${asset('shared/tabs.css')}">
     <link rel="stylesheet" href="${asset('shared/toast.css')}">
     <link rel="stylesheet" href="${csvHandlerCssUri}">
+    <link rel="stylesheet" href="${asset('shared/dbmn-footer.css')}">
 </head>
 <body class="editor-slide-in" data-endpoint-id="${batchConfig.endpointId}" data-endpoint-name="${escapeAttribute(batchConfig.endpointName || '')}">
     <!-- Readable buttons in every theme (shared/button-contrast.js): first in the body, so it applies before anything is painted -->
@@ -229,7 +230,12 @@ export function buildRunBatchPage(asset: AssetUrl, batchConfig: { endpointId: st
                             <span class="stat-label">Body</span>
                             <button id="encodingToggleBtn" type="button" data-click="csv:toggleEncodingPreview" class="btn btn-secondary font-size-12 p-6 px-12"><span id="encodingToggleLabel">Show unencoded</span></button>
                         </div>
-                        <!-- #435: the run's own settings, here since Review is the last step (Execute is the footer's button) -->
+                        <!-- #435: the run's own settings, here since Review is the last step (Execute is the footer's button).
+                             Its name first: after the file and the time until the user names it; its tab shows it -->
+                        <div class="stat-item is-stacked">
+                            <label class="stat-label" for="batchNameInput">Name</label>
+                            <input type="text" id="batchNameInput" placeholder="Batch name" maxlength="100" spellcheck="false" autocomplete="off" data-1p-ignore="true" data-lpignore="true" data-bwignore="true" data-form-type="other" data-help="batch-preparation#batch-name" data-input="csv:updateBatchName" data-change="csv:refreshBatchName">
+                        </div>
                         <div class="stat-item is-stacked">
                             <label class="stat-label" for="batchErrorModeSelect">Error Handling</label>
                             <select id="batchErrorModeSelect">
@@ -308,32 +314,23 @@ export function buildRunBatchPage(asset: AssetUrl, batchConfig: { endpointId: st
             </div>
         </div>
 
-        <!-- Sticky Footer with Action Buttons -->
-        <div class="webview-footer named-footer">
-            <div class="footer-content">
-                <!-- Step bar (batch-stepper.js): Source, Map, Validate, Review. #435: in the footer
-                     beside Back and Next, so the top of the screen is the step's own. Reading a file
-                     and checking rows show their progress in the current step (no panel of its
-                     own, which pushed the steps about as it came and went). -->
-                <!-- The batch's name beside its steps, as a query's is: typed on any step before Execute -->
-                <div class="report-foot">
-                    <label class="report-name">
-                        <span class="report-name-label">Batch name</span>
-                        <input type="text" id="batchNameInput" placeholder="Batch name" maxlength="30" data-input="csv:updateBatchName" data-change="csv:refreshBatchName">
-                    </label>
-                    <nav id="batchStepper" class="batch-stepper" aria-label="Run Batch steps"></nav>
-                </div>
-                <!-- After the steps. Next keeps its place: Filter Errors comes and goes at the end -->
-                <div class="footer-button-container">
-                    <button id="csvEnterDataBtn" data-click="csv:enterDataMode" class="btn btn-secondary" data-help="batch-preparation#enter-data">Enter Data</button>
-                    <button id="csvNextBtn" data-click="csv:goToNextStep" class="btn btn-primary" disabled>Import Data</button>
-                    <button id="csvExecuteBtn" data-click="csv:startDataLoading" class="btn btn-primary hidden">Execute</button>
-                    <button id="gridErrorFilterBtn" data-click="grid:toggleErrorFilter" class="btn btn-secondary hidden" disabled>Filter Errors</button>
-                </div>
-                <!-- #268: the notification banner that lived here is gone; these
-                     notifications now render through the shared DbmnToast overlay -->
-            </div>
-        </div>
+        <!-- The design system's footer (shared/dbmn-footer.js): what you can do on the left, how far
+             along on the right: Source, Map, Validate, Review (batch-stepper.js says what each step
+             is). Review ends with Execute, which hands over to the Console: no step of its own.
+             The batch's name is its tab's (the tab's pencil, F2 or a double-click renames it).
+             Reading a file and checking rows turn the step they belong to; how far they have got is
+             said in the screen, under the steps' content (#batchWorking). -->
+        <p id="batchWorking" class="batch-working hidden" role="status" aria-live="polite"></p>
+        <dbmn-footer>
+            <dbmn-actions>
+                <button type="button" id="csvBackBtn" data-click="csv:goToPreviousStep" class="btn btn-secondary" disabled>Back</button>
+                <button id="csvEnterDataBtn" data-click="csv:enterDataMode" class="btn btn-secondary" data-help="batch-preparation#enter-data">Enter Data</button>
+                <button id="gridErrorFilterBtn" data-click="grid:toggleErrorFilter" class="btn btn-secondary hidden" disabled>Filter Errors</button>
+                <button id="csvNextBtn" data-click="csv:goToNextStep" class="btn btn-primary" disabled>Import Data</button>
+                <button id="csvExecuteBtn" data-click="csv:startDataLoading" class="btn btn-primary hidden">Execute</button>
+            </dbmn-actions>
+            <dbmn-steps id="batchStepper" label="Run Batch steps"></dbmn-steps>
+        </dbmn-footer>
     </div>
 
     <!-- Monaco Editor -->
@@ -357,7 +354,7 @@ export function buildRunBatchPage(asset: AssetUrl, batchConfig: { endpointId: st
     <script src="${dtMismatchRepairUri}"></script>
     <script src="${dtBatchConfigUri}"></script>
     <script src="${dtAutoAdvanceUri}"></script>
-    <script src="${asset('shared/step-bar.js')}"></script>
+    <script src="${asset('shared/dbmn-footer.js')}"></script>
     <script src="${asset('run-batch/batch-stepper.js')}"></script>
     <script src="${chainPreloadUri}"></script>
     <script src="${rowPasteUri}"></script>

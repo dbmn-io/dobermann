@@ -775,12 +775,9 @@
         const enterDataBtn = document.getElementById('csvEnterDataBtn');
 
         if (prevBtn) {
-            if (csvState.modalStep > 1) {
-                prevBtn.classList.remove('hidden');
-            } else {
-                prevBtn.classList.add('hidden');
-            }
-            prevBtn.disabled = false;
+            // Always there, as in every stepped screen's footer: on the first step it has nowhere to go
+            prevBtn.classList.remove('hidden');
+            prevBtn.disabled = csvState.modalStep <= 1;
         }
 
         if (nextBtn) {
@@ -800,7 +797,8 @@
                 if (csvState.modalStep === 1) {
                     updateReadButtonState();
                 } else {
-                    nextBtn.textContent = 'Next';
+                    // Next says where it goes (Review's own button is Execute)
+                    nextBtn.textContent = csvState.modalStep === 2 ? 'Next: Validate' : csvState.modalStep === 3 ? 'Next: Review' : 'Next';
                 }
             }
         }

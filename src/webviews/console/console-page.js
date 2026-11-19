@@ -5534,21 +5534,16 @@ class DynamicReportManager {
         if (!total) return;
         if (window.progressHandler && window.progressHandler.loading) return; // Issue #312: the bar shows the load
         const completed = this._liveSuccessCount + this._liveErrorCount;
-        const progressCount = document.getElementById('progress-count');
-        if (progressCount) {
-            progressCount.textContent = `${completed}/${total}`;
-        }
-        const progressBarFill = document.getElementById('progress-bar-fill');
-        if (progressBarFill) {
-            progressBarFill.style.width = `${Math.round((completed / total) * 100)}%`;
-            // Keep current status class (running, paused, etc.). #436: but not a page's download
-            // (the first page of Fetch all, "Processing data" on a striped bar): with more than
-            // one page the footer is the batch's again, and it showed that page's state for good
-            if (total > 1 && /\b(processing|loading|busy)\b/.test(progressBarFill.className)) {
-                progressBarFill.className = 'progress-bar-fill running';
-                const phase = document.getElementById('progress-phase');
-                if (phase && window.progressHandler) phase.textContent = window.progressHandler.formatPhaseText('running');
-            }
+        const box = window.ConsoleProgress;
+        if (!box) return;
+        box.count(`${completed}/${total}`);
+        box.fill(Math.round((completed / total) * 100));
+        // Keep the run's state (running, paused…). #436: but not a page's download (the first page
+        // of Fetch all, "Processing data", a moving bar): with more than one page the box is the
+        // batch's again, and it showed that page's state for good
+        if (total > 1 && /\b(processing|loading|busy)\b/.test(box.state())) {
+            box.state('running');
+            if (window.progressHandler) box.phase(window.progressHandler.formatPhaseText('running'));
         }
     }
 
@@ -7460,6 +7455,7 @@ window.addEventListener('message', event => {
                 }
 
                 console.log('[Report] Concurrency updated:', message.payload);
+                paintProgressStats();
             }
             break;
 
@@ -7817,19 +7813,17 @@ function updateExecutionStatus(payload) {
         // so drop it on terminal states; while paused keep the last
         // calculated value (hide only if we never managed to calc one,
         // in which case resume's next progress message repopulates it).
-        const progressDisplay = document.getElementById('progress-display');
-        const etaEl = document.getElementById('progress-eta');
-        if (progressDisplay) {
-            progressDisplay.classList.remove('hidden');
-            if (etaEl) {
-                if (status === 'completed' || status === 'failed' || status === 'error' || status === 'cancelled' || status === 'stopped') {
-                    etaEl.style.display = 'none';
-                } else if (status === 'paused') {
-                    const hasCalculatedETA = !!(progressHandler && progressHandler.executionETA);
-                    etaEl.style.display = hasCalculatedETA ? '' : 'none';
-                } else {
-                    etaEl.style.display = '';
-                }
+        if (window.ConsoleProgress) {
+            window.ConsoleProgress.show();
+            if (status === 'completed' || status === 'failed' || status === 'error' || status === 'cancelled' || status === 'stopped') {
+                if (progressHandler) progressHandler._showEta = false;
+                window.ConsoleProgress.remaining(null);
+            } else if (status === 'paused') {
+                const hasCalculatedETA = !!(progressHandler && progressHandler.executionETA);
+                if (progressHandler) progressHandler._showEta = hasCalculatedETA;
+                if (!hasCalculatedETA) window.ConsoleProgress.remaining(null);
+            } else if (progressHandler) {
+                progressHandler._showEta = true;
             }
         }
 
@@ -7876,9 +7870,7 @@ function updateExecutionStatus(payload) {
     // Update progress if provided (for individual executions).
     // Issue #312: not while the bar is showing a large batch loading.
     if (payload.progress && !progressHandler.loading) {
-        const progressElement = document.getElementById('progress-count');
-        const progressBarFill = document.querySelector('.progress-bar-fill');
-        const progressPhase = document.getElementById('progress-phase');
+        const box = window.ConsoleProgress;
 
         // Issue #311: a batch whose rows are loaded paints from its own
         // tallies (the tab counts); the backend's count is only for the
@@ -7890,34 +7882,25 @@ function updateExecutionStatus(payload) {
 
         if (fromTallies) {
             mgr.paintBatchProgress(payload.progress.total);
-        } else if (progressElement) {
-            progressElement.textContent = `${payload.progress.completed}/${payload.progress.total}`;
+        } else if (box) {
+            box.count(`${payload.progress.completed}/${payload.progress.total}`);
         }
 
-        if (progressBarFill) {
-            if (!fromTallies) {
-                progressBarFill.style.width = `${payload.progress.percentage}%`;
-            }
-            // Update progress bar color based on status
+        if (box) {
+            if (!fromTallies) box.fill(payload.progress.percentage);
+            // The box's colour follows the run's state
             const statusClass = payload.status ? payload.status.toLowerCase() : '';
-            if (statusClass) {
-                progressBarFill.className = `progress-bar-fill ${statusClass}`;
-            }
+            if (statusClass) box.state(statusClass);
         }
 
         // Update progress phase text when execution finishes or is paused/cancelled
         // GitHub Issue #159: Respect actual status (stopped vs completed)
-        if (progressPhase) {
+        if (box) {
             const finalStatus = payload.status || 'completed';
-            if (finalStatus === 'paused') {
-                progressPhase.textContent = 'Paused';
-            } else if (finalStatus === 'cancelled') {
-                progressPhase.textContent = 'Cancelled';
-            } else if (finalStatus === 'stopped') {
-                progressPhase.textContent = 'Stopped';
-            } else if (payload.progress.percentage === 100) {
-                progressPhase.textContent = 'Execution Complete';
-            }
+            if (finalStatus === 'paused') box.phase('Paused');
+            else if (finalStatus === 'cancelled') box.phase('Cancelled');
+            else if (finalStatus === 'stopped') box.phase('Stopped');
+            else if (payload.progress.percentage === 100) box.phase('Execution Complete');
         }
     }
 
@@ -8720,6 +8703,7 @@ function initInfoTab(isBatch) {
         const isComplete = statusText.includes('completed') || statusText.includes('failed') ||
                            statusText.includes('cancelled') || statusText.includes('error');
         setInfoTabControlsEnabled(isComplete);
+        paintProgressStats();
     }
 
     // Hide lineage section if no copy batch info
@@ -8792,8 +8776,61 @@ function updateInfoTabForStatus(status) {
         const isComplete = status === 'completed' || status === 'failed' ||
                            status === 'cancelled' || status === 'error';
         setInfoTabControlsEnabled(isComplete);
+        paintProgressStats();
     }
 }
+
+/**
+ * The progress box's figures (a click on the box, or a hover): what a batch runs with, and what may
+ * be changed while it runs: Threads (a button each, those over the environment's limit switched off)
+ * and Stop on next error (a switch: while a batch runs it is the next error that stops it). The
+ * same settings as the Settings tab's, kept in step both ways. Done, they are plain figures.
+ */
+const THREAD_CHOICES = [1, 2, 4, 8, 16];
+function paintProgressStats() {
+    const box = document.getElementById('progress-display');
+    if (!box || !('stats' in box)) return;
+    if (!window.currentBatchId) { box.stats = []; return; }
+    const status = String(currentExecutionStatus || '').toLowerCase();
+    const done = ['completed', 'failed', 'cancelled', 'error', 'stopped'].includes(status);
+    const radio = document.querySelector('input[name="infoErrorMode"]:checked');
+    const stopOnNext = !!(radio && radio.value === 'stopOnFirst');
+    const stats = done ? [
+        { label: 'Threads', value: String(currentThreadCount) },
+        { label: 'Error handling', value: stopOnNext ? 'Stop on first error' : 'Continue processing' }
+    ] : [
+        { id: 'threads', label: 'Threads', value: currentThreadCount, options: THREAD_CHOICES, max: maxThreadCount || 16, overTitle: `This environment allows up to ${maxThreadCount || 16}` },
+        { id: 'stopOnError', label: 'Stop on next error', value: stopOnNext }
+    ];
+    const handler = window.progressHandler;
+    if (handler && handler.executionStartTime) {
+        stats.push({ label: 'Started', value: new Date(handler.executionStartTime).toLocaleTimeString() });
+    }
+    box.stats = stats;
+}
+function listenToProgressBox() {
+    const box = document.getElementById('progress-display');
+    if (!box || box.dataset.listening) return;
+    box.dataset.listening = '1';
+    // The box only asks; the change goes the Settings tab's way, and its control follows
+    box.addEventListener('dbmn-progress-change', event => {
+        const { id, value } = event.detail || {};
+        if (id === 'threads') {
+            const n = Number(value);
+            if (!(n >= 1) || n > (maxThreadCount || 16)) return;
+            const dropdown = document.getElementById('info-threads');
+            if (dropdown) dropdown.value = String(n);
+            updateInfoThreadCount(n);
+        } else if (id === 'stopOnError') {
+            const radio = document.querySelector(`input[name="infoErrorMode"][value="${value ? 'stopOnFirst' : 'continue'}"]`);
+            if (radio) radio.checked = true;
+            updateInfoErrorMode(!!value);
+        }
+        paintProgressStats();
+    });
+}
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', listenToProgressBox);
+else listenToProgressBox();
 
 /**
  * Set up event listeners for Info tab form controls
@@ -8820,6 +8857,7 @@ function setupInfoTabEventListeners() {
         radio.addEventListener('change', function() {
             const stopOnFirst = this.value === 'stopOnFirst';
             updateInfoErrorMode(stopOnFirst);
+            paintProgressStats();
         });
     });
 
@@ -8828,26 +8866,14 @@ function setupInfoTabEventListeners() {
     if (threadsDropdown) {
         threadsDropdown.addEventListener('change', function() {
             updateInfoThreadCount(parseInt(this.value, 10));
+            paintProgressStats();
         });
     }
 }
 
-/**
- * Show Info tab notification in footer
- */
-function showInfoNotification(message, duration = 3000) {
-    const notification = document.getElementById('info-notification');
-    const messageEl = document.getElementById('info-notification-message');
-
-    if (!notification || !messageEl) return;
-
-    messageEl.textContent = message;
-    notification.classList.remove('hidden');
-
-    // Auto-hide after duration
-    setTimeout(() => {
-        notification.classList.add('hidden');
-    }, duration);
+/** A Settings change was sent: said in a toast (the footer holds only actions and the progress box). */
+function showInfoNotification(message) {
+    if (window.DbmnToast) window.DbmnToast.info(message);
 }
 
 /**
@@ -8869,7 +8895,7 @@ function updateInfoBatchName(name) {
 function updateInfoErrorMode(stopOnFirst) {
     if (!window.currentBatchId) return;
     vscode.postMessage({ type: 'updateBatchErrorMode', payload: { batchId: window.currentBatchId, stopOnFirstError: stopOnFirst } });
-    const modeText = stopOnFirst ? 'Stop on first error' : 'Continue processing';
+    const modeText = stopOnFirst ? 'Stop on next error' : 'Continue processing';
     showInfoNotification(`Error handling: ${modeText}`);
 }
 
@@ -8884,7 +8910,7 @@ function updateInfoThreadCount(threads) {
     vscode.postMessage({ type: 'updateBatchConcurrency', payload: { batchId: window.currentBatchId, concurrency: threads } });
 
     currentThreadCount = threads;
-    showInfoNotification(`Processing: ${threads} thread${threads > 1 ? 's' : ''}`);
+    showInfoNotification(`Threads: ${threads}`);
 }
 
 /**

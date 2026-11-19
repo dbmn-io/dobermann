@@ -190,9 +190,9 @@
     const PIECES = [
         ['<dbmn-footer>', 'A screen\'s footer: actions left, progress right', C, 'Query', 'shared/dbmn-footer.js'],
         ['<dbmn-actions>', 'The footer\'s buttons, the main one last', C, 'Query', 'shared/dbmn-footer.js'],
-        ['<dbmn-steps>', 'A wizard\'s steps in one line, and the summary they fold into', C, 'Query, Compare', 'shared/dbmn-footer.js'],
-        ['<dbmn-progress>', 'The system\'s progress: the box is the bar', C, 'No screen yet', 'shared/dbmn-footer.js'],
-        ['<dbmn-status>', 'A few words of status (Saved, Not saved yet)', C, 'No screen yet', 'shared/dbmn-footer.js'],
+        ['<dbmn-steps>', 'A wizard\'s steps in one line, and the summary they fold into', C, 'Query, Compare, Run Batch', 'shared/dbmn-footer.js'],
+        ['<dbmn-progress>', 'The system\'s progress: the box is the bar', C, 'Console', 'shared/dbmn-footer.js'],
+        ['<dbmn-status>', 'A few words of status (Saved, Not saved yet)', C, 'Edit Endpoint, Edit Environment', 'shared/dbmn-footer.js'],
         ['DbmnModal', 'Dialogs: a question, a form, an alert', M, 'Every screen', 'shared/dbmn-modal.js'],
         ['DbmnToast', 'Messages in the corner', M, 'Every screen', 'shared/dbmn-toast.js'],
         ['DbmnContextMenu', 'A right-click menu', M, 'Hub lists, tables', 'shared/dbmn-context-menu.js'],
@@ -209,9 +209,10 @@
         ['ThemePicker', 'Choosing a theme', M, 'Hub', 'shared/theme-picker.js'],
         ['SystemPicker', 'Choosing a System', M, 'Endpoint, Environment', 'shared/system-picker.js'],
         ['Buttons', '.btn, .btn-primary, .btn-secondary, .btn-danger', S, 'Every screen', 'shared/buttons.css'],
+        ['<dbmn-name>', 'A report\'s name on its screen, renamed in place', C, 'Query, Compare', 'shared/dbmn-name.js'],
+        ['Rename dialog', 'Right-click → Rename in the Hub\'s lists: reports, endpoints, environments, runs', M, 'Hub lists', 'hub/hub-tabs.js (askRename)'],
         ['Tabs in a screen', 'A screen\'s own tabs (Environment, Console)', S, 'Environment, Console', 'shared/tabs.css'],
-        ['StepBar', 'The older step bar: names over circles', R, 'Run Batch', 'shared/step-bar.js'],
-        ['.progress-display', 'The older two-line progress panel', R, 'Console, Compare, Run Batch', 'shared/core.css'],
+
         ['<dbmn-table>', 'A table of rows: search, sort, move, resize, only the rows in view drawn; rows the page holds, or asked for as they scroll', C, 'Design system, <dbmn-log>', 'shared/dbmn-table.js'],
         ['<dbmn-log>', 'Log lines as a table: the newest in view, followed until you scroll up', C, 'Logs', 'shared/dbmn-log.js'],
         ['<dbmn-level>', 'How serious a log line is: an icon and a word', C, 'Logs, <dbmn-log>', 'shared/dbmn-level.js'],
@@ -236,10 +237,10 @@
     const MOVES = [
         ['Query', 'Footer and steps', ON, 'dbmn-footer, dbmn-steps', ''],
         ['Compare', 'Footer and steps', ON, 'dbmn-footer, dbmn-steps', ''],
-        ['Run Batch', 'Footer and steps', MOVE, 'Its own footer: the older step bar, arrows between steps', 'Swap in dbmn-footer and dbmn-steps; a summary on Review is still to decide'],
-        ['Console', 'Footer and progress', MOVE, 'Its own buttons and the older two-line progress panel', 'Swap in dbmn-footer and dbmn-progress; where the timing line goes is still to decide'],
-        ['Edit Endpoint', 'Footer and status', MOVE, 'Its own footer markup, no status box', 'Swap in dbmn-footer and dbmn-status'],
-        ['Edit Environment', 'Footer and status', MOVE, 'Its own footer markup and footer notification', 'Swap in dbmn-footer and dbmn-status'],
+        ['Run Batch', 'Footer and steps', ON, 'dbmn-footer, dbmn-steps', ''],
+        ['Console', 'Footer and progress', ON, 'dbmn-footer, dbmn-progress (written only through ConsoleProgress)', 'Next: Threads, Stop on next error and Rows per request in the box\'s figures'],
+        ['Edit Endpoint', 'Footer and status', ON, 'dbmn-footer, dbmn-status (its More menu kept for buttons that don\'t fit)', ''],
+        ['Edit Environment', 'Footer and status', ON, 'dbmn-footer, dbmn-status', ''],
         ['Design system', 'Table', ON, 'dbmn-table', ''],
         ['Logs', 'Footer and log', ON, 'dbmn-footer, dbmn-log', ''],
         ['Query', 'Table', MOVE, 'Wires the shared table pieces itself; rows come from the host a page at a time', 'dbmn-table asks for rows as they scroll now: swap it in'],
@@ -445,6 +446,7 @@
     drawInventory();
     drawMoving();
     drawIcons();
+    $('dsName').addEventListener('dbmn-name-change', event => { $('dsNameNote').textContent = `Asked to be called ${event.detail.name}`; });
     drawTable();
     drawNested();
     drawPaged();

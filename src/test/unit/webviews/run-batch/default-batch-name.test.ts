@@ -40,15 +40,26 @@ describe('Run Batch: the default batch name', () => {
         expect(load({ originalSourceType: 'file', sourceFileName: 'x.csv' }, { chained: true }).w.DTBatchConfig.generateDefaultBatchName(AT)).to.equal('Bulk Inventory Upload 12 Nov 16:30');
     });
 
-    it('a name the user types is kept as typed (spaces and all); emptied, the default comes back', () => {
+    it('named in Review\'s Name: kept as typed (spaces tidied); emptied, the default comes back; the tab says it', () => {
         const { w, csvState } = load({ originalSourceType: 'file', sourceFileName: 'inventory-67k.csv' });
+        const told: string[] = [];
+        w.dbmnSetTabName = (name: string) => told.push(name);
         const input = w.document.getElementById('batchNameInput');
-        input.value = '  Stock take: Brisbane  ';
+        // The default, shown in the box and on the tab as the steps go
+        w.DTBatchConfig.refreshBatchName();
+        expect(input.value).to.match(/^inventory-67k /);
+        expect(told[told.length - 1]).to.equal(input.value);
+        input.value = '  Stock take:   Brisbane  ';
         w.DTBatchConfig.updateBatchName();
         expect(csvState.batchName).to.equal('Stock take: Brisbane');
         expect(csvState.batchNameEdited).to.equal(true);
+        expect(told[told.length - 1]).to.equal('Stock take: Brisbane');
+        // Named by the user: the steps going on no longer change it
+        w.DTBatchConfig.refreshBatchName();
+        expect(csvState.batchName).to.equal('Stock take: Brisbane');
         input.value = '';
         w.DTBatchConfig.updateBatchName();
         expect(csvState.batchNameEdited).to.equal(false);
+        expect(csvState.batchName).to.match(/^inventory-67k /);
     });
 });

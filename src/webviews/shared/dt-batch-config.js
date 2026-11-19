@@ -157,24 +157,33 @@
         return name.replace(/[\u0000-\u001f]/g, '').replace(/\s+/g, ' ').trim().substring(0, 100) || 'Batch';
     }
 
+    /**
+     * The batch's name, typed in Review's settings (Name, beside Error Handling). The user's own name
+     * stays; emptied, it goes back to the default. Its tab says it as it is typed.
+     */
     function updateBatchName() {
-        const batchNameInput = document.getElementById('batchNameInput');
-        if (batchNameInput) {
-            csvState.batchName = sanitizeBatchName(batchNameInput.value);
-            // The user's own name stays; an empty field goes back to the default
-            csvState.batchNameEdited = batchNameInput.value.trim().length > 0;
-        }
+        const input = document.getElementById('batchNameInput');
+        if (!input || !csvState) return;
+        csvState.batchNameEdited = input.value.trim().length > 0;
+        csvState.batchName = csvState.batchNameEdited ? sanitizeBatchName(input.value) : generateDefaultBatchName();
+        tellTab();
     }
 
     /**
-     * The footer's name box, on every step: until the user types a name it shows the default
-     * (the file's name once one is read, the endpoint's before), made again as the steps go.
+     * Until the user names it, a batch is named after its file (or its endpoint) and the time, made
+     * again as the steps go; Review's Name shows it and its tab says it. Once it has run it is
+     * renamed in History (right-click → Rename) or its Console's Settings → Name.
      */
     function refreshBatchName() {
-        const input = document.getElementById('batchNameInput');
-        if (!input || !csvState) return;
+        if (!csvState) return;
         if (!csvState.batchNameEdited) csvState.batchName = generateDefaultBatchName();
-        if (document.activeElement !== input) input.value = csvState.batchName || '';
+        const input = document.getElementById('batchNameInput');
+        if (input && document.activeElement !== input) input.value = csvState.batchName || '';
+        tellTab();
+    }
+    /** The tab says the batch's name (tab-frame.js; outside the Hub there is no tab to say it). */
+    function tellTab() {
+        if (csvState && csvState.batchName && typeof window.dbmnSetTabName === 'function') window.dbmnSetTabName(csvState.batchName);
     }
 
     function startFormatConversion() {
@@ -258,7 +267,7 @@
         }
 
         // The default name, made each time Review opens (its time is now) until the user names it
-        if (!csvState.batchNameEdited) csvState.batchName = generateDefaultBatchName();
+        refreshBatchName();
 
         // Get endpoint method and path from config (preferred) or form elements
         const endpointMethod = csvState.endpointConfig?.method || document.getElementById('endpointMethod')?.value || 'POST';

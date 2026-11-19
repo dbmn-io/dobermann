@@ -32,14 +32,14 @@ test('after the first page, the batch\'s count takes the footer back from "Proce
     await page.goto(pathToFileURL(file).href);
     await page.waitForFunction(() => !!window.dynamicReportManager);
     const post = m => page.evaluate(message => window.postMessage(message, '*'), m);
-    const phase = page.locator('#progress-phase');
-    const fill = page.locator('#progress-bar-fill');
+    // The progress box (dbmn-progress): its phase and its state (the bar's look)
+    const box = page.locator('#progress-display');
 
     // The batch is running; page 1's body arrives and is saved
     await post({ type: 'progress_update', payload: { executionId: BATCH, status: 'running', startTime: Date.now() - 2000, timestamp: Date.now() } });
     await post({ type: 'progress_update', payload: { executionId: BATCH, title: 'Receiving', status: 'running', totalProgress: 100, startTime: Date.now() - 1000, timestamp: Date.now(), receiving: { bytes: 1048576, lines: 0, jsonl: false, done: true } } });
-    await expect(phase).toHaveText('Processing data');
-    await expect(fill).toHaveClass(/\bprocessing\b/);
+    await expect(box).toHaveAttribute('phase', 'Processing data');
+    await expect(box).toHaveAttribute('data-state', /\bprocessing\b/);
 
     // Page 1's result is in; Fetch all's next pages come in with the batch's total
     await page.evaluate(r => {
@@ -49,9 +49,9 @@ test('after the first page, the batch\'s count takes the footer back from "Proce
     await post(envelope('batch_member_result_update', { result: page1(2), classification: 'success', memberIndex: 1, batchId: BATCH, totalMembers: 721 }));
     await post(envelope('batch_member_result_update', { result: page1(3), classification: 'success', memberIndex: 2, batchId: BATCH, totalMembers: 721 }));
 
-    await expect(page.locator('#progress-count')).toHaveText('3/721');
-    await expect(phase, 'the batch\'s own phase, not the page\'s').toHaveText('Executing');
-    await expect(fill).not.toHaveClass(/\b(processing|loading|busy)\b/);
-    await expect(fill).toHaveClass(/\brunning\b/);
+    await expect(page.locator('#progress-display')).toHaveAttribute('count', '3/721');
+    await expect(box, 'the batch\'s own phase, not the page\'s').toHaveAttribute('phase', 'Executing');
+    await expect(box).not.toHaveAttribute('data-state', /\b(processing|loading|busy)\b/);
+    await expect(box).toHaveAttribute('data-state', /\brunning\b/);
     expect(pageErrors, 'uncaught errors in the page').toEqual([]);
 });

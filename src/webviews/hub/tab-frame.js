@@ -114,6 +114,15 @@
         toHub({ type: '__tabDirty__', dirty: dirty });
     }
     window.dbmnSetTabDirty = function (dirty) { explicitDirty = true; reportDirty(!!dirty); };
+    // A screen whose tab shows a name the host does not know (Run Batch: the batch it is about to
+    // run) says what its tab is called.
+    var lastName = null;
+    window.dbmnSetTabName = function (name) {
+        var text = String(name === null || name === undefined ? '' : name);
+        if (!text || text === lastName) return;
+        lastName = text;
+        toHub({ type: '__tabName__', name: text });
+    };
     function watchDirty() {
         var btn = document.getElementById('save-endpoint-btn')
             || document.getElementById('saveEnvBtn')

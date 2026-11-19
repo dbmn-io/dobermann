@@ -1555,6 +1555,7 @@
         const drafts = {};
         if (ui.state) ui.state.joins.forEach(j => { drafts[j.view] = j.on.filter(p => !(p.left.column && p.right.column) && (p.left.column || p.right.column || p.picked)); });
         ui.state = m;
+        showName(m.name);
         m.joins.forEach(j => (drafts[j.view] || []).forEach(p => { if (m.views.some(v => v.id === p.left.view)) j.on.push(p); }));
         if (!m.reading) { ui.busy = ''; ui.settled = true; }
         $('queryDistinct').checked = !!m.distinct;
@@ -1667,6 +1668,16 @@
         clearTimeout(searchTimer);
         searchTimer = setTimeout(() => { ui.search = $('querySearch').value; loadRows(); }, 200);
     });
+    // The query's name, at the top left (shared/dbmn-name.js): a click renames it. The controller checks
+    // the name and answers with the one it kept (query.named), refused or not
+    function showName(name) {
+        if (typeof name !== 'string') return;
+        $('queryName').value = name;
+        // Still the name it was given ("New query", "New query 2"): shown as not yet named
+        $('queryName').unnamed = /^New query( \d+)?$/.test(name);
+    }
+    $('queryName').addEventListener('dbmn-name-change', event => post({ type: 'query.rename', name: event.detail.name }));
+
     // The table says what was done to its headings (sorted, moved, removed, resized)
     table.addEventListener('dbmn-table-layout', event => tableChanged(event.detail));
 
@@ -1674,6 +1685,7 @@
         const m = event.data || {};
         switch (m.type) {
             case 'query.init':
+                showName(m.name);
                 ui.start = m.empty ? 'edit' : m.start;
                 // Run shows Results and nothing else while the query is read; Edit shows Views
                 ui.step = ui.start === 'results' ? 4 : 1;
@@ -1690,7 +1702,7 @@
             case 'query.sourceList': ui.sources = m.results || []; ui.sourceViews = m.views || {}; break;
             case 'query.progress': setBusy(m.total ? `${m.text} · ${count(m.done)} of ${count(m.total)}` : m.text); break;
             case 'query.state': applyState(m); break;
-            case 'query.named': if (ui.state) ui.state.name = m.name; renderBar(); break;
+            case 'query.named': if (ui.state) ui.state.name = m.name; showName(m.name); renderBar(); break;
             case 'query.fileSheets': setBusy(''); pickSheets(m); break;
             case 'query.rowsData': rowsArrived(m); break;
             // A column moved: the SQL and Columns say the new order (Results already shows it)

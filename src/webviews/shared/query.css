@@ -23,6 +23,8 @@
 .query-page .compare-tag { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; }
 /* The top of the gutter: what the slots beside it are */
 .query-head-lead { align-self: center; }
+/* The query's name sits in the gutter the lines' headings use: cut short to fit, whole on hover */
+.query-head-lead dbmn-name { --name-width: var(--query-lead); }
 /* A view's age: a week old is a warning, a month old is out of date. On its slot and on Views */
 .query-age { display: inline-flex; align-items: center; gap: 5px; }
 .query-age-icon { display: inline-flex; margin-right: 5px; vertical-align: -2px; }

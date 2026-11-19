@@ -40,6 +40,8 @@ test.describe('Close all tabs', () => {
         const editor = await dbmn.waitForTab('endpoint:test-endpoint-001');
         // Edit only once the editor has loaded, or the load overwrites the edit.
         await expect(editor.locator('#endpointName')).toHaveValue('Test API Endpoint');
+        // ...and tracks changes: its footer says "Saved" only from then on
+        await expect(editor.locator('#endpointStatus')).toHaveText('Saved');
         await editor.locator('#endpointName').fill('Test API Endpoint (edited)');
         await expect(tab(page, 'endpoint:test-endpoint-001')).toHaveClass(/is-dirty/);
         await page.locator('.hub-nav-item[data-section="settings"]').click();

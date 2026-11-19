@@ -1261,10 +1261,16 @@
             const actions = window.ExecutionActions.visibleActions(tx.status, isBatch);
             const labels = window.ExecutionActions.LABELS;
             const items = [{ id: 'open', label: 'Open', icon: 'circle-play' }];
+            // A batch has a name of its own (a single run is its endpoint's): the one Rename dialog
+            if (isBatch) items.push({ id: 'rename', label: 'Rename', icon: 'pencil' });
             if (actions.length) items.push({ separator: true });
             actions.forEach(id => items.push({ id, ...labels[id] }));
             window.DbmnContextMenu.show(ev, items, (action) => {
                 if (action === 'open') { open(); return; }
+                if (action === 'rename') {
+                    window.HubTabs?.askRename?.(txTitle(tx), 100).then(name => { if (name) host.postMessage({ type: 'renameRun', id: tx.id, name }); });
+                    return;
+                }
                 host.postMessage({ type: 'transactionAction', action, id: tx.id, isBatch, status: tx.status });
             });
         });

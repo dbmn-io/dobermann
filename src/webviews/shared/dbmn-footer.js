@@ -349,7 +349,11 @@
                 btn.type = 'button';
                 btn.dataset.step = String(i + 1);
                 if (step.help) btn.setAttribute('data-help', step.help);
-                btn.append(make('span', 'dbmn-step-mark'), make('span', 'dbmn-step-label', step.label));
+                const label = make('span', 'dbmn-step-label', step.label);
+                // (its name again, unseen and bold, holds the width the current step's bold name takes:
+                // the steps are one width whichever is current, so they never shift as the wizard walks)
+                label.dataset.text = step.label;
+                btn.append(make('span', 'dbmn-step-mark'), label);
                 btn.addEventListener('click', () => { if (!btn.disabled) this._go(i + 1); });
                 if (i) {
                     const gap = make('span', 'dbmn-step-gap');

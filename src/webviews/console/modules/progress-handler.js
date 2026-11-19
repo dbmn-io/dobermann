@@ -15,6 +15,71 @@
  *   to prevent throttling when the event loop is saturated by batch messages
  */
 
+/**
+ * The Console's progress box: the design system's <dbmn-progress id="progress-display"> on the
+ * right of its footer (shared/dbmn-footer.js). Everything the Console says about how far a run has
+ * got goes through here, so the box is written in one place:
+ *
+ *   ConsoleProgress.show() / hide() / isHidden()
+ *   ConsoleProgress.phase('Executing')           what is happening
+ *   ConsoleProgress.count('91/501')              how far
+ *   ConsoleProgress.fill(18)                     the bar, as a percentage
+ *   ConsoleProgress.state('running')             the run's state: its colour (ok, warn, error) and,
+ *                                                for loading, processing and busy, a moving bar
+ *   ConsoleProgress.elapsed('2m 14s')            the clock
+ *   ConsoleProgress.remaining('1m 20s left')     the time left, or a queued/waiting line; null: none
+ *
+ * The box shows one time beside the count: the time left while there is one, else the clock.
+ */
+const ConsoleProgress = (() => {
+    let elapsedText = '';
+    let remainingText = null;
+    let stateName = '';
+    const box = () => document.getElementById('progress-display');
+    const TONE = { completed: 'ok', paused: 'warn', stopped: 'warn', cancelled: 'warn', error: 'error', failed: 'error' };
+    const MOVING = ['loading', 'processing', 'busy'];
+    function note() {
+        const el = box();
+        if (!el) return;
+        const text = remainingText || elapsedText || '';
+        if (text) el.setAttribute('note', text); else el.removeAttribute('note');
+    }
+    return {
+        show() { const el = box(); if (el) el.classList.remove('hidden'); },
+        hide() { const el = box(); if (el) el.classList.add('hidden'); },
+        isHidden() { const el = box(); return !el || el.classList.contains('hidden'); },
+        phase(text) {
+            const el = box();
+            if (text === undefined) return el ? el.getAttribute('phase') || '' : '';
+            if (el) el.setAttribute('phase', text || '');
+        },
+        count(text) {
+            const el = box();
+            if (text === undefined) return el ? el.getAttribute('count') || '' : '';
+            if (el) el.setAttribute('count', text || '');
+        },
+        fill(percent) {
+            const el = box();
+            if (percent === undefined) return el ? Number(el.getAttribute('value')) || 0 : 0;
+            if (el) el.setAttribute('value', String(Math.max(0, Math.min(100, Number(percent) || 0))));
+        },
+        state(name) {
+            if (name === undefined) return stateName;
+            stateName = String(name || '');
+            const el = box();
+            if (!el) return;
+            const words = stateName.split(/\s+/);
+            const tone = words.map(w => TONE[w]).find(Boolean);
+            if (tone) el.setAttribute('tone', tone); else el.removeAttribute('tone');
+            el.toggleAttribute('busy', words.some(w => MOVING.includes(w)));
+            el.dataset.state = stateName;
+        },
+        elapsed(text) { if (text === undefined) return elapsedText; elapsedText = text || ''; note(); },
+        remaining(text) { if (text === undefined) return remainingText; remainingText = text || null; note(); }
+    };
+})();
+if (typeof window !== 'undefined') window.ConsoleProgress = ConsoleProgress;
+
 class ProgressHandler {
     constructor() {
         // Timer state
@@ -41,30 +106,24 @@ class ProgressHandler {
      */
     showLoadingProgress(loaded, total, label = 'transactions') {
         if (typeof total !== 'number' || total < 0) return;
-        const display = document.getElementById('progress-display');
-        const phase = document.getElementById('progress-phase');
-        const count = document.getElementById('progress-count');
-        const fill = document.getElementById('progress-bar-fill');
-        const eta = document.getElementById('progress-eta');
-        if (!display || !phase || !count || !fill) return;
+        const box = ConsoleProgress;
+        if (!document.getElementById('progress-display')) return;
 
         if (!this.loading) {
             this._beforeLoading = {
-                hidden: display.classList.contains('hidden'),
-                phase: phase.textContent, count: count.textContent,
-                width: fill.style.width, className: fill.className,
-                etaDisplay: eta ? eta.style.display : ''
+                hidden: box.isHidden(), phase: box.phase(), count: box.count(),
+                fill: box.fill(), state: box.state(), remaining: box.remaining()
             };
             this.loading = true;
         }
 
         if (loaded < total) {
-            display.classList.remove('hidden');
-            phase.textContent = `Loading ${label}`;
-            count.textContent = `${loaded.toLocaleString()}/${total.toLocaleString()}`;
-            fill.style.width = `${Math.round((loaded / total) * 100)}%`;
-            fill.className = 'progress-bar-fill loading';
-            if (eta) eta.style.display = 'none';
+            box.show();
+            box.phase(`Loading ${label}`);
+            box.count(`${loaded.toLocaleString()}/${total.toLocaleString()}`);
+            box.fill(Math.round((loaded / total) * 100));
+            box.state('loading');
+            box.remaining(null);
             return;
         }
 
@@ -72,12 +131,12 @@ class ProgressHandler {
         const before = this._beforeLoading || {};
         this.loading = false;
         this._beforeLoading = null;
-        phase.textContent = before.phase || '';
-        count.textContent = before.count || '';
-        fill.style.width = before.width || '';
-        fill.className = before.className || 'progress-bar-fill';
-        if (eta) eta.style.display = before.etaDisplay || '';
-        if (before.hidden) display.classList.add('hidden');
+        box.phase(before.phase || '');
+        box.count(before.count || '');
+        box.fill(before.fill || 0);
+        box.state(before.state || '');
+        box.remaining(before.remaining || null);
+        if (before.hidden) box.hide();
         const mgr = window.dynamicReportManager;
         if (mgr && mgr._progressTotal && typeof mgr.paintBatchProgress === 'function') {
             mgr.paintBatchProgress(); // the tallies moved while we were loading
@@ -177,10 +236,7 @@ class ProgressHandler {
         const elapsedSecondsPrecise = elapsedMs / 1000; // Keep decimal precision
 
         // Update elapsed time in progress bar
-        const elapsedElement = document.getElementById('progress-elapsed');
-        if (elapsedElement) {
-            elapsedElement.innerHTML = window.Icons.label('timer', this.formatElapsedTime(elapsedSeconds));
-        }
+        ConsoleProgress.elapsed(this.formatElapsedTime(elapsedSeconds));
 
         // GitHub Issue #156: Update duration in Info tab (live updates during execution)
         const infoDuration = document.getElementById('info-duration');
@@ -199,14 +255,9 @@ class ProgressHandler {
         }
 
         // Update ETA countdown (GitHub Issue #104)
-        const etaElement = document.getElementById('progress-eta');
-        if (etaElement && this.executionETA) {
+        if (this.executionETA && this._showEta !== false) {
             const remainingSeconds = Math.floor((this.executionETA - now) / 1000);
-            if (remainingSeconds > 0) {
-                etaElement.innerHTML = window.Icons.label('timer', `Remaining: ${formatETA(remainingSeconds)}`);
-            } else {
-                etaElement.innerHTML = window.Icons.label('timer', 'Remaining: 0s');
-            }
+            ConsoleProgress.remaining(remainingSeconds > 0 ? `${formatETA(remainingSeconds)} left` : 'almost done');
         }
     }
 
@@ -261,7 +312,6 @@ class ProgressHandler {
         }
 
         // Show/hide progress display based on execution state
-        const progressDisplay = document.getElementById('progress-display');
         const status = payload.status || payload.phase; // Support both new and old format
 
         // GitHub Issue #94: Track current status for pagination button visibility (R10.1)
@@ -271,19 +321,12 @@ class ProgressHandler {
             // #344: running, then waiting for VS Code (it closed mid-run; `startTime` is the run's).
             // The clock stops at the run time so far, not back to zero; the row says
             // what it waits for; Pause and Cancel stay, as the run is still live.
-            progressDisplay.classList.remove('hidden');
+            ConsoleProgress.show();
             this.stopTimer();
             this.executionStartTime = payload.startTime;
             this._pausedElapsed = Date.now() - payload.startTime;
-            const elapsedElement = document.getElementById('progress-elapsed');
-            if (elapsedElement) {
-                elapsedElement.innerHTML = window.Icons.label('timer', this.formatElapsedTime(Math.floor(this._pausedElapsed / 1000)));
-            }
-            const etaElement = document.getElementById('progress-eta');
-            if (etaElement) {
-                etaElement.innerHTML = window.Icons.label('timer', ProgressHandler.queuedStartText(payload, Date.now()));
-                etaElement.style.display = '';
-            }
+            ConsoleProgress.elapsed(this.formatElapsedTime(Math.floor(this._pausedElapsed / 1000)));
+            ConsoleProgress.remaining(ProgressHandler.queuedStartText(payload, Date.now()));
             this.executionETA = null;
             this.updateProgressDisplay({ ...payload, status: 'waiting' });
             window.updateButtonVisibility('running');
@@ -296,7 +339,7 @@ class ProgressHandler {
             // Every batch is also 'pending' while its first chunk is prepared
             // (the Console replays that on open) — not queued, so it reads
             // as preparing with the ETA still to be calculated.
-            progressDisplay.classList.remove('hidden');
+            ConsoleProgress.show();
             this.resetTimer();
             const queued = ProgressHandler.isQueued(payload);
             if (queued) {
@@ -307,7 +350,8 @@ class ProgressHandler {
             this.updateProgressDisplay(queued ? payload : { ...payload, status: 'preparing' });
             window.updateButtonVisibility(status);
         } else if (status && status !== 'completed' && status !== 'error' && status !== 'stopped' && status !== 'paused') {
-            progressDisplay.classList.remove('hidden');
+            ConsoleProgress.show();
+            this._showEta = true;
 
             // Issue #336: running again after it had stopped (a reprocess in this Console, or a
             // resume): the last estimate is spent. Calculating until the engine sends a new one.
@@ -350,10 +394,9 @@ class ProgressHandler {
             // user still sees elapsed + the last calculated remaining time.
             this.stopTimer();
 
-            const etaElement = document.getElementById('progress-eta');
-            if (etaElement) {
-                etaElement.style.display = (status === 'paused' && this.executionETA) ? '' : 'none';
-            }
+            // (the time left stays only while paused with an estimate; done, the box says how long it took)
+            this._showEta = status === 'paused' && !!this.executionETA;
+            if (!this._showEta) ConsoleProgress.remaining(null);
 
             this.updateProgressDisplay(payload);
             window.updateButtonVisibility(status);
@@ -376,13 +419,9 @@ class ProgressHandler {
      */
     showReceiving(receiving, startTime) {
         if (this.loading) return; // Issue #312: the bar is showing the load
-        const display = document.getElementById('progress-display');
-        const phase = document.getElementById('progress-phase');
-        const count = document.getElementById('progress-count');
-        const fill = document.getElementById('progress-bar-fill');
-        const eta = document.getElementById('progress-eta');
-        if (!display || !phase || !count || !fill) return;
-        display.classList.remove('hidden');
+        const box = ConsoleProgress;
+        if (!document.getElementById('progress-display')) return;
+        box.show();
 
         const mb = bytes => `${(bytes / 1048576).toFixed(1)} MB`;
         const records = n => `${n.toLocaleString()} record${n === 1 ? '' : 's'}`;
@@ -392,23 +431,22 @@ class ProgressHandler {
             : totalBytes ? Math.min(1, bytes / totalBytes)
             : null;
 
-        if (done) phase.textContent = jsonl ? `Processing ${records(lines)}` : 'Processing data';
-        else if (jsonl && totalRecords) phase.textContent = `Receiving ${lines.toLocaleString()} / ${records(totalRecords)}`;
-        else phase.textContent = jsonl ? `Receiving ${records(lines)}` : 'Receiving';
+        if (done) box.phase(jsonl ? `Processing ${records(lines)}` : 'Processing data');
+        else if (jsonl && totalRecords) box.phase(`Receiving ${lines.toLocaleString()} / ${records(totalRecords)}`);
+        else box.phase(jsonl ? `Receiving ${records(lines)}` : 'Receiving');
 
-        count.textContent = done ? '100%' : fraction !== null ? `${Math.floor(fraction * 100)}%` : mb(bytes);
+        box.count(done ? '100%' : fraction !== null ? `${Math.floor(fraction * 100)}%` : mb(bytes));
         if (done) {
-            fill.style.width = '100%';
-            fill.className = 'progress-bar-fill loading processing';
+            box.fill(100);
+            box.state('loading processing');
         } else if (fraction !== null) {
-            fill.style.width = `${Math.floor(fraction * 100)}%`;
-            fill.className = 'progress-bar-fill loading';
+            box.fill(Math.floor(fraction * 100));
+            box.state('loading');
         } else {
-            fill.style.width = '100%';
-            fill.className = 'progress-bar-fill busy';
+            box.fill(100);
+            box.state('busy');
         }
 
-        if (!eta) return;
         const seconds = startTime ? (Date.now() - startTime) / 1000 : 0;
         let detail = '';
         if (!done && fraction !== null) {
@@ -418,8 +456,7 @@ class ProgressHandler {
         } else if (!done && seconds >= 1) {
             detail = `${mb(bytes / seconds)}/s`;
         }
-        eta.textContent = detail;
-        eta.style.display = detail ? '' : 'none';
+        box.remaining(detail || null);
     }
 
     /** Issue #309: a 'pending' payload from a real queue, not first-chunk preparation. */
@@ -429,11 +466,8 @@ class ProgressHandler {
 
     /** ETA row before the first estimate arrives. */
     showCalculating() {
-        const etaElement = document.getElementById('progress-eta');
-        if (etaElement) {
-            etaElement.innerHTML = window.Icons.label('timer', 'Remaining: calculating...');
-            etaElement.style.display = '';
-        }
+        // (no estimate yet: the box shows the clock)
+        ConsoleProgress.remaining(null);
     }
 
     /**
@@ -443,15 +477,8 @@ class ProgressHandler {
      * absent until the batch ahead has enough throughput data).
      */
     showQueued(payload) {
-        const elapsedElement = document.getElementById('progress-elapsed');
-        if (elapsedElement) {
-            elapsedElement.innerHTML = window.Icons.label('hourglass', 'Queued');
-        }
-        const etaElement = document.getElementById('progress-eta');
-        if (etaElement) {
-            etaElement.innerHTML = window.Icons.label('timer', ProgressHandler.queuedStartText(payload, Date.now()));
-            etaElement.style.display = '';
-        }
+        ConsoleProgress.elapsed('');
+        ConsoleProgress.remaining(ProgressHandler.queuedStartText(payload, Date.now()));
     }
 
     /**
@@ -474,22 +501,12 @@ class ProgressHandler {
         if (this.loading) return; // Issue #312: the bar is showing the load
 
         // Update phase text
-        const phaseElement = document.getElementById('progress-phase');
         const status = payload.status || payload.phase; // Support both new and old format
-        if (phaseElement && status) {
-            const phaseText = this.formatPhaseText(status);
-            phaseElement.textContent = phaseText;
-        }
+        if (status) ConsoleProgress.phase(this.formatPhaseText(status));
 
-        // GitHub Issue #104: Progress count/bar now updated by transaction results (real-time)
-        // This function only updates ETA (from timer - once per minute)
-        // Keep progress bar color class in sync with status
-        const progressBarFill = document.getElementById('progress-bar-fill');
-        if (progressBarFill) {
-            // Only update color class based on status (width updated by handleMemberResultUpdate)
-            const statusVal = payload.status || payload.phase;
-            progressBarFill.className = `progress-bar-fill ${statusVal || 'unknown'}`;
-        }
+        // GitHub Issue #104: the count and the bar are painted from the transactions' results
+        // (real time); this keeps the box's colour in step with the run's state
+        ConsoleProgress.state(status || 'unknown');
 
         // Timer handles all timing automatically (elapsed time and ETA display)
     }
@@ -524,45 +541,17 @@ class ProgressHandler {
             return;
         }
 
-        const progressDisplay = document.getElementById('progress-display');
-        const progressPhase = document.getElementById('progress-phase');
-        const progressCount = document.getElementById('progress-count');
-        const progressBarFill = document.getElementById('progress-bar-fill');
-
-        // Show progress display when export starts
-        if (payload.progress === 0) {
-            if (progressDisplay) {
-                progressDisplay.classList.remove('hidden');
-            }
+        const box = ConsoleProgress;
+        // Shown when the export starts
+        if (payload.progress === 0) box.show();
+        box.phase(`Exporting ${payload.format.toUpperCase()}...`);
+        if (payload.rowsProcessed !== undefined && payload.totalRows !== undefined) {
+            box.count(`${payload.rowsProcessed.toLocaleString()}/${payload.totalRows.toLocaleString()} rows`);
         }
-
-        // Update progress text
-        if (progressPhase) {
-            const text = `Exporting ${payload.format.toUpperCase()}...`;
-            progressPhase.textContent = text;
-        }
-
-        // Update row count
-        if (progressCount && payload.rowsProcessed !== undefined && payload.totalRows !== undefined) {
-            const text = `${payload.rowsProcessed.toLocaleString()}/${payload.totalRows.toLocaleString()} rows`;
-            progressCount.textContent = text;
-        }
-
-        // Update progress bar
-        if (progressBarFill) {
-            const percentage = Math.min(100, Math.max(0, payload.progress));
-            progressBarFill.style.width = `${percentage}%`;
-            progressBarFill.className = 'progress-bar-fill exporting';
-        }
-
-        // Hide progress display when export completes
-        if (payload.progress >= 100) {
-            setTimeout(() => {
-                if (progressDisplay) {
-                    progressDisplay.classList.add('hidden');
-                }
-            }, 500); // Brief delay so user sees 100% completion
-        }
+        box.fill(Math.min(100, Math.max(0, payload.progress)));
+        box.state('exporting');
+        // Hidden once done, after a moment at 100% so the user sees it finish
+        if (payload.progress >= 100) setTimeout(() => box.hide(), 500);
     }
 
     /**

@@ -113,7 +113,7 @@ export interface HubAuth {
 
 /** Runs: History's controls and the transactions list. */
 export interface HubExecutions {
-    metadata: Pick<IExecutionMetadataService, 'getAllTransactions' | 'getExecution' | 'getBatchMemberExecutions' | 'deleteExecutions' | 'searchExecutionBodies' | 'onExecutionChanged'>;
+    metadata: Pick<IExecutionMetadataService, 'getAllTransactions' | 'getExecution' | 'getBatchMemberExecutions' | 'deleteExecutions' | 'searchExecutionBodies' | 'onExecutionChanged'> & Partial<Pick<IExecutionMetadataService, 'updateExecution'>>;
     pause(id: string): Promise<void>;
     /** Issue #311: the environment's sign-in first. Returns the environment's name when the user didn't. */
     resumeRefused?(id: string): Promise<string | undefined>;

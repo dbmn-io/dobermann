@@ -75,39 +75,40 @@ test('while the body arrives the footer says how much: a real bar with a total, 
     const post = m => page.evaluate(message => window.postMessage(message, '*'), m);
     // startTime 4 s ago: the request has been going that long
     const receiving = (r) => ({ type: 'progress_update', payload: { executionId: 'exec_1', title: 'Receiving', status: 'running', totalProgress: 0, startTime: Date.now() - 4000, timestamp: Date.now(), receiving: r } });
-    const fill = page.locator('#progress-bar-fill');
-    const eta = page.locator('#progress-eta');
+    // The progress box (dbmn-progress): its state (the bar's look), its value, and the one time beside the count
+    const box = page.locator('#progress-display');
 
     // No total (a streamed body): records and MB, a busy bar (not a full one), the speed
     await post(receiving({ bytes: 10 * 1048576, lines: 12340, jsonl: true, done: false }));
-    await expect(page.locator('#progress-phase')).toHaveText('Receiving 12,340 records');
-    await expect(page.locator('#progress-count')).toHaveText('10.0 MB');
-    await expect(fill).toHaveClass(/\bbusy\b/);
-    await expect(eta).toHaveText('2.5 MB/s');
+    await expect(page.locator('#progress-display')).toHaveAttribute('phase', 'Receiving 12,340 records');
+    await expect(page.locator('#progress-display')).toHaveAttribute('count', '10.0 MB');
+    await expect(box).toHaveAttribute('data-state', /\bbusy\b/);
+    await expect(box).toHaveAttribute('busy', '');
+    await expect(box).toHaveAttribute('note', '2.5 MB/s');
     await expect(page.locator('#progress-display')).not.toHaveClass(/hidden/);
     expect(await page.evaluate(() => window.progressHandler?.executionStartTime ?? null), 'the run clock not started by a body update').toBe(null);
 
     // X-Total-Count: of how many, a real percentage, and the time left (4 s for 80% → 1 s)
     await post(receiving({ bytes: 64 * 1048576, lines: 76097, totalRecords: 95121, jsonl: true, done: false }));
-    await expect(page.locator('#progress-phase')).toHaveText('Receiving 76,097 / 95,121 records');
-    await expect(page.locator('#progress-count')).toHaveText('80%');
-    await expect(fill).toHaveClass(/\bloading\b/);
-    expect(await fill.evaluate(el => el.style.width)).toBe('80%');
-    await expect(eta).toHaveText('64.0 MB · ≈1s left');
+    await expect(page.locator('#progress-display')).toHaveAttribute('phase', 'Receiving 76,097 / 95,121 records');
+    await expect(page.locator('#progress-display')).toHaveAttribute('count', '80%');
+    await expect(box).toHaveAttribute('data-state', /\bloading\b/);
+    await expect(box).toHaveAttribute('value', '80');
+    await expect(box).toHaveAttribute('note', '64.0 MB · ≈1s left');
 
     // All in: 100%, then processing (parse and save) as a barber pole until the result arrives
     await post(receiving({ bytes: 80.5 * 1048576, lines: 95121, totalRecords: 95121, jsonl: true, done: true }));
-    await expect(page.locator('#progress-phase')).toHaveText('Processing 95,121 records');
-    await expect(page.locator('#progress-count')).toHaveText('100%');
-    await expect(fill).toHaveClass(/\bprocessing\b/);
-    expect(await fill.evaluate(el => el.style.width)).toBe('100%');
-    await expect(eta).toBeHidden();
+    await expect(page.locator('#progress-display')).toHaveAttribute('phase', 'Processing 95,121 records');
+    await expect(page.locator('#progress-display')).toHaveAttribute('count', '100%');
+    await expect(box).toHaveAttribute('data-state', /\bprocessing\b/);
+    await expect(box).toHaveAttribute('value', '100');
+    expect(await box.getAttribute('note'), 'no time beside it while it is processed').toBe(null);
     await post(receiving({ bytes: 1048576, lines: 3, jsonl: false, done: true }));
-    await expect(page.locator('#progress-phase')).toHaveText('Processing data');
+    await expect(page.locator('#progress-display')).toHaveAttribute('phase', 'Processing data');
 
     // Not JSON Lines, with a Content-Length: a percentage of the bytes
     await post(receiving({ bytes: 1048576, lines: 3, totalBytes: 4 * 1048576, jsonl: false, done: false }));
-    await expect(page.locator('#progress-phase')).toHaveText('Receiving');
-    await expect(page.locator('#progress-count')).toHaveText('25%');
+    await expect(page.locator('#progress-display')).toHaveAttribute('phase', 'Receiving');
+    await expect(page.locator('#progress-display')).toHaveAttribute('count', '25%');
     expect(pageErrors, 'uncaught errors in the page').toEqual([]);
 });

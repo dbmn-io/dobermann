@@ -146,7 +146,7 @@
             row.tabIndex = 0;
             row.className = 'catalogue-row tx-row';
             row.dataset.compareId = c.id;
-            row.title = c.isQuery ? 'Edit the query. Right-click to run, duplicate or delete it.' : 'Open its Results. Right-click to edit, duplicate or delete it.';
+            row.title = c.isQuery ? 'Edit the query. Right-click to run, rename, duplicate or delete it.' : 'Open its Results. Right-click to edit, rename, duplicate or delete it.';
             const sub = c.isQuery
                 ? [typeof c.rows === 'number' ? `${c.rows.toLocaleString()} rows` : 'not run yet', ago(new Date(c.updatedAt || c.createdAt).getTime())].join(' · ')
                 : [found(c), ago(new Date(c.comparedAt || c.createdAt).getTime())].join(' · ');
@@ -179,7 +179,8 @@
             row.addEventListener('click', () => { if (selectMode) cb.click(); else open(first); });
             row.addEventListener('dblclick', ev => { if (selectMode) { ev.preventDefault(); open(first); } });
             row.addEventListener('keydown', ev => {
-                if (ev.key === ' ' && selectMode) { ev.preventDefault(); cb.click(); }
+                if (ev.key === 'F2' && !selectMode) { ev.preventDefault(); rename(c); }
+                else if (ev.key === ' ' && selectMode) { ev.preventDefault(); cb.click(); }
                 else if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); open(first); }
             });
             row.addEventListener('contextmenu', ev => {
@@ -189,12 +190,14 @@
                 ] : [
                     { id: 'open', label: 'Open', icon: 'circle-play' }
                 ]).concat([
+                    { id: 'rename', label: 'Rename', icon: 'pencil' },
                     { id: 'duplicate', label: 'Duplicate', icon: 'copy' },
                     { separator: true },
                     { id: 'delete', label: 'Delete', icon: 'trash-2', danger: true }
                 ]), action => {
                     if (action === 'open') open('results');
                     else if (action === 'edit') open('edit');
+                    else if (action === 'rename') rename(c);
                     else if (action === 'duplicate') host && host.postMessage({ type: 'duplicateCompare', compareId: c.id });
                     else if (action === 'delete') void remove(c);
                 });
@@ -206,6 +209,11 @@
         const ids = new Set(all.map(c => c.id));
         Array.from(selectedIds).forEach(id => { if (!ids.has(id)) selectedIds.delete(id); });
         renderBulkBar();
+    }
+
+    /** Rename a report from the list, open or not (the same dialog as its tab's pencil). */
+    function rename(c) {
+        if (window.HubTabs && window.HubTabs.renameSavedReport) window.HubTabs.renameSavedReport(c.id, c.name || '');
     }
 
     /** #444: does a compare pass the query in the box? */

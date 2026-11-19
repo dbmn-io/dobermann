@@ -975,6 +975,22 @@
         document.getElementById('hubAddEnvironmentEmpty')?.addEventListener('click', () => {
             vscode.postMessage({ type: 'addEnvironment' });
         });
+        // Right-click an environment: Open, Rename (the one Rename dialog, hub-tabs.js)
+        document.getElementById('hubEnvironmentList')?.addEventListener('contextmenu', (e) => {
+            const row = e.target.closest('[data-env-id]');
+            if (!row || !window.DbmnContextMenu) return;
+            const env = (hubState.environments || []).find(x => x.id === row.dataset.envId);
+            if (!env) return;
+            window.DbmnContextMenu.show(e, [
+                { id: 'open', label: 'Open', icon: 'server' },
+                { id: 'rename', label: 'Rename', icon: 'pencil' }
+            ], action => {
+                if (action === 'open') row.click();
+                else if (action === 'rename') {
+                    window.HubTabs?.askRename?.(env.name || '', 50).then(name => { if (name) vscode.postMessage({ type: 'renameEnvironment', environmentId: env.id, name }); });
+                }
+            });
+        });
         document.getElementById('hubEnvironmentList')?.addEventListener('click', async (e) => {
             if (e.target.closest('#hubAddEnvironment')) {
                 vscode.postMessage({ type: 'addEnvironment' });

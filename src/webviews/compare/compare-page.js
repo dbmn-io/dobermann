@@ -10,7 +10,7 @@
  * picks another Baseline; C1 to C3 show or hide), Side by side or Compact, and the grid. Back
  * and Next in the footer (the design system's, shared/dbmn-footer.js). Work shows on the steps, on
  * the step it leads to (startWork), and the screen moves once that step is ready, so the steps
- * never flash past. The compare's name is its tab's (double-click the tab). */
+ * never flash past. The compare's name follows the slots in the top row (dbmn-name): a click renames it. */
 (function () {
     'use strict';
     const vscode = acquireVsCodeApi();
@@ -2146,9 +2146,11 @@
         switch (m.type) {
             case 'compare.named':
                 ui.name = m.name || ui.name;
+                $('compareName').value = ui.name;
                 break;
             case 'compare.init':
                 ui.name = m.name || '';
+                $('compareName').value = ui.name;
                 ui.endpoint = m.endpoint;
                 ui.sources = m.sources || [];
                 ui.runs = m.runs || [];
@@ -2302,6 +2304,9 @@
     /* ---------- Actions ---------- */
 
     let searchTimer = null;
+    // The compare's name, after the slots in the top row: renamed in place, the controller checks and answers (compare.named)
+    $('compareName').addEventListener('dbmn-name-change', event => post({ type: 'compare.rename', name: event.detail.name }));
+
     window.DbmnActions.register({
         'compare:back': () => { if (!ui.busy && ui.step > 1) showStep(ui.step - 1); },
         'compare:next': () => next(),

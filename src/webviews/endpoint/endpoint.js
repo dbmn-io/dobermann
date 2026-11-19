@@ -1633,6 +1633,14 @@
         if (saveBtn) {
             saveBtn.disabled = !hasUnsavedChanges;
         }
+        // The footer's few words (dbmn-status): saved, or not yet
+        // (nothing until the endpoint is loaded and its changes are tracked: "Saved" before then would be a guess)
+        var status = document.getElementById('endpointStatus');
+        if (status) {
+            var tracking = !!initialEndpointStateJSON;
+            status.textContent = !tracking ? '' : hasUnsavedChanges ? 'Not saved yet' : isNewEndpoint ? 'New: not saved yet' : 'Saved';
+            if (tracking) status.setAttribute('tone', hasUnsavedChanges || isNewEndpoint ? 'warn' : 'ok'); else status.removeAttribute('tone');
+        }
 
         var hasVars = getTemplateVariableCount() > 0;
         var savedNote = hasUnsavedChanges ? 'Save your changes before running' : null;

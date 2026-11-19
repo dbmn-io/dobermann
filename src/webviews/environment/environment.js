@@ -379,6 +379,13 @@
         if (saveBtn) {
             saveBtn.disabled = !hasUnsavedChanges;
         }
+        // The footer's few words (dbmn-status): saved, or not yet
+        const status = document.getElementById('envStatus');
+        if (status) {
+            const isNew = !currentEnvironmentId;
+            status.textContent = hasUnsavedChanges ? 'Not saved yet' : isNew ? 'New: not saved yet' : 'Saved';
+            if (hasUnsavedChanges || isNew) status.setAttribute('tone', 'warn'); else status.setAttribute('tone', 'ok');
+        }
 
         // Set as Active button: disabled when there are unsaved changes
         if (activateBtn) {

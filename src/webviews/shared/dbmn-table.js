@@ -64,6 +64,8 @@
  *   orders.layout = saved;            // after `columns`: the order, widths, hidden columns and sort kept
  *   orders.searchWith(input, mirror); // the screen's own search box, with the @column suggestions
  *   orders.totals = { qty: '12,410' } // a row under the rows, from the screen; null takes it away
+ *   orders.busy = true;               // something is looking: the search box's glass is the spinner
+ *                                     // (with `source` it turns by itself while rows are asked for)
  *   orders.shown                      // with `rows`: the rows the search shows, in the order shown
  *
  * It draws in the page (no shadow root) and holds no business logic: it shows the rows it is
@@ -193,6 +195,19 @@
             if (opts && typeof opts.total === 'number') this._source.total = opts.total;
             if (opts && opts.keep) this._before(more);
             this._again(!!(opts && opts.keep));
+        }
+
+        /** Something is looking (a search the screen runs): the search box's glass turns into the steps' spinner. */
+        get busy() { return !!this._busy; }
+        set busy(on) { this._busy = !!on; this._glass(); }
+        _glass() {
+            const glass = this._tools && this._tools.querySelector('.dbmn-table-glass');
+            if (!glass) return;
+            const on = this._busy || (!!this._source && this._fresh);
+            if (glass.classList.contains('is-busy') === on) return;
+            glass.classList.toggle('is-busy', on);
+            this.toggleAttribute('aria-busy', on);
+            if (window.Icons) window.Icons.setIcon(glass, on ? 'loader' : 'search');
         }
 
         /** A row of totals under the rows, by column id, from the screen. */
@@ -482,6 +497,7 @@
             // (where an open row now sits is not known until its page is in: it closes)
             this._open.clear();
             this._fresh = true;
+            this._glass();
             this._keep = keep;
             if (typeof this._source.total === 'number') this._total = this._source.total;
             if (this._built && this.isConnected) { this._ask(0); if (!this._head.firstChild) this._refresh(); }
@@ -505,6 +521,7 @@
             if (this._fresh) {
                 if (page !== 0) return;
                 this._fresh = false;
+                this._glass();
                 this._sorting = false;
                 this._kinds = null;
                 this._types = null;

@@ -129,6 +129,20 @@
         input.id = 'dbmn-modal-field-' + field.id;
         input.name = field.id;
         input.className = 'dbmn-modal-input';
+        // Password managers and the browser's autofill belong only where a sign-in is asked for: an
+        // email, a user name or a password (a field may say so with `autocomplete`, as 'username').
+        // Everywhere else they stay out ("name" in the Rename dialog drew 1Password's button over
+        // what was typed).
+        const signIn = input.type === 'password' || input.type === 'email' || /^(username|email|current-password|new-password)$/.test(field.autocomplete || '');
+        if (signIn) {
+            input.setAttribute('autocomplete', field.autocomplete || (input.type === 'password' ? 'current-password' : 'email'));
+        } else {
+            input.setAttribute('autocomplete', 'off');
+            input.setAttribute('data-1p-ignore', 'true');       // 1Password
+            input.setAttribute('data-lpignore', 'true');        // LastPass
+            input.setAttribute('data-bwignore', 'true');        // Bitwarden
+            input.setAttribute('data-form-type', 'other');      // Dashlane
+        }
         if (field.placeholder) input.placeholder = field.placeholder;
         if (field.required) input.required = true;
         if (field.type === 'textarea' && field.value != null) input.value = field.value;

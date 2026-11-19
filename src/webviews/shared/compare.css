@@ -1199,3 +1199,7 @@ button.compare-result-btn {
     font-variant-numeric: tabular-nums;
     color: var(--vscode-descriptionForeground);
 }
+
+/* The compare's name, in the top row straight after the slots (dbmn-name): the slots keep their
+   place, so the match and the grid stay lined up under them */
+.compare-name { flex: none; --name-width: 200px; margin-left: 8px; align-self: center; }

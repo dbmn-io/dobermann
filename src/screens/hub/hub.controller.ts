@@ -6,9 +6,9 @@
  * HubTabFactory, and their messages travel in the `__embeddedFromTab__` / `__embeddedToTab__`
  * envelopes hub-tabs.js speaks.
  */
-import { freeReportName, REPORT_NAME_MAX } from '../../services/compare/report-name';
-import { duplicateCompare, getCompare, removeCompare, saveCompare, savedCompares } from '../../services/compare/compare-store';
-import { createQuery, duplicateQuery, getQuery, isQueryId, listQueries, removeQuery } from '../../services/query/query-store';
+import { freeReportName, REPORT_NAME_MAX, reportNameProblem } from '../../services/compare/report-name';
+import { duplicateCompare, getCompare, removeCompare, saveCompare, savedCompares, type SavedCompare } from '../../services/compare/compare-store';
+import { createQuery, duplicateQuery, getQuery, isQueryId, listQueries, removeQuery, saveQuery, type SavedQuery } from '../../services/query/query-store';
 import { validateShortIdentifier } from '../../data-loading/system-schema';
 import type { Disposable } from '../../platform/events';
 import type { ChainHandoff } from '../../services/chain/chain-types';
@@ -60,6 +60,11 @@ function describeSkipped(skipped: Array<{ id: string; name?: string; reason: str
 function splitTabId(tabId: string): [string, string] {
     const sep = tabId.indexOf(':');
     return sep < 0 ? [tabId, ''] : [tabId.slice(0, sep), tabId.slice(sep + 1)];
+}
+
+/** A name as kept: one line, no control characters, single spaces, no longer than `max`. */
+function cleanName(text: string, max: number): string {
+    return String(text || '').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max).trim();
 }
 
 export class HubController {
@@ -194,15 +199,26 @@ export class HubController {
                 if (str('endpointId')) await this.openBatchTab(str('endpointId')!);
                 break;
             case 'renameReport': {
-                // A report's name is its tab's: its own screen checks the name (unique, not too long) and keeps it
+                // A report's name is its tab's: open, its own screen checks the name (unique, not too
+                // long) and keeps it; not open (the Reporting list's Rename), it is renamed here, by the same check
                 const compareId = str('compareId');
+                const name = cleanName(str('name') ?? '', REPORT_NAME_MAX);
                 const open = compareId ? this.tabs.get(`compare:${compareId}`) : undefined;
                 if (compareId && open) {
-                    await open.tab.handle({ type: isQueryId(compareId) ? 'query.rename' : 'compare.rename', name: (str('name') ?? '').slice(0, REPORT_NAME_MAX) });
+                    await open.tab.handle({ type: isQueryId(compareId) ? 'query.rename' : 'compare.rename', name });
                     await this.broadcastState();
-                }
+                } else if (compareId && name) await this.renameClosedReport(compareId, name);
                 break;
             }
+            case 'renameEndpoint':
+                if (str('endpointId')) await this.renameEndpoint(str('endpointId')!, str('name') ?? '');
+                break;
+            case 'renameEnvironment':
+                if (str('environmentId')) await this.renameEnvironment(str('environmentId')!, str('name') ?? '');
+                break;
+            case 'renameRun':
+                if (str('id')) await this.renameRun(str('id')!, str('name') ?? '');
+                break;
             case 'openDesignSystem':
                 await this.openDesignTab();
                 break;
@@ -1221,6 +1237,62 @@ export class HubController {
         if (!copy) return;
         await this.broadcastState();
         await this.openCompareTab(copy.id, 'edit');
+    }
+
+    /**
+     * Rename from the Hub's lists (the one Rename dialog, hub-tabs.js). The thing's own rules hold:
+     * the managers refuse a name another endpoint (or environment in its folder) has, and say why.
+     * Open in a tab, it is renamed there, so an editor's unsaved name is never overwritten.
+     */
+    private openIn(kind: 'endpoint' | 'environment' | 'console', id: string): boolean {
+        for (const tabId of this.tabs.keys()) {
+            const [k, refId] = splitTabId(tabId);
+            if (k === kind && (refId === id || this.savedIdByTabId.get(tabId) === id)) return true;
+        }
+        return false;
+    }
+    private async renameEndpoint(id: string, raw: string): Promise<void> {
+        const name = cleanName(raw, 50);
+        if (!name) return;
+        if (this.openIn('endpoint', id)) { this.ports.toast.info('It is open: rename it in its editor, then save.'); return; }
+        try { await this.ports.endpoints.updateEndpoint(id, { name }); }
+        catch (error) { this.ports.toast.warn(message(error)); }
+    }
+    private async renameEnvironment(id: string, raw: string): Promise<void> {
+        const name = cleanName(raw, 50);
+        if (!name) return;
+        if (this.openIn('environment', id)) { this.ports.toast.info('It is open: rename it in its editor, then save.'); return; }
+        try { await this.ports.environments.updateEnvironment(id, { name }); }
+        catch (error) { this.ports.toast.warn(message(error)); }
+    }
+    /** A batch run's own name (#445): History lists it by it; its endpoint's name stays its endpoint's. */
+    private async renameRun(id: string, raw: string): Promise<void> {
+        const name = cleanName(raw, 100);
+        const metadata = this.ports.executions?.metadata;
+        if (!name || !metadata?.updateExecution) return;
+        if (this.openIn('console', id)) { this.ports.toast.info('Its Console is open: rename it in the Console\'s Settings.'); return; }
+        try {
+            const run = await metadata.getExecution(id);
+            if (!run) return;
+            await metadata.updateExecution(id, {
+                batchConfiguration: { stopOnFirstError: false, errorTolerance: false, maxErrors: 0, ...run.batchConfiguration, name }
+            });
+            await this.broadcastState();
+        } catch (error) { this.ports.toast.warn(message(error)); }
+    }
+
+    /** A report renamed from the Reporting list while no tab has it open. */
+    private async renameClosedReport(compareId: string, name: string): Promise<void> {
+        const state = this.ports.compares?.state();
+        if (!state) return;
+        const report = isQueryId(compareId) ? getQuery(state, compareId) : getCompare(state, compareId);
+        if (!report || report.name === name) return;
+        const problem = reportNameProblem(state, compareId, name);
+        if (problem) { this.ports.toast.warn(problem); return; }
+        report.name = name;
+        if (isQueryId(compareId)) await saveQuery(state, report as SavedQuery);
+        else await saveCompare(state, report as SavedCompare);
+        await this.broadcastState();
     }
 
     /** Delete a saved compare (the list asked first). Its results stay in History. */

@@ -6,6 +6,7 @@
     <title>Dobermann - Environment</title>
     <meta name="dbmn-host" content="{{HOST}}">
     {{SHARED_STYLES}}
+    <link rel="stylesheet" href="{{DBMN_FOOTER_CSS}}">
 </head>
 <body class="editor-slide-in">
     <!-- Readable buttons in every theme (shared/button-contrast.js): first in the body, so it applies before anything is painted -->
@@ -425,29 +426,26 @@
     </div>
 
     <!-- Sticky Footer with Action Buttons -->
-    <div class="webview-footer">
-        <div class="footer-content">
-            <div class="footer-button-container">
+    <!-- The design system's footer (shared/dbmn-footer.js): what you can do on the left, Save last;
+         on the right a few words: saved, or not yet. Messages go to the toasts (dbmn-toast.js) -->
+    <dbmn-footer>
+        <dbmn-actions>
                 <button data-click="initiateOAuthFlow" id="signInBtn" class="btn btn-secondary hidden" data-help="environments#authentication">Sign In</button>
                 <button data-click="requestNewToken" id="requestTokenBtn" class="btn btn-secondary hidden" data-help="environments#authentication">Sign In (New Token)</button>
                 <button data-click="signOutOAuth" id="signOutBtn" class="btn btn-secondary hidden" data-help="environments#authentication">Sign Out</button>
                 <button data-click="refreshOAuthToken" id="refreshBtn" class="btn btn-secondary hidden" data-help="environments#authentication">Refresh Token</button>
                 <button data-click="setAsActive" id="activateBtn" class="btn btn-secondary hidden" data-help="hub#environment-selector">Set as Active</button>
-                <button data-click="deleteEnvironment" id="deleteEnvBtn" class="btn btn-secondary hidden" style="color: var(--vscode-errorForeground);" data-help="environments">Delete Environment</button>
+                <button data-click="deleteEnvironment" id="deleteEnvBtn" class="btn btn-secondary btn-danger hidden" data-help="environments">Delete Environment</button>
                 <button data-click="saveEnvironment" id="saveEnvBtn" class="btn btn-primary" data-help="environments">Save Environment</button>
-            </div>
-            <div id="footerNotification" class="footer-notification hidden">
-                <span class="notification-icon"></span>
-                <span class="notification-message"></span>
-                <button class="notification-dismiss" data-click="clearFooterNotification">&times;</button>
-            </div>
-        </div>
-    </div>
+        </dbmn-actions>
+        <dbmn-status id="envStatus"></dbmn-status>
+    </dbmn-footer>
 
     <script src="{{DBMN_ACTIONS_SCRIPT}}"></script>
     <script src="{{DOCUMENTATION_HELPERS_URI}}"></script>
     <script src="{{HELP_MODE_SCRIPT}}"></script>
     <script src="{{ICONS_SCRIPT}}"></script>
+    <script src="{{DBMN_FOOTER_SCRIPT}}"></script>
     <script src="{{EDITOR_WINDOW_CONTROLS_SCRIPT}}"></script>
     <!-- DbmnModal — auto-bridge listens for ext-host modal requests -->
     <script src="{{ROW_PASTE_SCRIPT}}"></script>

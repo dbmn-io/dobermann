@@ -21,7 +21,7 @@ export function buildQueryPage(asset: AssetUrl, config: { queryId: string; name:
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Query: ${attr(config.name)}</title>
-    ${sharedStyleLinks(asset, ['atomic', 'core', 'buttons', 'modals', 'tables', 'tabs', 'toast', 'console', 'data-transformer', 'compare', 'column-drag', 'column-head', 'query', 'dbmn-footer', 'dbmn-table'])}
+    ${sharedStyleLinks(asset, ['atomic', 'core', 'buttons', 'modals', 'tables', 'tabs', 'toast', 'console', 'data-transformer', 'compare', 'column-drag', 'column-head', 'query', 'dbmn-footer', 'dbmn-table', 'dbmn-name'])}
 </head>
 <body class="editor-slide-in">
     <script src="${asset('shared/button-contrast.js')}"></script>
@@ -36,7 +36,8 @@ export function buildQueryPage(asset: AssetUrl, config: { queryId: string; name:
         <header class="report-toolbar compare-results-tools">
             <!-- Compare's slots, one per view, first: the match table on Join sits on their grid -->
             <!-- The gutter the lines' headings sit in (Request, View, ... on Views; the joins on Join): the same width on every step, so the slots never move -->
-            <span class="query-lead query-head-lead" aria-hidden="true"><span class="query-lead-text">Views</span></span>
+            <!-- ...and it holds the query's name (shared/dbmn-name.js): click it to rename, from the first step on -->
+            <span class="query-lead query-head-lead"><dbmn-name id="queryName" label="Query name" max="30" value="${attr(config.name)}"></dbmn-name></span>
             <div id="queryViews" class="compare-results-bar" role="group" aria-label="The views joined"></div>
             <!-- Shown after the last slot (renderTop puts it in the slots' row) -->
             <span id="queryAdds" class="query-adds">
@@ -106,7 +107,7 @@ export function buildQueryPage(asset: AssetUrl, config: { queryId: string; name:
         </div>
 
         <!-- The design system's footer (shared/dbmn-footer.js): what you can do on the left, how far
-             along on the right. The query's name is its tab's: double-click the tab to rename it -->
+             along on the right. The query's name is at the top left (#queryName) -->
         <dbmn-footer>
             <dbmn-actions>
                 <button type="button" id="queryBackBtn" class="btn btn-secondary" data-click="query:back" disabled>Back</button>
@@ -132,6 +133,7 @@ export function buildQueryPage(asset: AssetUrl, config: { queryId: string; name:
     ${script('shared/icons.js')}
     ${script('shared/dbmn-footer.js')}
     ${script('shared/dbmn-table.js')}
+    ${script('shared/dbmn-name.js')}
     ${script('shared/editor-window-controls.js')}
     <!-- The Console's Chain dialog, as it is: Chain here posts the same messages -->
     ${script('console/modules/console-chain.js')}

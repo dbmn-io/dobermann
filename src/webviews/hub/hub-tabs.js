@@ -432,17 +432,38 @@ const state = {
         for (const id of ids) performClose(id);
     }
 
-    /** Ask for a report's new name; the report's own screen checks it and keeps it. */
-    function renameReport(tab) {
-        if (!window.DbmnModal || !window.vscode) return;
-        window.DbmnModal.show({
-            title: 'Rename',
-            fields: [{ id: 'name', type: 'text', label: 'Name', value: tab.name, required: true, autoFocus: true }],
-            actions: [{ id: 'cancel', label: 'Cancel', variant: 'secondary' }, { id: 'rename', label: 'Rename', variant: 'primary' }]
-        }).then(result => {
-            const name = result && result.actionId === 'rename' ? String((result.fields || {}).name || '').trim() : '';
-            if (name && name !== tab.name) window.vscode.postMessage({ type: 'renameReport', compareId: tab.refId, name });
+    /**
+     * Names. A tab shows its screen's name; it is not where a name is changed (James, 2026-11-19: a
+     * pencil on some tabs only would be inconsistent). Rename is in the Hub's lists, by right-click,
+     * for every kind of thing (reports, endpoints, environments, runs): this one dialog. A query and
+     * a compare also show their name on their own screen, where a click renames it (dbmn-name).
+     * Run Batch's tab shows the batch's name (its screen tells it: __tabName__).
+     */
+    const NAME_MAX = { compare: 30, batch: 100 };
+    function canRename(tab) { return !!tab && Object.prototype.hasOwnProperty.call(NAME_MAX, tab.type); }
+    /** A name as kept: one line, no control characters, single spaces, no longer than its kind allows. */
+    function cleanName(text, max) {
+        return String(text || '').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max).trim();
+    }
+
+    /** A saved report, open in a tab or not (the Reporting list's Rename): the host checks and keeps the name. */
+    function renameSavedReport(compareId, current) {
+        if (!compareId || !window.DbmnModal || !window.vscode) return;
+        askName(current, NAME_MAX.compare).then(name => {
+            if (name && name !== current) window.vscode.postMessage({ type: 'renameReport', compareId, name });
         });
+    }
+    /** The one Rename dialog: resolves to the cleaned name, or '' when cancelled or unchanged. */
+    function askRename(current, max) {
+        if (!window.DbmnModal) return Promise.resolve('');
+        return askName(current, max).then(name => (name && name !== current ? name : ''));
+    }
+    function askName(current, max) {
+        return window.DbmnModal.show({
+            title: 'Rename',
+            fields: [{ id: 'name', type: 'text', label: 'Name', value: current, required: true, autoFocus: true, validate: { maxLength: max, message: `Up to ${max} characters` } }],
+            actions: [{ id: 'cancel', label: 'Cancel', variant: 'secondary' }, { id: 'rename', label: 'Rename', variant: 'primary' }]
+        }).then(result => (result && result.actionId === 'rename' ? cleanName((result.fields || {}).name, max) : ''));
     }
 
     function buildTabElement(tab) {
@@ -456,7 +477,7 @@ const state = {
         // Native tooltip — reveals the full tab name on hover when the
         // strip is packed and the visible name is ellipsed. Cheap and
         // matches VS Code's own tab-tooltip pattern.
-        el.title = tab.type === 'compare' ? `${tab.name}\nDouble-click to rename` : tab.name;
+        el.title = tab.name;
         if (tab.id === state.activeTabId) el.classList.add('is-active');
         if (tab.preview) el.classList.add('is-preview');
         if (tab.dirty) el.classList.add('is-dirty');
@@ -909,6 +930,17 @@ const state = {
         if (data.payload && data.payload.type === '__embeddedReady__') {
             removeLoader(data.tabId);
         }
+        // A screen that names its own tab (Run Batch: the batch it is about to run). Its name stands
+        // from then on: the host's name for the tab (the endpoint's) no longer replaces it
+        if (data.payload && data.payload.type === '__tabName__') {
+            const named = (state.tabs || []).find(x => x.id === data.tabId);
+            const name = named && canRename(named) ? cleanName(data.payload.name, NAME_MAX[named.type]) : '';
+            if (name) {
+                named.ownName = true;
+                if (named.name !== name) { named.name = name; renderStrip(); }
+            }
+            return;
+        }
         // #432: the endpoint editor's Manage tags… opens the Hub's Manage Tags dialog
         if (data.payload && data.payload.type === '__openTagManager__') {
             if (window.HubTagManager) window.HubTagManager.requestOpen();
@@ -973,7 +1005,8 @@ const state = {
                 // without remounting the iframe.
                 if (message.tabId && message.name) {
                     const t = (state.tabs || []).find(x => x.id === message.tabId);
-                    if (t && t.name !== message.name) {
+                    // (a tab its screen has named keeps that name)
+                    if (t && !t.ownName && t.name !== message.name) {
                         t.name = message.name;
                         renderStrip();
                     }
@@ -1110,11 +1143,6 @@ const state = {
             if (tabEl && tabEl.dataset.tabId) {
                 const id = tabEl.dataset.tabId;
                 focusTab(id);
-                // A report's name is its tab's (the design system: a screen's footer holds no name):
-                // a double-click on a query's or a compare's tab renames it. Counted here, not by a
-                // dblclick listener: the first click redraws the strip, so the second lands on a new element
-                const tab = e.detail === 2 && state.tabs.find(t => t.id === id);
-                if (tab && tab.type === 'compare') renameReport(tab);
             }
         });
 
@@ -1299,6 +1327,8 @@ const state = {
 
     window.HubTabs = {
         init,
+        renameSavedReport,
+        askRename,
         getState,
         subscribe,
         openOrFocusTab,

@@ -1,0 +1,51 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Copyright (C) 2026 Flexion Tech Pty Ltd */
+/*
+ * <dbmn-name> (dbmn-name.js): a report's name on its screen, quiet, renamed in place. It takes the
+ * width its screen gives it (--name-width) and cuts a long name short, whole on hover.
+ */
+dbmn-name {
+    display: inline-flex;
+    align-items: center;
+    min-width: 0;
+    max-width: var(--name-width, 220px);
+    font-size: 12px;
+}
+.dbmn-name-show {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+    max-width: 100%;
+    height: 24px;
+    padding: 0 6px;
+    margin: 0;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    background: none;
+    color: var(--dbmn-foreground);
+    font: inherit;
+    font-weight: 600;
+    cursor: text;
+}
+.dbmn-name-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+dbmn-name[unnamed] .dbmn-name-text { font-style: italic; font-weight: 400; color: var(--dbmn-descriptionForeground); }
+.dbmn-name-pencil { display: inline-flex; flex: none; opacity: 0; color: var(--dbmn-descriptionForeground); }
+.dbmn-name-pencil svg { width: 12px; height: 12px; }
+.dbmn-name-show:hover { border-color: var(--dbmn-panel-border, rgba(128, 128, 128, 0.35)); }
+.dbmn-name-show:hover .dbmn-name-pencil,
+.dbmn-name-show:focus-visible .dbmn-name-pencil { opacity: 1; }
+.dbmn-name-show:focus-visible { outline: 1px solid var(--dbmn-focusBorder); outline-offset: 0; }
+.dbmn-name-input {
+    width: var(--name-width, 220px);
+    max-width: 100%;
+    height: 24px;
+    padding: 0 6px;
+    font: inherit;
+    font-weight: 600;
+    color: var(--dbmn-input-foreground, var(--dbmn-foreground));
+    background: var(--dbmn-input-background);
+    border: 1px solid var(--dbmn-focusBorder);
+    border-radius: 3px;
+    outline: none;
+}

@@ -655,3 +655,26 @@ test('a narrow heading gives its whole width to the name: nothing is kept back f
     await page.locator('.dbmn-context-menu-item', { hasText: 'Sort A to Z' }).click();
     await expect(page.locator('#t thead th').nth(1).locator('.col-sort-btn.is-sorted')).toBeVisible();
 });
+
+test('busy: the search box\'s glass is the spinner while something is looking, and the search icon again after', async ({ page }) => {
+    await page.setContent(tablePage());
+    const glass = page.locator('#t .dbmn-table-glass');
+    await expect(glass).not.toHaveClass(/is-busy/);
+    await page.evaluate(() => { document.getElementById('t').busy = true; });
+    await expect(glass).toHaveClass(/is-busy/);
+    await expect(page.locator('#t')).toHaveAttribute('aria-busy', '');
+    expect(await glass.locator('svg').evaluate(svg => getComputedStyle(svg).animationName)).toBe('dbmn-table-spin');
+    await page.evaluate(() => { document.getElementById('t').busy = false; });
+    await expect(glass).not.toHaveClass(/is-busy/);
+    await expect(page.locator('#t')).not.toHaveAttribute('aria-busy', '');
+});
+
+test('busy by itself while a source\'s rows are on their way', async ({ page }) => {
+    await page.setContent(sourcePage('label="Orders" searchable'));
+    await expect(firstCell(page)).toHaveText('SO-10000');
+    const glass = page.locator('#t .dbmn-table-glass');
+    await expect(glass).not.toHaveClass(/is-busy/);
+    await page.evaluate(() => { window.wait = 500; document.getElementById('t').reload(); });
+    await expect(glass).toHaveClass(/is-busy/);
+    await expect(glass).not.toHaveClass(/is-busy/, { timeout: 3000 });
+});

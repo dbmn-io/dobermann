@@ -8,7 +8,8 @@
  * Back and Next, then the steps: Select, Match, Columns, Results. The four slots (BL, C1 to C3)
  * sit across the top of every step, where Results has them, with its toolbar. Work shows on the
  * steps (the step it leads to turns): no progress panel of its own. On Results the steps fold
- * into a summary of what is on screen.
+ * into a summary of what is on screen. The compare's name follows the slots in the top row
+ * (dbmn-name): a click renames it.
  */
 import type { AssetUrl } from '../pages';
 import { sharedStyleLinks } from '../pages';
@@ -23,7 +24,7 @@ export function buildComparePage(asset: AssetUrl, config: { compareId: string; e
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Compare: ${attr(config.endpointName)}</title>
-    ${sharedStyleLinks(asset, ['atomic', 'core', 'buttons', 'modals', 'tables', 'tabs', 'toast', 'console', 'data-transformer', 'compare', 'column-drag', 'column-head', 'dbmn-footer'])}
+    ${sharedStyleLinks(asset, ['atomic', 'core', 'buttons', 'modals', 'tables', 'tabs', 'toast', 'console', 'data-transformer', 'compare', 'column-drag', 'column-head', 'dbmn-footer', 'dbmn-name'])}
 </head>
 <body class="editor-slide-in" data-endpoint-name="${attr(config.endpointName)}">
     <script src="${asset('shared/button-contrast.js')}"></script>
@@ -43,6 +44,9 @@ export function buildComparePage(asset: AssetUrl, config: { compareId: string; e
              toolbar drops to a second line -->
         <div class="report-toolbar compare-results-tools" id="compareTop">
             <div id="compareResultButtons" class="compare-results-bar" role="group" aria-label="The results compared"></div>
+            <!-- The compare's name, straight after its slots (shared/dbmn-name.js): a click renames it.
+                 Not before them: the match on Match and the grid on Results line up under the slots -->
+            <dbmn-name id="compareName" class="compare-name" label="Compare name" max="30" value="${attr(config.endpointName)}"></dbmn-name>
             <!-- A slot's menu, from Match on: make it the Baseline, open it in the Console; on
                  Results also show or hide it -->
             <div id="compareResultMenu" class="export-dropdown compare-baseline-menu" role="menu" aria-label="Result"></div>
@@ -198,6 +202,7 @@ export function buildComparePage(asset: AssetUrl, config: { compareId: string; e
     ${script('shared/cell-detail.js')}
     ${script('shared/icons.js')}
     ${script('shared/dbmn-footer.js')}
+    ${script('shared/dbmn-name.js')}
     ${script('shared/editor-window-controls.js')}
     <script src="${asset('compare/compare-page.js')}" data-compare-id="${attr(config.compareId)}"></script>
 </body>

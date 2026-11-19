@@ -2782,3 +2782,12 @@ body:has(#csvBatchContainer) .webview-footer.named-footer .footer-content {
     color: var(--vscode-descriptionForeground);
 }
 
+
+/* Run Batch: what is being read or checked and how far it has got, said in the screen while it
+   lasts (the footer's steps only show that something is: dbmn-steps) */
+.batch-working {
+    margin: 8px 16px 0;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    color: var(--vscode-descriptionForeground);
+}

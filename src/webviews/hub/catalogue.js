@@ -637,7 +637,8 @@
         row.addEventListener('contextmenu', (ev) => {
             if (!window.DbmnContextMenu || selectMode) return;
             const items = [
-                { id: 'open', label: 'Open', icon: 'pencil' },
+                { id: 'open', label: 'Open', icon: 'notebook-tabs' },
+                { id: 'rename', label: 'Rename', icon: 'pencil' },
                 { id: 'run', label: 'Run API', icon: 'play' }
             ];
             if (hasVars) items.push({ id: 'batch', label: 'Run Batch', icon: 'folder-tree-play' });
@@ -645,6 +646,10 @@
             items.push({ separator: true }, { id: 'delete', label: 'Delete', icon: 'trash-2', danger: true });
             window.DbmnContextMenu.show(ev, items, (action) => {
                 if (action === 'open') openEndpoint(false);
+                else if (action === 'rename') {
+                    // The one Rename dialog (hub-tabs.js); the host saves it, by the endpoint's own rules
+                    window.HubTabs?.askRename?.(endpoint.name || '', 50).then(name => { if (name) host.postMessage({ type: 'renameEndpoint', endpointId: endpoint.id, name }); });
+                }
                 else if (action === 'run') { markSelected(endpoint.id); host.postMessage({ type: 'runEndpoint', endpointId: endpoint.id }); }
                 else if (action === 'batch') { markSelected(endpoint.id); host.postMessage({ type: 'openBatchAsTab', endpointId: endpoint.id }); }
                 else if (action === 'history') {

@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Flexion Tech Pty Ltd
 /**
- * Run Batch step bar: Source, Map, Validate, Review (#435: Review ends with Execute, no step of
- * its own), in the footer. This file says
- * what each step is; the shared StepBar (shared/step-bar.js, also Compare's) draws it.
+ * Run Batch's steps: Source, Map, Validate, Review (#435: Review ends with Execute, no step of
+ * its own), in the footer. This file says what each step is; the design system's <dbmn-steps>
+ * (shared/dbmn-footer.js) draws it.
  *
- * Shows where you are (the current step is tinted, filled and underlined), what each step
- * decided ("replenishment.csv · 295 rows", "6 of 6 mapped", "3 API calls"), and the walk
- * forward after Import Data (dt-auto-advance.js) as it ticks each step off.
+ * Shows where you are, what each step decided ("replenishment.csv · 295 rows", "6 of 6 mapped",
+ * "3 API calls": its hover text), and the walk forward after Import Data (dt-auto-advance.js) as
+ * it ticks each step off. While a file is read or rows are checked the step turns, and how far
+ * it has got is said in the screen (#batchWorking).
  *
  * Every step reached is clickable: back is a jump (CSVHandler.goToStep → goBackTo), forward
  * walks through each step's own checks (DTAutoAdvance.walkTo), so nothing skips a check.
@@ -111,37 +112,42 @@
         return rowCount(s) > 0 || (s.maxStepReached || 1) > 1;
     }
 
-    /** The shared step bar (shared/step-bar.js), made once for the page's nav. */
+    /** The footer's steps (the design system's <dbmn-steps>, shared/dbmn-footer.js), given their names once. */
     let bar = null;
-    let barNav = null;
 
     function render() {
         const nav = document.getElementById('batchStepper');
         const s = state();
-        if (!nav || !s || !window.StepBar) return;
+        if (!nav || !s || typeof nav.render !== 'function') return;
         if (window.dbmnSetTabDirty) window.dbmnSetTabDirty(hasUnsavedWork(s));
-        if (!bar || barNav !== nav) {
-            bar = window.StepBar.create(nav, STEPS, { onStep: n => handler().goToStep(n) });
-            barNav = nav;
+        if (bar !== nav) {
+            bar = nav;
+            bar.steps = STEPS;
+            bar.addEventListener('dbmn-step', event => handler().goToStep(event.detail.step));
         }
         const w = walk();
         const current = s.modalStep || 1;
         const states = STEPS.map((_, i) => {
             const n = i + 1;
             const st = stepState(n, s, w);
-            const status = st.checking ? 'checking' : st.status;
+            // Reading a file or checking rows: the step it belongs to turns (steps and a progress
+            // bar never show together); how far it has got is said in the screen (below)
+            const working = !!(s.stepProgress && n === s.stepProgress.step);
+            const status = st.checking || working ? 'checking' : st.status;
+            // What the step decided ("replenishment.csv · 295 rows", "6 of 6 mapped") is its hover text
             const summary = st.status === 'blocked' ? `Waits for ${st.waitsFor}` : summaryOf(n, s, status);
             const title = st.status === 'locked' ? 'Set by the chain'
                 : st.status === 'skipped' ? 'Not needed for entered data' : undefined;
-            // #435: how far a file read or a row check has got, as a fill in the current step
-            const p = s.stepProgress && n === s.stepProgress.step ? s.stepProgress : null;
-            return { ...st, summary, title, progress: p ? p.percent : undefined, progressSeconds: p ? p.seconds : 0 };
+            return { ...st, checking: st.checking || working, summary, title };
         });
-        // Narrow panels: a "Batch Prep" heading over the step names and circles. What a step
-        // needs is in the footer notification, beside Next.
-        // The page carries the name from the start; the endpoint config only arrives after Import Data
-        const endpointName = (s.endpointConfig && s.endpointConfig.name) || (document.body && document.body.dataset.endpointName);
-        bar.render(states, current, endpointName ? `Batch Prep: ${endpointName}` : 'Batch Prep');
+        bar.render(states, current);
+        // "Reading rows · 1,200 of 5,000", in the screen while it lasts
+        const says = s.stepProgress && s.stepProgress.text ? s.stepProgress.text : '';
+        const line = document.getElementById('batchWorking');
+        if (line) {
+            line.classList.toggle('hidden', !says);
+            if (line.textContent !== says) line.textContent = says;
+        }
     }
 
     // Step summaries that live in other steps' markup (API calls, environment) refresh the bar

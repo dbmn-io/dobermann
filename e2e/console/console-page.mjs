@@ -26,6 +26,7 @@ const SCRIPTS = {
     DATA_NAVIGATOR_URI: 'console/modules/data-navigator.js',
     MONACO_THEME_URI: 'shared/monaco-theme.js',
     ICONS_SCRIPT: 'shared/icons.js',
+    DBMN_FOOTER_URI: 'shared/dbmn-footer.js',
     EDITOR_WINDOW_CONTROLS_SCRIPT: 'shared/editor-window-controls.js',
     DBMN_TOAST_URI: 'shared/dbmn-toast.js',
     DBMN_CLIPBOARD_URI: 'shared/dbmn-clipboard.js',
@@ -48,7 +49,8 @@ const SCRIPTS = {
 
 /** The stylesheets console-webview-manager.ts links, for a scenario that needs real layout. */
 const STYLES = ['shared/atomic.css', 'shared/core.css', 'shared/modals.css', 'shared/tables.css', 'shared/tabs.css',
-    'shared/toast.css', 'shared/console.css', 'shared/transaction-card.css', 'shared/column-drag.css', 'shared/column-head.css'];
+    'shared/toast.css', 'shared/console.css', 'shared/transaction-card.css', 'shared/column-drag.css', 'shared/column-head.css',
+    'shared/dbmn-footer.css'];
 
 /**
  * @param {{ reportType: 'batch' | 'individual', batchId?: string, executionId?: string, statusDisplay?: string, styles?: boolean }} opts

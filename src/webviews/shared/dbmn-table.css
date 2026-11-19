@@ -62,3 +62,9 @@ dbmn-table [hidden] { display: none !important; }
 .dbmn-nest-note { display: block; margin-top: 4px; color: var(--dbmn-descriptionForeground); }
 /* The search in words, under the box */
 .dbmn-table-reads { margin: -4px 0 0; }
+/* Something is looking (table.busy, or a source's rows on their way): the glass is the steps' spinner */
+.dbmn-table-glass.is-busy svg { animation: dbmn-table-spin 0.9s linear infinite; }
+@keyframes dbmn-table-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+    .dbmn-table-glass.is-busy svg { animation: none; }
+}
