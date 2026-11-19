@@ -291,15 +291,17 @@ async function saveOver(collection: CatalogCollection<Item>, item: Item, version
     }
 }
 
-const KIND_NOUN: Record<CatalogueKind, string> = { endpoints: 'endpoint', environments: 'environment', systems: 'System', views: 'Console views of' };
-
-/** What the user is told after signing in, or nothing when nothing was waiting. */
+/**
+ * What the user is told after signing in, or nothing when nothing was waiting. Short, and no
+ * names: an item changed in both places may have none a person would know (a Console view's is
+ * its endpoint's internal key), and the copies say what they are in their own names.
+ */
 export function offlineChangesMessage(result: SentOfflineChanges): string | undefined {
     if (result.sent === 0) return undefined;
-    const sent = `Sent ${result.sent} ${result.sent === 1 ? 'change' : 'changes'} you made while signed out to your DBMN account.`;
-    const both = result.conflicts.map(c => {
-        const kept = c.kept === 'here' ? 'this computer\'s, the newer one, is kept' : 'your account\'s, the newer one, is kept';
-        return `The ${KIND_NOUN[c.kind]} "${c.name}" was changed in both places: ${kept}${c.copyName ? `, and the other is saved as "${c.copyName}"` : ''}.`;
-    });
-    return [sent, ...both].join(' ');
+    const parts = [`Synced ${result.sent} ${result.sent === 1 ? 'change' : 'changes'} you made while signed out.`];
+    const both = result.conflicts.length;
+    if (both > 0) parts.push(`${both === 1 ? 'One' : both} had also changed in your account: the newer version is kept.`);
+    const copies = result.conflicts.filter(c => c.copyName).length;
+    if (copies > 0) parts.push(copies === 1 ? 'The other is saved with "(copy)" after its name.' : 'The others are saved with "(copy)" after their names.');
+    return parts.join(' ');
 }

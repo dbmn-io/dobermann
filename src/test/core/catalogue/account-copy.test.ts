@@ -119,13 +119,28 @@ describe('Account copy: signed out is offline (#427)', () => {
 
         const result = await sendOfflineChanges(remote, pc.copy());
         expect(result).to.deep.equal({ sent: 3, conflicts: [] });
-        expect(offlineChangesMessage(result)).to.equal('Sent 3 changes you made while signed out to your DBMN account.');
+        expect(offlineChangesMessage(result)).to.equal('Synced 3 changes you made while signed out.');
         expect(pc.copy().pending()).to.deep.equal([]);
 
         const back = await pc.signedIn(remote);
         expect(environmentsOf(back).map(e => e.name).sort()).to.deep.equal(['Made offline', 'Production EU', 'Staging']);
         expect((environmentsOf(back).find(e => e.id === 'env-prod') as EnvironmentConfig).oauthConfig?.clientSecret).to.equal('super-secret');
         expect(offlineChangesMessage(await sendOfflineChanges(remote, pc.copy()))).to.equal(undefined);
+    });
+
+    it('the message is short and names nothing, not even an item with no name a person would know', () => {
+        const message = offlineChangesMessage({
+            sent: 7,
+            conflicts: [
+                { kind: 'views', name: 'orphan:endpoint_1a2b', kept: 'here' },
+                { kind: 'endpoints', name: 'Create order', kept: 'account', copyName: 'Create order (copy)' },
+                { kind: 'environments', name: 'Staging', kept: 'here', copyName: 'Staging (copy)' }
+            ]
+        });
+        expect(message).to.equal('Synced 7 changes you made while signed out. ' +
+            '3 had also changed in your account: the newer version is kept. The others are saved with "(copy)" after their names.');
+        expect(offlineChangesMessage({ sent: 2, conflicts: [{ kind: 'views', name: 'orphan:endpoint_1a2b', kept: 'account' }] }))
+            .to.equal('Synced 2 changes you made while signed out. One had also changed in your account: the newer version is kept.');
     });
 
     it('changed in both places: the newer one wins, the other is kept as a copy with this device\'s secrets', async () => {
@@ -150,8 +165,8 @@ describe('Account copy: signed out is offline (#427)', () => {
         });
         expect(result.conflicts).to.deep.equal([{ kind: 'environments', name: 'Production', kept: 'account', copyName: 'Production (copy)' }]);
         expect(copied).to.deep.equal(['environments env-prod → env-copy']);
-        expect(offlineChangesMessage(result)).to.equal('Sent 1 change you made while signed out to your DBMN account. ' +
-            'The environment "Production" was changed in both places: your account\'s, the newer one, is kept, and the other is saved as "Production (copy)".');
+        expect(offlineChangesMessage(result)).to.equal('Synced 1 change you made while signed out. ' +
+            'One had also changed in your account: the newer version is kept. The other is saved with "(copy)" after its name.');
 
         const back = await pc.signedIn(remote);
         const byId = Object.fromEntries(environmentsOf(back).map(e => [e.id, e]));
