@@ -30,6 +30,9 @@
     <script src="{{VALUE_FORMATTER_URI}}"></script>
     <script src="{{CELL_DETAIL_URI}}"></script>
     <script src="{{VIRTUAL_WINDOW_URI}}"></script>
+    <script src="{{COLUMN_DRAG_URI}}"></script>
+    <script src="{{COLUMN_HEAD_URI}}"></script>
+    <script src="{{DBMN_CONTEXT_MENU_URI}}"></script>
     <script src="{{INPUT_ROW_STATUS_URI}}"></script>
     <!-- GitHub Issue #166: Monaco Editor for RAW tab JSON display -->
     <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs/loader.js"></script>
@@ -309,6 +312,11 @@
                         <label for="view-editor-name">Name</label>
                         <input type="text" id="view-editor-name" placeholder="e.g. PO Lines" />
                     </div>
+                    <!-- A View that Reporting reads (a saved query or compare): what stays, said up front -->
+                    <p id="view-editor-lock" class="view-editor-lock hidden" role="note">
+                        <span class="inline-icon view-editor-lock-icon" data-icon="database"></span>
+                        <span id="view-editor-lock-text"></span>
+                    </p>
                     <div class="column-modal-body view-editor-panels">
                         <div class="column-panel column-panel-available">
                             <!-- Single-row pinned header: title + search. Wraps to two rows only when the panel is too narrow. -->

@@ -26,6 +26,12 @@
     const SVG_NS = 'http://www.w3.org/2000/svg';
     const ICONS = {
         check: ['M20 6 9 17l-5-5'],
+        // Between two steps (Lucide's arrow-big-left, arrow-big-right, octagon-x, minus): the shape says
+        // whether the way is open, so it does not rest on colour
+        left: ['M18 15h-6v4l-7-7 7-7v4h6v6z'],
+        right: ['M6 9h6V5l7 7-7 7v-4H6V9z'],
+        stop: ['M2.586 16.726A2 2 0 0 1 2 15.312V8.688a2 2 0 0 1 .586-1.414l4.688-4.688A2 2 0 0 1 8.688 2h6.624a2 2 0 0 1 1.414.586l4.688 4.688A2 2 0 0 1 22 8.688v6.624a2 2 0 0 1-.586 1.414l-4.688 4.688A2 2 0 0 1 15.312 22H8.688a2 2 0 0 1-1.414-.586z', 'm15 9-6 6', 'm9 9 6 6'],
+        none: ['M5 12h14'],
         link: ['M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7', 'M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7']
     };
     const CLICKABLE = ['done', 'needs', 'available'];
@@ -37,7 +43,8 @@
         svg.setAttribute('viewBox', '0 0 24 24');
         svg.setAttribute('fill', 'none');
         svg.setAttribute('stroke', 'currentColor');
-        svg.setAttribute('stroke-width', name === 'check' ? '3' : '2.5');
+        // (the icons between steps are drawn larger: their line is as thick as a circle's, 2px)
+        svg.setAttribute('stroke-width', name === 'check' ? '3' : name === 'link' ? '2.5' : '1.6');
         svg.setAttribute('stroke-linecap', 'round');
         svg.setAttribute('stroke-linejoin', 'round');
         svg.setAttribute('aria-hidden', 'true');
@@ -90,13 +97,45 @@
             row.appendChild(btn);
             buttons.push(btn);
             if (n < steps.length) {
-                const line = span('batch-step-line');
+                // Between two steps: an arrow back to the step before, an arrow on to the step after,
+                // or a sign that the way on is shut. Where it leads is set at each render (data-to)
+                const line = document.createElement('button');
+                line.type = 'button';
+                line.className = 'batch-step-line';
+                line.disabled = true;
+                line.addEventListener('click', () => { if (!line.disabled && line.dataset.to) onStep(Number(line.dataset.to)); });
                 row.appendChild(line);
                 lines.push(line);
             }
         });
         nav.replaceChildren(info, row);
         return { nav, info, row, indicator, buttons, lines, placed: false };
+    }
+
+    /**
+     * Change the sign between two steps. Once the bar is on show the old one leaves as the new one
+     * arrives, the way the user just went: stepping on, the forward arrow carries on to the right
+     * and the back arrow comes in from the left; stepping back, the other way round. Any other
+     * change (the way on opening or shutting) fades.
+     */
+    function swapLineIcon(line, kind, animate) {
+        const was = line.dataset.kind;
+        line.dataset.kind = kind;
+        const next = icon(kind);
+        if (!animate || !was) { line.replaceChildren(next); return; }
+        const move = kind === 'left' ? 'on' : was === 'left' ? 'back' : 'fade';
+        // (a change that lands mid-move: only the newest sign leaves)
+        Array.from(line.children).slice(0, -1).forEach(el => el.remove());
+        const old = line.lastElementChild;
+        if (old) {
+            old.setAttribute('class', `batch-step-icon is-leaving is-${move}`);
+            const gone = () => old.remove();
+            old.addEventListener('animationend', gone);
+            setTimeout(gone, 400);
+        }
+        next.classList.add('is-entering', `is-${move}`);
+        next.addEventListener('animationend', () => next.classList.remove('is-entering', `is-${move}`));
+        line.appendChild(next);
     }
 
     /** Move the highlight under the current step: instantly the first time, sliding after that. */
@@ -170,6 +209,26 @@
                     const done = ['done', 'skipped', 'current', 'locked'].includes(st.status) && !st.issue
                         && ['done', 'skipped', 'current'].includes(next.status);
                     bar.lines[i].classList.toggle('is-done', done);
+                    // Left of the current step: back to the step before. Right of it: on to the step
+                    // after when that is open; shut (octagon) where the way stops; a dash beyond that
+                    const line = bar.lines[i];
+                    const nextOpen = CLICKABLE.includes(next.status);
+                    const kind = n < current ? (clickable ? 'left' : 'none')
+                        : nextOpen ? 'right'
+                        : (n === current || clickable) ? 'stop' : 'none';
+                    if (line.dataset.kind !== kind) {
+                        swapLineIcon(line, kind, bar.row.classList.contains('is-ready'));
+                    }
+                    const to = kind === 'left' ? n : kind === 'right' ? n + 1 : 0;
+                    line.dataset.to = to ? String(to) : '';
+                    line.disabled = !to;
+                    line.classList.toggle('is-open', !!to);
+                    // (the one straight before the current step: what a Back button was)
+                    line.classList.toggle('is-back', kind === 'left' && n === current - 1);
+                    const says = kind === 'left' ? `Back to ${step.label}` : kind === 'right' ? `Go to ${steps[i + 1].label}`
+                        : kind === 'stop' ? (next.waitsFor ? `${steps[i + 1].label} waits for ${next.waitsFor}` : `${steps[i + 1].label} is not open yet`) : '';
+                    line.title = says;
+                    if (to) { line.setAttribute('aria-label', says); line.removeAttribute('aria-hidden'); } else line.setAttribute('aria-hidden', 'true');
                 }
             });
             lastStatus = states.map(st => st.status);

@@ -18,6 +18,7 @@
  * Kept in the same small state store as the Console's Views (the account's catalogue store
  * while signed in, else the app's own). It stores no rows: those stay in History.
  */
+import { freeReportName, REPORT_NAME_MAX } from './report-name';
 import type { CompareJoin } from './compare-engine';
 import type { RunHeaderValue } from './compare-runs';
 import type { IKeyValueStore } from '../../platform/interfaces/key-value-store.interface';
@@ -54,12 +55,16 @@ export interface CompareSetup {
     hiddenColumns?: string[];
     /** The compared columns in the order Results show them (dragged by their headings). */
     columnOrder?: string[];
+    /** A column's width on Results set by the user, in px, by its heading (`column|` or `column|place`). */
+    columnWidths?: Record<string, number>;
     /** How Results are sorted (a heading clicked); absent: the compare's own order. */
     sort?: { column: string; place?: number; dir: 'asc' | 'desc' };
 }
 
 export interface SavedCompare {
     id: string;
+    /** What the user calls it: no other report's name (report-name.ts). Given when it first opens, from its endpoint. */
+    name?: string;
     /** The Baseline first, then the results measured against it. */
     sources: CompareSource[];
     /** Set once the compare has run. */
@@ -164,7 +169,7 @@ export async function createDraft(state: CompareState, baseline: CompareSource):
 export async function duplicateCompare(state: CompareState, id: string): Promise<SavedCompare | undefined> {
     const from = getCompare(state, id);
     if (!from) return undefined;
-    const copy: SavedCompare = { id: newId(), sources: from.sources.map(s => ({ ...s })), ...(from.setup ? { setup: { ...from.setup } } : {}), createdAt: new Date().toISOString() };
+    const copy: SavedCompare = { id: newId(), ...(from.name ? { name: freeReportName(state, `${from.name.slice(0, REPORT_NAME_MAX - 5)} copy`) } : {}), sources: from.sources.map(s => ({ ...s })), ...(from.setup ? { setup: { ...from.setup } } : {}), createdAt: new Date().toISOString() };
     await saveCompare(state, copy);
     return copy;
 }

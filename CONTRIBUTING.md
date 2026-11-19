@@ -27,6 +27,9 @@ so we can talk it through, then send a pull request:
 
 - Small and single-purpose. Say what changed and why; link the issue.
 - Tests with the change: a core test for logic, a UI test for a page.
+- Building or changing a screen: use the design system's components (the **Design system**
+  button in a development build's Hub header shows them all). A screen never draws its own
+  version of a piece that exists; a missing piece is added there first.
 - Keep the core portable: nothing under `src/services`, `src/screens` or `src/data-loading`
   imports VS Code; `npm run lint:core` enforces it.
 - Every source file carries the SPDX header; `npm run spdx:check` enforces it.

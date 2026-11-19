@@ -24,6 +24,8 @@ import { AccountWebviewManager } from '../account/account-manager';
 import { EndpointWebviewManager } from '../endpoint/endpoint-manager';
 import { EnvironmentWebviewManager } from '../environment/environment-manager';
 import { CompareWebview, compareStateStore } from '../compare/compare-webview';
+import { DesignSystemWebview } from '../design-system/design-system-webview';
+import { createVsCodeQueryFiles } from '../../platform/vscode/vscode-execution-storage';
 import { RunBatchWebview } from '../run-batch/run-batch-webview';
 import { ConsoleWebviewManager } from '../console/console-webview-manager';
 import { ConsoleController } from '../../screens/console/console.controller';
@@ -370,7 +372,8 @@ export class HubWebviewManager extends WebviewBase {
                 state: () => {
                     const container = this.dobermannInstance?.serviceContainer;
                     return container ? compareStateStore(container, this.context) : this.context.globalState;
-                }
+                },
+                queryFiles: createVsCodeQueryFiles()
             },
             confirmDestructive,
             toast: {
@@ -525,6 +528,12 @@ export class HubWebviewManager extends WebviewBase {
                 const config = { context: 'compare' as const, compareId, endpointName, start, onCompared: () => { void this.controller?.broadcastState(); } };
                 const manager = new CompareWebview(this.context, container, config);
                 const { html } = await manager.createWebviewEmbedded(config as unknown as WebviewConfig, bridge);
+                return embed(manager, bridge, html);
+            },
+            design: async channel => {
+                const bridge = bridgeFor(channel);
+                const manager = new DesignSystemWebview(this.context);
+                const { html } = await manager.createWebviewEmbedded({ context: 'general' }, bridge);
                 return embed(manager, bridge, html);
             },
             console: async ({ executionId, isBatch }, channel) => {

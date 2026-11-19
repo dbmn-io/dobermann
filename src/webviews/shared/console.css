@@ -556,6 +556,24 @@
     user-select: none;
 }
 
+/* The Console's own table: the heading's controls are every table's (column-head.css). The
+   name drags, the icon sorts, x removes, the right edge resizes: the heading itself is not a button */
+#data-table > thead .sortable-header {
+    cursor: default;
+}
+
+#data-table > thead .column-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#data-table > thead .header-actions {
+    padding-right: 6px;
+}
+
 .sortable-header:hover {
     background: var(--vscode-list-hoverBackground);
 }
@@ -2376,6 +2394,101 @@ body {
 
 .view-editor-delete {
     color: var(--vscode-errorForeground);
+}
+
+/* A View Reporting reads: what stays, said above the panels */
+.view-editor-lock {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+    padding: 8px 12px;
+    border: 1px solid var(--vscode-editorWarning-foreground);
+    border-radius: 4px;
+    background: color-mix(in srgb, var(--vscode-editorWarning-foreground) 12%, transparent);
+    font-size: 12px;
+}
+
+.view-editor-lock.hidden {
+    display: none;
+}
+
+.view-editor-lock-icon {
+    flex-shrink: 0;
+    color: var(--vscode-editorWarning-foreground);
+}
+
+.view-editor-lock-icon svg {
+    width: 16px;
+    height: 16px;
+}
+
+.view-editor-name-row input:read-only {
+    opacity: 0.7;
+    cursor: not-allowed;
+}
+
+.view-editor-modal button:disabled,
+.view-editor-modal select:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.view-editor-modal .column-list input:disabled {
+    cursor: not-allowed;
+}
+
+/* A column's name with its sample value beside it */
+.view-editor-pick {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+
+.view-editor-sample {
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 22em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+}
+
+.view-editor-remove,
+.view-editor-kept {
+    margin-left: auto;
+    flex-shrink: 0;
+}
+
+.view-editor-kept {
+    display: inline-flex;
+    padding: 0 6px;
+    color: var(--vscode-descriptionForeground);
+}
+
+.view-editor-empty-note {
+    display: flex;
+    gap: 8px;
+    padding: 8px 10px;
+    font-size: 12px;
+    color: var(--vscode-descriptionForeground);
+}
+
+.view-editor-empty-toggle {
+    padding: 0;
+    border: 0;
+    background: none;
+    font: inherit;
+    color: var(--vscode-textLink-foreground);
+    cursor: pointer;
+}
+
+.view-editor-empty-toggle:hover {
+    text-decoration: underline;
 }
 
 /* Narrow viewports: the base rule stacks the panels vertically, but the

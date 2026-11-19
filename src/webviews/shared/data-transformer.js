@@ -748,6 +748,8 @@
         if (window.DTAutoAdvance) window.DTAutoAdvance.onStep(stepNumber);
         // GitHub Issue #247: a chained Run Batch hides Step 1
         if (window.ChainPreload) window.ChainPreload.onStep(stepNumber);
+        // The batch's name is in the footer on every step: until the user names it, it follows the source
+        if (window.DTBatchConfig && window.DTBatchConfig.refreshBatchName) window.DTBatchConfig.refreshBatchName();
         if (window.BatchStepper) window.BatchStepper.refresh();
     }
 
@@ -5718,6 +5720,8 @@ ${formattedJson}`;
             csv('explainRequests')();
         },
         'csv:updateBatchName': () => csv('updateBatchName')(),
+        // Left empty: the default name comes back
+        'csv:refreshBatchName': () => { if (window.DTBatchConfig) window.DTBatchConfig.refreshBatchName(); },
         'csv:onProcessingModeChange': () => csv('onProcessingModeChange')(),
         'csv:goToPreviousStep': () => csv('goToPreviousStep')(),
         'csv:enterDataMode': () => csv('enterDataMode')(),

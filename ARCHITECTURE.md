@@ -17,6 +17,13 @@ Three hosts, one core.
 - **Screens** (`src/screens`) are controllers: they take a message from a page, call the core
   and post state back. Pages (`src/webviews`) are plain HTML and JavaScript with no business
   logic.
+- **The design system** is what pages are built from: shared components (custom elements named
+  `dbmn-…`, in `src/webviews/shared`), shared styles, one icon list and the theme's colours. It
+  documents itself: a development build has a **Design system** button in the Hub's header
+  that opens a page showing every piece live, with the principles and the markup to use it
+  (`src/screens/design-system`, `src/webviews/design-system`). Components draw and report
+  clicks; they hold no business logic and no colours of their own. A new screen is built from
+  them, and a new shared piece is added to that page in the same change.
 - **Standard Systems** are configuration rows (`global_systems`) the app applies: sign-in URL
   templates, token request headers, token claims, organisation headers, default headers. The
   code knows how to apply a System's configuration, never what any System's configuration is.

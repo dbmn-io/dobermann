@@ -1,0 +1,40 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Copyright (C) 2026 Flexion Tech Pty Ltd */
+/*
+ * <dbmn-table> (dbmn-table.js): the search box over a table whose headings sort, move, resize
+ * and remove, and whose rows are drawn only where they are in view. The table, the search box,
+ * the heading's controls and the lifted column wear their own shared sheets (tables.css,
+ * console.css, column-head.css, column-drag.css); this is only what holds them together.
+ */
+dbmn-table {
+    --table-height: 320px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+}
+dbmn-table [hidden] { display: none !important; }
+
+.dbmn-table-tools {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+.dbmn-table-tools .search-container { flex: 1 1 auto; min-width: 0; }
+.dbmn-table-glass { display: inline-flex; }
+.dbmn-table-glass svg { width: 14px; height: 14px; }
+.dbmn-table-count { flex: 0 0 auto; white-space: nowrap; }
+
+/* The rows scroll inside the table's own height: set --table-height on the element */
+.dbmn-table-scroll {
+    max-height: var(--table-height);
+    overflow: auto;
+}
+.dbmn-table-grid.is-sized { table-layout: fixed; }
+.dbmn-table-grid th { text-align: left; cursor: default; overflow: hidden; white-space: nowrap; }
+.dbmn-table-grid th .column-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.dbmn-table-grid th .header-actions { padding-right: 6px; }
+.dbmn-table-grid td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dbmn-table-body tr { height: 22px; }
+.dbmn-table-spacer td { padding: 0; border: 0; }
+.dbmn-table-none { padding: 16px 12px; color: var(--vscode-descriptionForeground); }

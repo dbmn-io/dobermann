@@ -34,6 +34,9 @@ const SCRIPTS = {
     VALUE_FORMATTER_URI: 'shared/value-formatter.js',
     CELL_DETAIL_URI: 'shared/cell-detail.js',
     VIRTUAL_WINDOW_URI: 'shared/virtual-window.js',
+    COLUMN_DRAG_URI: 'shared/column-drag.js',
+    COLUMN_HEAD_URI: 'shared/column-head.js',
+    DBMN_CONTEXT_MENU_URI: 'shared/dbmn-context-menu.js',
     INPUT_ROW_STATUS_URI: 'shared/input-row-status.js',
     // #372: the page's own scripts, files rather than inline
     CONSOLE_BOOT_URI: 'console/console-boot.js',
@@ -45,7 +48,7 @@ const SCRIPTS = {
 
 /** The stylesheets console-webview-manager.ts links, for a scenario that needs real layout. */
 const STYLES = ['shared/atomic.css', 'shared/core.css', 'shared/modals.css', 'shared/tables.css', 'shared/tabs.css',
-    'shared/toast.css', 'shared/console.css', 'shared/transaction-card.css'];
+    'shared/toast.css', 'shared/console.css', 'shared/transaction-card.css', 'shared/column-drag.css', 'shared/column-head.css'];
 
 /**
  * @param {{ reportType: 'batch' | 'individual', batchId?: string, executionId?: string, statusDisplay?: string, styles?: boolean }} opts

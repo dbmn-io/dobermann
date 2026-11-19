@@ -1,0 +1,233 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Copyright (C) 2026 Flexion Tech Pty Ltd */
+/* The design system page's own layout (design-system-page.ts). The components it shows wear
+   their own shared sheets: nothing here styles a component. */
+
+.ds-page {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 24px 24px 64px;
+    line-height: 1.5;
+}
+/* (a piece with a display of its own still goes when hidden) */
+.ds-page [hidden] { display: none !important; }
+.ds-page h1 { margin: 0 0 6px; font-size: 24px; font-weight: 600; }
+.ds-page h2 {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0 0 8px;
+    font-size: 18px;
+    font-weight: 600;
+}
+.ds-page h3 { margin: 22px 0 4px; font-size: 14px; font-weight: 600; text-transform: none; }
+.ds-page p { margin: 0 0 10px; max-width: 76ch; }
+.ds-lead { color: var(--vscode-descriptionForeground); }
+.ds-page code { font-family: var(--vscode-editor-font-family, monospace); font-size: 12px; }
+
+/* Links in the page's text: the theme's link colour, underlined only under the pointer */
+.ds-page a {
+    color: var(--vscode-textLink-foreground);
+    text-decoration: none;
+    border-radius: 3px;
+}
+.ds-page a:hover { color: var(--vscode-textLink-activeForeground, var(--vscode-textLink-foreground)); text-decoration: underline; }
+.ds-page a:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
+
+/* The sections, as quiet chips: the text's own colour, a tint under the pointer */
+.ds-nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 12px 0 0;
+    font-size: 12px;
+}
+.ds-page .ds-nav a {
+    padding: 3px 10px;
+    border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+    border-radius: 12px;
+    color: var(--vscode-foreground);
+}
+.ds-page .ds-nav a:hover {
+    text-decoration: none;
+    color: var(--vscode-foreground);
+    border-color: var(--vscode-textLink-foreground);
+    background: color-mix(in srgb, var(--vscode-textLink-foreground) 14%, transparent);
+}
+.ds-section {
+    margin-top: 28px;
+    padding-top: 24px;
+    border-top: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+    scroll-margin-top: 12px;
+}
+
+.ds-rules { margin: 0 0 10px; padding-left: 22px; max-width: 80ch; }
+.ds-rules li { margin-bottom: 6px; }
+
+.ds-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 1px 8px;
+    border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: var(--vscode-descriptionForeground);
+    white-space: nowrap;
+}
+.ds-chip.is-component {
+    color: var(--vscode-testing-iconPassed, #73c991);
+    border-color: currentColor;
+}
+.ds-chip.is-leaving { color: var(--vscode-editorWarning-foreground, #cca700); border-color: currentColor; }
+.ds-chip.is-planned { border-style: dashed; }
+.ds-legend { color: var(--vscode-descriptionForeground); max-width: none; }
+
+/* A live piece, on the page's own ground */
+.ds-demo {
+    margin: 8px 0 10px;
+    padding: 16px;
+    border: 1px dashed var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+    border-radius: 6px;
+}
+.ds-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+}
+.ds-code {
+    margin: 0 0 10px;
+    padding: 10px 12px;
+    overflow-x: auto;
+    border-radius: 6px;
+    background: var(--vscode-textCodeBlock-background, rgba(128, 128, 128, 0.12));
+    font-size: 12px;
+    line-height: 1.55;
+}
+
+/* Where things live: four layers, top to bottom */
+.ds-layers {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    max-width: 720px;
+    margin: 10px 0;
+}
+.ds-layer {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 10px 14px;
+    border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+    border-radius: 6px;
+    background: var(--vscode-input-background);
+}
+.ds-layer.is-here { border-color: var(--vscode-textLink-foreground); }
+.ds-layer-name { font-weight: 600; }
+.ds-layer-where { font-family: var(--vscode-editor-font-family, monospace); font-size: 12px; color: var(--vscode-descriptionForeground); }
+.ds-layer-link {
+    align-self: center;
+    padding: 4px 12px;
+    font-size: 12px;
+    color: var(--vscode-descriptionForeground);
+    border-left: 2px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+    margin: 2px 0;
+}
+
+/* A screen, top to bottom */
+.ds-anatomy {
+    display: flex;
+    flex-direction: column;
+    max-width: 720px;
+    border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+    border-radius: 6px;
+    overflow: hidden;
+}
+.ds-anatomy-row {
+    padding: 6px 12px;
+    font-weight: 600;
+    border-bottom: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+}
+.ds-anatomy-row span span,
+.ds-anatomy-row > span:not(.ds-anatomy-cell) { font-weight: 400; color: var(--vscode-descriptionForeground); margin-left: 8px; }
+.ds-anatomy-row.is-hub { color: var(--vscode-descriptionForeground); }
+.ds-anatomy-row.is-work { padding: 44px 12px; text-align: center; background: var(--vscode-input-background); }
+.ds-anatomy-row.is-foot {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    border-bottom: none;
+    border-top: 1px solid var(--vscode-textLink-foreground);
+}
+
+/* Colours: the theme's, by name */
+.ds-swatches {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 8px 16px;
+}
+.ds-swatch { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.ds-swatch-colour {
+    flex: 0 0 36px;
+    height: 28px;
+    border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+    border-radius: 4px;
+    background: var(--swatch);
+}
+.ds-swatch-text { display: flex; flex-direction: column; min-width: 0; font-size: 12px; }
+.ds-swatch-name { font-family: var(--vscode-editor-font-family, monospace); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ds-swatch-use { color: var(--vscode-descriptionForeground); }
+
+/* Icons: the whole list */
+.ds-find { max-width: 260px; }
+.ds-icons {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 4px 12px;
+}
+.ds-icons.is-roles { grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
+.ds-icon {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    padding: 4px 6px;
+    border: none;
+    border-radius: 4px;
+    background: none;
+    color: inherit;
+    font: inherit;
+    font-size: 12px;
+    text-align: left;
+    cursor: pointer;
+}
+.ds-icon:hover { background: var(--vscode-list-hoverBackground, rgba(128, 128, 128, 0.14)); }
+.ds-icon:focus-visible { outline: 1px solid var(--vscode-focusBorder); }
+.ds-icon-glyph { flex: 0 0 18px; display: inline-flex; }
+.ds-icon-glyph svg { width: 18px; height: 18px; }
+.ds-icon-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ds-icon-name small { color: var(--vscode-descriptionForeground); }
+
+
+/* The list of pieces */
+/* (all of it on show: the list is short) */
+.ds-inventory { --table-height: 720px; }
+
+/* The Hub, as a frame: banner over menu, list and tabs */
+.ds-hub-body { display: flex; min-height: 150px; }
+.ds-hub-rail,
+.ds-hub-list { padding: 8px 12px; font-weight: 600; border-right: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35)); }
+.ds-hub-rail { flex: 0 0 84px; }
+.ds-hub-list { flex: 0 1 220px; }
+.ds-hub-main { flex: 1 1 260px; min-width: 0; display: flex; flex-direction: column; }
+.ds-hub-screen { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; font-weight: 600; background: var(--vscode-input-background); }
+.ds-hub span { display: block; margin-left: 0; font-weight: 400; color: var(--vscode-descriptionForeground); }
+.ds-hub .ds-anatomy-row > span { display: inline; margin-left: 8px; }
+.ds-todo { color: var(--vscode-descriptionForeground); }
+
+/* Nested rows: a sketch */
+.ds-nested { max-height: none; }
+.ds-nested .ds-nested-child > td { padding: 6px 6px 10px 28px; }
+.ds-nested .icon svg { width: 14px; height: 14px; }

@@ -48,6 +48,11 @@ function tableBuilder(): TableBuilder {
     return shared;
 }
 
+/** The paths of the columns a View shows. */
+export function viewColumnIds(view: CompareView): string[] {
+    return tableBuilder().viewToLegacyColumnShape(view).map(c => c.id);
+}
+
 /** The View's rows and columns for one saved result's responses. */
 export function buildCompareSide(responses: unknown[], view: CompareView): CompareSide {
     const builder = tableBuilder();

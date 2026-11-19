@@ -23,13 +23,23 @@ import { takeFile } from './node/fs';
 import { RunBatchController } from '../../../src/screens/run-batch/run-batch.controller';
 import { CompareController } from '../../../src/screens/compare/compare.controller';
 import { buildComparePage } from '../../../src/screens/compare/compare-page';
+import type { ComparePorts } from '../../../src/screens/compare/compare.ports';
+import { QueryController } from '../../../src/screens/query/query.controller';
+import { buildQueryPage } from '../../../src/screens/query/query-page';
+import { buildDesignSystemPage } from '../../../src/screens/design-system/design-system-page';
+import { isQueryId } from '../../../src/services/query/query-store';
+import initSqlJs from 'sql.js';
+import sqlWasmUrl from 'sql.js/dist/sql-wasm.wasm?url';
+
+/** SQLite for queries, started once and shared by every Query tab. */
+let sqlEngine: ReturnType<typeof initSqlJs> | undefined;
 import { buildRunBatchPage } from '../../../src/screens/run-batch/run-batch-page';
 import { FormatConverterService } from '../../../src/services/format-converter/format-converter.service';
 import { DataTypeDetectionService } from '../../../src/services/data-type-detection/data-type-detection.service';
 import { DataTransformationService } from '../../../src/services/data-transformation/data-transformation.service';
 import type { BulkLoadRequest } from '../../../src/services/execution/run-orchestrator';
 import type { BulkLoadResult } from '../../../src/webviews/run-batch/bulk-load-result';
-import { consoleLogger, WebExecution, WORKSPACE_ROOT } from './execution';
+import { consoleLogger, queryFiles, WebExecution, WORKSPACE_ROOT } from './execution';
 import { buildEndpointPage, buildEnvironmentPage } from '../../../src/screens/pages';
 import { desktopBridge } from './desktop';
 import { ScreenSession } from '../../../src/screens/screen-session';
@@ -134,7 +144,7 @@ export function webTabs(deps: WebTabDeps): HubTabFactory {
         compare: async ({ compareId, endpointName, start }, channel) => {
             const session = sessionFor(channel);
             const { execution } = deps;
-            const controller = new CompareController(session, {
+            const ports: ComparePorts = {
                 metadata: execution.metadata,
                 endpoints: deps.endpoints,
                 environments: deps.environments,
@@ -156,10 +166,19 @@ export function webTabs(deps: WebTabDeps): HubTabFactory {
                     openConsole: (id, batch) => deps.openConsole(id, batch),
                     compared: () => deps.refreshHub?.()
                 }
-            }, { compareId, start });
+            };
+            if (isQueryId(compareId)) {
+                // A query: Compare's ports and SQLite, started from the app's own wasm file
+                const query = new QueryController(session, { ...ports, sql: () => (sqlEngine ??= initSqlJs({ locateFile: () => sqlWasmUrl })), systemName: async id => (await deps.systems.getSystem(id))?.name, openRunBatch: (endpoint, chain) => deps.openBatch(endpoint.id, chain), queryFiles }, { queryId: compareId, start });
+                const queryScreen = { handle: (m: Record<string, unknown>) => query.handleMessage(m as never), dispose: () => query.dispose() };
+                return { ...tab(buildQueryPage(asset, { queryId: compareId, name: endpointName }), session, queryScreen), name: `Query: ${endpointName}` };
+            }
+            const controller = new CompareController(session, ports, { compareId, start });
             const screen = { handle: (m: Record<string, unknown>) => controller.handleMessage(m as never), dispose: () => controller.dispose() };
             return { ...tab(buildComparePage(asset, { compareId, endpointName }), session, screen), name: `Compare: ${endpointName}` };
         },
+        // The design system's page: components on show, nothing to run
+        design: async channel => tab(buildDesignSystemPage(asset), sessionFor(channel), { handle: async () => undefined, dispose: () => undefined }),
         console: async ({ executionId, isBatch }, channel) => {
             const session = sessionFor(channel);
             const { execution } = deps;

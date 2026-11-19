@@ -6,7 +6,9 @@
  * HubTabFactory, and their messages travel in the `__embeddedFromTab__` / `__embeddedToTab__`
  * envelopes hub-tabs.js speaks.
  */
-import { duplicateCompare, getCompare, removeCompare, savedCompares } from '../../services/compare/compare-store';
+import { freeReportName, REPORT_NAME_MAX } from '../../services/compare/report-name';
+import { duplicateCompare, getCompare, removeCompare, saveCompare, savedCompares } from '../../services/compare/compare-store';
+import { createQuery, duplicateQuery, getQuery, isQueryId, listQueries, removeQuery } from '../../services/query/query-store';
 import { validateShortIdentifier } from '../../data-loading/system-schema';
 import type { Disposable } from '../../platform/events';
 import type { ChainHandoff } from '../../services/chain/chain-types';
@@ -184,14 +186,40 @@ export class HubController {
             case 'openBatchAsTab':
                 if (str('endpointId')) await this.openBatchTab(str('endpointId')!);
                 break;
+            case 'renameReport': {
+                // A report's name is its tab's: its own screen checks the name (unique, not too long) and keeps it
+                const compareId = str('compareId');
+                const open = compareId ? this.tabs.get(`compare:${compareId}`) : undefined;
+                if (compareId && open) {
+                    await open.tab.handle({ type: isQueryId(compareId) ? 'query.rename' : 'compare.rename', name: (str('name') ?? '').slice(0, REPORT_NAME_MAX) });
+                    await this.broadcastState();
+                }
+                break;
+            }
+            case 'openDesignSystem':
+                await this.openDesignTab();
+                break;
             case 'openCompare': {
                 // #298: the Compare list's Open (Results) and Edit (its results dialog)
                 const start = str('start');
                 if (str('compareId')) await this.openCompareTab(str('compareId')!, start === 'edit' || start === 'match' ? start : 'results');
                 break;
             }
+            case 'newQuery': {
+                // Reporting's New query: an empty query, opened on Views
+                const state = this.ports.compares?.state();
+                if (!state) break;
+                const query = await createQuery(state);
+                await this.broadcastState();
+                await this.openCompareTab(query.id);
+                break;
+            }
             case 'duplicateCompare':
                 if (str('compareId')) await this.duplicateCompare(str('compareId')!);
+                break;
+            case 'deleteCompares':
+                // Select, then Delete: one after another, so each save sees the last
+                if (Array.isArray(msg.compareIds)) for (const id of msg.compareIds) await this.deleteCompare(String(id));
                 break;
             case 'deleteCompare':
                 if (str('compareId')) await this.deleteCompare(str('compareId')!);
@@ -352,6 +380,7 @@ export class HubController {
             activeSystemId: active?.systemId,
             transactions: transactions.slice(0, TRANSACTION_LIMIT),
             compares: this.ports.compares ? savedCompares(this.ports.compares.state()) : [],
+            queries: this.ports.compares ? listQueries(this.ports.compares.state()) : [],
             dbmnSettings: {
                 autoOpenConsoleOnCompletion: settings.get('dbmn', 'execution.autoOpenConsoleOnCompletion', true),
                 treatNetworkErrorsAsCritical: settings.get('dbmn', 'execution.treatNetworkErrorsAsCritical', true),
@@ -386,6 +415,7 @@ export class HubController {
      */
     async broadcastState(): Promise<void> {
         const broadcast = ++this.broadcasts;
+        this.refreshQueryTabNames();
         const state = await this.initialState();
         if (broadcast === this.broadcasts) this.session.post({ type: 'hubState', ...state });
     }
@@ -1080,8 +1110,42 @@ export class HubController {
      * #298: a saved compare, one tab each. It opens on Select (Compare reads nothing until a
      * later step is asked for); an open tab is brought forward.
      */
+    /** The design system's page, where the host offers it (a development build's header button). */
+    async openDesignTab(): Promise<void> {
+        const id = 'design:system';
+        if (this.tabs.has(id)) {
+            this.focus(id, 'system', 'Design system');
+            return;
+        }
+        const factory = this.ports.tabs.design;
+        if (!factory) return;
+        await this.mount(id, channel => factory(channel), { type: 'mountEmbeddedTab', tabType: 'design', refId: 'system', name: 'Design system' });
+    }
+
     async openCompareTab(compareId: string, start: 'results' | 'match' | 'edit' = 'results'): Promise<void> {
         const state = this.ports.compares?.state();
+        // A query is a report too: it opens in the same kind of tab, on its own screen
+        if (isQueryId(compareId)) {
+            const query = state ? getQuery(state, compareId) : undefined;
+            if (!query) {
+                this.ports.toast.warn('This query is no longer saved.');
+                return;
+            }
+            const id = `compare:${compareId}`;
+            // Its tab is its icon and its name: the icon says it is a query
+            const title = query.name;
+            if (this.tabs.has(id)) {
+                this.focus(id, compareId, title);
+                await this.tabs.get(id)!.tab.handle({ type: 'query.start', start });
+                return;
+            }
+            const queryFactory = this.ports.tabs.compare;
+            if (!queryFactory) return;
+            await this.mount(id, channel => queryFactory({ compareId, endpointName: query.name, start }, channel),
+                { type: 'mountEmbeddedTab', tabType: 'compare', refId: compareId, name: title });
+            await this.broadcastState();
+            return;
+        }
         const compare = state ? getCompare(state, compareId) : undefined;
         if (!compare) {
             this.ports.toast.warn('This compare is no longer saved.');
@@ -1089,7 +1153,13 @@ export class HubController {
         }
         const tabId = `compare:${compareId}`;
         const endpoint = await this.ports.endpoints.getEndpoint(compare.sources[0].endpointId);
-        const name = `Compare: ${endpoint?.name || 'endpoint'}`;
+        // Named when it first opens, after its endpoint: a smart default the user can change
+        if (state && !compare.name) {
+            compare.name = freeReportName(state, endpoint?.name || 'Compare', compare.id);
+            await saveCompare(state, compare);
+        }
+        // Its tab is its icon and its name
+        const name = compare.name || endpoint?.name || 'Compare';
         if (this.tabs.has(tabId)) {
             this.focus(tabId, compareId, name);
             if (start === 'edit') await this.tabs.get(tabId)!.tab.handle({ type: 'compare.startEdit' });
@@ -1097,7 +1167,7 @@ export class HubController {
         }
         const factory = this.ports.tabs.compare;
         if (!factory) return;
-        await this.mount(tabId, channel => factory({ compareId, endpointName: endpoint?.name || 'Endpoint', start }, channel),
+        await this.mount(tabId, channel => factory({ compareId, endpointName: name, start }, channel),
             { type: 'mountEmbeddedTab', tabType: 'compare', refId: compareId, name });
         await this.broadcastState();
     }
@@ -1105,6 +1175,14 @@ export class HubController {
     /** A copy of a saved compare, opened on its results dialog to change it. */
     private async duplicateCompare(compareId: string): Promise<void> {
         const state = this.ports.compares?.state();
+        if (state && isQueryId(compareId)) {
+            const query = await duplicateQuery(state, compareId);
+            if (!query) return;
+            await this.ports.compares?.queryFiles?.copy(compareId, query.id);
+            await this.broadcastState();
+            await this.openCompareTab(query.id);
+            return;
+        }
         const copy = state ? await duplicateCompare(state, compareId) : undefined;
         if (!copy) return;
         await this.broadcastState();
@@ -1115,7 +1193,11 @@ export class HubController {
     private async deleteCompare(compareId: string): Promise<void> {
         const state = this.ports.compares?.state();
         if (!state) return;
-        await removeCompare(state, compareId);
+        if (isQueryId(compareId)) {
+            await removeQuery(state, compareId);
+            await this.ports.compares?.queryFiles?.remove(compareId);
+        }
+        else await removeCompare(state, compareId);
         if (this.tabs.has(`compare:${compareId}`)) this.closeTabFromHost(`compare:${compareId}`);
         await this.broadcastState();
     }
@@ -1177,6 +1259,18 @@ export class HubController {
 
     private closeAllTabs(): void {
         [...this.tabs.keys()].forEach(tabId => this.closeTab(tabId));
+    }
+
+    /** A query or compare renamed on its own screen: its tab says the new name. */
+    private refreshQueryTabNames(): void {
+        const state = this.ports.compares?.state();
+        if (!state) return;
+        for (const tabId of this.tabs.keys()) {
+            const [kind, refId] = splitTabId(tabId);
+            if (kind !== 'compare') continue;
+            const name = isQueryId(refId) ? getQuery(state, refId)?.name : getCompare(state, refId)?.name;
+            if (name) this.session.post({ type: 'embeddedTabName', tabId, name });
+        }
     }
 
     /** After a save or rename, the strip shows current names (positive only: never back to "New"). */
@@ -1249,6 +1343,7 @@ export class HubController {
                 else if (t.type === 'environment') await this.openEnvironmentTab(t.refId);
                 else if (t.type === 'batch') await this.openBatchTab(t.refId);
                 else if (t.type === 'compare') await this.openCompareTab(t.refId);
+                else if (t.type === 'design') await this.openDesignTab();
                 else if (t.type === 'console' || t.type === 'batchConsole') await this.openConsoleTab(t.refId, t.type === 'batchConsole');
                 else if (t.type === 'page') {
                     // Hub-native page tabs (Settings, Account, Import/Export, #292): the page re-hosts the section

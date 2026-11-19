@@ -46,7 +46,7 @@ import { browserDeviceStore } from './browser-stores';
 import { loadWhatsNew } from './whats-new';
 import { openBrowserVault } from './browser-vault';
 import { webTabs } from './tabs';
-import { startExecution, useWorkspaceRoot, WORKSPACE_ROOT } from './execution';
+import { queryFiles, startExecution, useWorkspaceRoot, WORKSPACE_ROOT } from './execution';
 import { mountBrowserFs, mountFolder } from './node/fs';
 import { BLOCKED_HELP, folderState, pickWorkspaceFolder, reconnectWorkspaceFolder, type FolderState } from './workspace-folder';
 import { desktopBridge } from './desktop';
@@ -294,7 +294,7 @@ async function start(): Promise<void> {
         environments,
         systems,
         recent: new RecentEndpointsService(state.globalState),
-        compares: { state: () => state.globalState },
+        compares: { state: () => state.globalState, queryFiles },
         preferences: new HubPreferencesService(state.globalState),
         settings,
         executions: {

@@ -231,10 +231,6 @@ export function buildRunBatchPage(asset: AssetUrl, batchConfig: { endpointId: st
                         </div>
                         <!-- #435: the run's own settings, here since Review is the last step (Execute is the footer's button) -->
                         <div class="stat-item is-stacked">
-                            <label class="stat-label" for="batchNameInput">Name</label>
-                            <input type="text" id="batchNameInput" placeholder="Batch name" maxlength="100" data-input="csv:updateBatchName">
-                        </div>
-                        <div class="stat-item is-stacked">
                             <label class="stat-label" for="batchErrorModeSelect">Error Handling</label>
                             <select id="batchErrorModeSelect">
                                 <option value="continue">Continue processing</option>
@@ -313,20 +309,27 @@ export function buildRunBatchPage(asset: AssetUrl, batchConfig: { endpointId: st
         </div>
 
         <!-- Sticky Footer with Action Buttons -->
-        <div class="webview-footer">
+        <div class="webview-footer named-footer">
             <div class="footer-content">
-                <div class="footer-button-container">
-                    <button id="csvBackBtn" data-click="csv:goToPreviousStep" class="btn btn-secondary hidden">Back</button>
-                    <button id="csvEnterDataBtn" data-click="csv:enterDataMode" class="btn btn-secondary" data-help="batch-preparation#enter-data">Enter Data</button>
-                    <button id="gridErrorFilterBtn" data-click="grid:toggleErrorFilter" class="btn btn-secondary hidden" disabled>Filter Errors</button>
-                    <button id="csvNextBtn" data-click="csv:goToNextStep" class="btn btn-primary" disabled>Import Data</button>
-                    <button id="csvExecuteBtn" data-click="csv:startDataLoading" class="btn btn-primary hidden">Execute</button>
-                </div>
                 <!-- Step bar (batch-stepper.js): Source, Map, Validate, Review. #435: in the footer
                      beside Back and Next, so the top of the screen is the step's own. Reading a file
                      and checking rows show their progress in the current step (no panel of its
                      own, which pushed the steps about as it came and went). -->
-                <nav id="batchStepper" class="batch-stepper" aria-label="Run Batch steps"></nav>
+                <!-- The batch's name beside its steps, as a query's is: typed on any step before Execute -->
+                <div class="report-foot">
+                    <label class="report-name">
+                        <span class="report-name-label">Batch name</span>
+                        <input type="text" id="batchNameInput" placeholder="Batch name" maxlength="30" data-input="csv:updateBatchName" data-change="csv:refreshBatchName">
+                    </label>
+                    <nav id="batchStepper" class="batch-stepper" aria-label="Run Batch steps"></nav>
+                </div>
+                <!-- After the steps. Next keeps its place: Filter Errors comes and goes at the end -->
+                <div class="footer-button-container">
+                    <button id="csvEnterDataBtn" data-click="csv:enterDataMode" class="btn btn-secondary" data-help="batch-preparation#enter-data">Enter Data</button>
+                    <button id="csvNextBtn" data-click="csv:goToNextStep" class="btn btn-primary" disabled>Import Data</button>
+                    <button id="csvExecuteBtn" data-click="csv:startDataLoading" class="btn btn-primary hidden">Execute</button>
+                    <button id="gridErrorFilterBtn" data-click="grid:toggleErrorFilter" class="btn btn-secondary hidden" disabled>Filter Errors</button>
+                </div>
                 <!-- #268: the notification banner that lived here is gone; these
                      notifications now render through the shared DbmnToast overlay -->
             </div>

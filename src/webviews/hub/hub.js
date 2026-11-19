@@ -1255,6 +1255,7 @@
             if (groupCtrl && state.catalogueGroupBy) groupCtrl.value = state.catalogueGroupBy;
             const recentCtrl = document.getElementById('catalogueShowRecent');
             if (recentCtrl && typeof state.catalogueShowRecent === 'boolean') recentCtrl.checked = state.catalogueShowRecent;
+            if (typeof state.showDesignSystem === 'boolean') showDesignSystem(state.showDesignSystem);
             const txShow = document.getElementById('transactionsShow');
             const txGroup = document.getElementById('transactionsGroupBy');
             if (txShow && state.transactionsShow) txShow.value = state.transactionsShow;
@@ -1539,6 +1540,8 @@
             transactions: message.transactions || [],
             // #298: the compares run, one per endpoint, for the Compare list
             compares: message.compares || [],
+            // The saved queries, on the same list
+            queries: message.queries || [],
             activeEnvironmentId: message.activeEnvironmentId,
             activeSystemId: message.activeSystemId,
             // Drives the catalogue's run-control visibility — execution requires
@@ -1729,11 +1732,35 @@
         }
     }
 
+    /**
+     * The design system's page, from a button in the header. Settings → UI → Design system turns
+     * the button on for anyone; a development build (the one with the DEV pill) has it on until
+     * the setting says otherwise.
+     */
+    function showDesignSystem(on) {
+        const button = document.getElementById('hubDesignBtn');
+        const toggle = document.getElementById('showDesignSystem');
+        if (button) button.hidden = !on;
+        if (toggle) toggle.checked = !!on;
+    }
+    function wireDesignSystem() {
+        const button = document.getElementById('hubDesignBtn');
+        const toggle = document.getElementById('showDesignSystem');
+        if (!button) return;
+        button.addEventListener('click', () => vscode.postMessage({ type: 'openDesignSystem' }));
+        showDesignSystem(!!document.querySelector('.hub-header .hub-dev-backend'));
+        toggle?.addEventListener('change', () => {
+            persistState({ showDesignSystem: toggle.checked });
+            showDesignSystem(toggle.checked);
+        });
+    }
+
     function init() {
         // Hydrate all [data-icon] placeholders before anything else paints.
         if (window.Icons) window.Icons.injectIcons();
 
         wireNav();
+        wireDesignSystem();
         wireRailMore();
         wireEnvSelector();
         wireSettings();

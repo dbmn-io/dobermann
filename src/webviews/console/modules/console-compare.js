@@ -15,7 +15,7 @@
 (function () {
     'use strict';
 
-    const state = { tab: null, status: '', views: {}, asked: false };
+    const state = { tab: null, status: '', views: {}, queries: {}, asked: false };
     // Statuses after which no more rows will arrive (as Chain): the result is final
     const ENDED = ['completed', 'stopped', 'error', 'cancelled', 'failed', 'completed_with_errors'];
     const TITLE = 'Compare this result with other results of this endpoint';
@@ -59,6 +59,7 @@
         const message = event.data || {};
         if (message.type === 'console.compareViews') {
             state.views = (message.payload && message.payload.views) || {};
+            state.queries = (message.payload && message.payload.queries) || {};
             refresh();
             if (typeof window.onCompareViewsChanged === 'function') window.onCompareViewsChanged();
         }
@@ -82,6 +83,8 @@
     window.ConsoleCompare = {
         refresh,
         /** How many saved compares read this View (0 when none). */
-        comparesUsing: name => state.views[name] || 0
+        comparesUsing: name => state.views[name] || 0,
+        /** How many saved queries read this View: such a View is locked (columns can only be added). */
+        queriesUsing: name => state.queries[name] || 0
     };
 })();

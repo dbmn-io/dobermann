@@ -2256,6 +2256,7 @@ mark.search-hit {
     cursor: pointer;
 }
 
+.hub-section[data-section="compare"].is-select-mode .tx-row-select,
 .hub-section[data-section="transactions"].is-select-mode .tx-row-select,
 .hub-section[data-section="transactions"].is-select-mode .tx-group-select {
     display: inline-block;
@@ -3832,6 +3833,10 @@ mark.search-hit {
 }
 .hub-help-toggle:hover {
     background: var(--vscode-toolbar-hoverBackground);
+}
+/* (a header button with a display of its own still goes when hidden: the design system's, until Settings turns it on) */
+.hub-help-toggle[hidden] {
+    display: none;
 }
 .hub-help-toggle[aria-pressed="true"] {
     border-color: var(--vscode-focusBorder);

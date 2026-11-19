@@ -52,6 +52,7 @@
         'openBatchAsTab',
         'openCompare',
         'duplicateCompare',
+        'newQuery',
         'runEndpoint',
         'addEndpoint',
         'addEnvironment'

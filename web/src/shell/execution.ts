@@ -8,6 +8,7 @@
  * DBMN for VS Code.
  */
 import { DATA_DIR, LEGACY_DATA_DIR } from '../../../src/services/workspace/workspace-layout';
+import { QueryFileStore } from '../../../src/services/query/query-file-store';
 import { listRunFiles, readRunFile, RUN_ARCHIVE_NAME, runFileExists, writeRunFile } from '../../../src/services/run-content/run-content-store';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import * as fs from 'fs';
@@ -61,6 +62,12 @@ export let WORKSPACE_ROOT = '/dbmn';
 const BROWSER_ROOT = '/dbmn';
 /** A stored path's folder: VS Code on Windows stores backslashes. */
 const parentOf = (p: string) => p.slice(0, Math.max(p.lastIndexOf('/'), p.lastIndexOf('\\')));
+
+/** A query's file views keep their rows beside the history database: in the browser, or the workspace folder. */
+export const queryFiles = new QueryFileStore({
+    dataDir: async () => `${WORKSPACE_ROOT}/${DATA_DIR}`,
+    preload: folder => loadFromFolder([], [folder])
+});
 
 export function useWorkspaceRoot(root: string): void {
     WORKSPACE_ROOT = root;

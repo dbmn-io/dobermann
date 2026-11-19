@@ -166,6 +166,17 @@
         }
     }
 
+    /**
+     * The footer's name box, on every step: until the user types a name it shows the default
+     * (the file's name once one is read, the endpoint's before), made again as the steps go.
+     */
+    function refreshBatchName() {
+        const input = document.getElementById('batchNameInput');
+        if (!input || !csvState) return;
+        if (!csvState.batchNameEdited) csvState.batchName = generateDefaultBatchName();
+        if (document.activeElement !== input) input.value = csvState.batchName || '';
+    }
+
     function startFormatConversion() {
         const progressDiv = document.getElementById('conversionProgress');
         const resultDiv = document.getElementById('conversionResult');
@@ -582,6 +593,7 @@
         generateDefaultBatchName: generateDefaultBatchName,
         sanitizeBatchName: sanitizeBatchName,
         updateBatchName: updateBatchName,
+        refreshBatchName: refreshBatchName,
 
         // Execution summary
         populateExecutionSummary: populateExecutionSummary,

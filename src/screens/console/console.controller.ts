@@ -107,6 +107,8 @@ import { ConsoleViewsStore } from '../../services/console/console-views-store';
 import { excelSheetExtractions, ExportRequestPayload } from '../../services/console/excel-export-sheets';
 import { endpointInputVariableNames } from '../../services/chain/endpoint-input-variables';
 import { ConsoleCompareHandler } from './console-compare-handler';
+import { keepLockedViews, viewsInQueries } from '../../services/query/query-view-lock';
+import { viewsInCompares } from '../../services/compare/compare-store';
 import { ConsoleChainHandler } from './console-chain-handler';
 import { isEmptyRequestBody } from '../../services/console/request-body';
 import { isPaginatedBatch, PaginationDetectorService } from '../../services/pagination/pagination-detector.service';
@@ -1050,7 +1052,7 @@ export class ConsoleController {
                 try {
                     const actualPayload = (message.payload as any).payload || message.payload;
                     const { endpointId, settings } = actualPayload;
-                    await this.saveConsoleViews(endpointId, settings);
+                    await this.saveConsoleViews(endpointId, await this.keepQueryViews(endpointId, settings));
                     return createResponseMessage(
                         message.correlationId,
                         true,
@@ -1960,6 +1962,25 @@ export class ConsoleController {
 
     private loadConsoleViews(endpointId: string): Promise<Record<string, unknown> | null> {
         return this.viewsStore.load(endpointId);
+    }
+
+    /**
+     * A View that Reporting reads (a saved query or compare) keeps its columns, row basis and
+     * name: a save that takes one away is put back, the page is shown the View as it stays, and
+     * the user is told why.
+     */
+    private async keepQueryViews(endpointId: string, settings: unknown): Promise<unknown> {
+        const request = await this.viewsStore.resolveScopeKey(endpointId);
+        const locked = [...new Set([
+            ...Object.keys(viewsInQueries(this.ports.state, { endpointId, request })),
+            ...Object.keys(viewsInCompares(this.ports.state, endpointId)),
+        ])];
+        if (!locked.length) return settings;
+        const kept = keepLockedViews(await this.loadConsoleViews(endpointId), settings, locked);
+        if (!kept.reverted.length) return settings;
+        this.ports.toast.warn(`${kept.reverted.join(', ')} is used in Reporting, so it can only gain columns. Save it as a new view to change it.`);
+        await this.post({ type: 'REPORT_SETTINGS_LOADED', correlationId: `settings_loaded_${Date.now()}`, source: 'extension' as const, target: 'webview' as const, timestamp: Date.now(), endpointId, settings: kept.settings });
+        return kept.settings;
     }
 
     private saveConsoleViews(endpointId: string, views: unknown): Promise<void> {

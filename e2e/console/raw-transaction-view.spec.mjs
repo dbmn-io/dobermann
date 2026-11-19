@@ -140,7 +140,7 @@ test('Input tab: filter rows by their transaction\'s status, and right-click to 
     expect(exports.at(-1).payload.inputStatusFilter).toBe('error');
 
     // Right-click an Input row → its transaction
-    await rows.nth(0).click({ button: 'right' });
+    await rows.nth(0).locator('td').first().click({ button: 'right' });
     await expect(page.locator('.raw-context-menu-item')).toHaveText(['View transaction', 'Reprocess']);
     await page.locator('.raw-context-menu-item[data-action="view"]').click();
     await expect(page.locator('.dbmn-modal-transaction .dbmn-modal-title')).toHaveText('Transaction #002');
@@ -148,7 +148,7 @@ test('Input tab: filter rows by their transaction\'s status, and right-click to 
 
     await filter.selectOption('not_processed');
     await expect(rows).toHaveCount(2);
-    await rows.nth(0).click({ button: 'right' });
+    await rows.nth(0).locator('td').first().click({ button: 'right' });
     await expect(page.locator('.raw-context-menu'), 'a row never sent has no transaction').toHaveCount(0);
     expect(pageErrors, 'uncaught errors in the page').toEqual([]);
 });

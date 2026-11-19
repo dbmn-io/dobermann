@@ -1342,13 +1342,16 @@ textarea.dbmn-modal-input {
  * Reprocess modals where a dropdown reads as overkill for 2–5 choices.
  * Styled structurally off the field container + semantic markup, no classes:
  * a [role=radiogroup] of <label> rows, each wrapping <input type=radio> + a
- * <span> (option label) and optional <small> (description). */
-.dbmn-modal-field [role="radiogroup"] {
+ * <span> (option label) and optional <small> (description). A [role=group] of
+ * tick boxes (any number of the options) is the same rows. */
+.dbmn-modal-field [role="radiogroup"],
+.dbmn-modal-field [role="group"] {
     display: flex;
     flex-direction: column;
     gap: 6px;
 }
-.dbmn-modal-field [role="radiogroup"] label {
+.dbmn-modal-field [role="radiogroup"] label,
+.dbmn-modal-field [role="group"] label {
     display: grid;
     grid-template-columns: auto 1fr;
     column-gap: 10px;
@@ -1362,25 +1365,30 @@ textarea.dbmn-modal-input {
     cursor: pointer;
     transition: background 0.1s ease, border-color 0.1s ease;
 }
-.dbmn-modal-field [role="radiogroup"] label:hover {
+.dbmn-modal-field [role="radiogroup"] label:hover,
+.dbmn-modal-field [role="group"] label:hover {
     background: var(--vscode-list-hoverBackground);
 }
-.dbmn-modal-field [role="radiogroup"] label:has(input:checked) {
+.dbmn-modal-field [role="radiogroup"] label:has(input:checked),
+.dbmn-modal-field [role="group"] label:has(input:checked) {
     border-color: var(--vscode-focusBorder);
     background: var(--vscode-list-activeSelectionBackground, var(--vscode-list-hoverBackground));
 }
-.dbmn-modal-field [role="radiogroup"] input[type="radio"] {
+.dbmn-modal-field [role="radiogroup"] input[type="radio"],
+.dbmn-modal-field [role="group"] input[type="checkbox"] {
     grid-row: 1 / 3;
     margin: 0;
     accent-color: var(--vscode-focusBorder);
     cursor: pointer;
 }
-.dbmn-modal-field [role="radiogroup"] span {
+.dbmn-modal-field [role="radiogroup"] span,
+.dbmn-modal-field [role="group"] span {
     grid-column: 2;
     font-size: 13px;
     color: var(--vscode-foreground);
 }
-.dbmn-modal-field [role="radiogroup"] small {
+.dbmn-modal-field [role="radiogroup"] small,
+.dbmn-modal-field [role="group"] small {
     grid-column: 2;
     font-size: 12px;
     color: var(--vscode-descriptionForeground);

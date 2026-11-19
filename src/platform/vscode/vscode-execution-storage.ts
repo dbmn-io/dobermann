@@ -11,6 +11,14 @@ import * as path from 'path';
 import { SqlJsExecutionStorage } from '../../services/storage/sqljs-execution-storage.service';
 import { ensureDobermannWorkspaceFolder } from '../../utils/workspace-helper';
 import { LoggerRegistry } from '../../utils/logger-registry';
+import { QueryFileStore } from '../../services/query/query-file-store';
+
+/** A query's file views keep their rows beside the history database, in the workspace's DBMN folder. */
+export function createVsCodeQueryFiles(): QueryFileStore {
+    return new QueryFileStore({
+        dataDir: async () => vscode.Uri.joinPath(await ensureDobermannWorkspaceFolder(), DATA_DIR).fsPath
+    });
+}
 
 export function createVsCodeExecutionStorage(context: vscode.ExtensionContext): SqlJsExecutionStorage {
     return new SqlJsExecutionStorage({

@@ -23,7 +23,7 @@ export function buildComparePage(asset: AssetUrl, config: { compareId: string; e
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Compare: ${attr(config.endpointName)}</title>
-    ${sharedStyleLinks(asset, ['atomic', 'core', 'buttons', 'modals', 'tables', 'tabs', 'toast', 'console', 'data-transformer', 'compare'])}
+    ${sharedStyleLinks(asset, ['atomic', 'core', 'buttons', 'modals', 'tables', 'tabs', 'toast', 'console', 'data-transformer', 'compare', 'column-drag', 'column-head'])}
 </head>
 <body class="editor-slide-in" data-endpoint-name="${attr(config.endpointName)}">
     <script src="${asset('shared/button-contrast.js')}"></script>
@@ -160,27 +160,37 @@ export function buildComparePage(asset: AssetUrl, config: { compareId: string; e
             <!-- The Relationship column's filter: Match's pictures, ticked on or off -->
             <div id="compareRelationMenu" class="export-dropdown compare-status-menu" role="dialog" aria-label="Filter relationship"></div>
             <div id="compareTableContainer" class="table-container">
-                <table class="data-table">
+                <table class="data-table" id="compareTable">
                     <thead id="compareHead"></thead>
                     <tbody id="compareBody"></tbody>
                 </table>
             </div>
         </div>
 
-        <div class="webview-footer">
+        <div class="webview-footer named-footer">
             <div class="footer-content">
+                <!-- The compare's name, as a query's: typed on any step -->
+                <div class="report-foot">
+                    <label class="report-name">
+                        <span class="report-name-label">Compare name</span>
+                        <input type="text" id="compareName" value="${attr(config.endpointName)}" spellcheck="false" autocomplete="off" placeholder="Name the compare" maxlength="30">
+                    </label>
+                    <nav id="compareStepper" class="batch-stepper" aria-label="Compare steps"></nav>
+                </div>
                 <!-- Run Batch's Back and Next. Next on Compare compares (its label says so) -->
                 <div class="footer-button-container">
-                    <button type="button" id="compareBackBtn" class="btn btn-secondary hidden" data-click="compare:back">Back</button>
                     <button type="button" id="compareNextBtn" class="btn btn-primary" data-click="compare:next" disabled>Next</button>
                 </div>
-                <nav id="compareStepper" class="batch-stepper" aria-label="Compare steps"></nav>
             </div>
         </div>
     </div>
 
     ${script('shared/search-matcher.js')}
+    ${script('shared/relation-glyph.js')}
     ${script('shared/virtual-window.js')}
+    ${script('shared/column-drag.js')}
+    ${script('shared/column-head.js')}
+    ${script('shared/dbmn-context-menu.js')}
     ${script('shared/step-bar.js')}
     ${script('shared/compare-picker.js')}
     ${script('shared/help-mode.js')}

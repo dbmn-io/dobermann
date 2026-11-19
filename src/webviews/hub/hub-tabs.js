@@ -34,6 +34,7 @@
         batchConsole: 'folder-tree-play',
         batch:        'folder-tree-play',
         compare:      'scale',
+        design:       'layers',
         page:         'settings'
     };
 
@@ -430,6 +431,19 @@ const state = {
         for (const id of ids) performClose(id);
     }
 
+    /** Ask for a report's new name; the report's own screen checks it and keeps it. */
+    function renameReport(tab) {
+        if (!window.DbmnModal || !window.vscode) return;
+        window.DbmnModal.show({
+            title: 'Rename',
+            fields: [{ id: 'name', type: 'text', label: 'Name', value: tab.name, required: true, autoFocus: true }],
+            actions: [{ id: 'cancel', label: 'Cancel', variant: 'secondary' }, { id: 'rename', label: 'Rename', variant: 'primary' }]
+        }).then(result => {
+            const name = result && result.actionId === 'rename' ? String((result.fields || {}).name || '').trim() : '';
+            if (name && name !== tab.name) window.vscode.postMessage({ type: 'renameReport', compareId: tab.refId, name });
+        });
+    }
+
     function buildTabElement(tab) {
         const el = document.createElement('button');
         el.type = 'button';
@@ -441,7 +455,7 @@ const state = {
         // Native tooltip — reveals the full tab name on hover when the
         // strip is packed and the visible name is ellipsed. Cheap and
         // matches VS Code's own tab-tooltip pattern.
-        el.title = tab.name;
+        el.title = tab.type === 'compare' ? `${tab.name}\nDouble-click to rename` : tab.name;
         if (tab.id === state.activeTabId) el.classList.add('is-active');
         if (tab.preview) el.classList.add('is-preview');
         if (tab.dirty) el.classList.add('is-dirty');
@@ -454,7 +468,8 @@ const state = {
         glyph.className = 'hub-tab-glyph icon';
         const glyphName = tab.type === 'page'
             ? (PAGE_GLYPH[tab.refId] || TYPE_GLYPH.page)
-            : TYPE_GLYPH[tab.type];
+            // A query's tab is a compare tab by type (one kind of report tab); its icon is the Reporting list's for a query
+            : tab.type === 'compare' && String(tab.refId || '').indexOf('qry-') === 0 ? 'blend' : TYPE_GLYPH[tab.type];
         glyph.setAttribute('data-icon', glyphName || 'notebook-tabs');
         el.appendChild(glyph);
 
@@ -1092,7 +1107,13 @@ const state = {
             }
             const tabEl = e.target.closest('.hub-tab');
             if (tabEl && tabEl.dataset.tabId) {
-                focusTab(tabEl.dataset.tabId);
+                const id = tabEl.dataset.tabId;
+                focusTab(id);
+                // A report's name is its tab's (the design system: a screen's footer holds no name):
+                // a double-click on a query's or a compare's tab renames it. Counted here, not by a
+                // dblclick listener: the first click redraws the strip, so the second lands on a new element
+                const tab = e.detail === 2 && state.tabs.find(t => t.id === id);
+                if (tab && tab.type === 'compare') renameReport(tab);
             }
         });
 

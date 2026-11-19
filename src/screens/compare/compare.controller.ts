@@ -40,6 +40,7 @@ import { CompareLens, LensFilter, LensSort, placeLetter, Relation, RELATIONS } f
 import { buildCompareSheets, compareFileName } from '../../services/compare/compare-export';
 import { ConsoleExportService } from '../../services/console/export.service';
 import { comparableRuns, CompareRun, RequestTemplates } from '../../services/compare/compare-runs';
+import { reportNameProblem } from '../../services/compare/report-name';
 import { getCompare, isDraft, removeCompare, saveCompare, CompareSetup, CompareSource, MAX_COMPARE_SOURCES, SavedCompare } from '../../services/compare/compare-store';
 import * as searchMatcherScript from '../../webviews/shared/search-matcher.js';
 import { sharedScript } from '../../utils/shared-script';
@@ -184,11 +185,12 @@ export class CompareController {
                 case 'compare.lens': return await this.setLens(message as unknown as { visible: number[]; hidden: string[] });
                 case 'compare.remove': return await this.removeSource(Number(message.place), message.keyColumns as string[] | undefined);
                 case 'compare.baseline': return await this.makeBaseline(Number(message.place), message.keyColumns as string[] | undefined);
-                case 'compare.layout': return await this.saveLayout(message as unknown as { columnOrder?: string[]; sort?: LensSort | null });
+                case 'compare.layout': return await this.saveLayout(message as unknown as { columnOrder?: string[]; sort?: LensSort | null; columnWidths?: Record<string, number> });
                 case 'compare.setView': await this.ports.state.update(RESULTS_VIEW_KEY, message.view === 'compact' ? 'compact' : 'side'); return;
                 case 'compare.rows': return await this.rows(message as unknown as RowsRequest);
                 case 'compare.record': return this.record(message as unknown as { index: number });
                 case 'compare.export': return await this.export(message as unknown as ExportRequest);
+                case 'compare.rename': return await this.rename(String(message.name ?? '').trim());
                 case 'compare.cancel': this.cancelledByUser = !!this.running; this.running?.abort(); return;
                 case 'compare.openConsole': {
                     const source = this.compare?.sources[Number(message.place)];
@@ -260,6 +262,22 @@ export class CompareController {
         return (this.compare?.sources ?? []).map((s, i) => (have.has(s.executionId) ? -1 : i)).filter(i => i >= 0);
     }
 
+    /** The name typed in the footer. Refused (another report has it), the box goes back to the name it has. */
+    private async rename(name: string): Promise<void> {
+        const compare = this.compare;
+        if (!compare) return;
+        if (name && name !== compare.name) {
+            const problem = reportNameProblem(this.ports.state, compare.id, name);
+            if (problem) this.ports.toast.warn(problem);
+            else {
+                compare.name = name;
+                await saveCompare(this.ports.state, compare);
+                this.ports.host.compared?.();
+            }
+        }
+        this.post({ type: 'compare.named', name: compare.name ?? '' });
+    }
+
     /** `opens`: the step this is on its way to (Results can still stop at Match: compare.sides says). */
     private postInit(opens: 'select' | 'match' | 'results'): void {
         const compare = this.compare!;
@@ -271,6 +289,7 @@ export class CompareController {
             setup: compare.setup ?? null,
             // Compared with these very results: until then (picks changed), Columns and Results wait for Match
             compared: !!compare.comparedAt,
+            name: compare.name ?? this.endpoint?.name ?? 'Compare',
             endpoint: this.endpoint,
             view: this.viewName,
             max: MAX_COMPARE_SOURCES,
@@ -421,6 +440,7 @@ export class CompareController {
             join: setup.join ?? 'full',
             hiddenColumns: (setup.hiddenColumns ?? []).filter(c => have.has(c)),
             ...(setup.columnOrder ? { columnOrder: setup.columnOrder.filter(c => have.has(c)) } : {}),
+            ...(setup.columnWidths ? { columnWidths: setup.columnWidths } : {}),
             ...(setup.sort && have.has(setup.sort.column) ? { sort: setup.sort } : {}),
             missingColumns: [...new Set(used.filter(c => !have.has(c)))],
         };
@@ -457,11 +477,15 @@ export class CompareController {
     }
 
     /** The column order (headings dragged) and sort (a heading clicked), saved with the compare. */
-    private async saveLayout(message: { columnOrder?: string[]; sort?: LensSort | null }): Promise<void> {
+    private async saveLayout(message: { columnOrder?: string[]; sort?: LensSort | null; columnWidths?: Record<string, number> }): Promise<void> {
         const part: Partial<CompareSetup> = {};
         if (message.columnOrder) part.columnOrder = message.columnOrder;
         if (message.sort !== undefined) part.sort = message.sort ?? undefined;
-        this.filtered = undefined;
+        if (message.columnWidths && typeof message.columnWidths === 'object') {
+            part.columnWidths = Object.fromEntries(Object.entries(message.columnWidths).filter(([, w]) => Number.isFinite(w) && w >= 20 && w <= 4000).map(([k, w]) => [k, Math.round(w)]));
+        }
+        // Only the order and the sort change which rows come first: widths leave the rows as they are
+        if (message.columnOrder || message.sort !== undefined) this.filtered = undefined;
         await this.saveSetup(part);
     }
 
@@ -710,6 +734,7 @@ export class CompareController {
             ...this.lensCounts(),
             hiddenColumns: this.hidden,
             columnOrder: setup?.columnOrder ?? [],
+            columnWidths: setup?.columnWidths ?? {},
             sort: setup?.sort ?? null,
             join: this.join,
             rowCounts: this.sides.map(s => s.rows.length),
@@ -793,6 +818,7 @@ export class CompareController {
                 ...setup,
                 hiddenColumns: setup.hiddenColumns ?? before?.hiddenColumns ?? [],
                 ...(setup.columnOrder ?? before?.columnOrder ? { columnOrder: setup.columnOrder ?? before?.columnOrder } : {}),
+                ...(setup.columnWidths ?? before?.columnWidths ? { columnWidths: setup.columnWidths ?? before?.columnWidths } : {}),
                 ...(setup.sort ?? before?.sort ? { sort: setup.sort ?? before?.sort } : {}),
             },
             comparedAt: new Date().toISOString(),

@@ -170,9 +170,7 @@
     }
     /** Back and Next, as in Run Batch. Next on Columns compares (it says so); Results has no Next. */
     function renderFooterButtons() {
-        const back = $('compareBackBtn'), next = $('compareNextBtn');
-        back.classList.toggle('hidden', !ui.shown || ui.step === 1);
-        back.disabled = ui.busy;
+        const next = $('compareNextBtn');
         next.classList.toggle('hidden', !ui.shown || ui.step === RESULTS);
         next.textContent = ui.step === 3 ? 'Generate' : 'Next';
         next.disabled = ui.busy || (ui.step === 1 ? !ui.picked : !!waitsFor(ui.step + 1));
@@ -387,15 +385,7 @@
         post({ type: 'compare.match', keyColumns: ui.keyColumns });
     }
 
-    /* Each kind of key, its little picture (BL blue, C orange) and its name */
-    const GLYPH = {
-        oneToOne: '<line class="g-line" x1="6" y1="12" x2="34" y2="12"/><circle class="g-b" cx="6" cy="12" r="4"/><circle class="g-c" cx="34" cy="12" r="4"/>',
-        onlyBase: '<circle class="g-b" cx="6" cy="12" r="4"/>',
-        onlyOther: '<circle class="g-c" cx="34" cy="12" r="4"/>',
-        oneToMany: '<line class="g-line" x1="6" y1="12" x2="34" y2="5"/><line class="g-line" x1="6" y1="12" x2="34" y2="19"/><circle class="g-b" cx="6" cy="12" r="4"/><circle class="g-c" cx="34" cy="5" r="3.5"/><circle class="g-c" cx="34" cy="19" r="3.5"/>',
-        manyToOne: '<line class="g-line" x1="6" y1="5" x2="34" y2="12"/><line class="g-line" x1="6" y1="19" x2="34" y2="12"/><circle class="g-b" cx="6" cy="5" r="3.5"/><circle class="g-b" cx="6" cy="19" r="3.5"/><circle class="g-c" cx="34" cy="12" r="4"/>',
-        manyToMany: '<line class="g-line" x1="6" y1="5" x2="34" y2="19"/><line class="g-line" x1="6" y1="19" x2="34" y2="5"/><line class="g-line" x1="6" y1="5" x2="34" y2="5"/><line class="g-line" x1="6" y1="19" x2="34" y2="19"/><circle class="g-b" cx="6" cy="5" r="3.5"/><circle class="g-b" cx="6" cy="19" r="3.5"/><circle class="g-c" cx="34" cy="5" r="3.5"/><circle class="g-c" cx="34" cy="19" r="3.5"/>'
-    };
+    /* Each kind of key, its little picture (BL blue, C orange: shared/relation-glyph.js) and its name */
     const OK_ROWS = [
         ['oneToOne', () => 'One to one', null],
         // One to many is compared: BL's record against each of the other result's
@@ -410,14 +400,7 @@
     ];
     /** The kinds whose cells show both sides' records, the picture between. */
     const PAIRED = new Set(['oneToMany', 'manyToOne', 'manyToMany']);
-    function glyph(kind) {
-        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-        svg.setAttribute('class', 'compare-glyph');
-        svg.setAttribute('viewBox', '0 0 40 24');
-        svg.setAttribute('aria-hidden', 'true');
-        svg.innerHTML = GLYPH[kind];
-        return svg;
-    }
+    const glyph = window.RelationGlyph.svg;
 
     /**
      * One group of the panel, on the slots' grid: a row per kind, its picture and name under BL,
@@ -803,6 +786,8 @@
     };
     /** Each Results column's widest so far, by heading (holdWidths). */
     const widths = new Map();
+    /** A column's width set by the user (its right edge dragged, or fitted), by heading: kept with the compare. */
+    let userWidths = {};
 
     /** Each result's colour class: BL blue, C1 orange, C2 green, C3 purple (compare.css). */
     function tone(place) { return `compare-r${Math.min(place, 3)}`; }
@@ -1213,28 +1198,65 @@
         box.appendChild(actions);
         return { box, actions };
     }
-    /** A heading that sorts: by a key column, or by a compared column (one result's values, or BL's). */
+    /** Whether a column holds numbers, going by the rows held: its sort reads 0 to 1, not A to Z. */
+    function isNumbers(column, place) {
+        const ci = grid.columns ? grid.columns.indexOf(column) : -1;
+        if (ci < 0) return false;
+        let any = false, seen = 0;
+        for (const row of grid.cache.values()) {
+            const values = place === undefined ? shownPlaces().map(p => row.values[p]).find(Boolean) : row.values[place];
+            const v = values ? values[ci] : null;
+            if (v === null || v === undefined || v === '') continue;
+            if (typeof v !== 'number') return false;
+            any = true;
+            if (++seen > 60) break;
+        }
+        return any;
+    }
+    function sortDir(column, place) {
+        const s = ui.sort;
+        return s && s.column === column && (s.place === undefined ? place === undefined : s.place === place) ? s.dir : '';
+    }
+    /**
+     * A heading that sorts: by a key column, or by a compared column (one result's values, or BL's).
+     * Its sort icon is every table's (column-head.js). A result's letter under a column (Side by
+     * side) is small, so the whole of it sorts; elsewhere the icon does, and the name drags.
+     */
     function sortHead(th, column, place) {
         th.classList.add('sortable-header');
-        th.setAttribute('data-click', 'compare:sort');
         th.setAttribute('data-sort-col', column);
         if (place !== undefined) th.setAttribute('data-sort-place', String(place));
-        const s = ui.sort;
-        const on = s && s.column === column && (s.place === undefined ? place === undefined : s.place === place);
-        if (on) th.classList.add(`sort-${s.dir}`);
-        th.setAttribute('aria-sort', on ? (s.dir === 'asc' ? 'ascending' : 'descending') : 'none');
-        th.querySelector('.header-actions').appendChild(el('span', 'sort-icon'));
+        const dir = sortDir(column, place);
+        if (dir) th.classList.add(`sort-${dir}`);
+        th.setAttribute('aria-sort', dir ? (dir === 'asc' ? 'ascending' : 'descending') : 'none');
+        const button = window.ColumnHead.sortButton({ label: place === undefined ? columnName(column) : `${columnName(column)} · ${letter(place)}`, dir, numbers: isNumbers(column, place) });
+        button.setAttribute('data-sort-col', column);
+        if (place !== undefined) button.setAttribute('data-sort-place', String(place));
+        (place === undefined ? button : th).setAttribute('data-click', 'compare:sort');
+        if (place !== undefined) th.classList.add('compare-sort-all');
+        th.querySelector('.header-actions').appendChild(button);
+        if (sorting && sorting.column === column && sorting.place === place) window.ColumnHead.wait(button, sorting.dir);
+    }
+    /** The sort asked for and not yet drawn: its heading shows a clock. */
+    let sorting = null;
+    /** The first rows are in: each sort icon says numbers or text, and a clock stops. */
+    function settleSortIcons() {
+        sorting = null;
+        $('compareHead').querySelectorAll('.col-sort-btn').forEach(button => {
+            const column = button.getAttribute('data-sort-col');
+            const at = button.getAttribute('data-sort-place');
+            const place = at === null ? undefined : Number(at);
+            window.ColumnHead.setSort(button, sortDir(column, place), isNumbers(column, place));
+            const th = button.closest('th');
+            if (th) th.classList.remove('is-sorting');
+        });
     }
     function hideButton(id) {
-        const x = el('button', 'column-hide-btn', '×');
-        x.type = 'button';
-        x.title = `Remove ${columnName(id)} from Compare (the gear brings it back)`;
-        x.setAttribute('aria-label', `Remove ${columnName(id)} from Compare`);
+        const x = window.ColumnHead.hideButton({ label: `${columnName(id)} from Compare`, title: `Remove ${columnName(id)} from Compare (the gear brings it back)` });
         x.setAttribute('data-click', 'compare:hideColumn');
         x.setAttribute('data-arg', id);
         return x;
     }
-    /** A funnel after a filter's control while it filters: a sign, not a button. */
     /** A filter's funnel, shown while it filters: a click clears that filter alone (the arrow opens its menu). */
     function funnelSign(which, arg) {
         const funnel = el('button', 'compare-funnel icon');
@@ -1415,6 +1437,9 @@
     function renderHead() {
         const head = $('compareHead');
         if (!ui.result) return head.replaceChildren();
+        // Headings drawn again: the grid fits its window again (a resize had held its columns)
+        $('compareTable').style.width = '';
+        delete $('compareTable').dataset.widthsHeld;
         const side = ui.resultsView === 'side';
         const rows = side ? 2 : 1;
         const places = shownPlaces();
@@ -1442,6 +1467,7 @@
                     const s = el('th', `compare-sub ${tone(p)}${i ? '' : ' compare-first'}`);
                     s.appendChild(headContent(letter(p)).box);
                     sortHead(s, id, p);
+                    s.setAttribute('data-c', id);
                     sub.appendChild(s);
                 });
             } else {
@@ -1449,15 +1475,22 @@
                 sortHead(th, id);
             }
             content.actions.appendChild(hideButton(id));
-            // Drag a column's heading onto another to move it there
-            th.draggable = true;
+            // Its name drags it to another place (column-drag.js); its right edge resizes it
+            content.box.querySelector('.column-name').classList.add('is-movable');
+            content.box.querySelector('.column-name').title = 'Hold and drag to move this column';
+            th.appendChild(window.ColumnHead.edge());
             th.setAttribute('data-col', id);
+            th.setAttribute('data-c', id);
             top.appendChild(th);
         });
         head.replaceChildren(...(side ? [top, sub] : [top]));
         head.querySelectorAll('th').forEach(th => {
-            const w = widths.get(headKey(th));
-            if (w && th.colSpan === 1) th.style.minWidth = `${w}px`;
+            const key = headKey(th);
+            if (!key || th.colSpan !== 1) return;
+            const mine = userWidths[key];
+            const w = mine || widths.get(key);
+            if (w) th.style.minWidth = `${w}px`;
+            if (mine) th.style.maxWidth = `${mine}px`;
         });
         sizeStatus(head.querySelector('th.compare-status-head'));
         stickSubHeadings();
@@ -1466,8 +1499,13 @@
         if (window.Icons && window.Icons.injectIcons) window.Icons.injectIcons(head);
     }
 
-    // Reordering: native drag and drop on the compared columns' headings, as the Hub's tabs do
-    let dragging = null;
+    /** Every cell on screen of a compared column: its heading, each result's under it, and each row's. */
+    function columnCells(id) {
+        return Array.from($('compareTable').querySelectorAll('[data-c]')).filter(node => node.getAttribute('data-c') === id);
+    }
+    // Reordering: the column lifts and follows the pointer, as in every results table (column-drag.js).
+    // The key, the relationship and Status stay where they are
+    let colDrag = { isDragging: () => false };
     function initDrag() {
         // Right-click anywhere on a row: its record (a long value's own click opens just that value)
         $('compareBody').addEventListener('contextmenu', e => {
@@ -1480,45 +1518,91 @@
         // The headings change height as the rows arrive and the columns settle: pin the results'
         // row again each time, so it never sits under the names
         if (window.ResizeObserver) new ResizeObserver(() => stickSubHeadings()).observe(head);
-        head.addEventListener('dragstart', e => {
+        colDrag = window.ColumnDrag.attach({
+            table: $('compareTable'),
+            scroller: container(),
+            canDrag: (th, event) => th.hasAttribute('data-col') && !!event.target.closest('.column-name.is-movable'),
+            units: () => orderedColumns().map(id => ({ head: head.querySelector(`th[data-col="${CSS.escape(id)}"]`), cells: columnCells(id) })).filter(u => u.head),
+            onMove: (from, to) => moveTo(orderedColumns()[from], to),
+            onEnd: () => { if (grid.columns) drawRows(); }
+        });
+        // The right edge of a compared column's heading: drag for its width, double-click to fit
+        window.ColumnHead.attachResize(head, {
+            hold: $('compareTable'),
+            canResize: th => th.hasAttribute('data-col'),
+            widthOf: th => th.getBoundingClientRect().width,
+            setWidth: (th, width) => setWidth(th.getAttribute('data-col'), width),
+            done: () => post({ type: 'compare.layout', columnWidths: userWidths }),
+            fit: th => fitColumn(th.getAttribute('data-col'))
+        });
+        // Right-click a compared column's heading: everything it can do, by name
+        head.addEventListener('contextmenu', e => {
             const th = e.target.closest && e.target.closest('th[data-col]');
             if (!th) return;
-            dragging = th.getAttribute('data-col');
-            e.dataTransfer.effectAllowed = 'move';
-            e.dataTransfer.setData('text/plain', dragging);
-            th.classList.add('is-dragging');
-        });
-        head.addEventListener('dragover', e => {
-            const th = e.target.closest && e.target.closest('th[data-col]');
-            if (!dragging || !th || th.getAttribute('data-col') === dragging) return;
-            e.preventDefault();
-            head.querySelectorAll('.is-drop-before').forEach(x => x.classList.remove('is-drop-before'));
-            th.classList.add('is-drop-before');
-        });
-        head.addEventListener('dragleave', e => {
-            const th = e.target.closest && e.target.closest('th[data-col]');
-            if (th) th.classList.remove('is-drop-before');
-        });
-        head.addEventListener('drop', e => {
-            const th = e.target.closest && e.target.closest('th[data-col]');
-            if (!dragging || !th) return;
-            e.preventDefault();
-            moveColumn(dragging, th.getAttribute('data-col'));
-        });
-        head.addEventListener('dragend', () => {
-            dragging = null;
-            head.querySelectorAll('.is-dragging, .is-drop-before').forEach(x => x.classList.remove('is-dragging', 'is-drop-before'));
+            const id = th.getAttribute('data-col');
+            const shown = orderedColumns();
+            const side = ui.resultsView === 'side';
+            window.ColumnHead.menu(e, {
+                numbers: isNumbers(id), dir: side ? '' : sortDir(id), sorted: !!ui.sort,
+                first: shown[0] === id, last: shown[shown.length - 1] === id,
+                // Side by side sorts by one result's values: its letter under the column does that
+                sort: side ? null : dir => sortBy(dir ? { column: id, dir } : null),
+                move: shown.length > 1 ? where => moveTo(id, where === 'start' ? 0 : shown.length - 1) : null,
+                fit: () => { window.ColumnHead.holdWidths($('compareTable')); fitColumn(id); },
+                remove: () => { const hidden = new Set(ui.hidden); hidden.add(id); setHidden(hidden); },
+                removeLabel: 'Remove from Compare'
+            });
         });
     }
-    /** Move a compared column before another; saved with the compare. */
-    function moveColumn(id, before) {
-        if (id === before) return;
+    /** Put a compared column at a place among the columns shown; saved with the compare. Nothing is compared again. */
+    function moveTo(id, to) {
+        const shown = orderedColumns().filter(c => c !== id);
+        const next = shown[to];
         const order = columnOrder().filter(c => c !== id);
-        order.splice(Math.max(0, order.indexOf(before)), 0, id);
+        order.splice(next === undefined ? order.length : order.indexOf(next), 0, id);
         ui.order = order;
         post({ type: 'compare.layout', columnOrder: order });
         renderHead();
         if (grid.columns) drawRows();
+    }
+
+    /* A column's width, set by the user. The grid fits its columns to what they hold, so a set
+     * width is the least and the most each of the column's cells may be. Side by side, a column
+     * is one per result: they share the width evenly. */
+    function widthKeys(id) { return ui.resultsView === 'side' ? shownPlaces().map(p => `${id}|${p}`) : [`${id}|`]; }
+    const CELL_EDGES = 17;   // a cell's padding either side, and its border
+    function applyWidth(node, w) {
+        node.style.minWidth = w ? `${w}px` : '';
+        node.style.maxWidth = w ? `${w}px` : '';
+    }
+    function setWidth(id, width) {
+        const keys = widthKeys(id);
+        const each = Math.max(24, Math.round(width / keys.length) - CELL_EDGES);
+        keys.forEach(k => { userWidths[k] = each; });
+        const cells = columnCells(id);
+        const top = cells.find(n => n.hasAttribute('data-col'));
+        cells.forEach(n => { if (n !== top || keys.length === 1) applyWidth(n, each); });
+        return top ? Math.round(top.getBoundingClientRect().width) : width;
+    }
+    /** As wide as its name and the values on screen need. */
+    function fitColumn(id) {
+        const wide = window.ColumnHead.textWidth;
+        const cells = columnCells(id);
+        const top = cells.find(n => n.hasAttribute('data-col'));
+        if (!top) return;
+        const n = widthKeys(id).length;
+        let each = 24;
+        cells.forEach(node => { if (node.tagName === 'TD') each = Math.max(each, wide(node, node.textContent) + 4); });
+        const name = top.querySelector('.column-name');
+        const head = wide(name, name.textContent) + top.querySelector('.header-actions').offsetWidth + 40;
+        setWidth(id, Math.min(window.ColumnHead.MAX_FIT * n, Math.max(head, n * (each + CELL_EDGES))));
+        post({ type: 'compare.layout', columnWidths: userWidths });
+    }
+    /** Sort from a heading: its icon is a clock until the sorted rows arrive. */
+    function sortBy(next) {
+        const shown = next || ui.sort;
+        sorting = shown ? { column: shown.column, place: shown.place, dir: next ? next.dir : 'asc' } : null;
+        setSort(next);
     }
     /** First click ascending, then descending, then back to the compare's own order. Saved with the compare. */
     function setSort(next, quiet) {
@@ -1685,6 +1769,19 @@
             if (ci === undefined) return;
             const groups = row.groups[ci - keys] || [];
             const title = `${keyText}: ${columnName(id)}`;
+            const before = tr.cells.length;
+            columnCellsFor(tr, row, id, ci, groups, places, title);
+            // Each cell says its column (a drag moves them together), and keeps a width the user set
+            const heads = widthKeys(id);
+            for (let c = before; c < tr.cells.length; c++) {
+                tr.cells[c].setAttribute('data-c', id);
+                const w = userWidths[heads[c - before] || heads[0]];
+                if (w) applyWidth(tr.cells[c], w);
+            }
+        });
+        return tr;
+    }
+    function columnCellsFor(tr, row, id, ci, groups, places, title) {
             if (isShownOnly(id)) return shownOnlyCells(tr, row, ci, places, title);
             if (ui.resultsView === 'side') {
                 places.forEach((p, i) => {
@@ -1707,8 +1804,6 @@
                 if (td._oneValue) holdValue(td, td._oneValue.v, title);
                 tr.appendChild(td);
             }
-        });
-        return tr;
     }
 
     function spacer(height, span) {
@@ -1738,7 +1833,7 @@
         trimCache();
         text($('compareShown'), m.total ? `${plural(m.total, 'row', 'rows')}` : 'No rows');
         // The first answer says how many rows there are: ask for the rest of the window
-        if (asked.chunk === 0) requestRows(false);
+        if (asked.chunk === 0) { settleSortIcons(); requestRows(false); }
     }
     /*
      * Columns only widen as the grid scrolls. The table fits its columns to the rows drawn, and
@@ -1753,7 +1848,7 @@
     function holdWidths() {
         $('compareHead').querySelectorAll('th').forEach(th => {
             const key = headKey(th);
-            if (!key || key === 'status' || th.colSpan > 1) return;
+            if (!key || key === 'status' || th.colSpan > 1 || userWidths[key]) return;
             const css = getComputedStyle(th);
             const w = th.clientWidth - parseFloat(css.paddingLeft) - parseFloat(css.paddingRight);
             if (w > (widths.get(key) || 0)) widths.set(key, w);
@@ -1764,6 +1859,8 @@
     function drawRows() {
         const body = $('compareBody');
         const n = span();
+        // A column being dragged holds the rows as they are (its end draws them)
+        if (colDrag.isDragging()) return;
         if (!grid.total) return body.replaceChildren(emptyRow(n));
         if (!grid.columns) return;
         const w = currentWindow();
@@ -2033,7 +2130,13 @@
     window.addEventListener('message', event => {
         const m = event.data || {};
         switch (m.type) {
+            case 'compare.named':
+                ui.name = m.name || ui.name;
+                $('compareName').value = ui.name;
+                break;
             case 'compare.init':
+                ui.name = m.name || '';
+                if (document.activeElement !== $('compareName')) $('compareName').value = ui.name;
                 ui.endpoint = m.endpoint;
                 ui.sources = m.sources || [];
                 ui.runs = m.runs || [];
@@ -2132,6 +2235,7 @@
                 ui.rowCounts = m.rowCounts || [];
                 ui.hidden = new Set(m.hiddenColumns || []);
                 ui.order = m.columnOrder || [];
+                userWidths = Object.assign({}, m.columnWidths);
                 ui.sort = m.sort || null;
                 if (m.join) ui.join = m.join;
                 ui.result = {
@@ -2186,6 +2290,13 @@
     /* ---------- Actions ---------- */
 
     let searchTimer = null;
+    // The compare's name, typed on any step. Emptied, it goes back to the name it has
+    $('compareName').addEventListener('change', () => {
+        const name = $('compareName').value.trim();
+        if (name) post({ type: 'compare.rename', name });
+        else $('compareName').value = ui.name || '';
+    });
+
     window.DbmnActions.register({
         'compare:back': () => { if (!ui.busy && ui.step > 1) showStep(ui.step - 1); },
         'compare:next': () => next(),
@@ -2303,7 +2414,7 @@
             const s = ui.sort;
             const same = s && s.column === column && s.place === place;
             const next = !same ? { column, place, dir: 'asc' } : s.dir === 'asc' ? { column, place, dir: 'desc' } : null;
-            setSort(next && next.place === undefined ? { column, dir: next.dir } : next);
+            sortBy(next && next.place === undefined ? { column, dir: next.dir } : next);
         },
         'compare:hideColumn': id => {
             const hidden = new Set(ui.hidden);

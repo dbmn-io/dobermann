@@ -1,0 +1,311 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Copyright (C) 2026 Flexion Tech Pty Ltd */
+/*
+ * The footer every main screen wears (design system, dbmn-footer.js):
+ *
+ *   <dbmn-footer>
+ *       <dbmn-actions> … standard .btn buttons, the main one last … </dbmn-actions>
+ *       <dbmn-steps> | <dbmn-progress> | <dbmn-status>      (one of them: how far along)
+ *   </dbmn-footer>
+ *
+ * Left: what the user can do. Right: how far along, in one box of one height, whether the tasks
+ * are the user's (steps) or the system's (progress). Never both.
+ *
+ * The elements draw in the page (no shadow root), so the shared sheets and the theme's
+ * --vscode-* colours reach them as they reach everything else.
+ */
+
+dbmn-footer {
+    --foot-row: 32px;
+    --foot-accent: var(--vscode-textLink-foreground);
+    /* (as text, a status colour leans a little toward the text's own: readable on a light theme and a dark one) */
+    --foot-ok: color-mix(in srgb, var(--vscode-testing-iconPassed, #3fa35c) 78%, var(--vscode-foreground));
+    --foot-warn: color-mix(in srgb, var(--vscode-editorWarning-foreground, #cca700) 78%, var(--vscode-foreground));
+    --foot-error: color-mix(in srgb, var(--vscode-errorForeground, #f14c4c) 85%, var(--vscode-foreground));
+    --foot-dim: color-mix(in srgb, var(--vscode-foreground) 62%, transparent);
+    --foot-line: var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 6px 20px;
+    box-sizing: border-box;
+    padding: 4px 10px;
+    font-size: 13px;
+}
+/* (in a gallery or a dialog the footer sits where it is put, not on the window's bottom edge) */
+dbmn-footer[inline] {
+    position: static;
+    box-shadow: none;
+    border: 1px solid var(--foot-line);
+    border-radius: var(--dbmn-radius, 4px);
+}
+
+dbmn-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+}
+
+/* ── The box on the right: one outline, one height, whatever it holds ── */
+dbmn-steps,
+dbmn-progress,
+dbmn-status {
+    position: relative;
+    display: flex;
+    align-items: center;
+    box-sizing: border-box;
+    height: var(--foot-row);
+    max-width: 100%;
+    margin-left: auto;
+    border: 1px solid var(--foot-line);
+    border-radius: var(--dbmn-radius, 4px);
+    color: var(--vscode-foreground);
+    white-space: nowrap;
+}
+
+/* ── Status: a few words (Saved, Not saved yet) ── */
+dbmn-status {
+    padding: 0 12px;
+    color: var(--foot-dim);
+}
+dbmn-status[tone="ok"] { color: var(--foot-ok); }
+dbmn-status[tone="warn"] { color: var(--foot-warn); }
+dbmn-status[tone="error"] { color: var(--foot-error); }
+dbmn-status:empty { display: none; }
+
+/* ── Progress: the box is the bar ── */
+dbmn-progress {
+    --progress-c: var(--vscode-progressBar-background, var(--foot-accent));
+    justify-content: space-between;
+    gap: 16px;
+    min-width: 240px;
+    padding: 0 12px;
+    border-color: var(--progress-c);
+    overflow: hidden;
+}
+dbmn-progress[tone="ok"] { --progress-c: var(--foot-ok); }
+dbmn-progress[tone="warn"] { --progress-c: var(--foot-warn); }
+dbmn-progress[tone="error"] { --progress-c: var(--foot-error); }
+dbmn-progress .dbmn-progress-fill {
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: var(--progress, 0%);
+    background: color-mix(in srgb, var(--progress-c) 28%, transparent);
+    transition: width 0.3s ease;
+}
+dbmn-progress .dbmn-progress-phase,
+dbmn-progress .dbmn-progress-count {
+    position: relative;
+}
+dbmn-progress .dbmn-progress-phase { font-weight: 600; }
+/* No figure to show yet: the fill sweeps */
+dbmn-progress[busy] .dbmn-progress-fill {
+    width: 35%;
+    animation: dbmn-progress-sweep 1.4s ease-in-out infinite;
+}
+@keyframes dbmn-progress-sweep {
+    from { transform: translateX(-100%); }
+    to { transform: translateX(290%); }
+}
+
+/* (an element with a display of its own still goes when hidden) */
+dbmn-footer [hidden],
+dbmn-steps[hidden],
+dbmn-progress[hidden],
+dbmn-status[hidden] { display: none !important; }
+
+/* ── Steps: one line ── */
+dbmn-steps { padding: 0 4px; gap: 2px; }
+.dbmn-steps-row { display: contents; }
+.dbmn-step,
+.dbmn-steps-summary,
+.dbmn-steps-item {
+    font: inherit;
+    color: inherit;
+    background: none;
+    border: none;
+    margin: 0;
+    cursor: default;
+}
+.dbmn-step {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 24px;
+    padding: 0 10px;
+    border-radius: 3px;
+    color: var(--foot-dim);
+}
+.dbmn-step-mark {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 13px;
+    height: 13px;
+}
+.dbmn-step-mark svg { width: 13px; height: 13px; }
+.dbmn-step.is-done,
+.dbmn-step.is-skipped { color: var(--foot-ok); }
+.dbmn-step.is-available,
+.dbmn-step.is-needs { color: var(--vscode-foreground); }
+.dbmn-step.has-warn { color: var(--foot-warn); }
+.dbmn-step.has-error { color: var(--foot-error); }
+.dbmn-step { position: relative; }
+/* The current step's highlight is one piece behind the steps: it slides to the step that takes over */
+.dbmn-step.is-current {
+    color: var(--vscode-foreground);
+    font-weight: 600;
+}
+.dbmn-steps-indicator {
+    position: absolute;
+    left: 0;
+    top: 50%;
+    width: var(--w, 0);
+    height: 24px;
+    margin-top: -12px;
+    border-radius: 3px;
+    background: color-mix(in srgb, var(--foot-accent) 24%, transparent);
+    transform: translateX(var(--x, 0));
+    pointer-events: none;
+}
+dbmn-steps.is-ready .dbmn-steps-indicator {
+    transition: transform 280ms cubic-bezier(0.3, 0.7, 0.2, 1), width 280ms cubic-bezier(0.3, 0.7, 0.2, 1);
+}
+dbmn-steps[folded] .dbmn-steps-indicator { display: none; }
+.dbmn-step.is-current .dbmn-step-mark { color: var(--foot-accent); }
+.dbmn-step:not(:disabled) { cursor: pointer; }
+.dbmn-step:not(:disabled):not(.is-current):hover { background: color-mix(in srgb, currentColor 14%, transparent); }
+.dbmn-step:focus-visible,
+.dbmn-steps-summary:focus-visible,
+.dbmn-steps-item:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
+.dbmn-step-gap {
+    display: inline-flex;
+    color: var(--foot-dim);
+    opacity: 0.7;
+}
+.dbmn-step-gap svg { width: 12px; height: 12px; }
+/* A step that is working: its mark turns */
+.dbmn-step.is-checking .dbmn-step-mark svg { animation: dbmn-step-spin 0.9s linear infinite; }
+@keyframes dbmn-step-spin { to { transform: rotate(360deg); } }
+
+/* Too narrow for every name: where the user is, and of how many */
+dbmn-steps.is-tight .dbmn-step:not(.is-current),
+dbmn-steps.is-tight .dbmn-step-gap { display: none; }
+.dbmn-steps-of { display: none; padding: 0 8px 0 6px; color: var(--foot-dim); }
+dbmn-steps.is-tight .dbmn-steps-of { display: inline; }
+
+/* ── Folded: the wizard is done, the steps are one button that says what is on screen ── */
+dbmn-steps[folded] { padding: 0; border-color: transparent; }
+.dbmn-steps-summary {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    height: var(--foot-row);
+    box-sizing: border-box;
+    padding: 0 12px;
+    border: 1px solid var(--foot-line);
+    border-radius: var(--dbmn-radius, 4px);
+    cursor: pointer;
+}
+.dbmn-steps-summary:hover,
+.dbmn-steps-summary[aria-expanded="true"] {
+    border-color: var(--foot-accent);
+    background: color-mix(in srgb, var(--vscode-foreground) 6%, transparent);
+}
+.dbmn-steps-summary .dbmn-step-mark { color: var(--foot-ok); }
+.dbmn-steps-dot { color: var(--foot-dim); }
+.dbmn-steps-chevron { display: inline-flex; color: var(--foot-dim); }
+.dbmn-steps-chevron svg { width: 14px; height: 14px; }
+
+.dbmn-steps-list {
+    position: absolute;
+    right: 0;
+    bottom: calc(100% + 6px);
+    z-index: 1002;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 100%;
+    width: max-content;
+    max-width: min(480px, 90vw);
+    box-sizing: border-box;
+    padding: 6px;
+    background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+    border: 1px solid var(--vscode-editorWidget-border, var(--foot-line));
+    border-radius: 6px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+    white-space: normal;
+}
+.dbmn-steps-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 32px;
+    padding: 4px 10px;
+    border-radius: 3px;
+    text-align: left;
+    cursor: pointer;
+}
+.dbmn-steps-item:disabled { cursor: default; opacity: 0.6; }
+.dbmn-steps-item:not(:disabled):hover { background: color-mix(in srgb, var(--vscode-foreground) 10%, transparent); }
+.dbmn-steps-item.is-current { background: color-mix(in srgb, var(--foot-accent) 22%, transparent); }
+.dbmn-steps-item .dbmn-step-mark { color: var(--foot-ok); }
+.dbmn-steps-item.is-current .dbmn-step-mark { color: var(--foot-accent); font-weight: 600; }
+.dbmn-steps-item-name { font-weight: 600; }
+.dbmn-steps-summary .dbmn-step-mark.is-working { color: var(--foot-accent); }
+.dbmn-steps-summary .dbmn-step-mark.is-working svg { animation: dbmn-step-spin 0.9s linear infinite; }
+
+/* Folding (dbmn-footer.js, _setFolded): a cascade. Each step is a card that slides behind the one
+   after it (--fold-x: how far, --fold-wait: when it sets off, --fold-time: how long) until all
+   are behind the last; then the summary takes their place and its arrow lifts once */
+dbmn-steps.is-folding .dbmn-steps-indicator { display: none; }
+dbmn-steps.is-folding .dbmn-step {
+    z-index: var(--fold-z, 1);
+    opacity: 1;
+    background: var(--vscode-editor-background);
+    box-shadow: 0 0 0 1px var(--foot-line);
+    transition: transform var(--fold-time, 0ms) linear var(--fold-wait, 0ms);
+}
+dbmn-steps.is-folding .dbmn-step.is-current {
+    background: color-mix(in srgb, var(--foot-accent) 24%, var(--vscode-editor-background));
+}
+dbmn-steps.is-folding-go .dbmn-step { transform: translateX(var(--fold-x, 0)); }
+dbmn-steps.is-folding .dbmn-step-gap,
+dbmn-steps.is-folding .dbmn-steps-of { transition: opacity 120ms ease; }
+dbmn-steps.is-folding-go .dbmn-step-gap,
+dbmn-steps.is-folding-go .dbmn-steps-of { opacity: 0; }
+dbmn-steps.just-folded .dbmn-steps-summary {
+    transform-origin: right center;
+    animation: dbmn-steps-summary-in 220ms ease-out both;
+}
+@keyframes dbmn-steps-summary-in {
+    from { opacity: 0; transform: scaleX(0.5); }
+}
+dbmn-steps.just-folded .dbmn-steps-summary { border-color: var(--foot-accent); transition: border-color 600ms ease; }
+dbmn-steps.just-folded .dbmn-steps-chevron { animation: dbmn-steps-nudge 700ms ease 1; color: var(--foot-accent); }
+@keyframes dbmn-steps-nudge {
+    0%, 100% { transform: translateY(0); }
+    30% { transform: translateY(-4px); }
+    60% { transform: translateY(1px); }
+}
+/* Back to the steps: they come in from where they went */
+dbmn-steps.is-unfolding .dbmn-step,
+dbmn-steps.is-unfolding .dbmn-step-gap { animation: dbmn-steps-back 240ms ease-out both; }
+@keyframes dbmn-steps-back {
+    from { opacity: 0; transform: translateX(14px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .dbmn-step.is-checking .dbmn-step-mark svg,
+    .dbmn-steps-summary .dbmn-step-mark.is-working svg,
+    dbmn-steps.just-folded .dbmn-steps-chevron,
+    dbmn-steps.just-folded .dbmn-steps-summary,
+    dbmn-steps.is-unfolding .dbmn-step,
+    dbmn-steps.is-unfolding .dbmn-step-gap,
+    dbmn-progress[busy] .dbmn-progress-fill { animation: none; }
+    dbmn-steps.is-ready .dbmn-steps-indicator { transition: none; }
+    dbmn-progress .dbmn-progress-fill { transition: none; }
+}

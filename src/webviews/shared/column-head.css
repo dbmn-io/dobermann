@@ -1,0 +1,136 @@
+/* Column Head (column-head.js): a results table's heading, the same in every table. The name
+   drags (a hand), the icon sorts, x takes the column out, the right edge resizes. */
+
+th .column-name.is-movable {
+    cursor: grab;
+}
+
+.col-sort-btn,
+.col-hide-btn {
+    flex: none;
+    margin: 0;
+    padding: 0 2px;
+    border: 0;
+    border-radius: 3px;
+    background: none;
+    color: inherit;
+    font: inherit;
+    line-height: 1;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.12s ease;
+}
+
+.col-sort-btn svg,
+.col-hide-btn svg {
+    width: 14px;
+    height: 14px;
+    display: block;
+}
+
+th:hover .col-sort-btn,
+th:hover .col-hide-btn,
+.col-sort-btn:focus-visible,
+.col-hide-btn:focus-visible {
+    opacity: 0.75;
+}
+
+th .col-sort-btn:hover,
+th .col-hide-btn:hover {
+    opacity: 1;
+    background: color-mix(in srgb, var(--vscode-foreground) 16%, transparent);
+}
+
+th .col-hide-btn:hover {
+    color: var(--vscode-errorForeground);
+}
+
+/* Sorted: its icon stays, in the link colour */
+th .col-sort-btn.is-sorted,
+th .col-sort-btn.is-sorting {
+    opacity: 1;
+    color: var(--vscode-textLink-foreground);
+}
+
+/* Sorting: the icon is a clock that ticks until the sorted rows arrive (opacity only, so it
+   keeps moving while the rows are sorted) */
+.col-sort-wait {
+    display: none;
+}
+
+.col-sort-btn.is-sorting .col-sort-icon {
+    display: none;
+}
+
+.col-sort-btn.is-sorting .col-sort-wait {
+    display: block;
+    animation: col-sorting 0.7s ease-in-out infinite alternate;
+}
+
+th.is-sorting .column-name {
+    opacity: 0.7;
+}
+
+@keyframes col-sorting {
+    from { opacity: 1; }
+    to { opacity: 0.25; }
+}
+
+/* The right edge: a wide place to take hold of, a line where the edge is */
+.col-edge {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 10px;
+    cursor: col-resize;
+    touch-action: none;
+    z-index: 1;
+}
+
+.col-edge::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    bottom: 2px;
+    right: 0;
+    width: 3px;
+    border-radius: 2px;
+    background: var(--vscode-focusBorder);
+    opacity: 0;
+    transition: opacity 0.12s ease;
+}
+
+.col-edge:hover::after,
+.col-edge.is-sizing::after {
+    opacity: 1;
+}
+
+/* While a column is resized, the line being pulled is lit the whole height of the table (column-head.js places it) */
+.col-size-guide {
+    position: fixed;
+    z-index: 2000;
+    width: 2px;
+    background: var(--vscode-focusBorder);
+    box-shadow: 0 0 6px color-mix(in srgb, var(--vscode-focusBorder) 70%, transparent);
+    pointer-events: none;
+}
+
+/* A narrow heading is its name: the icons give it their room (right-click has them all). A sort
+   that is on keeps its icon, so the order still shows */
+th.col-narrow .col-hide-btn,
+th.col-narrow .col-sort-btn:not(.is-sorted):not(.is-sorting) {
+    display: none;
+}
+
+.col-sizing,
+.col-sizing * {
+    cursor: col-resize !important;
+    user-select: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .col-sort-btn.is-sorting .col-sort-wait {
+        animation: none;
+    }
+}

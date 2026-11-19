@@ -12,6 +12,8 @@
  *
  * Kept out of console.controller.ts (over the Architecture.md file-size limit); it only routes.
  */
+import { getEndpointViewScopeKey } from '../../services/console/view-scope-key';
+import { viewsInQueries } from '../../services/query/query-view-lock';
 import type { IExecutionMetadataService } from '../../services/execution/execution-metadata.interface';
 import { comparableRuns, RequestTemplates } from '../../services/compare/compare-runs';
 import { createDraft, viewsInCompares, CompareState } from '../../services/compare/compare-store';
@@ -70,6 +72,11 @@ export class ConsoleCompareHandler {
     private async postViews(): Promise<void> {
         const { endpointId } = this.host.getSourceRef();
         if (!endpointId) return;
-        await this.host.post({ type: 'console.compareViews', payload: { views: viewsInCompares(this.host.state, endpointId) } });
+        const endpoint = await this.host.endpoints?.getEndpoint(endpointId).catch(() => undefined) as { method?: string; path?: string } | undefined;
+        const request = endpoint?.method && endpoint.path ? getEndpointViewScopeKey(endpoint.method, endpoint.path) : '';
+        await this.host.post({ type: 'console.compareViews', payload: {
+            views: viewsInCompares(this.host.state, endpointId),
+            queries: viewsInQueries(this.host.state, { endpointId, request })
+        } });
     }
 }

@@ -62,6 +62,8 @@
             </div>
             <!-- The theme picker (shared/theme-picker.js): the web and desktop apps' themes. Hidden until
                  the host offers them (themeOptions); VS Code themes itself and never does. -->
+            <!-- The design system's page. Shown when Settings → UI → Design system is on (on by itself in a development build): hub.js -->
+            <button type="button" class="help-mode-toggle hub-help-toggle" id="hubDesignBtn" title="Design system: the components screens are built from" aria-label="Design system" hidden><span class="icon" data-icon="layers"></span></button>
             <span class="theme-picker-anchor">
                 <button type="button" class="help-mode-toggle hub-help-toggle hub-theme-btn" id="hubThemeBtn" data-help="hub#theme" title="Change the theme" aria-label="Change the theme" hidden><span class="icon" data-icon="palette"></span></button>
             </span>
@@ -383,12 +385,29 @@
                     </div>
                 </header>
                 <div class="tx-list-toolbar">
+                    <!-- Select, then Delete: as in Endpoints and History -->
+                    <label class="hub-toggle tx-select-switch" title="Turn on to select reports to delete">
+                        <input type="checkbox" id="compareSelectMode">
+                        <span class="hub-toggle-track"><span class="hub-toggle-thumb"></span></span>
+                        <span class="tx-select-switch-label">Select</span>
+                    </label>
                     <div class="catalogue-summary tx-list-summary" id="compareSummary"></div>
                 </div>
                 <div class="catalogue-list" id="compareList" tabindex="0"></div>
                 <div class="catalogue-empty" id="compareEmpty" hidden>
                     <p class="catalogue-empty-title">No reports yet</p>
-                    <p class="catalogue-empty-body">Open a result in its Console and choose Compare on the Completed tab: another environment, or another day. Each compare is saved here.</p>
+                    <p class="catalogue-empty-body">Open a result in its Console and choose Compare on the Completed tab: another environment, or another day. Or add a query to join results into one table. Each report is saved here.</p>
+                    <!-- The same button an empty Environments list has -->
+                    <button type="button" class="btn btn-primary" id="newQueryEmpty">+ New Query</button>
+                </div>
+                <div class="webview-footer tx-bulk-footer" id="compareBulkBar" hidden role="region" aria-label="Bulk report actions">
+                    <div class="footer-content">
+                        <div class="footer-button-container">
+                            <span class="tx-bulk-count" id="compareBulkCount" aria-live="polite">0 selected</span>
+                            <div class="footer-spacer"></div>
+                            <button type="button" class="btn btn-danger" id="compareBulkDelete" disabled>Delete</button>
+                        </div>
+                    </div>
                 </div>
             </section>
 
@@ -683,6 +702,14 @@
                                 <span class="hub-toggle-track"><span class="hub-toggle-thumb"></span></span>
                             </label>
                             <p class="hub-setting-help">Show a confirmation dialog when deleting transactions and their files.</p>
+                        </div>
+                        <div class="hub-setting-row">
+                            <label class="hub-setting-label" for="showDesignSystem">Design system</label>
+                            <label class="hub-toggle">
+                                <input type="checkbox" id="showDesignSystem">
+                                <span class="hub-toggle-track"><span class="hub-toggle-thumb"></span></span>
+                            </label>
+                            <p class="hub-setting-help">Adds a button to the header that opens the design system: the components DBMN's screens are built from, for anyone building or changing a screen.</p>
                         </div>
                     </div>
 

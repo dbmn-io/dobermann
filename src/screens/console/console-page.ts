@@ -37,6 +37,9 @@ const SCRIPTS: Record<string, string> = {
     VALUE_FORMATTER_URI: 'shared/value-formatter.js',
     CELL_DETAIL_URI: 'shared/cell-detail.js',
     VIRTUAL_WINDOW_URI: 'shared/virtual-window.js',
+    COLUMN_DRAG_URI: 'shared/column-drag.js',
+    COLUMN_HEAD_URI: 'shared/column-head.js',
+    DBMN_CONTEXT_MENU_URI: 'shared/dbmn-context-menu.js',
     INPUT_ROW_STATUS_URI: 'shared/input-row-status.js', // Issue #304
     // #372: the page's own scripts, files rather than inline (the web app's CSP refuses inline script)
     CONSOLE_BOOT_URI: 'console/console-boot.js',
@@ -47,7 +50,7 @@ const SCRIPTS: Record<string, string> = {
 };
 
 /** The Raw tab's transaction card is shared with Run Batch Step 4 (GitHub Issue #308). */
-const STYLES = ['atomic', 'core', 'modals', 'tables', 'tabs', 'toast', 'console', 'transaction-card'];
+const STYLES = ['atomic', 'core', 'modals', 'tables', 'tabs', 'toast', 'console', 'transaction-card', 'column-drag', 'column-head'];
 
 function base64Utf8(text: string): string {
     const bytes = new TextEncoder().encode(text);

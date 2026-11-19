@@ -881,9 +881,15 @@ button.compare-result-btn {
     white-space: nowrap;
 }
 
-/* Remove from Compare (×) shows on hover, as the Console's, on the column name too (in Side by side it does not sort) */
-#compareHead th.compare-field-head:hover .column-hide-btn {
-    opacity: 1;
+/* The heading's controls are every table's (column-head.css): the name drags, the icon sorts,
+   x removes from Compare, the right edge resizes. A result's letter under a column (Side by
+   side) is small: the whole of it sorts */
+#compareHead .sortable-header {
+    cursor: default;
+}
+
+#compareHead .sortable-header.compare-sort-all {
+    cursor: pointer;
 }
 
 /* A compared column's DIFF count: a pill that filters to the rows differing there; a funnel while on */
@@ -1028,19 +1034,6 @@ button.compare-result-btn {
 
 .data-table .compare-first {
     border-left: 1px solid var(--vscode-panel-border);
-}
-
-/* Drag a column's heading onto another to move it there */
-.data-table th[draggable="true"] {
-    cursor: grab;
-}
-
-.data-table th.is-dragging {
-    opacity: 0.45;
-}
-
-.data-table th.is-drop-before {
-    box-shadow: inset 3px 0 0 var(--vscode-focusBorder);
 }
 
 /* A value that differs: its result's tint, underlined in its colour */

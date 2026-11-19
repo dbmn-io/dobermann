@@ -2298,6 +2298,19 @@ body.chained-run[data-csv-step="2"] #csvBackBtn {
     flex: none;
 }
 
+/* The steps sit in the middle of the footer on every stepped screen (Run Batch, Compare, Query):
+   centred in the bar, and the bar padded on the right by the buttons' width so its middle is
+   the footer's. A narrow window has no room for that padding, so there the steps are centred
+   in what the buttons leave. */
+.webview-footer .batch-stepper-row {
+    justify-content: center;
+}
+@media (min-width: 1000px) {
+    #csvBatchContainer .webview-footer .batch-stepper {
+        padding-right: calc(3 * 112px + 2 * 10px);
+    }
+}
+
 
 /* Each step's content starts below the bar, with the gap its heading used to give */
 #csvBatchContainer > .csv-step {
@@ -2418,28 +2431,56 @@ body.chained-run[data-csv-step="2"] #csvBackBtn {
     text-overflow: ellipsis;
 }
 
+/* Between two steps: an icon button (step-bar.js). An arrow is a way open, back or on; an
+   octagon is where the way stops; a dash is beyond that. The shape says it, not the colour. */
 .batch-step-line {
-    position: relative;
-    overflow: hidden;
-    flex: 0 0 24px;
-    min-width: 12px;
-    height: 2px;
-    margin: 0 4px;
-    background: var(--vscode-panel-border);
+    flex: 0 0 34px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    margin: 0;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: none;
+    color: var(--step-dim);
 }
-
-/* A finished step's line fills towards the next one, left to right */
-.batch-step-line::after {
-    content: '';
+.batch-step-line > .batch-step-icon { width: 30px; height: 30px; }
+/* A sign changing (step-bar.js, swapLineIcon): the old one leaves quickly the way the user went,
+   the new one comes in after it, slower. Both sit in the same place while they cross */
+.batch-step-line { position: relative; }
+.batch-step-line > .batch-step-icon.is-leaving {
     position: absolute;
     inset: 0;
-    background: var(--step-ok);
-    transform: scaleX(0);
-    transform-origin: left center;
+    margin: auto;
+    --step-icon-to: 0px;
+    animation: step-icon-out 200ms ease-in forwards;
 }
-.batch-step-line.is-done::after {
-    transform: scaleX(1);
+.batch-step-line > .batch-step-icon.is-entering {
+    --step-icon-from: 0px;
+    animation: step-icon-in 420ms cubic-bezier(0.2, 0.7, 0.2, 1) 140ms both;
 }
+.batch-step-line > .batch-step-icon.is-leaving.is-on { --step-icon-to: 14px; }
+.batch-step-line > .batch-step-icon.is-entering.is-on { --step-icon-from: -14px; }
+.batch-step-line > .batch-step-icon.is-leaving.is-back { --step-icon-to: -14px; }
+.batch-step-line > .batch-step-icon.is-entering.is-back { --step-icon-from: 14px; }
+@keyframes step-icon-out {
+    to { opacity: 0; transform: translateX(var(--step-icon-to)); }
+}
+@keyframes step-icon-in {
+    from { opacity: 0; transform: translateX(var(--step-icon-from)); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .batch-step-line > .batch-step-icon.is-leaving { display: none; }
+    .batch-step-line > .batch-step-icon.is-entering { animation: none; }
+}
+/* Quieter than the steps they sit between; full strength under the pointer */
+.batch-step-line:disabled { opacity: 0.5; }
+.batch-step-line.is-open { cursor: pointer; }
+.batch-step-line.is-open:hover { color: var(--vscode-foreground); background: color-mix(in srgb, currentColor 14%, transparent); }
+.batch-step-line:focus-visible { outline: 1px solid var(--vscode-focusBorder); }
 
 /* Current: unmistakable. One highlight sits behind the current step and slides to the next
    (batch-stepper.js places it with --x and --w), so a hand-off reads as a move, not a cut. */
@@ -2561,10 +2602,19 @@ body.chained-run[data-csv-step="2"] #csvBackBtn {
 .batch-step-text { align-items: center; }
 .batch-step-summary { display: none; }
 .batch-step-label { font-size: 11px; line-height: 14px; }
-/* The line meets the circles' middle, not the names */
-.batch-step-line { margin: 0 0 12px; }
+/* Its middle on the circles', not the names */
+.batch-step-line { margin-bottom: -4px; }
+/* (in a footer a step has 2px under its circle) */
+.webview-footer .batch-step-line { margin-bottom: -2px; }
 
 .batch-step.is-current { background: none; }
+/* Hover: an even halo round the circle, in the step's own colour. No box behind the step: one as
+   wide as the name sat unevenly over the lines either side */
+.batch-step:not(:disabled):hover { background: none; }
+.batch-step:not(:disabled):not(.is-current):hover .batch-step-circle {
+    background: color-mix(in srgb, currentColor 14%, transparent);
+    box-shadow: 0 0 0 4px color-mix(in srgb, currentColor 16%, transparent);
+}
 .batch-step.is-current .batch-step-circle {
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--step-accent) 35%, transparent);
 }
@@ -2639,5 +2689,96 @@ body.chained-run[data-csv-step="2"] #csvBackBtn {
    layout keeps its footer in the flow, so it lifts out to ride over the grid's bottom edge. */
 body.is-footer-peek:has(#csvBatchContainer) .webview-footer {
     position: fixed;
+}
+
+/* A named footer (Run Batch, Compare, Query), from the left: its buttons, its name, its steps.
+   The steps start at the same place on all three: Run Batch has room for three buttons, and
+   Compare and Query, with two, give the third's room to the name. On those two Back keeps its
+   place while it is hidden (the first step), so nothing shifts on Next.
+   The name is set out as a step is: a small grey heading with the name close under it. Compare's
+   says what it compares; a query's is typed on its Views step, a batch's on any step. */
+.named-footer {
+    --foot-gap: 10px;
+    --foot-name: 216px;   /* a name's 30 characters */
+    --foot-row: 26px;   /* the step circles' height: the name and the buttons sit on their row */
+}
+
+/* Name, steps, buttons, from the left: each starts where it does on every stepped screen, and a
+   button that comes and goes (Filter Errors) does so at the end. A little more room below
+   than above, so the row does not look as if it is sinking. */
+body:has(#csvBatchContainer) .webview-footer.named-footer .footer-content {
+    justify-content: flex-start;
+    align-items: center;
+    gap: 16px;
+    padding-top: 8px;
+    padding-bottom: 12px;
+}
+
+#csvBatchContainer .webview-footer.named-footer .footer-button-container {
+    width: auto;
+    flex-wrap: nowrap;
+    gap: var(--foot-gap);
+}
+
+#csvBatchContainer .webview-footer.named-footer .footer-button-container .btn {
+    /* The standard footer button, at its own size. A button that comes (Filter Errors, Execute) eases in where it stands: nothing beside it jumps */
+    animation: foot-btn-in 0.18s ease-out;
+}
+
+@keyframes foot-btn-in {
+    from { opacity: 0; transform: translateX(-6px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #csvBatchContainer .webview-footer.named-footer .footer-button-container .btn { animation: none; }
+}
+
+.named-footer .report-name {
+    width: var(--foot-name);
+    /* (the circles sit 2px up from the bar's foot) */
+    margin-bottom: 2px;
+}
+
+.named-footer .report-name input {
+    width: 100%;
+    height: var(--foot-row);
+    min-width: 0;
+    box-sizing: border-box;
+    margin: 0;
+    padding: 2px 8px;
+    font-size: 12px;
+}
+
+.report-foot {
+    flex: 0 1 auto;
+    min-width: 0;
+    display: flex;
+    justify-content: flex-start;
+    align-items: flex-end;
+    gap: 16px;
+}
+
+/* (Run Batch used to centre its steps by padding the bar; here they follow the name) */
+#csvBatchContainer .webview-footer.named-footer .batch-stepper {
+    /* (a width of its own: as a size container it has none from what it holds) */
+    flex: 0 1 346px;
+    width: 346px;
+    padding-right: 0;
+}
+
+.report-name {
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    font-size: 12px;
+}
+
+.report-name-label {
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 13px;
+    color: var(--vscode-descriptionForeground);
 }
 

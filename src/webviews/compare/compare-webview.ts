@@ -15,6 +15,16 @@ import type { IExecutionMetadataService } from '../../services/execution/executi
 import type { StoreContext } from '../../platform/interfaces/store-context.interface';
 import { CompareController, CompareConfig, CompareMessage } from '../../screens/compare/compare.controller';
 import { buildComparePage } from '../../screens/compare/compare-page';
+import type { ComparePorts } from '../../screens/compare/compare.ports';
+import { QueryController } from '../../screens/query/query.controller';
+import { buildQueryPage } from '../../screens/query/query-page';
+import { isQueryId } from '../../services/query/query-store';
+import { createVsCodeQueryFiles } from '../../platform/vscode/vscode-execution-storage';
+import initSqlJs from 'sql.js';
+import * as path from 'path';
+
+/** SQLite for queries, started once and shared by every Query tab. */
+let sqlEngine: ReturnType<typeof initSqlJs> | undefined;
 
 export interface CompareWebviewConfig extends CompareConfig {
     context: 'compare';
@@ -36,12 +46,13 @@ export function compareStateStore(container: IServiceContainer, context: vscode.
 }
 
 export class CompareWebview extends WebviewBase {
-    private readonly controller: CompareController;
+    /** A compare's screen, or a query's (a report of the other kind, in the same kind of tab). */
+    private readonly controller: CompareController | QueryController;
 
     constructor(context: vscode.ExtensionContext, serviceContainer: IServiceContainer, private readonly config: CompareWebviewConfig) {
         super(context);
         const container = serviceContainer;
-        this.controller = new CompareController(this.session, {
+        const ports: ComparePorts = {
             metadata: container.resolve<IExecutionMetadataService>(ExecutionServiceTokens.ExecutionMetadataService),
             endpoints: container.resolve<APIEndpointManager>(ServiceTokens.EndpointManager),
             environments: container.resolve<EnvironmentManager>(ServiceTokens.EnvironmentManager),
@@ -63,7 +74,11 @@ export class CompareWebview extends WebviewBase {
                 },
                 compared: () => config.onCompared?.()
             }
-        }, config);
+        };
+        const wasm = path.join(context.extensionPath, 'dist', 'sql-wasm.wasm');
+        this.controller = isQueryId(config.compareId)
+            ? new QueryController(this.session, { ...ports, sql: () => (sqlEngine ??= initSqlJs({ locateFile: () => wasm })), systemName: async id => (await container.resolve<{ getSystem(id: string): Promise<{ name: string } | undefined> }>(ServiceTokens.SystemManager).getSystem(id))?.name, openRunBatch: async (endpoint, chain) => { await vscode.commands.executeCommand('dbmn.runBatch', { endpoint, chain }); }, queryFiles: createVsCodeQueryFiles() }, { queryId: config.compareId, start: config.start })
+            : new CompareController(this.session, ports, config);
     }
 
     getWebviewType(): string {
@@ -71,7 +86,7 @@ export class CompareWebview extends WebviewBase {
     }
 
     protected getWebviewTitle(): string {
-        return `Compare: ${this.config.endpointName}`;
+        return `${isQueryId(this.config.compareId) ? 'Query' : 'Compare'}: ${this.config.endpointName}`;
     }
 
     protected getViewColumn(): vscode.ViewColumn {
@@ -79,7 +94,10 @@ export class CompareWebview extends WebviewBase {
     }
 
     async getHtmlContent(): Promise<string> {
-        return buildComparePage(rel => this.getWebviewUri(rel).toString(), this.config);
+        const asset = (rel: string) => this.getWebviewUri(rel).toString();
+        return isQueryId(this.config.compareId)
+            ? buildQueryPage(asset, { queryId: this.config.compareId, name: this.config.endpointName })
+            : buildComparePage(asset, this.config);
     }
 
     async handleMessage(message: WebviewMessage): Promise<void> {

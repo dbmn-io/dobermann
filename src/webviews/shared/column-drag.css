@@ -1,0 +1,62 @@
+/* Column Drag (column-drag.js): a table's column, dragged by its heading. The lifted column
+   follows the pointer (--col-dx); the columns it passes slide its width (--col-w) aside. */
+
+.col-drag-on,
+.col-drag-on * {
+    cursor: grabbing !important;
+    user-select: none !important;
+}
+
+.col-dragging th,
+.col-dragging td {
+    transition: transform 0.16s cubic-bezier(0.2, 0, 0, 1);
+}
+
+.col-dragging .col-shift-left {
+    transform: translateX(calc(-1 * var(--col-w)));
+}
+
+.col-dragging .col-shift-right {
+    transform: translateX(var(--col-w));
+}
+
+/* The lifted column: over its neighbours, solid, a shadow down each side */
+.col-dragging td.col-lift,
+.col-dragging th.col-lift {
+    transform: translateX(var(--col-dx));
+    transition: none;
+    position: relative;
+    z-index: 6;
+    background-color: var(--col-lift-bg, var(--vscode-editor-background));
+    box-shadow: -8px 0 14px -8px rgba(0, 0, 0, 0.55), 8px 0 14px -8px rgba(0, 0, 0, 0.55),
+        inset 1px 0 0 var(--vscode-focusBorder), inset -1px 0 0 var(--vscode-focusBorder);
+}
+
+.col-dragging th.col-lift {
+    position: sticky;
+    z-index: 12;
+}
+
+/* Released: it glides into the gap */
+.col-settling td.col-lift,
+.col-settling th.col-lift {
+    transition: transform 0.14s cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* The move made real: nothing slides back */
+.col-still th,
+.col-still td {
+    transition: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .col-dragging th,
+    .col-dragging td,
+    .col-settling td.col-lift,
+    .col-settling th.col-lift {
+        transition: none;
+    }
+}
+
+/* Headings that are no place for the column being held (another group, a fixed column) */
+table.col-dragging thead th.col-out { opacity: 0.45; }

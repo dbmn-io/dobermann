@@ -22,6 +22,7 @@ import type { NewEnvironmentDraft } from '../new-environment-prompt';
 import type { RecentEndpointsService } from '../../services/recent-endpoints/recent-endpoints.service';
 import type { CatalogueStorageInfo } from '../../services/catalogue/catalogue-location';
 import type { DbmnModalSpec, DbmnModalResult } from '../modal.types';
+import type { QueryFileStore } from '../../services/query/query-file-store';
 
 /** The Hub's side of an embedded tab: posts into the tab's page, or closes the tab. */
 export interface TabChannel {
@@ -64,10 +65,12 @@ export interface HubTabFactory {
     console?(config: { executionId: string; isBatch: boolean }, channel: TabChannel): Promise<ConsoleTab>;
     /** #298: a saved compare (compare-store), opened on Results, Match or its Edit dialog. */
     compare?(config: { compareId: string; endpointName: string; start?: 'results' | 'match' | 'edit' }, channel: TabChannel): Promise<HubTab>;
+    /** The design system's page (design-system-page.ts): the reference for building screens, no data of its own. */
+    design?(channel: TabChannel): Promise<HubTab>;
 }
 
 export interface SerializedHubTab {
-    type: 'endpoint' | 'environment' | 'batch' | 'console' | 'batchConsole' | 'compare' | 'page';
+    type: 'endpoint' | 'environment' | 'batch' | 'console' | 'batchConsole' | 'compare' | 'design' | 'page';
     refId: string;
     name?: string;
     /** Had unsaved changes when captured: restoring can't bring the edits back, so say so. */
@@ -145,6 +148,8 @@ export interface HubPorts {
     /** #298: where the saved compares are kept (the Compare list; Delete and Duplicate change it). */
     compares?: {
         state(): CompareState;
+        /** A query's file views keep their rows on this computer: a deleted query drops them, a copy takes its own. */
+        queryFiles?: Pick<QueryFileStore, 'remove' | 'copy'>;
     };
     /** Issue #275: export the selected endpoints to a file; the file's path, or an error. */
     exportEndpoints?(ids: string[]): Promise<{ filePath?: string; error?: string }>;
