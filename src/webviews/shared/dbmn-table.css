@@ -60,3 +60,5 @@ dbmn-table [hidden] { display: none !important; }
 .dbmn-nest-table th { position: static; white-space: nowrap; }
 .dbmn-nest-table td { white-space: nowrap; max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
 .dbmn-nest-note { display: block; margin-top: 4px; color: var(--dbmn-descriptionForeground); }
+/* The search in words, under the box */
+.dbmn-table-reads { margin: -4px 0 0; }

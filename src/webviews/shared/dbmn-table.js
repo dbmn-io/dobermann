@@ -23,8 +23,10 @@
  * `locked` (columns can be neither moved nor removed), `label` (what the table holds, for a
  * screen reader), `placeholder` (the search box's).
  *
- * A column: { id, name, numbers, className (on its heading and its cells: a colour the screen
- * owns), render(value, row) }. `numbers` says the column sorts as numbers (its sort icon is 0 to
+ * A column: { id, name, numbers, type, className (on its heading and its cells: a colour the screen
+ * owns), render(value, row) }. `type` ('text', 'number', 'yesno', 'date', 'nested') is what the
+ * search box says the column is and which operators it offers; left out, the table looks at the
+ * values (a date is ISO 8601 text). No type is ever shown in a heading. `numbers` says the column sorts as numbers (its sort icon is 0 to
  * 1, where text's is A to Z); left out, the table looks at the values: a column of numbers or of
  * true and false sorts as numbers. A value that is a number sits right.
  *
@@ -44,7 +46,9 @@
  *       The table neither searches nor sorts these: it says what was asked and asks again.
  *   orders.reload();                  // the rows changed (a search, Distinct): ask again, from the top
  *   orders.reload({ keep: true });    // the same, staying where it is (a live refresh)
- *   orders.addEventListener('dbmn-table-search', e => …e.detail.text…);   then it asks again itself
+ *   orders.addEventListener('dbmn-table-search', e => …e.detail.text, e.detail.reads…);   then it asks again itself
+ *       (`reads`: the search in words, "Reading this as: placed (date) after 12 Nov 2026", for a
+ *       screen to show under its own box; the table shows it under its own)
  *   orders.addEventListener('dbmn-table-layout', e => …e.detail.change, e.detail.layout…);
  *       change: 'sorted' | 'moved' | 'removed' | 'resized', with { id, to, width } as fits;
  *       layout: { order: [ids], hidden: [ids], widths: { id: px } (the ones the user set), sort }.
@@ -150,6 +154,7 @@
             this._rows = Array.isArray(list) ? list : [];
             this._source = null;
             this._kinds = null;
+            this._types = null;
             this._sized = this._sized && Object.keys(this._widths).length > 0;
             // Sized before it had any rows (they came later): sized again now there is something to measure
             if (this._sizedEmpty && this._rows.length) this._unsize();
@@ -226,10 +231,46 @@
             if (!matcher || !matcher.attachColumnSuggest) return;
             matcher.attachColumnSuggest({
                 input,
+                types: (heading, path) => this._typeOf(heading, path),
                 headings: () => this._columns.map(c => c.name || c.id),
                 // `@column.` lists the keys inside that column's nested data (of the rows in hand)
                 keys: (heading, path) => matcher.nestedKeysFor(this._source ? this._inHand() : this._rows, this._all.map(c => ({ id: c.id, name: c.name || c.id })), heading, path, (row, id) => row[id])
             });
+        }
+        /** What kind of column a heading names (or a key inside it), for the search box: the screen's word, else what its values are. */
+        _typeOf(heading, path) {
+            const matcher = window.SearchMatcher;
+            const low = String(heading).toLowerCase();
+            const column = this._all.find(c => String(c.name || c.id).toLowerCase() === low);
+            if (!column || !matcher || !matcher.typeOfValues) return '';
+            const inside = path && path.length;
+            if (!inside && column.type) return column.type;
+            if (!inside && column.numbers) return 'number';
+            const key = `${column.id}.${(path || []).join('.')}`;
+            if (!this._types) this._types = {};
+            if (this._types[key] === undefined) {
+                const rows = (this._source ? this._inHand() : this._rows).slice(0, 200);
+                let values = rows.map(row => (row ? row[column.id] : null));
+                // (a key inside nested data: the values under it, whichever record they are in)
+                (path || []).forEach(part => {
+                    const want = part.toLowerCase();
+                    const next = [];
+                    const dig = v => {
+                        if (Array.isArray(v)) v.forEach(dig);
+                        else if (v && typeof v === 'object') Object.keys(v).forEach(k => { if (k.toLowerCase() === want) next.push(v[k]); });
+                    };
+                    values.forEach(dig);
+                    values = next;
+                });
+                if (!rows.length) return '';
+                this._types[key] = matcher.typeOfValues(values);
+            }
+            return this._types[key];
+        }
+        /** The search in words, under the box: "Reading this as: placed (date) after 12 Nov 2026". */
+        _reading(text) {
+            const matcher = window.SearchMatcher;
+            return matcher && matcher.describeSearch ? matcher.describeSearch(text, this._all.map(c => c.name || c.id), (heading, path) => this._typeOf(heading, path)) : '';
         }
         _inHand() {
             const rows = [];
@@ -257,6 +298,10 @@
             this._count = make('span', 'search-results dbmn-table-count');
             this._count.setAttribute('role', 'status');
             this._tools.append(container, this._count);
+            // What the search is read as, in words, under the box (only while it asks something of a column)
+            this._reads = make('div', 'form-hint dbmn-table-reads');
+            this._reads.setAttribute('role', 'status');
+            this._reads.hidden = true;
 
             this._scroll = make('div', 'table-container dbmn-table-scroll');
             this._table = make('table', 'data-table dbmn-table-grid');
@@ -271,7 +316,7 @@
             this._foot = make('tfoot', 'dbmn-table-foot');
             this._table.append(this._cols, this._head, this._above, this._body, this._below, this._foot);
             this._scroll.append(this._table);
-            this.replaceChildren(this._tools, this._scroll);
+            this.replaceChildren(this._tools, this._reads, this._scroll);
             if (window.Icons) window.Icons.injectIcons(this._tools);
 
             const matcher = window.SearchMatcher;
@@ -387,6 +432,7 @@
                 this._fresh = false;
                 this._sorting = false;
                 this._kinds = null;
+                this._types = null;
                 this._heads();   // (a sort's clock is its arrow again)
                 this._apply();
                 if (!this._sized || this._sizedEmpty) { this._unsize(); this._size(); }
@@ -657,7 +703,9 @@
             const mirror = input === this._input ? this._mirror : this._outerMirror;
             const text = input ? input.value : '';
             if (window.SearchMatcher && mirror) window.SearchMatcher.renderHighlight(mirror, text);
-            this.dispatchEvent(new CustomEvent('dbmn-table-search', { bubbles: true, detail: { text: text.trim() } }));
+            const reads = this._reading(text);
+            if (input === this._input) { this._reads.textContent = reads; this._reads.hidden = !reads; }
+            this.dispatchEvent(new CustomEvent('dbmn-table-search', { bubbles: true, detail: { text: text.trim(), reads } }));
             if (this._source) {
                 // The screen's rows: asked for again a moment after the last key, from the top
                 clearTimeout(this._searchTimer);

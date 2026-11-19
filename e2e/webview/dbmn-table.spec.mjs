@@ -484,3 +484,52 @@ test('what is open stays with its row through a sort and a search, and the rows 
     await expect(page.locator('#t .dbmn-table-count')).toHaveText('1 of 2,000 rows');
     await expect(parent(page, 'SO-10001').locator('.dbmn-nest-table tbody tr')).toHaveCount(2);
 });
+
+/* ── A search that knows what each column is ── */
+
+test('the search box says what each column is, offers what fits, and says how the search is read', async ({ page }) => {
+    await page.setContent(tablePage());
+    await page.evaluate(() => {
+        const t = document.getElementById('t');
+        const day = n => { const d = new Date(Date.now() - n * 86400000); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
+        t.columns = [{ id: 'order_no', name: 'order_no' }, { id: 'placed', name: 'placed' }, { id: 'urgent', name: 'urgent' }, { id: 'qty', name: 'qty' }, { id: 'lines', name: 'lines' }, { id: 'ref', name: 'ref', type: 'text' }];
+        t.rows = Array.from({ length: 100 }, (_, i) => ({ order_no: 'SO-' + i, placed: day(i), urgent: i % 4 === 0, qty: i, ref: i, lines: [{ item: 'IT-' + i, qty: i * 2 }] }));
+    });
+    const box = page.locator('#t .search-input');
+    const options = () => page.locator('#t .column-suggest-option').evaluateAll(els => els.map(e => e.textContent));
+    await box.fill('@');
+    // Told from the values; `ref` holds numbers but the screen said it is text
+    expect(await options()).toEqual(expect.arrayContaining(['@order_notext', '@placeddate', '@urgentyes/no', '@qtynumber', '@linesnested', '@reftext']));
+    // No type in any heading
+    expect(await names(page)).toEqual(['order_no', 'placed', 'urgent', 'qty', 'lines', 'ref']);
+    await box.fill('@placed');
+    expect(await options()).toEqual(['>after', '<before', '=on, or between', '>=on or after', '<=on or before']);
+    await page.keyboard.press('Enter');
+    await expect(box).toHaveValue('@placed>');
+    expect((await options())[2]).toBe('7din the last 7 days');
+    await page.keyboard.press('ArrowDown');
+    await page.keyboard.press('ArrowDown');
+    await page.keyboard.press('Enter');
+    await expect(box).toHaveValue('@placed>7d');
+    // Days 0 to 7 ago are after "7 days ago" by the clock (day 7's midnight is not): 7 rows
+    await expect(page.locator('#t .dbmn-table-count')).toHaveText('7 of 100 rows');
+    await expect(page.locator('#t .dbmn-table-reads')).toContainText('Reading this as: placed (date) after ');
+    // The dates on show are as they came
+    await expect(page.locator('#t .dbmn-table-body tr').first().locator('td').nth(1)).toHaveText(/^\d{4}-\d{2}-\d{2}$/);
+    await box.fill('@placed=today');
+    await expect(page.locator('#t .dbmn-table-count')).toHaveText('1 of 100 rows');
+    await box.fill('@placed=30d..7d');
+    await expect(page.locator('#t .dbmn-table-count')).toHaveText('24 of 100 rows');
+    await box.fill('@urgent=');
+    expect(await options()).toEqual(['true', 'false']);
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#t .dbmn-table-count')).toHaveText('25 of 100 rows');
+    await expect(page.locator('#t .dbmn-table-reads')).toHaveText('Reading this as: urgent (yes/no) is yes');
+    // A key inside nested data has its own kind
+    await box.fill('@lines.');
+    expect(await options()).toEqual(['@lines.itemtext', '@lines.qtynumber']);
+    await box.fill('@lines.qty>190');
+    await expect(page.locator('#t .dbmn-table-count')).toHaveText('4 of 100 rows');
+    await box.fill('kettle');
+    await expect(page.locator('#t .dbmn-table-reads')).toBeHidden();
+});

@@ -864,3 +864,156 @@ describe('Search: suggestions inside nested data', () => {
         expect(columnSuggestions('@sta', ['status']).map((s: { text: string; label: string }) => `${s.text} ${s.label}`)).to.deep.equal(['@status column']);
     });
 });
+
+// =============================================================
+// Times, and what kind of column a search is asked of
+// =============================================================
+
+describe('Search: times (today, 7d, ISO 8601) are compared as times', () => {
+    const { resolveTime, timeOfCell } = require('../../../webviews/shared/search-matcher.js');
+    // 3 pm on 19 Nov 2026, by this computer's clock
+    const NOW = new Date(2026, 10, 19, 15, 0, 0).getTime();
+    const columns = [{ id: 'placed', name: 'placed' }, { id: 'at', name: 'at' }, { id: 'code', name: 'code' }, { id: 'lines', name: 'lines' }];
+    const rows = [
+        { n: 1, placed: '2026-11-19', at: '2026-11-19T14:30:00', code: '7d', lines: [{ shipped: '2026-11-18' }] },
+        { n: 2, placed: '2026-11-18', at: '2026-11-19T09:00:00', code: 'today', lines: [{ shipped: '2026-11-01' }] },
+        { n: 3, placed: '2026-11-10', at: '2026-11-01 08:00:00.120', code: 'x', lines: [] },
+        { n: 4, placed: '2026-10-01', at: '2026-10-01T00:00:00Z', code: 'y', lines: [{ shipped: '2026-09-30' }, { shipped: '2026-11-19' }] }
+    ];
+    const found = (search: string): number[] => {
+        const terms = parseSearchExpression(search, NOW);
+        return rows.filter(row => matchesRow(terms, row, columns, extractValue)).map(row => row.n);
+    };
+
+    it('today and yesterday are whole days; > is after, >= includes', () => {
+        expect(found('@placed=today')).to.deep.equal([1]);
+        expect(found('@placed=yesterday')).to.deep.equal([2]);
+        expect(found('@placed>yesterday')).to.deep.equal([1]);
+        expect(found('@placed>=yesterday')).to.deep.equal([1, 2]);
+        expect(found('@placed<today')).to.deep.equal([2, 3, 4]);
+    });
+
+    it('so many days, weeks, hours or minutes ago; a range with .. is between, either way round', () => {
+        expect(found('@placed>7d')).to.deep.equal([1, 2]);
+        expect(found('@placed<7d')).to.deep.equal([3, 4]);
+        expect(found('@placed>2w')).to.deep.equal([1, 2, 3]);
+        expect(found('@placed=30d..7d')).to.deep.equal([3]);
+        expect(found('@placed=7d..30d')).to.deep.equal([3]);
+        expect(found('@placed=7d..')).to.deep.equal([1, 2]);
+        expect(found('@placed!=7d..')).to.deep.equal([3, 4]);
+        expect(found('@at>2h')).to.deep.equal([1]);
+        expect(found('@at>45m')).to.deep.equal([1]);
+        expect(found('@at>20m')).to.deep.equal([]);
+        expect(found('@placed=9d')).to.deep.equal([3]);   // nine days ago, asked with =, is that day
+    });
+
+    it('a day typed finds every time on it, and after it is after the day ends', () => {
+        expect(found('@at=today')).to.deep.equal([1, 2]);
+        expect(found('@at=2026-11-01')).to.deep.equal([3]);
+        expect(found('@at>2026-11-01')).to.deep.equal([1, 2]);
+        expect(found('@at>=2026-11-01')).to.deep.equal([1, 2, 3]);
+        expect(found('@placed=2026-11-18|2026-11-10')).to.deep.equal([2, 3]);
+        expect(found('@placed=2026-11-10..2026-11-18')).to.deep.equal([2, 3]);
+    });
+
+    it('a value that only looks like a time is still text against a cell that is not a time', () => {
+        expect(found('@code=7d')).to.deep.equal([1]);
+        expect(found('@code=today')).to.deep.equal([2]);
+    });
+
+    it('inside nested data too: any one will do, and none with !=', () => {
+        expect(found('@lines.shipped>7d')).to.deep.equal([1, 4]);
+        expect(found('@lines.shipped=today')).to.deep.equal([4]);
+        expect(found('@lines.shipped!=today')).to.deep.equal([1, 2, 3]);
+    });
+
+    it('resolveTime and timeOfCell: one meaning for the page and the host', () => {
+        const day = (y: number, m: number, d: number) => new Date(y, m, d).getTime();
+        expect(resolveTime('today', NOW)).to.include({ from: day(2026, 10, 19), to: day(2026, 10, 20) - 1 });
+        expect(resolveTime('yesterday', NOW)).to.include({ from: day(2026, 10, 18), to: day(2026, 10, 19) - 1 });
+        expect(resolveTime('2h', NOW)).to.include({ from: NOW - 7200000, to: NOW - 7200000 });
+        expect(resolveTime('7d', NOW)).to.include({ from: NOW - 7 * 86400000 });
+        expect(resolveTime('2w', NOW)).to.include({ from: NOW - 14 * 86400000 });
+        // A day alone, and a time with no zone, are this computer's; Z or an offset is exact
+        expect(timeOfCell('2026-11-19')).to.include({ from: day(2026, 10, 19), to: day(2026, 10, 20) - 1 });
+        expect(timeOfCell('2026-11-19T09:15:02').from).to.equal(new Date(2026, 10, 19, 9, 15, 2).getTime());
+        expect(timeOfCell('2026-11-19 09:15').from).to.equal(new Date(2026, 10, 19, 9, 15, 0).getTime());
+        expect(timeOfCell('2026-11-19T09:15:02Z').from).to.equal(Date.UTC(2026, 10, 19, 9, 15, 2));
+        expect(timeOfCell('2026-11-19T09:15:02.5+10:00').from).to.equal(Date.UTC(2026, 10, 18, 23, 15, 2, 500));
+        for (const not of ['19/11/2026', '2026', 'soon', '7', '3..7', '']) {
+            expect(timeOfCell(not), not).to.equal(null);
+            expect(resolveTime(not, NOW), not).to.equal(null);
+        }
+    });
+
+    it('numbers are untouched: a bare 3..7 is still numbers', () => {
+        const qty = [{ id: 'qty', name: 'qty' }];
+        const terms = parseSearchExpression('@qty=3..7', NOW);
+        expect([{ qty: 2 }, { qty: 5 }, { qty: 9 }].filter(row => matchesRow(terms, row, qty, extractValue)).map(row => row.qty)).to.deep.equal([5]);
+    });
+});
+
+describe('Search: suggestions that know what a column is', () => {
+    const { typeOfValues, describeSearch } = require('../../../webviews/shared/search-matcher.js');
+    const NOW = new Date(2026, 10, 19, 15, 0, 0).getTime();
+    const headings = ['poNumber', 'poDate', 'urgent', 'qty', 'lines'];
+    const kinds: Record<string, string> = { poNumber: 'text', poDate: 'date', urgent: 'yesno', qty: 'number', lines: 'nested', 'lines.qty': 'number' };
+    const types = (heading: string, path: string[]) => kinds[[heading].concat(path || []).join('.')] || '';
+    const keys = (heading: string, path: string[]) => (heading === 'lines' && !path.length ? ['item', 'qty'] : []);
+    const list = (typed: string) => columnSuggestions(typed, headings, keys, types).map((s: { text: string; label: string }) => `${s.text} ${s.label}`.trim());
+
+    it('the kind of each column is told from its values', () => {
+        expect(typeOfValues([true, false, null])).to.equal('yesno');
+        expect(typeOfValues([1, 2.5, ''])).to.equal('number');
+        expect(typeOfValues(['2026-11-19', '2026-11-19T09:15:02Z'])).to.equal('date');
+        expect(typeOfValues(['2026-11-19', 'soon'])).to.equal('text');
+        expect(typeOfValues(['12', '13'])).to.equal('text');   // text that looks like numbers is still text
+        expect(typeOfValues([[{ a: 1 }], null])).to.equal('nested');
+        expect(typeOfValues([null, ''])).to.equal('');
+    });
+
+    it('the @ list says what each column is', () => {
+        expect(list('@')).to.have.members(['@lines nested', '@poDate date', '@poNumber text', '@qty number', '@urgent yes/no']);
+        expect(list('@lines.')).to.deep.equal(['@lines.item key', '@lines.qty number']);
+    });
+
+    it('a column typed in full is offered the operators that fit it', () => {
+        expect(list('@poDate')).to.deep.equal(['> after', '< before', '= on, or between', '>= on or after', '<= on or before']);
+        expect(list('@urgent')).to.deep.equal(['= is', '!= is not']);
+        expect(list('@qty')[0]).to.equal('> more than');
+        expect(list('@poNumber')).to.deep.equal(['= is (a|b either)', '!= is not', '~ contains', "!~ doesn't contain"]);
+        expect(list('@lines')[0]).to.equal('. a key inside it');
+        expect(list('@lines.qty')[0]).to.equal('> more than');
+    });
+
+    it('after an operator: true or false for yes/no, and the usual times for a date', () => {
+        expect(list('@urgent=')).to.deep.equal(['true', 'false']);
+        expect(list('@urgent=f')).to.deep.equal(['false']);
+        expect(list('@urgent=false')).to.deep.equal([]);
+        expect(list('@poDate>').map((s: string) => s.split(' ')[0])).to.deep.equal(['today', 'yesterday', '7d', '30d', '2h']);
+        expect(list('@poDate=').map((s: string) => s.split(' ')[0])).to.deep.equal(['today', 'yesterday', '7d..', '30d..', '30d..7d']);
+        expect(list('@poDate=3')).to.deep.equal(['30d.. the last 30 days', '30d..7d between 30 and 7 days ago']);
+        expect(list('@qty>')).to.deep.equal([]);
+        expect(list('@poNumber=')).to.deep.equal([]);
+    });
+
+    it('with no types given, nothing changes', () => {
+        expect(columnSuggestions('@poDate', headings).map((s: { text: string }) => s.text)).to.deep.equal(['=', '!=', '~', '!~', '>', '<', '>=', '<=']);
+        expect(columnSuggestions('@poDate>', headings)).to.deep.equal([]);
+    });
+
+    it('the search in words says how it is being read', () => {
+        const date = (ms: number) => new Date(ms).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+        expect(describeSearch('@poDate>7d', headings, types, NOW)).to.equal(`Reading this as: poDate (date) after ${date(NOW - 7 * 86400000)}`);
+        expect(describeSearch('@urgent=true kettle', headings, types, NOW)).to.equal('Reading this as: urgent (yes/no) is yes and any column holds kettle');
+        expect(describeSearch('@qty=10..90', headings, types, NOW)).to.equal('Reading this as: qty (number) is from 10 to 90');
+        expect(describeSearch('@poDate=30d..7d', headings, types, NOW)).to.equal(`Reading this as: poDate (date) is from ${date(NOW - 30 * 86400000)} to ${date(NOW - 7 * 86400000)}`);
+        expect(describeSearch('@poDate>soon', headings, types, NOW)).to.equal('Reading this as: poDate (date) after soon (not a date)');
+        expect(describeSearch('@qty>lots', headings, types, NOW)).to.equal('Reading this as: qty (number) more than lots (not a number)');
+        expect(describeSearch('@lines.qty>40', headings, types, NOW)).to.equal('Reading this as: lines.qty (number) more than 40');
+        expect(describeSearch('@nothere=1', headings, types, NOW)).to.equal('Reading this as: no column called nothere');
+        // Nothing asked of a column, or still being typed: nothing to say
+        expect(describeSearch('kettle', headings, types, NOW)).to.equal('');
+        expect(describeSearch('@poDate>', headings, types, NOW)).to.equal('');
+    });
+});
