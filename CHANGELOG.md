@@ -7,9 +7,14 @@ All notable changes to Dobermann are documented here.
 ## [Unreleased]
 
 ### Added
+- **Query (Beta)** — Join results from different endpoints, and CSV or Excel files of your own, into one table. Start from **+ New Query** in **Reporting**: add the views, pick the column they share, choose the columns, then search, sort, total and export the result, or send it on with **Chain**. The steps write the SQL for you; read it or write your own. Nothing is sent: a query reads results already in History. [Docs](https://dbmn.io/docs/query/)
+- **Search inside nested data** — In the Console's search, `@lines=A-2207` now finds a row when any value inside a nested column matches, and `@lines.item=A-2207` or `@lines.qty>40` asks one key. Type a dot after the column's name to list the keys inside it. Before, only `~` could match a nested column. [Docs](https://dbmn.io/docs/console/#search-nested)
+- **Select and delete several reports** — **Select** in the Reporting list turns on tick boxes to delete compares and queries together. Only the reports go: the data in History stays.
 - **Signing in to VS Code also signs in the web app, if you want it** — After a VS Code sign-in, the browser tab says "You're signed in to VS Code. You can close this tab." Its "Open DBMN in your browser" link opens the web app already signed in, with a sign-in of its own, so signing out of one never signs you out of the other.
 
 ### Changed
+- **Compares have names** — A compare takes its endpoint's name when first opened and can be renamed; no two reports share a name.
+- **One heading for every results table** — In the Console, Compare and Query a heading works the same way: its icon sorts one way, the other, then clears; its name drags the column; the right edge resizes and a double-click fits; a right-click lists it all.
 - **The last of the licence code is gone** — The Account page's name and Weekly Usage come from a new account summary instead of the old licence check, and the public backend no longer has licence or trial tables. Older versions keep working.
 
 ### Fixed
