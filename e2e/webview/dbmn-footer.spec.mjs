@@ -150,6 +150,11 @@ test('the highlight slides to the step that takes over, and folding is shown', a
     // And back: the steps return, the highlight behind the one asked for
     await page.evaluate(states => { document.getElementById('steps').folded = false; window.show(states, 1); }, at(1));
     await expect(page.locator('.dbmn-step:visible')).toHaveCount(4);
+    // The fold backwards: every card starts at the last one's place and deals out, the first step travelling longest
+    await expect(page.locator('dbmn-steps')).toHaveClass(/is-unfolding/);
+    expect(await moved(1)).toMatchObject({ time: '450ms' });
+    expect(await moved(3)).toMatchObject({ time: '150ms' });
+    expect((await moved(1)).x).toBeGreaterThan((await moved(3)).x);
     await expect(page.locator('dbmn-steps')).not.toHaveClass(/is-unfolding/);
     await expect.poll(async () => (await left('.dbmn-steps-indicator')) - (await left('.dbmn-step[data-step="1"]'))).toBe(0);
 });

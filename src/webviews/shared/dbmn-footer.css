@@ -261,15 +261,18 @@ dbmn-steps[folded] { padding: 0; border-color: transparent; }
 /* Folding (dbmn-footer.js, _setFolded): a cascade. Each step is a card that slides behind the one
    after it (--fold-x: how far, --fold-wait: when it sets off, --fold-time: how long) until all
    are behind the last; then the summary takes their place and its arrow lifts once */
-dbmn-steps.is-folding .dbmn-steps-indicator { display: none; }
-dbmn-steps.is-folding .dbmn-step {
+dbmn-steps.is-folding .dbmn-steps-indicator,
+dbmn-steps.is-unfolding .dbmn-steps-indicator { display: none; }
+dbmn-steps.is-folding .dbmn-step,
+dbmn-steps.is-unfolding .dbmn-step {
     z-index: var(--fold-z, 1);
     opacity: 1;
     background: var(--vscode-editor-background);
     box-shadow: 0 0 0 1px var(--foot-line);
-    transition: transform var(--fold-time, 0ms) linear var(--fold-wait, 0ms);
 }
-dbmn-steps.is-folding .dbmn-step.is-current {
+dbmn-steps.is-folding .dbmn-step { transition: transform var(--fold-time, 0ms) linear var(--fold-wait, 0ms); }
+dbmn-steps.is-folding .dbmn-step.is-current,
+dbmn-steps.is-unfolding .dbmn-step.is-current {
     background: color-mix(in srgb, var(--foot-accent) 24%, var(--vscode-editor-background));
 }
 dbmn-steps.is-folding-go .dbmn-step { transform: translateX(var(--fold-x, 0)); }
@@ -291,20 +294,21 @@ dbmn-steps.just-folded .dbmn-steps-chevron { animation: dbmn-steps-nudge 700ms e
     30% { transform: translateY(-4px); }
     60% { transform: translateY(1px); }
 }
-/* Back to the steps: they come in from where they went */
-dbmn-steps.is-unfolding .dbmn-step,
-dbmn-steps.is-unfolding .dbmn-step-gap { animation: dbmn-steps-back 240ms ease-out both; }
-@keyframes dbmn-steps-back {
-    from { opacity: 0; transform: translateX(14px); }
+/* Back to the steps: the fold backwards. The cards start stacked where the summary was and deal
+   out to the left together, each stopping at its own place: the nearest first, the first step last */
+dbmn-steps.is-unfolding .dbmn-step { transform: translateX(var(--fold-x, 0)); }
+dbmn-steps.is-unfolding-go .dbmn-step {
+    transform: none;
+    transition: transform var(--fold-time, 0ms) linear;
 }
+dbmn-steps.is-unfolding .dbmn-step-gap,
+dbmn-steps.is-unfolding .dbmn-steps-of { opacity: 0; }
 
 @media (prefers-reduced-motion: reduce) {
     .dbmn-step.is-checking .dbmn-step-mark svg,
     .dbmn-steps-summary .dbmn-step-mark.is-working svg,
     dbmn-steps.just-folded .dbmn-steps-chevron,
     dbmn-steps.just-folded .dbmn-steps-summary,
-    dbmn-steps.is-unfolding .dbmn-step,
-    dbmn-steps.is-unfolding .dbmn-step-gap,
     dbmn-progress[busy] .dbmn-progress-fill { animation: none; }
     dbmn-steps.is-ready .dbmn-steps-indicator { transition: none; }
     dbmn-progress .dbmn-progress-fill { transition: none; }

@@ -43,6 +43,9 @@
     if (!window.customElements || customElements.get('dbmn-footer')) return;
 
     const CLICKABLE = ['done', 'needs', 'available'];
+    /** Folding and unfolding: how long a step takes to slide behind (or out from behind) its neighbour. */
+    const STAGE = 150;
+    const FOLD_PROPS = ['--fold-x', '--fold-wait', '--fold-time', '--fold-z'];
     const DONE = ['done', 'skipped'];
 
     const icon = name => (window.Icons && window.Icons.icon(name)) || '';
@@ -282,17 +285,38 @@
             const moving = !!this._ready && !still && this.offsetWidth > 0;
             this._isFolded = folded;
             clearTimeout(this._foldTimer);
-            this.classList.remove('is-folding', 'is-folding-go', 'just-folded', 'is-unfolding');
+            this.classList.remove('is-folding', 'is-folding-go', 'just-folded', 'is-unfolding', 'is-unfolding-go');
             this.style.removeProperty('width');
-            if (this._buttons) this._buttons.forEach(btn => ['--fold-x', '--fold-wait', '--fold-time', '--fold-z'].forEach(name => btn.style.removeProperty(name)));
+            const settle = () => this._buttons.forEach(btn => FOLD_PROPS.forEach(name => btn.style.removeProperty(name)));
+            if (this._buttons) settle();
+            // Every step that shows, with how far it is from the last one's place: where the cards stack
+            const cards = () => {
+                const shown = this._buttons.filter(btn => btn.offsetWidth > 0);
+                const end = shown.length ? shown[shown.length - 1].getBoundingClientRect().left : 0;
+                shown.forEach((btn, i) => {
+                    btn.style.setProperty('--fold-x', `${end - btn.getBoundingClientRect().left}px`);
+                    btn.style.setProperty('--fold-time', `${(shown.length - 1 - i) * STAGE}ms`);
+                    btn.style.setProperty('--fold-z', String(i + 1));
+                });
+                return shown;
+            };
             if (!folded) {
                 this._close();
                 this._row.hidden = false;
                 this._summaryBtn.hidden = true;
                 if (moving) {
+                    // The fold, backwards: the cards start stacked where the summary was and deal out
+                    // to the left, the nearest home first and the first step last
+                    const shown = cards();
                     this.classList.add('is-unfolding');
-                    // (the steps are still on their way in: the highlight is put behind its step once they are home)
-                    this._foldTimer = setTimeout(() => { this.classList.remove('is-unfolding'); this._place(); }, 260);
+                    void this.offsetWidth;   // (stacked is drawn before they move)
+                    this.classList.add('is-unfolding-go');
+                    this._foldTimer = setTimeout(() => {
+                        this.classList.remove('is-unfolding', 'is-unfolding-go');
+                        settle();
+                        // (the highlight is put behind its step once they are home)
+                        this._place();
+                    }, Math.max(0, shown.length - 1) * STAGE + 80);
                 }
                 return;
             }
@@ -305,18 +329,11 @@
             // behind the last; then the summary takes their place. Step i sets off as step i-1
             // reaches it and they travel on together (the same speed all the way), so it reads as
             // one after another, not all at once.
-            const STAGE = 150;
-            const shown = this._buttons.filter(btn => btn.offsetWidth > 0);
-            const last = shown[shown.length - 1];
-            const end = last ? last.getBoundingClientRect().left : 0;
             this.style.width = `${this.offsetWidth}px`;
+            const shown = cards();
+            // (folding, each sets off as the one before reaches it)
+            shown.forEach((btn, i) => btn.style.setProperty('--fold-wait', `${i * STAGE}ms`));
             this.classList.add('is-folding');
-            shown.forEach((btn, i) => {
-                btn.style.setProperty('--fold-x', `${end - btn.getBoundingClientRect().left}px`);
-                btn.style.setProperty('--fold-wait', `${i * STAGE}ms`);
-                btn.style.setProperty('--fold-time', `${(shown.length - 1 - i) * STAGE}ms`);
-                btn.style.setProperty('--fold-z', String(i + 1));
-            });
             void this.offsetWidth;   // (where they start is drawn before they move)
             this.classList.add('is-folding-go');
             this._foldTimer = setTimeout(() => {
@@ -324,7 +341,7 @@
                 this._summaryBtn.hidden = false;
                 this.classList.remove('is-folding', 'is-folding-go');
                 this.style.removeProperty('width');
-                this._buttons.forEach(btn => ['--fold-x', '--fold-wait', '--fold-time', '--fold-z'].forEach(name => btn.style.removeProperty(name)));
+                settle();
                 // The summary grows out of where they went, and its arrow lifts once: they are behind it
                 this.classList.add('just-folded');
                 this._foldTimer = setTimeout(() => this.classList.remove('just-folded'), 900);
