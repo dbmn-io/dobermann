@@ -53,10 +53,11 @@
 
     function drawWorking() {
         const working = $('dsWorking');
-        working.steps = ['Source', 'Map', 'Validate', 'Review', 'Execute'].map(label => ({ label }));
+        // (Run Batch's four steps: Execute is the main button on Review, not a step)
+        working.steps = ['Source', 'Map', 'Validate', 'Review'].map(label => ({ label }));
         working.render([
             { status: 'done' }, { status: 'done' }, { status: 'current', checking: true },
-            { status: 'blocked', waitsFor: 'Validate' }, { status: 'blocked', waitsFor: 'Review' }
+            { status: 'blocked', waitsFor: 'Validate' }
         ], 3);
     }
 
@@ -100,38 +101,40 @@
         runTimer = setInterval(draw, 450);
     }
 
-    /* ── Colours: the theme's, with what each is for ── */
+    /* ── Colours: the theme's, under DBMN's names, with what each is for ── */
     const COLOURS = [
-        ['--vscode-editor-background', 'The page'],
-        ['--vscode-foreground', 'Text'],
-        ['--vscode-descriptionForeground', 'Quieter text, hints'],
-        ['--vscode-panel-border', 'Lines and outlines'],
-        ['--vscode-input-background', 'Fields, raised panels'],
-        ['--vscode-input-border', 'A field\'s outline'],
-        ['--vscode-button-background', 'The primary button'],
-        ['--vscode-button-foreground', 'Its text'],
-        ['--vscode-button-secondaryBackground', 'A secondary button'],
-        ['--vscode-textLink-foreground', 'Links, the current step'],
-        ['--vscode-focusBorder', 'Keyboard focus'],
-        ['--vscode-progressBar-background', 'Progress'],
-        ['--vscode-testing-iconPassed', 'Done, success'],
-        ['--vscode-editorWarning-foreground', 'Needs a look'],
-        ['--vscode-errorForeground', 'Failed, cannot be undone'],
-        ['--vscode-editorWidget-background', 'Menus and pop-ups'],
-        ['--vscode-list-hoverBackground', 'A row under the pointer']
+        ['editor-background', 'The page'],
+        ['foreground', 'Text'],
+        ['descriptionForeground', 'Quieter text, hints'],
+        ['panel-border', 'Lines and outlines'],
+        ['input-background', 'Fields, raised panels'],
+        ['input-border', 'A field\'s outline'],
+        ['button-background', 'The primary button'],
+        ['button-foreground', 'Its text'],
+        ['button-secondaryBackground', 'A secondary button'],
+        ['textLink-foreground', 'Links, the current step'],
+        ['focusBorder', 'Keyboard focus'],
+        ['progressBar-background', 'Progress'],
+        ['testing-iconPassed', 'Done, success'],
+        ['editorWarning-foreground', 'Needs a look'],
+        ['errorForeground', 'Failed, cannot be undone'],
+        ['editorWidget-background', 'Menus and pop-ups'],
+        ['list-hoverBackground', 'A row under the pointer']
     ];
     function drawColours() {
-        const root = getComputedStyle(document.documentElement);
-        $('dsSwatches').replaceChildren(...COLOURS.map(([name, use]) => {
+        // (read on the body: two hover colours are set there, and the names follow them)
+        const theme = getComputedStyle(document.body);
+        $('dsSwatches').replaceChildren(...COLOURS.map(([colour, use]) => {
+            const name = `--dbmn-${colour}`;
             const row = el('div', 'ds-swatch');
-            const colour = el('span', 'ds-swatch-colour');
-            colour.style.setProperty('--swatch', `var(${name})`);
+            const swatch = el('span', 'ds-swatch-colour');
+            swatch.style.setProperty('--swatch', `var(${name})`);
             const text = el('span', 'ds-swatch-text');
-            const value = root.getPropertyValue(name).trim();
+            const value = theme.getPropertyValue(name).trim();
             const label = el('span', 'ds-swatch-name', name);
-            label.title = value ? `${name}: ${value}` : `${name} (this theme leaves it to the fallback)`;
+            label.title = value ? `${name}: ${value}\nThe theme's --vscode-${colour}` : `${name} (this theme leaves --vscode-${colour} to the fallback)`;
             text.append(label, el('span', 'ds-swatch-use', use + (value ? ` · ${value}` : '')));
-            row.append(colour, text);
+            row.append(swatch, text);
             return row;
         }));
     }
@@ -187,7 +190,7 @@
     const PIECES = [
         ['<dbmn-footer>', 'A screen\'s footer: actions left, progress right', C, 'Query', 'shared/dbmn-footer.js'],
         ['<dbmn-actions>', 'The footer\'s buttons, the main one last', C, 'Query', 'shared/dbmn-footer.js'],
-        ['<dbmn-steps>', 'A wizard\'s steps in one line, and the summary they fold into', C, 'Query', 'shared/dbmn-footer.js'],
+        ['<dbmn-steps>', 'A wizard\'s steps in one line, and the summary they fold into', C, 'Query, Compare', 'shared/dbmn-footer.js'],
         ['<dbmn-progress>', 'The system\'s progress: the box is the bar', C, 'No screen yet', 'shared/dbmn-footer.js'],
         ['<dbmn-status>', 'A few words of status (Saved, Not saved yet)', C, 'No screen yet', 'shared/dbmn-footer.js'],
         ['DbmnModal', 'Dialogs: a question, a form, an alert', M, 'Every screen', 'shared/dbmn-modal.js'],
@@ -207,11 +210,12 @@
         ['SystemPicker', 'Choosing a System', M, 'Endpoint, Environment', 'shared/system-picker.js'],
         ['Buttons', '.btn, .btn-primary, .btn-secondary, .btn-danger', S, 'Every screen', 'shared/buttons.css'],
         ['Tabs in a screen', 'A screen\'s own tabs (Environment, Console)', S, 'Environment, Console', 'shared/tabs.css'],
-        ['StepBar', 'The older step bar: names over circles', R, 'Compare, Run Batch', 'shared/step-bar.js'],
+        ['StepBar', 'The older step bar: names over circles', R, 'Run Batch', 'shared/step-bar.js'],
         ['.progress-display', 'The older two-line progress panel', R, 'Console, Compare, Run Batch', 'shared/core.css'],
-        ['<dbmn-table>', 'A table of rows the page holds: search, sort, move, resize, windowed rows', C, 'Design system', 'shared/dbmn-table.js'],
-        ['<dbmn-table> for paged rows', 'The same table over rows the host pages in (Query, Compare, Console)', P, '', ''],
-        ['Nested rows', 'A row that opens onto rows of its own', P, 'Console has its own today', ''],
+        ['<dbmn-table>', 'A table of rows: search, sort, move, resize, only the rows in view drawn; rows the page holds, or asked for as they scroll', C, 'Design system, <dbmn-log>', 'shared/dbmn-table.js'],
+        ['<dbmn-log>', 'Log lines as a table: the newest in view, followed until you scroll up', C, 'Logs', 'shared/dbmn-log.js'],
+        ['<dbmn-level>', 'How serious a log line is: an icon and a word', C, 'Logs, <dbmn-log>', 'shared/dbmn-level.js'],
+        ['Rows inside a row', 'A list of records in a cell, opened inside it (part of <dbmn-table>)', C, 'Design system; the Console has its own today', 'shared/dbmn-table.js'],
         ['The Hub\'s pieces', 'Banner, menu, list, tabs, settings rows', P, '', '']
     ];
     function drawInventory() {
@@ -231,15 +235,16 @@
     const ON = 'On it', MOVE = 'To move', WAIT = 'Waits';
     const MOVES = [
         ['Query', 'Footer and steps', ON, 'dbmn-footer, dbmn-steps', ''],
-        ['Compare', 'Footer and steps', MOVE, 'Its own footer: name, the older step bar, arrows between steps', 'Swap in dbmn-footer and dbmn-steps; the name moves to its tab'],
+        ['Compare', 'Footer and steps', ON, 'dbmn-footer, dbmn-steps', ''],
         ['Run Batch', 'Footer and steps', MOVE, 'Its own footer: the older step bar, arrows between steps', 'Swap in dbmn-footer and dbmn-steps; a summary on Review is still to decide'],
         ['Console', 'Footer and progress', MOVE, 'Its own buttons and the older two-line progress panel', 'Swap in dbmn-footer and dbmn-progress; where the timing line goes is still to decide'],
         ['Edit Endpoint', 'Footer and status', MOVE, 'Its own footer markup, no status box', 'Swap in dbmn-footer and dbmn-status'],
         ['Edit Environment', 'Footer and status', MOVE, 'Its own footer markup and footer notification', 'Swap in dbmn-footer and dbmn-status'],
         ['Design system', 'Table', ON, 'dbmn-table', ''],
-        ['Query', 'Table', WAIT, 'Wires the shared table pieces itself; rows come from the host a page at a time', 'dbmn-table learns to page; Query moves first'],
-        ['Compare', 'Table', WAIT, 'Wires the shared table pieces itself; coloured columns and difference marks', 'After Query: paging, then its colours and marks'],
-        ['Console', 'Table', WAIT, 'Its own table: nested rows, grouped headings, Views', 'Last: needs paging, nested rows and grouped headings in dbmn-table'],
+        ['Logs', 'Footer and log', ON, 'dbmn-footer, dbmn-log', ''],
+        ['Query', 'Table', MOVE, 'Wires the shared table pieces itself; rows come from the host a page at a time', 'dbmn-table asks for rows as they scroll now: swap it in'],
+        ['Compare', 'Table', WAIT, 'Wires the shared table pieces itself; coloured columns and difference marks', 'After Query: its grouped headings and difference marks'],
+        ['Console', 'Table', WAIT, 'Its own table: nested rows, grouped headings, Views', 'Last: needs nested rows and grouped headings in dbmn-table'],
         ['Hub', 'Banner, menu, list, tabs', WAIT, 'Its own markup and styles', 'Described and split into components as each is next worked on']
     ];
     function drawMoving() {
@@ -271,6 +276,8 @@
                 item: item[0],
                 description: item[1],
                 qty: 6 + ((i * 11) % 60),
+                placed: new Date(Date.now() - (i % 90) * 86400000 - (i % 24) * 3600000).toISOString().slice(0, 16) + 'Z',
+                urgent: i % 9 === 0,
                 status,
                 notes: status === 'On hold' ? { reason: 'Awaiting stock', expected: '2026-11-24', contact: 'purchasing', history: ['raised', 'chased', 'confirmed'] } : ''
             });
@@ -279,12 +286,107 @@
         table.columns = [
             { id: 'order_no', name: 'order_no' }, { id: 'line', name: 'line', numbers: true }, { id: 'customer', name: 'customer' },
             { id: 'item', name: 'item' }, { id: 'description', name: 'description' }, { id: 'qty', name: 'qty', numbers: true },
-            { id: 'status', name: 'status' }, { id: 'notes', name: 'notes' }
+            { id: 'placed', name: 'placed' }, { id: 'urgent', name: 'urgent' }, { id: 'status', name: 'status' }, { id: 'notes', name: 'notes' }
         ];
         table.rows = rows;
     }
 
+    /* ── Logs: the component over made-up lines, with more on request ── */
+    const LOG_SAYS = [
+        ['info', 'sign-in', 'Signed in', ''],
+        ['debug', 'catalogue', 'Catalogue read: 42 endpoints, 3 environments', ''],
+        ['info', 'batch', 'Batch started: 501 rows, 8 threads', ''],
+        ['warn', 'batch', 'Row 212 answered slowly (4.1s)', ''],
+        ['error', 'request', 'POST /orders answered 500', 'HTTP 500 Internal Server Error\n{ "message": "Order line 2: item C-7004 is not known" }\nRow 213 of 501'],
+        ['info', 'batch', 'Batch finished: 498 succeeded, 3 failed', '']
+    ];
+    let logSeq = 0;
+    function logLines(count, from) {
+        const lines = [];
+        for (let i = 0; i < count; i++) {
+            const [level, source, message, detail] = LOG_SAYS[logSeq % LOG_SAYS.length];
+            const inBatch = source === 'batch' || source === 'request';
+            lines.push({
+                key: `line-${++logSeq}`, time: from + i * 730, level, source, message, detail: detail || undefined,
+                environment: inBatch ? 'Test' : '', run: inBatch ? { id: 'run-0412', name: 'Open orders' } : undefined
+            });
+        }
+        return lines;
+    }
+    function drawLog() {
+        const log = $('dsLog');
+        if (!log || !window.DbmnLog) return;
+        log.addEventListener('dbmn-log-shown', event => {
+            const d = event.detail;
+            const lines = d.shown === d.total ? `${d.total} lines` : `${d.shown} of ${d.total} lines`;
+            $('dsLogNote').textContent = d.following ? `${lines} · following the newest` : `${lines} · not following${d.unseen ? ` · ${d.unseen} new` : ''}`;
+        });
+        log.lines = logLines(60, Date.now() - 60 * 730);
+    }
+
+    /* ── Tables: a list of records in a cell, opened inside it ── */
+    function drawNested() {
+        const table = $('dsNested');
+        if (!table) return;
+        const customers = ['Harbour Foods', 'Kettle and Co', 'Mill Lane Deli', 'Northside Cafe'];
+        const items = [['A-2207', 'Olive oil 1 L'], ['A-3110', 'Sea salt 500 g'], ['B-0418', 'Espresso beans 1 kg'], ['C-7001', 'Paper cups 250'], ['C-7004', 'Napkins 1000']];
+        const rows = [];
+        for (let i = 0; i < 400; i++) {
+            // (one order has more lines than are shown at once)
+            const lineCount = i === 2 ? 140 : 1 + (i * 3) % 5;
+            const lines = [];
+            for (let n = 0; n < lineCount; n++) {
+                const item = items[(i + n * 2) % items.length];
+                lines.push({ line: n + 1, item: item[0], description: item[1], qty: 6 + ((i + n) * 11) % 60, picked: (i + n) % 3 !== 0 });
+            }
+            const packages = [];
+            for (let n = 0; n < (i % 4 === 3 ? 0 : 1 + (i % 3)); n++) packages.push({ package: `PK-${5000 + i * 3 + n}`, kind: n % 2 ? 'Pallet' : 'Carton', weight_kg: 4 + ((i + n) * 7) % 30 });
+            rows.push({ order_no: `SO-${10412 + i}`, customer: customers[(i * 3) % customers.length], lines, packages });
+        }
+        table.rowKey = row => row.order_no;
+        table.columns = [{ id: 'order_no', name: 'order_no' }, { id: 'customer', name: 'customer' }, { id: 'lines', name: 'lines' }, { id: 'packages', name: 'packages' }];
+        table.rows = rows;
+    }
+
+    /* ── Tables: rows that stay with the screen (a made-up one, which answers a moment later) ── */
+    function drawPaged() {
+        const table = $('dsPaged');
+        if (!table) return;
+        const customers = ['Harbour Foods', 'Kettle and Co', 'Mill Lane Deli', 'Northside Cafe', 'Quay Street Bakery', 'The Corner Larder'];
+        const TOTAL = 100000;
+        const row = i => ({ order_no: `SO-${200000 + i}`, customer: customers[(i * 5) % customers.length], qty: 1 + ((i * 13) % 97), urgent: i % 7 === 0, placed: `2026-${String(1 + (i % 11)).padStart(2, '0')}-${String(1 + (i % 28)).padStart(2, '0')}` });
+        // (what a controller would do with a database: here, sums in place of rows)
+        const answer = (start, count, asked) => {
+            const word = (asked.search || '').toLowerCase();
+            let picks = null;
+            if (word) { picks = []; for (let i = 0; i < TOTAL; i++) { if (row(i).customer.toLowerCase().includes(word)) picks.push(i); } }
+            const total = picks ? picks.length : TOTAL;
+            const at = n => {
+                const k = asked.sort && asked.sort.dir === 'desc' ? total - 1 - n : n;
+                return row(picks ? picks[k] : k);
+            };
+            const rows = [];
+            for (let n = start; n < Math.min(total, start + count); n++) rows.push(at(n));
+            return { rows, total };
+        };
+        // (no `numbers` given: qty and urgent sort as numbers because their values are numbers, and true or false)
+        table.columns = [{ id: 'order_no', name: 'order_no' }, { id: 'customer', name: 'customer' }, { id: 'qty', name: 'qty' }, { id: 'urgent', name: 'urgent' }, { id: 'placed', name: 'placed' }];
+        table.searchWith($('dsPagedFind'));
+        let asks = 0;
+        let shown = '';
+        const note = () => { $('dsPagedNote').textContent = `${shown} · asked for ${asks} page${asks === 1 ? '' : 's'} so far`; };
+        table.addEventListener('dbmn-table-shown', event => { shown = event.detail.text; note(); });
+        table.addEventListener('dbmn-table-layout', event => { if (window.DbmnToast) window.DbmnToast.info(`Told the screen: ${event.detail.change}`); });
+        table.source = {
+            page: (start, count, asked) => new Promise(done => {
+                asks += 1;
+                setTimeout(() => { done(answer(start, count, asked)); note(); }, 350);
+            })
+        };
+    }
+
     window.DbmnActions.register({
+        'ds:log': () => $('dsLog').append(logLines(5, Date.now())),
         'ds:back': () => go(current - 1),
         'ds:next': () => { if (current < STEPS.length) go(current + 1); },
         'ds:run': run,
@@ -344,6 +446,9 @@
     drawMoving();
     drawIcons();
     drawTable();
+    drawNested();
+    drawPaged();
+    drawLog();
     if (window.Icons) window.Icons.injectIcons(document.body);
     $('dsIconFind').addEventListener('input', findIcons);
 

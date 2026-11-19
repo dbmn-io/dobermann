@@ -17,8 +17,10 @@ const read = rel => readFileSync(join(WEBVIEWS, rel), 'utf8');
 const STEPS = ['Views', 'Join', 'Columns', 'Results'];
 const STEPS_TAG = '<dbmn-steps id="steps" label="Query steps"></dbmn-steps>';
 const footerPage = (width = 1000, right = STEPS_TAG) => `<!doctype html><html><head>
-<style>body{margin:0;padding-top:300px;font:13px sans-serif;width:${width}px;--vscode-foreground:#ccc;--vscode-textLink-foreground:#3794ff;background:#1e1e1e;color:#ccc}
+<style>:root{--vscode-foreground:#ccc;--vscode-textLink-foreground:#3794ff}
+body{margin:0;padding-top:300px;font:13px sans-serif;width:${width}px;background:#1e1e1e;color:#ccc}
 .btn{padding:7px 16px;font-size:13px;line-height:18px;min-width:88px}
+${read('shared/atomic.css')}
 ${read('shared/dbmn-footer.css')}</style>
 <script>${read('shared/icons.js')}</script><script>${read('shared/dbmn-footer.js')}</script></head><body>
 <dbmn-footer inline>
@@ -37,6 +39,40 @@ const at = current => STEPS.map((label, i) => ({
     status: i + 1 === current ? 'current' : i + 1 < current ? 'done' : i + 1 === current + 1 ? 'available' : 'pending',
     summary: `${label} summary`
 }));
+
+test('components take their colours from DBMN\'s names, which are the theme\'s', async ({ page }) => {
+    const sheets = ['shared/dbmn-footer.css', 'shared/dbmn-table.css', 'design-system/design-system.css'];
+    // No component names a --vscode- colour directly
+    for (const file of sheets) expect(read(file).match(/--vscode-[A-Za-z0-9-]+/g) || [], file).toEqual([]);
+    // Every name is the theme's colour of the same name and nothing else, defined once in the sheet every screen loads
+    const aliases = [...read('shared/atomic.css').matchAll(/^\s+--dbmn-([A-Za-z0-9-]+):\s*([^;]+);/gm)];
+    expect(aliases.length).toBeGreaterThan(100);
+    for (const [, name, value] of aliases) expect(value, name).toBe(`var(--vscode-${name})`);
+    const defined = new Set(aliases.map(m => `--dbmn-${m[1]}`));
+    // (buttons.css has DBMN's older names for sizes and tints; components set a few of their own)
+    const own = new Set(['shared/buttons.css', 'shared/core.css', ...sheets].flatMap(f => [...read(f).matchAll(/(--dbmn-[A-Za-z0-9-]+)\s*:/g)].map(m => m[1])));
+    const used = new Set(sheets.flatMap(f => [...read(f).matchAll(/var\((--dbmn-[A-Za-z0-9-]+)/g)].map(m => m[1])));
+    expect([...used].filter(name => !defined.has(name) && !own.has(name))).toEqual([]);
+
+    // A theme change (the theme's colours set again on the page's root, as every host does it) reaches a component at once
+    await page.setContent(footerPage());
+    await page.evaluate(states => window.show(states, 2), at(2));
+    const colours = () => page.evaluate(() => ({
+        text: getComputedStyle(document.querySelector('.dbmn-step.is-available')).color,
+        accent: getComputedStyle(document.querySelector('.dbmn-steps-indicator')).backgroundColor,
+        name: getComputedStyle(document.documentElement).getPropertyValue('--dbmn-foreground').trim()
+    }));
+    const dark = await colours();
+    expect(dark.name).toBe('#ccc');
+    await page.evaluate(() => {
+        document.documentElement.style.setProperty('--vscode-foreground', '#222222');
+        document.documentElement.style.setProperty('--vscode-textLink-foreground', '#cc0000');
+    });
+    const light = await colours();
+    expect(light.name).toBe('#222222');
+    expect(light.text).toBe('rgb(34, 34, 34)');
+    expect(light.accent).not.toBe(dark.accent);
+});
 
 test('steps: one line, the current one marked, only open steps answer a click', async ({ page }) => {
     await page.setContent(footerPage());
@@ -291,19 +327,50 @@ test('the design system page draws every section from the real files, with no er
     expect(await page.locator('#dsIcons .ds-icon').count()).toBeGreaterThan(80);
     await expect(page.locator('#dsSwatches .ds-swatch')).toHaveCount(17);
     // The table on show is the component, over 5,000 rows with only the ones in view drawn
-    await expect(page.locator('#dsOrders .col-sort-btn')).toHaveCount(8);
+    await expect(page.locator('#dsOrders .col-sort-btn')).toHaveCount(10);
+    // Its search box says what each column is, offers what fits, and says how the search is read
+    await page.locator('#dsOrders .search-input').fill('@');
+    await expect(page.locator('#dsOrders .column-suggest-option', { hasText: '@placed' }).locator('.column-suggest-label')).toHaveText('date');
+    await expect(page.locator('#dsOrders .column-suggest-option', { hasText: '@urgent' }).locator('.column-suggest-label')).toHaveText('yes/no');
+    await page.locator('#dsOrders .search-input').fill('@urgent=true @placed>7d');
+    await expect(page.locator('#dsOrders .dbmn-table-reads')).toContainText('Reading this as: urgent (yes/no) is yes and placed (date) after ');
+    await expect(page.locator('#dsOrders .dbmn-table-count')).toContainText(' of 5,000 rows');
+    await page.locator('#dsOrders .search-input').fill('');
+    await expect(page.locator('#dsOrders .dbmn-table-reads')).toBeHidden();
     await expect(page.locator('#dsOrders .dbmn-table-count')).toHaveText('5,000 rows');
     expect(await page.locator('#dsOrders .dbmn-table-body tr').count()).toBeLessThan(120);
+    // Lists of records open inside their cells, two side by side in one row
+    const order = page.locator('#dsNested .dbmn-table-body > tr').nth(1);
+    await order.locator('td[data-col="lines"] .dbmn-nest-toggle').click();
+    await order.locator('td[data-col="packages"] .dbmn-nest-toggle').click();
+    await expect(order.locator('td[data-col="lines"] .dbmn-nest-table tbody tr')).toHaveCount(4);
+    await expect(order.locator('td[data-col="packages"] .dbmn-nest-table tbody tr')).toHaveCount(2);
+    // The same table over rows that stay with the screen: 100,000 of them, only the first 200 asked for
+    await expect(page.locator('#dsPaged .dbmn-table-body tr').first()).toContainText('SO-200000');
+    await expect(page.locator('#dsPagedNote')).toHaveText('100,000 rows · asked for 1 page so far');
+    // A column of numbers, or of true and false, sorts 0 to 1; text sorts A to Z (told by the values, no type on show)
+    expect(await page.locator('#dsPaged thead th .col-sort-icon').evaluateAll(icons => icons.map(i => i.dataset.icon))).toEqual(['arrow-down-a-z', 'arrow-down-a-z', 'arrow-down-0-1', 'arrow-down-0-1', 'arrow-down-a-z']);
+    await page.locator('#dsPagedFind').fill('kettle');
+    await expect(page.locator('#dsPagedNote')).toContainText('16,666 rows');
+    await expect(page.locator('#dsPaged .dbmn-table-body tr').first()).toContainText('Kettle and Co');
+    await page.locator('#dsPagedFind').fill('');
+    // The log is the component too: its levels as icon and word, the newest line at the top and followed, more on request
+    await expect(page.locator('#dsLevels dbmn-level .dbmn-level-word')).toHaveText(['Error', 'Warn', 'Info', 'Debug']);
+    await expect(page.locator('#dsLevels dbmn-level svg')).toHaveCount(4);
+    await expect(page.locator('#dsLogNote')).toHaveText('60 lines · following the newest');
+    await page.locator('#dsLogAdd').click();
+    await expect(page.locator('#dsLogNote')).toHaveText('65 lines · following the newest');
+    expect(await page.locator('#dsLog .dbmn-table-scroll').evaluate(s => s.scrollTop)).toBeLessThan(30);
     // The list of pieces is the same component: every piece with its state, and searchable
     expect(await page.locator('#dsInventory .dbmn-table-body tr').count()).toBeGreaterThan(20);
     await expect(page.locator('#dsInventory .dbmn-table-body tr').first().locator('.ds-chip')).toHaveText('Component');
     await page.locator('#dsInventory .search-input').fill('@state=planned');
-    await expect(page.locator('#dsInventory .dbmn-table-body .ds-chip')).toHaveText(['Planned', 'Planned', 'Planned']);
+    await expect(page.locator('#dsInventory .dbmn-table-body .ds-chip')).toHaveText(['Planned']);
     await page.locator('#dsInventory .search-input').fill('');
     // Which screen is on which component, in the same table
-    await expect(page.locator('#dsMoving .dbmn-table-count')).toHaveText('11 rows');
+    await expect(page.locator('#dsMoving .dbmn-table-count')).toHaveText('12 rows');
     await page.locator('#dsMoving .search-input').fill('@screen=query');
-    await expect(page.locator('#dsMoving .dbmn-table-body .ds-chip')).toHaveText(['On it', 'Waits']);
+    await expect(page.locator('#dsMoving .dbmn-table-body .ds-chip')).toHaveText(['On it', 'To move']);
 
     // The wizard on show walks to its last step and folds into the summary, and back
     await page.locator('#dsNext').click();

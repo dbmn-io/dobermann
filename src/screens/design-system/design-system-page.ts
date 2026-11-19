@@ -23,7 +23,7 @@ export function buildDesignSystemPage(asset: AssetUrl): string {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Design system</title>
-    ${sharedStyleLinks(asset, ['atomic', 'core', 'buttons', 'modals', 'tables', 'tabs', 'toast', 'console', 'data-transformer', 'compare', 'column-drag', 'column-head', 'query', 'dbmn-footer', 'dbmn-table'])}
+    ${sharedStyleLinks(asset, ['atomic', 'core', 'buttons', 'modals', 'tables', 'tabs', 'toast', 'console', 'data-transformer', 'compare', 'column-drag', 'column-head', 'query', 'dbmn-footer', 'dbmn-table', 'dbmn-log'])}
     <link rel="stylesheet" href="${asset('design-system/design-system.css')}">
 </head>
 <body class="editor-slide-in ds-page">
@@ -46,6 +46,7 @@ export function buildDesignSystemPage(asset: AssetUrl): string {
             <a href="#icons">Icons</a>
             <a href="#dialogs">Dialogs and messages</a>
             <a href="#tables">Tables</a>
+            <a href="#logs">Logs</a>
             <a href="#adding">Adding a component</a>
         </nav>
     </header>
@@ -87,7 +88,7 @@ export function buildDesignSystemPage(asset: AssetUrl): string {
             <div class="ds-layer-link">class names and colour names</div>
             <div class="ds-layer">
                 <span class="ds-layer-name">Shared styles and theme</span>
-                <span class="ds-layer-where">src/webviews/shared/*.css · the theme's <code>--vscode-*</code> colours</span>
+                <span class="ds-layer-where">src/webviews/shared/*.css · the theme's colours, as <code>--dbmn-*</code></span>
                 <span class="ds-layer-says">How everything looks. Change the theme and every component follows, with no component changed.</span>
             </div>
         </div>
@@ -146,7 +147,7 @@ export function buildDesignSystemPage(asset: AssetUrl): string {
         <h2>Theme and colours</h2>
         <p>The app wears one theme at a time and this page follows it. Change it and look again: nothing here should break.</p>
         <p><button type="button" class="btn btn-secondary" id="dsThemeBtn" data-click="ds:theme">Change theme</button> <span class="form-hint" id="dsThemeNote"></span></p>
-        <p>Use these names in CSS, with nothing after them but a fallback. Never a colour value in a component.</p>
+        <p>Theming is VS Code's: a theme gives its colours as <code>--vscode-…</code> names in every host, and that does not change. Components use the same colours under DBMN's prefix: <code>--dbmn-foreground</code> is <code>--vscode-foreground</code>, and so on for every colour the app uses (the list is at the top of <code>shared/atomic.css</code>). Never a colour value in a component. These are the ones used most:</p>
         <div class="ds-swatches" id="dsSwatches"></div>
     </section>
 
@@ -281,9 +282,9 @@ DbmnContextMenu.show(event, [{ id: 'rename', label: 'Rename', icon: 'pencil' }],
 
     <section class="ds-section" id="tables">
         <h2>Tables <span class="ds-chip is-component">Component</span></h2>
-        <p>One table for rows the page already holds. This one has 5,000 rows and draws only the ones in view. Try it:</p>
+        <p>One table, whether the page holds the rows or they stay with the screen. This one holds 5,000 rows and draws only the ones in view. Try it:</p>
         <ul class="ds-rules">
-            <li><strong>Search</strong> as in the Console: words, <code>"exact"</code>, <code>-not</code>, <code>a,b</code> for either, and <code>@status=Open</code> or <code>@qty&gt;40</code> for one column (type <code>@</code> for the list).</li>
+            <li><strong>Search</strong> as in the Console: words, <code>"exact"</code>, <code>-not</code>, <code>a,b</code> for either, and <code>@status=Open</code> or <code>@qty&gt;40</code> for one column. Type <code>@</code> for the list: it says what each column is (text, number, yes/no, date, nested) and offers what fits. A date takes <code>@placed&gt;7d</code>, <code>@placed=today</code> or <code>@placed=30d..7d</code>; a yes/no column <code>@urgent=true</code>. The line under the box says how the search is being read. No type shows in a heading, and values show as they came.</li>
             <li><strong>A heading:</strong> the icon sorts (one way, the other, then as given), the name drags the column, x removes it, the right edge resizes and a double-click fits. A right-click lists all of it.</li>
             <li><strong>A long value</strong> opens in full with a click (the notes column).</li>
         </ul>
@@ -298,28 +299,73 @@ orders.rows = rows;                        // objects keyed by column id; never 
 orders.addEventListener('dbmn-table-shown', e =&gt; …e.detail.shown, e.detail.total…);
 
 --table-height: 320px                      on the element: how tall before the rows scroll</code></pre>
-        <p class="form-hint">It is made from the shared pieces the three results tables use: <code>search-matcher.js</code>, <code>column-head.js</code>, <code>column-drag.js</code>, <code>virtual-window.js</code> and <code>cell-detail.js</code>. Query's, Compare's and the Console's tables keep their rows with the host and page them in, so they still wire those pieces themselves; they move onto this component when it learns to page.</p>
+        <p class="form-hint">It is made from the shared pieces the three results tables use: <code>search-matcher.js</code>, <code>column-head.js</code>, <code>column-drag.js</code>, <code>virtual-window.js</code> and <code>cell-detail.js</code>. Typing in the search box is never held up: over a few thousand rows the search waits for a pause, then runs a little at a time.</p>
 
-        <h3>Nested rows <span class="ds-chip is-planned">Planned</span></h3>
-        <p>A row that holds rows of its own (an order and its lines). Today only the Console shows these, with its own code. The shared version would work like this: a chevron opens a row, its child rows sit under it, indented, with their own headings, and a count says how many there are. Sketch only:</p>
+        <h3>Rows that stay with the screen</h3>
+        <p>A hundred thousand rows the page never holds: the table asks for the 200 it needs as they scroll into view, and a row not in yet is an empty row of the same height. Searching and sorting are the screen's (here, a made-up one that answers after a moment): the table says what was asked and asks again, and a sort's icon is a clock until the rows land. The search box is the screen's own, with the table's column suggestions. What is moved, removed, resized or sorted is told to the screen, to save and give back.</p>
+        <p><input type="text" id="dsPagedFind" class="search-input ds-find" placeholder="Search, or @customer" aria-label="Search the orders" spellcheck="false" autocomplete="off"> <span class="form-hint" id="dsPagedNote" role="status"></span></p>
         <div class="ds-demo">
-            <div class="table-container ds-table ds-nested">
-                <table class="data-table">
-                    <thead><tr><th></th><th>order_no</th><th>customer</th><th>lines</th></tr></thead>
-                    <tbody>
-                        <tr><td><span class="icon" data-icon="chevron-right"></span></td><td>SO-10412</td><td>Harbour Foods</td><td>2</td></tr>
-                        <tr><td><span class="icon" data-icon="chevron-down"></span></td><td>SO-10414</td><td>Kettle and Co</td><td>2</td></tr>
-                        <tr class="ds-nested-child"><td></td><td colspan="3">
-                            <table class="data-table">
-                                <thead><tr><th>line</th><th>item</th><th>qty</th></tr></thead>
-                                <tbody><tr><td>1</td><td>A-2207</td><td>48</td></tr><tr><td>2</td><td>C-7001</td><td>10</td></tr></tbody>
-                            </table>
-                        </td></tr>
-                        <tr><td><span class="icon" data-icon="chevron-right"></span></td><td>SO-10416</td><td>Mill Lane Deli</td><td>2</td></tr>
-                    </tbody>
-                </table>
-            </div>
+            <dbmn-table id="dsPaged" label="Orders, asked for as they scroll" removable></dbmn-table>
         </div>
+        <pre class="ds-code"><code>&lt;dbmn-table id="orders" label="Orders" removable&gt;&lt;/dbmn-table&gt;      no searchable: the screen has its own box
+
+orders.columns = [...];
+orders.layout = saved;                     // the order, widths, hidden columns and sort kept from last time
+orders.searchWith(searchInput);            // the screen's box searches it
+orders.source = { page: (start, count, { search, sort }) =&gt; askTheHost(start, count, search, sort) };
+                                           // answers rows, or { rows, total }, now or later
+orders.reload();                           // the rows changed: ask again from the top; { keep: true } stays put
+orders.totals = { qty: 2449650 };          // a row under the rows, from the screen
+orders.addEventListener('dbmn-table-layout', e =&gt; save(e.detail.layout));   // change: sorted, moved, removed, resized
+orders.addEventListener('dbmn-table-shown', e =&gt; …e.detail.total…);
+
+locked                                     attribute: columns can be neither moved nor removed</code></pre>
+
+        <h3>Rows inside a row</h3>
+        <p>A value that is a list of records (an order's lines, its packages) shows as a count with a chevron, and opens inside its own cell: a small table with its own headings, which sort and can be removed. Two lists in one row each open in their own cell, side by side. The first 100 records show. What is open stays open through a search or a sort, and a search that finds the order shows all its records. Try it: open the lines and the packages of one order, then sort the table.</p>
+        <div class="ds-demo">
+            <dbmn-table id="dsNested" label="Orders with their lines and packages" searchable removable></dbmn-table>
+        </div>
+        <pre class="ds-code"><code>orders.rows = [{ order_no: 'SO-10412', lines: [{ line: 1, item: 'A-2207', qty: 48 }, …], packages: [{ … }] }, …];
+                                           // nothing to ask for: a list of records in a cell opens
+orders.rowKey = row =&gt; row.order_no;       // what makes a row the same row (needed when rows stay with the screen)
+
+{ id: 'lines', name: 'lines', nested: { count: row =&gt; row.lineCount, rows: row =&gt; fetchLines(row) } }
+                                           // records fetched when the cell is opened</code></pre>
+    </section>
+
+    <section class="ds-section" id="logs">
+        <h2>Logs <span class="ds-chip is-component">Component</span></h2>
+        <p>A log line looks the same wherever it shows: the Logs screen today, the Console's request log next.</p>
+
+        <h3>Level</h3>
+        <p>How serious a line is: an icon and a word, so it is never told by colour alone.</p>
+        <div class="ds-demo ds-row" id="dsLevels">
+            <dbmn-level level="error"></dbmn-level>
+            <dbmn-level level="warn"></dbmn-level>
+            <dbmn-level level="info"></dbmn-level>
+            <dbmn-level level="debug"></dbmn-level>
+        </div>
+        <pre class="ds-code"><code>&lt;dbmn-level level="warn"&gt;&lt;/dbmn-level&gt;          level: error, warn, info, debug
+cell.append(DbmnLevel.make('error'));            from script, in a table's cell</code></pre>
+
+        <h3>Log</h3>
+        <p>The table above with the log's columns, the newest line at the top and kept in view. Try it: add lines and they are followed; scroll down and the lines stay where they are while new ones are counted; back at the top it follows again. It searches as every table does (<code>@level=error</code>, <code>@source=sign-in</code>), and a message with more to it opens in full with a click.</p>
+        <p><button type="button" class="btn btn-secondary" id="dsLogAdd" data-click="ds:log">Add lines</button> <span class="form-hint" id="dsLogNote" role="status"></span></p>
+        <div class="ds-demo">
+            <dbmn-log id="dsLog" class="ds-log" label="Example log"></dbmn-log>
+        </div>
+        <pre class="ds-code"><code>&lt;dbmn-log id="log" label="Logs"&gt;&lt;/dbmn-log&gt;       it fills the height its screen gives it
+
+log.lines = [{ key, time, level, source, message, environment?, run?: { id, name }, detail?, open? }, …];
+log.append(newLines);                      // new lines, at the top; in view while following
+log.older(olderLines);                     // older lines, at the bottom: nothing on screen moves
+log.following = false;                     // scrolling down does this too
+log.search = '@level=error';
+log.text();                                // the lines shown, as text: what Copy copies
+log.addEventListener('dbmn-log-shown', e =&gt; …e.detail.shown, total, following, unseen…);
+log.addEventListener('dbmn-log-end', …);    // scrolled down to the oldest line: time for older ones
+log.addEventListener('dbmn-log-open', e =&gt; …e.detail.open…);   // a line's open clicked</code></pre>
     </section>
 
     <section class="ds-section" id="adding">
@@ -328,7 +374,7 @@ orders.addEventListener('dbmn-table-shown', e =&gt; …e.detail.shown, e.detail.
             <li>Look here first. If something does the job, use it; if it nearly does, change it for every screen.</li>
             <li>A new one is a custom element named <code>dbmn-…</code>, in <code>src/webviews/shared/dbmn-…js</code> with its styles in a shared CSS file. No shadow root.</li>
             <li>It takes what to show as attributes or properties and reports clicks as events. No messages to the host, no stored state, no rules about the data.</li>
-            <li>Colours by the theme's names only. Icons from <code>icons.js</code> only. Standard buttons only.</li>
+            <li>Colours by the theme's names only, with the <code>--dbmn-</code> prefix (Theme and colours). Icons from <code>icons.js</code> only. Standard buttons only.</li>
             <li>It works with the keyboard and says what it is to a screen reader.</li>
             <li>Add it to this page, in every state it has, with the markup to use it, and to the Components list. Check it in two themes, one light.</li>
         </ol>
@@ -347,6 +393,8 @@ orders.addEventListener('dbmn-table-shown', e =&gt; …e.detail.shown, e.detail.
     ${script('shared/column-drag.js')}
     ${script('shared/column-head.js')}
     ${script('shared/dbmn-table.js')}
+    ${script('shared/dbmn-level.js')}
+    ${script('shared/dbmn-log.js')}
     ${script('shared/dbmn-footer.js')}
     ${script('design-system/design-system.js')}
 </body>
