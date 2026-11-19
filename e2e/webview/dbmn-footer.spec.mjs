@@ -251,6 +251,16 @@ test('progress: the box is the bar, and says so to a screen reader', async ({ pa
     await expect(choice(4)).toHaveAttribute('aria-pressed', 'true');
     await choice(4).click();                                   // the one in use asks nothing
     expect(await page.evaluate(() => window.asked)).toEqual([{ id: 'threads', value: 4 }]);
+    // A yes or no is a switch: it asks for the other answer
+    await bar.evaluate(e => { window.asked = []; e.stats = [{ id: 'stopOnError', label: 'Stop on first error', value: false }]; });
+    const stop = page.locator('.dbmn-progress-switch[aria-label="Stop on first error"]');
+    await expect(stop).toHaveAttribute('aria-checked', 'false');
+    await stop.click();
+    await expect(stop).toHaveAttribute('aria-checked', 'true');
+    await stop.press('Space');
+    await expect(stop).toHaveAttribute('aria-checked', 'false');
+    expect(await page.evaluate(() => window.asked)).toEqual([{ id: 'stopOnError', value: true }, { id: 'stopOnError', value: false }]);
+    await expect(page.locator('.dbmn-progress-stats')).toHaveCount(1);
     await page.keyboard.press('Escape');
     await expect(page.locator('.dbmn-progress-stats')).toHaveCount(0);
     await bar.press('Enter');

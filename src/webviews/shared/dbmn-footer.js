@@ -42,6 +42,7 @@
  *   A figure the user may change takes its choices or its limits:
  *     { id: 'threads', label: 'Threads', value: 8, options: [1, 2, 4, 8, 16], max: 8 }   a button each; over `max`, switched off
  *     { id: 'retries', label: 'Retries', value: 2, min: 0, max: 5 }                      less and more buttons
+ *     { id: 'stopOnError', label: 'Stop on first error', value: false }                  true or false: a switch
  *   The box asks with 'dbmn-progress-change' ({ id, value }); the screen decides (its controller
  *   keeps the limits) and sets the figure it settles on.
  * ── <dbmn-status tone="ok|warn|error">Saved</dbmn-status> ──
@@ -176,7 +177,7 @@
                 this.setAttribute('aria-haspopup', 'true');
                 this.setAttribute('aria-expanded', this._list ? 'true' : 'false');
                 // Everything on hover too, for a glance without a click
-                this.title = this._stats.map(item => `${item.label}: ${item.value}`).join('\n');
+                this.title = this._stats.map(item => `${item.label}: ${typeof item.value === 'boolean' ? (item.value ? 'Yes' : 'No') : item.value}`).join('\n');
             } else {
                 this.removeAttribute('tabindex');
                 this.removeAttribute('aria-haspopup');
@@ -194,7 +195,21 @@
                 const row = make('div', 'dbmn-progress-stat');
                 const value = make('span', 'dbmn-progress-stat-value');
                 const steps = typeof item.min === 'number' || typeof item.max === 'number';
-                if (Array.isArray(item.options)) {
+                if (typeof item.value === 'boolean') {
+                    // A yes or no the user may change (stop on the first error): a switch
+                    const btn = make('button', 'dbmn-progress-switch');
+                    btn.type = 'button';
+                    btn.dataset.step = `${item.id || item.label}:switch`;
+                    btn.setAttribute('role', 'switch');
+                    btn.setAttribute('aria-checked', item.value ? 'true' : 'false');
+                    btn.setAttribute('aria-label', item.label);
+                    if (item.title) btn.title = item.title;
+                    btn.append(make('span', 'dbmn-progress-switch-thumb'));
+                    btn.addEventListener('click', () => {
+                        this.dispatchEvent(new CustomEvent('dbmn-progress-change', { bubbles: true, detail: { id: item.id || item.label, value: !item.value } }));
+                    });
+                    value.append(btn);
+                } else if (Array.isArray(item.options)) {
                     // A figure with set choices (threads: 1, 2, 4, 8, 16): a button each, the one in use
                     // pressed. A choice over the limit shows, switched off, so the user sees it exists
                     value.classList.add('is-choices');
@@ -242,7 +257,7 @@
                 return row;
             }));
             if (held) {
-                const again = Array.from(this._list.querySelectorAll('.dbmn-progress-step, .dbmn-progress-choice')).find(btn => btn.dataset.step === held);
+                const again = Array.from(this._list.querySelectorAll('.dbmn-progress-step, .dbmn-progress-choice, .dbmn-progress-switch')).find(btn => btn.dataset.step === held);
                 if (again && !again.disabled) again.focus();
             }
         }

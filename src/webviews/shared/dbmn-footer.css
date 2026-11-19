@@ -134,6 +134,34 @@ dbmn-progress .dbmn-progress-more svg { width: 14px; height: 14px; }
 .dbmn-progress-stat { display: contents; }
 .dbmn-progress-stat-label { color: var(--foot-dim); }
 .dbmn-progress-stat-value { justify-self: end; font-variant-numeric: tabular-nums; }
+/* A yes or no: a switch */
+.dbmn-progress-switch {
+    position: relative;
+    width: 32px;
+    height: 18px;
+    padding: 0;
+    border: 1px solid var(--foot-line);
+    border-radius: 9px;
+    background: color-mix(in srgb, var(--vscode-foreground) 10%, transparent);
+    cursor: pointer;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+.dbmn-progress-switch-thumb {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--foot-dim);
+    transition: transform 0.15s ease, background-color 0.15s ease;
+}
+.dbmn-progress-switch[aria-checked="true"] {
+    border-color: var(--foot-accent);
+    background: color-mix(in srgb, var(--foot-accent) 34%, transparent);
+}
+.dbmn-progress-switch[aria-checked="true"] .dbmn-progress-switch-thumb { transform: translateX(14px); background: var(--vscode-foreground); }
+.dbmn-progress-switch:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 1px; }
 /* A figure with set choices: a button each, joined, the one in use filled */
 .dbmn-progress-stat-value.is-choices { display: inline-flex; }
 .dbmn-progress-choice {
@@ -391,5 +419,7 @@ dbmn-steps.is-unfolding .dbmn-steps-of { opacity: 0; }
     dbmn-steps.just-folded .dbmn-steps-summary,
     dbmn-progress[busy] .dbmn-progress-fill { animation: none; }
     dbmn-steps.is-ready .dbmn-steps-indicator { transition: none; }
-    dbmn-progress .dbmn-progress-fill { transition: none; }
+    dbmn-progress .dbmn-progress-fill,
+    .dbmn-progress-switch,
+    .dbmn-progress-switch-thumb { transition: none; }
 }

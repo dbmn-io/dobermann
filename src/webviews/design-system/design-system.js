@@ -63,6 +63,7 @@
     /* ── Progress: a run to watch ── */
     let runTimer = 0;
     let threads = 8;
+    let stopOnError = false;
     function run() {
         const bar = $('dsProgress');
         clearInterval(runTimer);
@@ -83,6 +84,7 @@
             bar.stats = [
                 // How it is being run: the two figures people go looking for. Threads can be changed here; a choice over the environment's limit is switched off
                 { id: 'threads', label: 'Threads', value: threads, options: [1, 2, 4, 8, 16], max: 8, overTitle: 'This environment allows up to 8' },
+                { id: 'stopOnError', label: 'Stop on first error', value: stopOnError, title: 'On: the batch stops at the first request that fails. Off: it carries on and lists the failures' },
                 { label: 'Rows per request', value: '100' },
                 { label: 'Started', value: '09:15:02' },
                 { label: 'Taken', value: taken },
@@ -331,11 +333,12 @@
     drawWorking();
     // (a screen's controller would check the change against the environment's limit; here it is taken as asked)
     $('dsProgress').addEventListener('dbmn-progress-change', event => {
-        if (event.detail.id !== 'threads') return;
-        threads = event.detail.value;
-        $('dsProgress').stats = $('dsProgress').stats.map(item => (item.id === 'threads' ? Object.assign({}, item, { value: threads }) : item));
+        if (event.detail.id === 'threads') threads = event.detail.value;
+        else if (event.detail.id === 'stopOnError') stopOnError = event.detail.value;
+        else return;
+        $('dsProgress').stats = $('dsProgress').stats.map(item => (item.id === event.detail.id ? Object.assign({}, item, { value: event.detail.value }) : item));
     });
-    $('dsProgress').stats = [{ id: 'threads', label: 'Threads', value: 8, options: [1, 2, 4, 8, 16], max: 8, overTitle: 'This environment allows up to 8' }, { label: 'Rows per request', value: '100' }, { label: 'Started', value: '09:15:02' }, { label: 'Taken', value: '13s' }, { label: 'Left', value: 'Under a minute' }, { label: 'Speed', value: '7 a second' }, { label: 'Succeeded', value: '88' }, { label: 'Failed', value: '3' }];
+    $('dsProgress').stats = [{ id: 'threads', label: 'Threads', value: 8, options: [1, 2, 4, 8, 16], max: 8, overTitle: 'This environment allows up to 8' }, { id: 'stopOnError', label: 'Stop on first error', value: false }, { label: 'Rows per request', value: '100' }, { label: 'Started', value: '09:15:02' }, { label: 'Taken', value: '13s' }, { label: 'Left', value: 'Under a minute' }, { label: 'Speed', value: '7 a second' }, { label: 'Succeeded', value: '88' }, { label: 'Failed', value: '3' }];
     drawColours();
     drawInventory();
     drawMoving();
