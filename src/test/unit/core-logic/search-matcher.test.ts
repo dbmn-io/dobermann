@@ -777,3 +777,53 @@ describe('Search: @column terms', () => {
         expect(columnSuggestions('status', ['status'])).to.deep.equal([]);
     });
 });
+
+// Nested data in a column: a term is asked of the values inside it, and a key can be named after a dot
+describe('Search: @column terms on nested data', () => {
+    const cols = [{ id: 'order', type: 'string' }, { id: 'data.itemCode', name: 'itemCode', type: 'array' }, { id: 'meta', type: 'object' }];
+    const rows = [
+        { order: 'SO-1', 'data.itemCode': [{ key: 'A-2207', value: 'Olive oil', qty: 24 }, { key: 'C-7001', value: 'Paper cups', qty: 10 }], meta: { carrier: { name: 'DHL' } } },
+        { order: 'SO-2', 'data.itemCode': [{ key: 'B-0418', value: 'Espresso beans', qty: 60 }], meta: { carrier: { name: 'UPS' } } },
+        { order: 'SO-3', 'data.itemCode': [], meta: {} }
+    ];
+    const value = (row: Record<string, unknown>, id: string) => row[id];
+    const found = (search: string) => rows.filter(row => matchesRow(parseSearchExpression(search), row, cols, value)).map(row => row.order);
+
+    it('= on the whole column is met by any value inside it (it never matched before)', () => {
+        expect(found('@itemCode=A-2207')).to.deep.equal(['SO-1']);
+        expect(found('@itemCode="olive oil"')).to.deep.equal(['SO-1']);
+        expect(found('@itemCode=olive')).to.deep.equal([]);            // is, not contains
+    });
+
+    it('a key named after a dot asks only that key', () => {
+        expect(found('@itemCode.key=A-2207')).to.deep.equal(['SO-1']);
+        expect(found('@itemCode.value=A-2207')).to.deep.equal([]);
+        expect(found('@itemCode.value~beans')).to.deep.equal(['SO-2']);
+        expect(found('@ITEMCODE.KEY=b-0418')).to.deep.equal(['SO-2']);  // any case, as columns are
+        expect(found('@data.itemCode.key=C-7001')).to.deep.equal(['SO-1']);   // the column by its whole id
+        expect(found('@meta.carrier.name=DHL')).to.deep.equal(['SO-1']);      // keys within keys
+    });
+
+    it('more than, less than and between work on a key, as numbers', () => {
+        expect(found('@itemCode.qty>40')).to.deep.equal(['SO-2']);
+        expect(found('@itemCode.qty=5..15')).to.deep.equal(['SO-1']);
+        expect(found('@itemCode.qty<=10')).to.deep.equal(['SO-1']);
+    });
+
+    it('!= and !~ are met only when no value inside matches', () => {
+        expect(found('@itemCode.key!=A-2207')).to.deep.equal(['SO-2', 'SO-3']);
+        expect(found('@itemCode.value!~cups')).to.deep.equal(['SO-2', 'SO-3']);
+    });
+
+    it('nothing inside is blank; a key no item has matches nothing', () => {
+        expect(found('@itemCode=""')).to.deep.equal(['SO-3']);
+        expect(found('@itemCode.nope=A-2207')).to.deep.equal([]);
+        expect(found('@nope.key=A-2207')).to.deep.equal([]);
+    });
+
+    it('~ on the whole column still reads its text, and plain columns are as they were', () => {
+        expect(found('@itemCode~olive')).to.deep.equal(['SO-1']);
+        expect(found('@order=SO-2')).to.deep.equal(['SO-2']);
+        expect(found('@itemCode.key=A-2207, @order=SO-3')).to.deep.equal(['SO-1', 'SO-3']);
+    });
+});

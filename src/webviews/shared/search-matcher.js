@@ -104,6 +104,11 @@ function parseWords(searchString) {
  *                         != is outside it. Numbers as numbers, anything else in text order
  *   @a~x, @b~y            a comma, with or without a space: either part, as commas between words
  *
+ * A column that holds a list or an object (nested data): the term is asked of the values inside
+ * it, and any one of them will do. `@lines=A-2207` is met by a line holding that value under any
+ * key; name the key after a dot to ask only it: `@lines.item=A-2207`, `@lines.qty>40`. With !=
+ * and !~ none of them may match. (~ on the whole column, no key named, reads its text as before.)
+ *
  * A space is always "and", the same column again included. A comma always ends a value:
  * `@uom=EA,CS` is `@uom=EA` or the word CS. Quote a value to search for | or .. as they are.
  * `@column` with no operator yet (while typing) is left out: it filters nothing.
@@ -188,7 +193,48 @@ function compareCell(text, v) {
         ? a - b : text.localeCompare(v, undefined, { numeric: true, sensitivity: 'base' });
 }
 
-function matchesColumnTerm(term, value) {
+/**
+ * The values inside nested data, down to the ones that are not lists or objects. With a path,
+ * only those under that key (then the next) of each object on the way, any case.
+ */
+function leafValues(value, path) {
+    if (Array.isArray(value)) {
+        var out = [];
+        for (var i = 0; i < value.length; i++) out = out.concat(leafValues(value[i], path));
+        return out;
+    }
+    var isObject = value !== null && typeof value === 'object' && value.$dbmnMissing !== true;
+    if (path.length) {
+        if (!isObject) return [];
+        var want = path[0].toLowerCase();
+        var found = [];
+        Object.keys(value).forEach(function (key) {
+            if (key.toLowerCase() === want) found = found.concat(leafValues(value[key], path.slice(1)));
+        });
+        return found;
+    }
+    if (!isObject) return [value];
+    var all = [];
+    Object.keys(value).forEach(function (key) { all = all.concat(leafValues(value[key], path)); });
+    return all;
+}
+
+var POSITIVE_OP = { '!=': '=', '!~': '~' };
+
+function matchesColumnTerm(term, value, path) {
+    // Nested data: the term is asked of each value inside (any one will do; with != and !~, none may).
+    // ~ on the whole column, no key named, still reads the column's text, as it always has
+    var nested = value !== null && typeof value === 'object' && value.$dbmnMissing !== true;
+    if ((path && path.length) || (nested && term.op !== '~' && term.op !== '!~')) {
+        var leaves = leafValues(value, path || []);
+        var positive = POSITIVE_OP[term.op];
+        if (positive) {
+            return !leaves.some(function (leaf) { return matchesColumnTerm({ op: positive, values: term.values }, leaf); });
+        }
+        // (nothing there at all is blank: `=""` finds it)
+        if (!leaves.length) return term.op === '=' && term.values.some(function (v) { return v === '' || v === '""'; });
+        return leaves.some(function (leaf) { return matchesColumnTerm(term, leaf); });
+    }
     var blank = blankCell(value);
     var text = blank ? '' : stringifyCell(value);
     var lower = text.toLowerCase();
@@ -217,14 +263,31 @@ function matchesColumnTerm(term, value) {
     }
 }
 
+/**
+ * The columns a term names, and the path inside them when it names a key of nested data:
+ * `lines.item` is the column `lines` and the key `item` when no column answers to the whole of it.
+ */
+function columnsNamed(columns, name) {
+    var pick = function (want) { return columns.filter(function (c) { return c.type !== 'group' && columnNamed(c, want); }); };
+    var whole = pick(name);
+    if (whole.length || name.indexOf('.') < 0) return { columns: whole, path: [] };
+    var parts = name.split('.');
+    // The longest start that is a column: what is left is the way in
+    for (var k = parts.length - 1; k >= 1; k--) {
+        var found = pick(parts.slice(0, k).join('.'));
+        if (found.length) return { columns: found, path: parts.slice(k).filter(Boolean) };
+    }
+    return { columns: [], path: [] };
+}
+
 /** Every column term met (a space is "and"), each by a column it names (a name no column has matches nothing). */
 function matchesColumnTerms(columnTerms, row, columns, extractNestedValue) {
     for (var t = 0; t < columnTerms.length; t++) {
         var term = columnTerms[t];
-        var named = columns.filter(function (c) { return c.type !== 'group' && columnNamed(c, term.column); });
+        var named = columnsNamed(columns, term.column);
         var met = false;
-        for (var c = 0; c < named.length && !met; c++) {
-            met = matchesColumnTerm(term, extractNestedValue(row, named[c].id));
+        for (var c = 0; c < named.columns.length && !met; c++) {
+            met = matchesColumnTerm(term, extractNestedValue(row, named.columns[c].id), named.path);
         }
         if (!met) return false;
     }

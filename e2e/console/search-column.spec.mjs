@@ -79,3 +79,56 @@ test('@column search: a column\'s own value, and @ suggests the columns then the
     await expect(page.locator('#search-input-mirror .search-tok-col-name')).toHaveText('@status');
     expect(pageErrors, 'uncaught errors in the page').toEqual([]);
 });
+
+// A column holding nested data (a list of objects): a term is asked of the values inside it, and
+// a key named after a dot asks only that key. Before, only ~ could match such a column.
+test('@column search reaches inside nested data: @column=value and @column.key=value', async ({ page }) => {
+    const pageErrors = [];
+    page.on('pageerror', e => pageErrors.push(e.message));
+    const data = [
+        { order: 'SO-1', itemCode: [{ key: 'A-2207', value: 'Olive oil', qty: 24 }, { key: 'C-7001', value: 'Paper cups', qty: 10 }] },
+        { order: 'SO-2', itemCode: [{ key: 'B-0418', value: 'Espresso beans', qty: 60 }] },
+        { order: 'SO-3', itemCode: [{ key: 'A-3110', value: 'A-2207 box', qty: 5 }] }
+    ];
+    const response = { ...responseFile(), data };
+    const file = join(ROOT, '.dev-local/console-harness-search-nested.html');
+    mkdirSync(dirname(file), { recursive: true });
+    writeFileSync(file, consolePage({ reportType: 'individual', executionId: EXEC_ID, statusDisplay: '✅ Completed', styles: true }));
+    await page.goto(pathToFileURL(file).href);
+    await page.waitForFunction(() => !!window.dynamicReportManager);
+    const messages = [
+        envelope('console.table_data_response', {
+            rawData: {
+                responses: [{ ...response, status: 'completed', metadata: { executionId: EXEC_ID, sourceFile: 'transaction-response.json', status: 'completed' } }],
+                metadata: { executionId: EXEC_ID }, availablePaths: [], logContent: [], requestHeaders: {}, requestQueryParams: {}
+            }
+        }, { success: true }),
+        envelope('status_update', {
+            status: 'completed', statusDisplay: '✅ Completed', durationSeconds: 0.1, startTime: Date.now() - 100,
+            responseData: response, progress: { completed: 1, total: 1, percentage: 100 },
+            responseFile: '/tmp/transaction-response.json', requestFile: '/tmp/transaction-request.json'
+        }),
+        { type: 'REPORT_SETTINGS_LOADED', endpointId: 'endpoint-1', settings: null }
+    ];
+    for (const m of messages) {
+        await page.evaluate(msg => window.postMessage(msg, '*'), m);
+        await page.waitForTimeout(20);
+    }
+    const rows = page.locator('#data-table > tbody > tr');
+    await expect(rows).toHaveCount(3);
+    const box = page.locator('#search-input');
+    const search = async (text, orders) => {
+        await box.fill(text);
+        await expect(rows, text).toHaveCount(orders.length);
+        for (const [i, order] of orders.entries()) await expect(rows.nth(i), text).toContainText(order);
+    };
+    await search('@itemCode~A-2207', ['SO-1', 'SO-3']);        // contains, as before: anywhere in its text
+    await search('@itemCode=A-2207', ['SO-1']);                // is: a value inside it, whole
+    await search('@itemCode.key=A-2207', ['SO-1']);            // only under that key
+    await search('@itemCode.value~A-2207', ['SO-3']);
+    await search('@itemCode.qty>20', ['SO-1', 'SO-2']);
+    await search('@itemCode.key!=A-2207', ['SO-2', 'SO-3']);
+    await search('@itemCode.nope=A-2207', []);
+    await search('', ['SO-1', 'SO-2', 'SO-3']);
+    expect(pageErrors).toEqual([]);
+});
