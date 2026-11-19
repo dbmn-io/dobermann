@@ -15,6 +15,10 @@
  * starts a line with one.
  *
  *   <dbmn-map id="map" label="Map columns"></dbmn-map>
+ *   <dbmn-map no-heads columns="4">   the screen's own slots head the columns (no row of source names),
+ *                                     and there are four, empty ones too: the sources fill the first.
+ *                                     Lined up with them: --map-gutter (the left column's width) and the
+ *                                     element's width; the columns share the rest with an 8px gap
  *
  *   map.sources = [{ id: 'bl', name: 'BL · GET /items · PROD', short: 'BL', tone: 'compare-r0',   // short: "Not in C1"
  *                    columns: [{ id: 'sku', name: 'sku' }, …] },
@@ -100,15 +104,21 @@
         _draw() {
             if (!this._built || !this.isConnected) return;
             const sources = this._sources;
-            this.style.setProperty('--map-sources', String(Math.max(1, sources.length)));
+            // As many source columns as the screen asks (its slots, empty ones too), else one per source
+            const columns = Math.max(1, sources.length, Number(this.getAttribute('columns')) || 0);
+            this._blanks = columns - sources.length;
+            this.style.setProperty('--map-sources', String(columns));
             const grid = make('div', 'dbmn-map-grid');
-            // The sources across the top
-            grid.append(make('div', 'dbmn-map-corner'));
-            sources.forEach(s => {
-                const head = make('div', 'dbmn-map-source' + (s.tone ? ` ${s.tone}` : ''), s.name || s.id);
-                head.title = s.name || s.id;
-                grid.append(head);
-            });
+            // The sources across the top, unless the screen's own slots head the columns (no-heads)
+            if (!this.hasAttribute('no-heads')) {
+                grid.append(make('div', 'dbmn-map-corner'));
+                sources.forEach(s => {
+                    const head = make('div', 'dbmn-map-source' + (s.tone ? ` ${s.tone}` : ''), s.name || s.id);
+                    head.title = s.name || s.id;
+                    grid.append(head);
+                });
+                this._pad(grid);
+            }
             const keys = this._keys();
             if (this._keyMode) {
                 grid.append(this._section(this._text.key, this._text.keyNote, this._text.addKey, () => this._tell('dbmn-map-add', { mode: this._keyMode })));
@@ -120,6 +130,7 @@
                         const m = this._matched[s.id];
                         grid.append(make('div', 'dbmn-map-matched' + (m && m.tone ? ` is-${m.tone}` : ''), m ? m.text : ''));
                     });
+                    this._pad(grid);
                 }
             }
             const rest = this._lines.filter(l => !keys.includes(l));
@@ -144,8 +155,14 @@
                     }
                     grid.append(box);
                 });
+                this._pad(grid);
             }
             this.replaceChildren(grid);
+        }
+
+        /** The columns past the sources (a slot with nothing in it yet): empty, so the next row starts in the gutter. */
+        _pad(grid) {
+            for (let i = 0; i < (this._blanks || 0); i++) grid.append(make('div', 'dbmn-map-blank'));
         }
 
         _section(title, note, action, onAction) {
@@ -193,6 +210,7 @@
             grid.append(lead);
             const isKey = !!this._keyMode && line.mode === this._keyMode;
             this._sources.forEach((s, i) => grid.append(this._cell(line, s, i, isKey)));
+            this._pad(grid);
         }
 
         _cell(line, source, index, isKey) {

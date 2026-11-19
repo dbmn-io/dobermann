@@ -107,3 +107,20 @@ test('a function whose lookup table is gone shows as broken; a fixed source show
     await expect(cell(p, 'f1', 'file').locator('.dbmn-map-fn')).toHaveClass(/is-missing/);
     await expect(p.locator('#map .dbmn-map-left').nth(1).locator('.dbmn-map-leftover')).toHaveText(['Site']);
 });
+
+test('no-heads and columns: the screen\'s own slots head it, four columns with empty ones after the sources, every row starting in the gutter', async ({ page: p }) => {
+    await p.setContent(page());
+    await p.evaluate(() => { const map = document.getElementById('map'); map.setAttribute('no-heads', ''); map.setAttribute('columns', '4'); map.lines = map.lines; });
+    await expect(p.locator('#map .dbmn-map-source, #map .dbmn-map-corner')).toHaveCount(0);
+    // Each line: its gutter, two boxes, two empty columns; the next line's gutter starts the next row
+    const leads = await p.locator('#map .dbmn-map-lead[data-line]').evaluateAll(els => els.map(e => Math.round(e.getBoundingClientRect().left)));
+    expect(new Set(leads).size).toBe(1);
+    const k1 = await cell(p, 'k1', 'bl').boundingBox();
+    const k1c1 = await cell(p, 'k1', 'c1').boundingBox();
+    const grid = await p.locator('#map .dbmn-map-grid').boundingBox();
+    // Four columns share what is left of the gutter: each a quarter of it, less the gaps
+    const quarter = (grid.width - 170 - 4 * 8) / 4;
+    expect(Math.abs(k1.width - quarter)).toBeLessThan(2);
+    expect(Math.abs(k1c1.x - (k1.x + k1.width + 8))).toBeLessThan(2);
+    await expect(p.locator('#map .dbmn-map-blank')).toHaveCount(2 * 3 + 2 + 2);
+});
