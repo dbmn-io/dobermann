@@ -65,6 +65,19 @@ describe('Query', () => {
         return session;
     }
 
+    describe('a sample of its rows', () => {
+        it('spreads up to the number asked for from the first row to the last, its own columns only', async () => {
+            const spec: QuerySpec = { views: [{ id: 'a', name: 'a', columns: ['n'] }], joins: [], select: [{ view: 'a', column: 'n' }] };
+            const session = await open(spec, { a: Array.from({ length: 2500 }, (_, i) => ({ n: i })) });
+            const sample = session.sample(1000);
+            assert.deepStrictEqual(sample.columns, ['n']);
+            assert.ok(sample.rows.length <= 1000 && sample.rows.length >= 800, `${sample.rows.length} rows`);
+            assert.strictEqual(sample.rows[0][0], 0);
+            assert.ok(Number(sample.rows[sample.rows.length - 1][0]) >= 2490);
+            assert.strictEqual(session.sample(5000).rows.length, 2500);
+        });
+    });
+
     describe('the SQL it writes', () => {
         it('joins live in FROM, pairs in ON ... AND, and there is no WHERE', () => {
             assert.strictEqual(writeSql(STOCK), [

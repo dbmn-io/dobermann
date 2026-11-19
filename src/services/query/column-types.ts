@@ -22,6 +22,16 @@ function kindOf(value: unknown): ColumnType {
     return 'text';
 }
 
+/** Up to `max` of the rows, spread evenly from the first to the last. */
+export function spread<T>(rows: T[], max: number): T[] {
+    if (rows.length <= max) return rows;
+    const step = rows.length / max;
+    return Array.from({ length: max }, (_, i) => rows[Math.floor(i * step)]);
+}
+
+/** How many rows a column's kind is read from. */
+export const TYPE_SAMPLE = 1000;
+
 /**
  * A kind for each of `count` columns, from rows given as arrays in column order. A column is a
  * kind only when every value it has is that kind; blanks say nothing, and a column of blanks is text.

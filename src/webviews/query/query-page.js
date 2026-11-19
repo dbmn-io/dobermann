@@ -80,6 +80,11 @@
         return node;
     }
     function count(n) { return Number(n || 0).toLocaleString(); }
+    /** A big figure made short for the footer's summary: 9,999 as it is, then 12K, 1.2M (the whole figure on hover). */
+    function short(n) {
+        const v = Number(n || 0);
+        return v < 10000 ? v.toLocaleString() : new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 }).format(v);
+    }
     function views() { return (ui.state && ui.state.views) || []; }
     function viewAt(id) { return views().findIndex(v => v.id === id); }
     function view(id) { return views().find(v => v.id === id); }
@@ -166,7 +171,8 @@
         states.forEach((st, i) => { if (!st.summary || st.status === 'done') st.summary = said[i]; });
         bar.render(states, ui.step);
         // On Results the wizard is done: the steps fold into what is on screen (click it for the steps)
-        bar.summary = [said[0], said[2], ui.shownText].filter(Boolean);
+        // (the row count shortened when it is big: the whole figure shows on hover)
+        bar.summary = [said[0], said[2], ui.shownText && (ui.shownExact && ui.shownExact !== ui.shownText ? { text: ui.shownText, title: ui.shownExact } : ui.shownText)].filter(Boolean);
         // (once its rows are in: until then Results shows as a step that is working, then the steps shrink away)
         bar.folded = ui.step === 4 && !!ui.settled && !!ui.arrived;
         const next = $('queryNextBtn');
@@ -194,6 +200,7 @@
         if (n < 1 || n > 4 || (n > ui.step && waitsFor(n))) return;
         if (n === 4 && ui.step !== 4) ui.arrived = false;
         ui.step = n;
+        if (n > (ui.reached || 1)) post({ type: 'query.reached', step: n });
         ui.reached = Math.max(ui.reached || 1, n);
         PANELS.forEach((id, i) => $(id).classList.toggle('hidden', i + 1 !== n));
         $('queryResultsControls').classList.toggle('hidden', n !== 4);
@@ -1467,7 +1474,9 @@
             } else table.totals = null;
         }
         // The rows on screen, in the footer's summary (the one place the count shows): a search changes it
-        ui.shownText = m.shown === m.total ? `${count(m.total)} rows` : `${count(m.shown)} of ${count(m.total)} rows`;
+        ui.shownText = m.shown === m.total ? `${short(m.total)} rows` : `${short(m.shown)} of ${short(m.total)} rows`;
+        // (the whole figure, for the summary's hover)
+        ui.shownExact = m.shown === m.total ? `${count(m.total)} rows` : `${count(m.shown)} of ${count(m.total)} rows`;
         ui.arrived = true;
         renderBar();
         asked.resolve({ rows: m.rows.map(r => { const row = {}; asked.ids.forEach((id, i) => { row[id] = r[i]; }); return row; }), total: m.shown });
@@ -1689,8 +1698,8 @@
                 ui.start = m.empty ? 'edit' : m.start;
                 // Run shows Results and nothing else while the query is read; Edit shows Views
                 ui.step = ui.start === 'results' ? 4 : 1;
-                // (a query with nothing in it yet is new: its steps open one at a time)
-                ui.reached = m.empty ? 1 : 4;
+                // A query still being built opens its steps one at a time, from the furthest it reached
+                ui.reached = Math.min(4, Math.max(1, Number(m.reached) || 4));
                 PANELS.forEach((id, i) => $(id).classList.toggle('hidden', i + 1 !== ui.step));
                 $('queryResultsControls').classList.toggle('hidden', ui.step !== 4);
                 renderBar();

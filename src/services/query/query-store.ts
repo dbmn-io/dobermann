@@ -71,6 +71,12 @@ export interface SavedQuery {
     blanks?: 'unticked';
     /** 'names': each view has one short name, which the SQL uses (see nameViews). */
     letters?: 'abc' | 'names';
+    /**
+     * The furthest step reached while the query was being built (1 Views … 4 Results). A new query's
+     * steps open one at a time; once it has reached Results they are all open. Absent: a query made
+     * before this was kept, all open.
+     */
+    reached?: number;
 }
 
 /** How many views a query takes. */
@@ -271,7 +277,7 @@ export function newSourceId(): string {
 export async function createQuery(state: QueryState): Promise<SavedQuery> {
     const name = freeReportName(state, 'New query');
     const now = new Date().toISOString();
-    const query: SavedQuery = { id: newId(ID_PREFIX), name, sources: [], joins: [], letters: 'names', createdAt: now, updatedAt: now };
+    const query: SavedQuery = { id: newId(ID_PREFIX), name, sources: [], joins: [], letters: 'names', reached: 1, createdAt: now, updatedAt: now };
     await saveQuery(state, query);
     return query;
 }

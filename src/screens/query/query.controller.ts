@@ -27,7 +27,7 @@ import { QueryRowData, QuerySession } from '../../services/query/query-engine';
 import { allColumns, columnSql, defaultColumns, fromSql, joinKeyColumns, quoteName, tableNames, writeSql } from '../../services/query/query-sql';
 import { reportNameProblem } from '../../services/compare/report-name';
 import { cleanViewName, getQuery, guessViewName, MAX_QUERY_VIEWS, moveView, moveViewFirst, nameViews, newSourceId, QuerySource, renameView, saveQuery, SavedQuery, untickBlanks, untickClashes } from '../../services/query/query-store';
-import { columnTypes, type ColumnType } from '../../services/query/column-types';
+import { columnTypes, spread, TYPE_SAMPLE, type ColumnType } from '../../services/query/column-types';
 import { CALC_VIEW } from '../../services/query/query-types';
 import type { ColumnRef, QueryFn, QueryJoin, QueryJoinStats, QuerySpec } from '../../services/query/query-types';
 import { ConsoleExportService } from '../../services/console/export.service';
@@ -238,6 +238,16 @@ export class QueryController {
                 }, false);
                 case 'query.totals': return await this.change(q => { q.totals = !!message.on; }, false);
                 case 'query.rows': return await this.rows(message as unknown as RowsRequest);
+                // A step reached for the first time while the query is built: kept, so it reopens where it got to
+                case 'query.reached': {
+                    const q = this.query;
+                    const step = Math.min(4, Math.max(1, Math.floor(Number(message.step) || 1)));
+                    if (q && q.reached !== undefined && step > q.reached) {
+                        q.reached = step;
+                        await saveQuery(this.ports.state, q);
+                    }
+                    return;
+                }
                 case 'query.export': return await this.export(message as unknown as RowsRequest);
                 case 'query.openConsole': {
                     const source = this.query?.sources.find(s => s.id === message.id);
@@ -260,7 +270,7 @@ export class QueryController {
         if (!query) throw new Error('This query is no longer saved.');
         this.query = query;
         if (nameViews(query)) await saveQuery(this.ports.state, query);
-        this.post({ type: 'query.init', name: query.name, empty: query.sources.length === 0, start: this.config.start === 'results' ? 'results' : 'edit' });
+        this.post({ type: 'query.init', name: query.name, empty: query.sources.length === 0, reached: query.reached ?? 4, start: this.config.start === 'results' ? 'results' : 'edit' });
         // The views show at once, by what is saved; their rows are read behind them
         this.postState({ reading: true });
         await this.refresh();
@@ -695,7 +705,8 @@ export class QueryController {
                 duplicates = Math.abs(other - total);
                 stats = spec.joins.map((_, i) => session.joinStats(i));
                 preview = session.rows({ limit: PREVIEW_ROWS }).rows;
-                resultTypes = columnTypes(preview, columns.length);
+                // (from rows across the whole result, so a column that changes further down is not mislabelled)
+                resultTypes = columnTypes(session.sample(TYPE_SAMPLE).rows, columns.length);
                 sampleRow = this.sampleRow(session, spec);
                 if (query.sql) {
                     // The user's own SQL: Results shows what it makes
@@ -703,7 +714,7 @@ export class QueryController {
                         const own = this.read(session, spec);
                         total = own.rows.length;
                         resultColumns = own.columns;
-                        resultTypes = columnTypes(own.rows.slice(0, PREVIEW_ROWS), own.columns.length);
+                        resultTypes = columnTypes(spread(own.rows, TYPE_SAMPLE), own.columns.length);
                     } catch (error) {
                         sqlError = error instanceof Error ? error.message : String(error);
                     }

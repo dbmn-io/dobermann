@@ -87,6 +87,18 @@ export class QuerySession {
         return this.run(this.sql(options));
     }
 
+    /**
+     * Up to `max` of the query's rows, spread evenly from its first to its last: enough to tell
+     * what a column holds without reading every row, and not just the first ones.
+     */
+    sample(max: number): QueryRows {
+        const total = this.count();
+        if (total <= max) return this.rows();
+        const step = Math.ceil(total / max);
+        const out = this.run(`SELECT * FROM (SELECT *, ROW_NUMBER() OVER () AS "__dbmn_n" FROM (${this.sql()})) WHERE ("__dbmn_n" - 1) % ${step} = 0`);
+        return { columns: out.columns.slice(0, -1), rows: out.rows.map(r => r.slice(0, -1)) };
+    }
+
     /** How many rows the query makes. */
     count(where?: string): number {
         const inner = writeSql(this.spec, { where });
