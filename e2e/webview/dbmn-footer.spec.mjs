@@ -237,6 +237,20 @@ test('progress: the box is the bar, and says so to a screen reader', async ({ pa
     expect(await page.evaluate(() => window.asked)).toEqual([{ id: 'threads', value: 16 }, { id: 'threads', value: 15 }]);
     await expect(page.locator('.dbmn-progress-stats')).toHaveCount(1);   // stepping never closes the list
     await expect(page.locator('.dbmn-progress-stat').nth(1)).toHaveText('Rows per request100');
+    // A figure with set choices: a button each, the one in use pressed, one over the limit switched off
+    await bar.evaluate(e => {
+        window.asked = [];
+        e.stats = [{ id: 'threads', label: 'Threads', value: 8, options: [1, 2, 4, 8, 16], max: 8, overTitle: 'This environment allows up to 8' }];
+    });
+    const choice = n => page.locator('.dbmn-progress-choice', { hasText: new RegExp(`^${n}$`) });
+    await expect(page.locator('.dbmn-progress-choice')).toHaveText(['1', '2', '4', '8', '16']);
+    await expect(choice(8)).toHaveAttribute('aria-pressed', 'true');
+    await expect(choice(16)).toBeDisabled();
+    await expect(choice(16)).toHaveAttribute('title', 'This environment allows up to 8');
+    await choice(4).click();
+    await expect(choice(4)).toHaveAttribute('aria-pressed', 'true');
+    await choice(4).click();                                   // the one in use asks nothing
+    expect(await page.evaluate(() => window.asked)).toEqual([{ id: 'threads', value: 4 }]);
     await page.keyboard.press('Escape');
     await expect(page.locator('.dbmn-progress-stats')).toHaveCount(0);
     await bar.press('Enter');

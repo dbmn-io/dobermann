@@ -39,9 +39,11 @@
  *   while it runs, time taken once done).
  *   el.stats = [{ label: 'Started', value: '09:15:02' }, { label: 'Taken', value: '13s' }, …];
  *                                   // the rest, a click (or a hover) away
- *   A figure the user may change takes its limits: { id: 'threads', label: 'Threads', value: 8, min: 1, max: 16 }.
- *   It gets less and more buttons, and the box asks with 'dbmn-progress-change' ({ id, value });
- *   the screen decides (its controller keeps the limits) and sets the figure it settles on.
+ *   A figure the user may change takes its choices or its limits:
+ *     { id: 'threads', label: 'Threads', value: 8, options: [1, 2, 4, 8, 16], max: 8 }   a button each; over `max`, switched off
+ *     { id: 'retries', label: 'Retries', value: 2, min: 0, max: 5 }                      less and more buttons
+ *   The box asks with 'dbmn-progress-change' ({ id, value }); the screen decides (its controller
+ *   keeps the limits) and sets the figure it settles on.
  * ── <dbmn-status tone="ok|warn|error">Saved</dbmn-status> ──
  */
 (function () {
@@ -192,7 +194,28 @@
                 const row = make('div', 'dbmn-progress-stat');
                 const value = make('span', 'dbmn-progress-stat-value');
                 const steps = typeof item.min === 'number' || typeof item.max === 'number';
-                if (!steps) value.textContent = String(item.value);
+                if (Array.isArray(item.options)) {
+                    // A figure with set choices (threads: 1, 2, 4, 8, 16): a button each, the one in use
+                    // pressed. A choice over the limit shows, switched off, so the user sees it exists
+                    value.classList.add('is-choices');
+                    value.setAttribute('role', 'group');
+                    value.setAttribute('aria-label', item.label);
+                    item.options.forEach(option => {
+                        const btn = make('button', 'dbmn-progress-choice', String(option));
+                        btn.type = 'button';
+                        btn.dataset.step = `${item.id || item.label}:${option}`;
+                        const on = String(option) === String(item.value);
+                        const over = typeof item.max === 'number' && Number(option) > item.max;
+                        btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+                        btn.disabled = over || (typeof item.min === 'number' && Number(option) < item.min);
+                        if (over) btn.title = item.overTitle || `Up to ${item.max} here`;
+                        btn.addEventListener('click', () => {
+                            if (on) return;
+                            this.dispatchEvent(new CustomEvent('dbmn-progress-change', { bubbles: true, detail: { id: item.id || item.label, value: option } }));
+                        });
+                        value.append(btn);
+                    });
+                } else if (!steps) value.textContent = String(item.value);
                 else {
                     // A figure the user may change (how many requests run at once): less, the figure, more.
                     // The box only asks: the screen decides, and sets the figure it settles on
@@ -219,7 +242,7 @@
                 return row;
             }));
             if (held) {
-                const again = Array.from(this._list.querySelectorAll('.dbmn-progress-step')).find(btn => btn.dataset.step === held);
+                const again = Array.from(this._list.querySelectorAll('.dbmn-progress-step, .dbmn-progress-choice')).find(btn => btn.dataset.step === held);
                 if (again && !again.disabled) again.focus();
             }
         }

@@ -81,8 +81,8 @@
             bar.setAttribute('note', loading ? taken : finished ? `took ${taken}` : left);
             bar.setAttribute('value', String(loading ? (tick + 1) * 25 : Math.round(done / total * 100)));
             bar.stats = [
-                // How it is being run: the two figures people go looking for. Threads can be changed here, up to the environment's limit
-                { id: 'threads', label: 'Threads', value: threads, min: 1, max: 16 },
+                // How it is being run: the two figures people go looking for. Threads can be changed here; a choice over the environment's limit is switched off
+                { id: 'threads', label: 'Threads', value: threads, options: [1, 2, 4, 8, 16], max: 8, overTitle: 'This environment allows up to 8' },
                 { label: 'Rows per request', value: '100' },
                 { label: 'Started', value: '09:15:02' },
                 { label: 'Taken', value: taken },
@@ -335,7 +335,7 @@
         threads = event.detail.value;
         $('dsProgress').stats = $('dsProgress').stats.map(item => (item.id === 'threads' ? Object.assign({}, item, { value: threads }) : item));
     });
-    $('dsProgress').stats = [{ id: 'threads', label: 'Threads', value: 8, min: 1, max: 16 }, { label: 'Rows per request', value: '100' }, { label: 'Started', value: '09:15:02' }, { label: 'Taken', value: '13s' }, { label: 'Left', value: 'Under a minute' }, { label: 'Speed', value: '7 a second' }, { label: 'Succeeded', value: '88' }, { label: 'Failed', value: '3' }];
+    $('dsProgress').stats = [{ id: 'threads', label: 'Threads', value: 8, options: [1, 2, 4, 8, 16], max: 8, overTitle: 'This environment allows up to 8' }, { label: 'Rows per request', value: '100' }, { label: 'Started', value: '09:15:02' }, { label: 'Taken', value: '13s' }, { label: 'Left', value: 'Under a minute' }, { label: 'Speed', value: '7 a second' }, { label: 'Succeeded', value: '88' }, { label: 'Failed', value: '3' }];
     drawColours();
     drawInventory();
     drawMoving();

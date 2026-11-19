@@ -134,6 +134,32 @@ dbmn-progress .dbmn-progress-more svg { width: 14px; height: 14px; }
 .dbmn-progress-stat { display: contents; }
 .dbmn-progress-stat-label { color: var(--foot-dim); }
 .dbmn-progress-stat-value { justify-self: end; font-variant-numeric: tabular-nums; }
+/* A figure with set choices: a button each, joined, the one in use filled */
+.dbmn-progress-stat-value.is-choices { display: inline-flex; }
+.dbmn-progress-choice {
+    min-width: 26px;
+    height: 22px;
+    padding: 0 6px;
+    margin-left: -1px;
+    border: 1px solid var(--foot-line);
+    background: none;
+    color: inherit;
+    font: inherit;
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+}
+.dbmn-progress-choice:first-child { margin-left: 0; border-radius: 3px 0 0 3px; }
+.dbmn-progress-choice:last-child { border-radius: 0 3px 3px 0; }
+.dbmn-progress-choice:hover:not(:disabled):not([aria-pressed="true"]) { background: color-mix(in srgb, var(--foot-accent) 14%, transparent); }
+.dbmn-progress-choice[aria-pressed="true"] {
+    position: relative;
+    border-color: var(--foot-accent);
+    background: color-mix(in srgb, var(--foot-accent) 26%, transparent);
+    font-weight: 600;
+    cursor: default;
+}
+.dbmn-progress-choice:disabled { opacity: 0.4; cursor: not-allowed; text-decoration: line-through; }
+.dbmn-progress-choice:focus-visible { position: relative; outline: 1px solid var(--vscode-focusBorder); }
 /* A figure that can be changed: less, the figure, more */
 .dbmn-progress-stat-value.is-stepped { display: inline-flex; align-items: center; gap: 6px; }
 .dbmn-progress-step-value { min-width: 2ch; text-align: center; }
