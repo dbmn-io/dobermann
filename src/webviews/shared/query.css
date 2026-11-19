@@ -111,6 +111,9 @@
 /* Results: the Console's headings (sort on hover, × to take a column out), only the rows in view
    drawn, each column held at the width its first page needed, and a column dragged by its heading
    (column-drag.css) */
+/* The search in words, under Results' tools */
+.query-reads { margin: 0 10px 2px; }
+
 /* Results: the design system's table, filling the step (its rows scroll inside it) */
 #queryTable { flex: 1; min-height: 0; }
 #queryTable .dbmn-table-scroll { flex: 1; min-height: 0; max-height: none; margin: 0; }

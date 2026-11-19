@@ -198,6 +198,7 @@
         PANELS.forEach((id, i) => $(id).classList.toggle('hidden', i + 1 !== n));
         $('queryResultsControls').classList.toggle('hidden', n !== 4);
         renderTop();
+        renderReads();
         // Back on Views: its ages are as of now
         if (n === 1 && ui.state) renderViews();
         renderBar();
@@ -1569,11 +1570,13 @@
             ui.totals = !!m.totals;
             $('querySearch').value = ui.search;
             window.SearchMatcher.renderHighlight($('querySearchMirror'), ui.search);
+            renderReads();
             $('queryTotals').checked = ui.totals;
             if (m.ownSql || m.sqlError) openSql(true);
         }
         if (!m.reading && ui.sort && ui.sort.column >= m.resultColumns.length) ui.sort = null;
         renderTop();
+        renderReads();
         renderViews();
         renderJoins();
         renderColumns();
@@ -1634,18 +1637,30 @@
     $('queryDistinct').addEventListener('change', () => { setBusy('Updating…'); post({ type: 'query.distinct', on: $('queryDistinct').checked }); });
     let searchTimer = 0;
     window.SearchMatcher.followScroll($('querySearch'), $('querySearchMirror'));
-    // `@` lists Results' columns (a name in several views also by letter: d.sku), then the operators
-    window.SearchMatcher.attachColumnSuggest({
-        input: $('querySearch'),
-        headings: () => {
-            const columns = resultCols();
-            const names = columns.map(c => c.column);
-            const lettered = columns.filter(c => names.indexOf(c.column) !== names.lastIndexOf(c.column) && view(c.view))
-                .map(c => `${view(c.view).name}.${c.column}`);
-            return [...new Set(names), ...lettered];
-        }
-    });
+    // The names a search can ask for: Results' columns (a name in several views also by letter: d.sku)
+    function searchHeadings() {
+        const columns = resultCols();
+        const names = columns.map(c => c.column);
+        const lettered = columns.filter(c => names.indexOf(c.column) !== names.lastIndexOf(c.column) && view(c.view))
+            .map(c => `${view(c.view).name}.${c.column}`);
+        return [...new Set(names), ...lettered];
+    }
+    /** What kind of values the column a heading names holds (the host says: number, yes or no, date, text). */
+    function searchType(heading) {
+        const want = String(heading || '').toLowerCase();
+        const hit = resultCols().find(c => c.column.toLowerCase() === want || (view(c.view) && `${view(c.view).name}.${c.column}`.toLowerCase() === want));
+        return (hit && hit.type) || '';
+    }
+    /** The search in words, under Results' tools: "Reading this as: poDate (date) after 12 Nov 2026". */
+    function renderReads() {
+        const says = ui.step === 4 && window.SearchMatcher.describeSearch ? window.SearchMatcher.describeSearch($('querySearch').value, searchHeadings(), searchType) : '';
+        $('queryReads').textContent = says;
+        $('queryReads').classList.toggle('hidden', !says);
+    }
+    // `@` lists the columns, each with its kind, then the operators and values that fit it
+    window.SearchMatcher.attachColumnSuggest({ input: $('querySearch'), headings: searchHeadings, types: searchType });
     $('querySearch').addEventListener('input', () => {
+        renderReads();
         window.SearchMatcher.renderHighlight($('querySearchMirror'), $('querySearch').value);
         clearTimeout(searchTimer);
         searchTimer = setTimeout(() => { ui.search = $('querySearch').value; loadRows(); }, 200);

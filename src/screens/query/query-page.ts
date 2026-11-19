@@ -62,6 +62,8 @@ export function buildQueryPage(asset: AssetUrl, config: { queryId: string; name:
                 <button type="button" class="compare-tool-btn icon" id="queryExportBtn" data-click="query:export" title="Export to Excel" aria-label="Export to Excel" data-icon="download"></button>
             </div>
         </header>
+        <!-- The search in words, while a column is asked for: "Reading this as: poDate (date) after 12 Nov 2026" -->
+        <p id="queryReads" class="form-hint query-reads hidden" role="status"></p>
 
         <!-- Step 1: Views: each a saved result, read through one of its endpoint's Views -->
         <div id="queryViewsStep" class="csv-step hidden">
