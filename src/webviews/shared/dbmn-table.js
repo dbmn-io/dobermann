@@ -10,7 +10,7 @@
  *                      x removes, the right edge resizes, a double-click fits, a right-click
  *                      lists it all; column-drag.js: the name drags the column to another place
  *   the rows           virtual-window.js: only the rows in view are drawn, however many there are
- *   a long value       cell-detail.js: a click opens it in full
+ *   a long value       cell-detail.js: a click opens it in full (a long one, or one cut off by its column)
  *
  *   <dbmn-table id="orders" label="Orders" searchable removable></dbmn-table>
  *
@@ -27,14 +27,19 @@
  * owns), render(value, row), pinned, group, head(th) }.
  *   pinned: true            it stays where it is (a key, a status): never moved or removed, nothing moves past it
  *   group: { id, name, head(th) }   consecutive columns with one group share a heading over theirs (a field,
- *                           and BL, C1, C2 under it): the group moves and is removed as one; each column
- *                           under it sorts and resizes on its own
+ *                           and BL, C1, C2 under it): the group moves and is removed as one, and its
+ *                           right edge sizes its columns evenly; each column under it sorts and resizes on its own
  *   head(th)                adds what the screen wants to the column's heading (a count, a filter)
- *   cell(td, value, row)    after the cell is drawn: the screen marks it (a value that differs, its tint)
+ *   sortable: false         no sort for it (a status the screen filters instead)
+ *   cell(td, value, row)    after the cell is drawn: the screen marks it (a value that differs, its tint);
+ *                           a long value it marks .cell-expandable with data-full (and data-title)
+ *                           opens in full on a click, as the table's own do
  *
  * Rows the screen acts on:
  *   orders.rowClass = row => 'is-flagged';       a class on a row's <tr>
  *   orders.emptyText = ({ searched }) => 'No rows match the filters.';   what an empty table says (else its own words)
+ *   orders.redrawHeads();             the headings drawn again (their head(th) hooks run again: a count
+ *                                     changed), with the order, widths and sort as they are
  *   orders.addEventListener('dbmn-table-row', e => open(e.detail.row));        a click on a row
  *   orders.addEventListener('dbmn-table-row-menu', e => …e.detail.row…);       a right-click on a row
  *       (not a click that opens a long value, a list of records or anything with its own action;
@@ -224,6 +229,8 @@
             if (window.Icons) window.Icons.setIcon(glass, on ? 'loader' : 'search');
         }
 
+        redrawHeads() { if (this._built) this._heads(); }
+
         /** A row of totals under the rows, by column id, from the screen. */
         set totals(map) {
             this._totals = map && typeof map === 'object' ? map : null;
@@ -392,7 +399,18 @@
                 if (!td) { this._rowEvent('dbmn-table-row', event); return; }
                 if (!window.CellDetail || String(window.getSelection())) return;
                 const column = this._columns[td.cellIndex];
-                window.CellDetail.open(td.dataset.full || td.textContent, { title: column ? column.name || column.id : undefined });
+                // (a screen's cell may name itself better than its column: "SO-1: qty · BL")
+                window.CellDetail.open(td.dataset.full || td.textContent, { title: td.dataset.title || (column ? column.name || column.id : undefined) });
+            });
+
+            // A value cut off by its column's width opens in full too: found when the pointer is on it
+            this._body.addEventListener('mouseover', event => {
+                const td = event.target.closest && event.target.closest('td');
+                if (!td || !this._body.contains(td) || td.classList.contains('cell-expandable') || td.classList.contains('has-nested')) return;
+                if (td.parentElement.classList.contains('dbmn-table-waiting') || td.scrollWidth <= td.clientWidth + 1) return;
+                td.classList.add('cell-expandable');
+                if (!td.dataset.full) td.dataset.full = td.textContent;
+                td.title = 'Click to see it all';
             });
 
             // A right-click on a row is the screen's (its record, its menu), when it listens for it
@@ -400,12 +418,17 @@
 
             const head = window.ColumnHead;
             if (head) {
+                // A column's right edge sizes it; a group's sizes its columns, evenly
+                const own = th => th.dataset.col !== undefined;
                 head.attachResize(this._head, {
-                    canResize: th => !!this._sized && th.dataset.col !== undefined,
+                    canResize: th => !!this._sized && (own(th) || th.dataset.group !== undefined),
                     widthOf: th => th.getBoundingClientRect().width,
-                    setWidth: (th, width) => this._setWidth(this._indexOf(th), width),
-                    done: (th, width) => this._tell('resized', { id: th.dataset.col, width }),
-                    fit: th => this._fit(this._indexOf(th))
+                    setWidth: (th, width) => (own(th) ? this._setWidth(this._indexOf(th), width) : this._setGroupWidth(th, width)),
+                    done: (th, width) => {
+                        if (own(th)) this._tell('resized', { id: th.dataset.col, width });
+                        else this._groupColumns(th).forEach(c => this._tell('resized', { id: c.id, width: this._widths[c.id] }));
+                    },
+                    fit: th => (own(th) ? this._fit(this._indexOf(th)) : this._groupColumns(th).forEach(c => this._fit(this._columns.indexOf(c))))
                 });
             }
             if (window.ColumnDrag) {
@@ -698,7 +721,7 @@
                 th.classList.toggle('sort-asc', dir === 'asc');
                 th.classList.toggle('sort-desc', dir === 'desc');
                 if (head) {
-                    actions.append(head.sortButton({ label: name, numbers: this._numbers(column), dir }));
+                    if (column.sortable !== false) actions.append(head.sortButton({ label: name, numbers: this._numbers(column), dir }));
                     if (own && movable && removable && !column.pinned) actions.append(head.hideButton({ label: name }));
                 }
                 const moves = own && movable && !column.pinned;
@@ -729,6 +752,7 @@
                 label.title = movable ? 'Hold and drag to move these columns' : '';
                 content.append(label, actions);
                 th.append(content);
+                if (head) th.append(head.edge());
                 if (typeof g.head === 'function') g.head(th);
                 top.append(th);
                 unit.columns.forEach(({ column }) => {
@@ -813,6 +837,17 @@
             this._set[column.id] = true;
             this._colgroup();
             return w;
+        }
+
+        _groupColumns(th) { return this._columns.filter(c => c.group && c.group.id === th.dataset.group); }
+        /** A group as wide as asked: its columns share the width evenly. */
+        _setGroupWidth(th, width) {
+            const columns = this._groupColumns(th);
+            if (!columns.length) return 0;
+            const each = Math.max(window.ColumnHead.MIN_WIDTH, Math.round(width / columns.length));
+            columns.forEach(c => { this._widths[c.id] = each; this._set[c.id] = true; });
+            this._colgroup();
+            return each * columns.length;
         }
 
         /** As wide as its name and the values on screen need. */
@@ -1051,7 +1086,7 @@
                 dir: sorted ? this._sort.dir : '',
                 sorted: !!this._sort,
                 first: unitAt === firstFree, last: grouped ? unitAt === units.length - 1 : i === last,
-                sort: dir => this._sortBy(column, dir),
+                sort: column.sortable === false ? null : dir => this._sortBy(column, dir),
                 move: !own || !movable ? null : where => (grouped ? this._movedUnit(unitAt, where === 'start' ? firstFree : units.length - 1) : this._moveTo(i, where === 'start' ? 0 : last)),
                 fit: () => this._fit(i),
                 remove: !own || last === 0 || !this.hasAttribute('removable') || locked ? null : () => this._remove(i)

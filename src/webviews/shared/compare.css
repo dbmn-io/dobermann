@@ -538,10 +538,10 @@ body:has(#compareStepper) {
     gap: 6px;
 }
 
-/* The grid lines up with the toolbar above it (the Console's table has its own side margins) */
-#compareResultsStep > #compareTableContainer {
-    margin: 0;
-}
+/* The grid: the design system's table, filling the step under the toolbar (its rows scroll inside
+   it), in line with the toolbar above it */
+#compareGrid { flex: 1; min-height: 0; }
+#compareGrid .dbmn-table-scroll { flex: 1; min-height: 0; max-height: none; margin: 0; }
 
 /* The slots across the top of every step, in line with the step below (its side padding). On
    Results the toolbar joins them, with its room kept, Find's open box included: opening or closing
@@ -851,7 +851,7 @@ button.compare-result-btn {
 
 /* The headings stick while the rows scroll under them: each on a solid base (a theme's header
    colour can be see-through), its own colour over it */
-#compareHead th {
+#compareGrid thead th {
     background-color: var(--vscode-editor-background);
     background-image: linear-gradient(var(--vscode-list-headerBackground, transparent), var(--vscode-list-headerBackground, transparent));
 }
@@ -861,7 +861,7 @@ button.compare-result-btn {
     background: color-mix(in srgb, var(--vscode-foreground) 4%, transparent);
 }
 
-#compareHead th.compare-key-col {
+#compareGrid thead th.compare-key-col {
     background-image: linear-gradient(color-mix(in srgb, var(--vscode-foreground) 6%, transparent), color-mix(in srgb, var(--vscode-foreground) 6%, transparent)),
         linear-gradient(var(--vscode-list-headerBackground, transparent), var(--vscode-list-headerBackground, transparent));
 }
@@ -879,11 +879,11 @@ button.compare-result-btn {
 /* The heading's controls are every table's (column-head.css): the name drags, the icon sorts,
    x removes from Compare, the right edge resizes. A result's letter under a column (Side by
    side) is small: the whole of it sorts */
-#compareHead .sortable-header {
+#compareGrid thead .sortable-header {
     cursor: default;
 }
 
-#compareHead .sortable-header.compare-sort-all {
+#compareGrid thead .sortable-header.compare-sort-all {
     cursor: pointer;
 }
 
@@ -963,7 +963,7 @@ button.compare-result-btn {
 }
 
 /* A result's sub-heading: its letter on its tint, underlined in its colour */
-#compareHead th.compare-sub,
+#compareGrid thead th.compare-sub,
 .data-table th.compare-sub {
     padding: 2px 6px;
     font-size: 11px;
@@ -976,8 +976,10 @@ button.compare-result-btn {
 /* The results' row is only each result's coloured line under the columns' names, always the same
    size. Hovering the headings drops each result's letter below its line, over the first rows (to
    sort by one): nothing moves, so the rows never jump and the hover cannot flicker on and off. */
-#compareHead th.compare-sub {
+#compareGrid thead th.compare-sub {
     height: 3px;
+    /* (the letter drops below its line: not cut off by the table's headings) */
+    overflow: visible;
     padding: 0;
     font-size: 0;
     line-height: 0;
@@ -985,7 +987,7 @@ button.compare-result-btn {
     box-shadow: none;
 }
 
-#compareHead th.compare-sub .column-header-content {
+#compareGrid thead th.compare-sub .column-header-content {
     position: absolute;
     top: 100%;
     left: 0;
@@ -1006,23 +1008,23 @@ button.compare-result-btn {
     transition: opacity 0.14s ease, transform 0.14s ease;
 }
 
-#compareHead th.compare-sub .column-name {
+#compareGrid thead th.compare-sub .column-name {
     margin: 0 auto;
 }
 
-#compareHead:hover th.compare-sub .column-header-content {
+#compareGrid thead:hover th.compare-sub .column-header-content {
     opacity: 1;
     transform: none;
     pointer-events: auto;
     transition-delay: 0.1s;
 }
 
-#compareHead th.compare-sub:hover .column-header-content {
+#compareGrid thead th.compare-sub:hover .column-header-content {
     background: color-mix(in srgb, var(--compare-c) 40%, var(--vscode-editor-background));
 }
 
 @media (prefers-reduced-motion: reduce) {
-    #compareHead th.compare-sub .column-header-content {
+    #compareGrid thead th.compare-sub .column-header-content {
         transition: none;
     }
 }
@@ -1045,6 +1047,7 @@ button.compare-result-btn {
     flex-wrap: wrap;
     align-items: center;
     gap: 4px 8px;
+    /* (a page may hold it to one line's width: in the grid its cell's width does) */
     max-width: var(--compare-status-width, none);
 }
 
@@ -1172,15 +1175,23 @@ button.compare-result-btn {
     margin-right: 4px;
 }
 
-/* Off screen: measures the widest Status (sizeStatus) */
-.data-table.compare-status-probe {
+/* Off screen: measures the widest Status (statusWidth) */
+.compare-status-probe {
     position: absolute;
     visibility: hidden;
     pointer-events: none;
     top: 0;
     left: 0;
-    width: auto;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
 }
+.compare-status-probe .compare-status { width: max-content; }
+/* Status's and the relationship's filter arrows stay in a narrow heading (a narrow heading
+   gives its icons' room to its name, column-head.css: these are not sort or remove icons) */
+#compareGrid th.col-narrow .header-actions:has(.compare-head-btn) { display: inline-flex; }
+/* A row with DIFF and Missing: Status wraps to a second line in its one width */
+#compareGrid td.compare-status-cell { white-space: normal; }
 
 /* The record window's result headings: one line each */
 .data-table th.compare-record-head {

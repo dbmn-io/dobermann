@@ -803,3 +803,60 @@ test('rows the screen acts on: a class on a row, a mark on a cell, and a click o
     await expect(page.locator('.cell-detail, .dbmn-modal').first()).toBeVisible();
     expect(await page.evaluate(() => window.clicked)).toEqual(['SO-10000']);
 });
+
+test('a group\'s right edge sizes its columns evenly; a column can have no sort; headings drawn again run the screen\'s additions again', async ({ page }) => {
+    await page.setContent(groupedPage());
+    await page.evaluate(() => {
+        const t = document.getElementById('t');
+        window.count = 3;
+        const qty = { id: 'qty', name: 'qty', head: th => { const pill = document.createElement('span'); pill.className = 'diff-pill'; pill.textContent = String(window.count); th.querySelector('.column-header-content').append(pill); } };
+        t.columns = t.columns.map(c => (c.group && c.group.id === 'qty' ? { ...c, group: qty } : c.id === 'status' ? { ...c, sortable: false } : c));
+    });
+    // Status is filtered by the screen, not sorted: no sort icon, and its menu offers no sort
+    await expect(page.locator('#t th[data-col="status"] .col-sort-btn')).toHaveCount(0);
+    await expect(page.locator('#t th[data-col="sku"] .col-sort-btn')).toHaveCount(1);
+    await page.locator('#t th[data-col="status"] .column-name').click({ button: 'right' });
+    await expect(page.locator('.dbmn-context-menu')).toBeVisible();
+    await expect(page.locator('.dbmn-context-menu')).not.toContainText(/Sort/);
+    await page.keyboard.press('Escape');
+    // The screen's count in a heading changed: the headings are drawn again with it, nothing else moves
+    await expect(page.locator('#t th[data-group="qty"] .diff-pill')).toHaveText('3');
+    await page.evaluate(() => { window.count = 7; document.getElementById('t').redrawHeads(); });
+    await expect(page.locator('#t th[data-group="qty"] .diff-pill')).toHaveText('7');
+    // A group's right edge: its columns share the width evenly; the others stay as they are
+    const widths = () => page.locator('#t th[data-col]').evaluateAll(ths => ths.map(th => Math.round(th.getBoundingClientRect().width)));
+    const before = await widths();
+    const edge = await page.locator('#t th[data-group="qty"]:not([data-col]) .col-edge').boundingBox();
+    await page.mouse.move(edge.x + edge.width / 2, edge.y + edge.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(edge.x + 100, edge.y + edge.height / 2, { steps: 5 });
+    await page.mouse.up();
+    const after = await widths();
+    expect(after[2]).toBeGreaterThan(before[2] + 30);
+    expect(Math.abs(after[2] - after[3])).toBeLessThan(2);
+    expect([after[0], after[1], after[4], after[5]]).toEqual([before[0], before[1], before[4], before[5]]);
+    const told = await page.evaluate(() => window.told.filter(d => d.change === 'resized').map(d => d.id));
+    expect(told).toEqual(['qty|0', 'qty|1']);
+});
+
+test('a value cut off by its column\'s width opens in full when the pointer finds it; a cell may name itself for the window', async ({ page }) => {
+    await page.setContent(tablePage());
+    await page.evaluate(() => {
+        const t = document.getElementById('t');
+        t.columns = [{ id: 'order_no', name: 'order_no' }, { id: 'customer', name: 'customer', cell: (td, _v, row) => { td.dataset.title = `${row.order_no}: customer`; } }, { id: 'qty', name: 'qty', numbers: true }];
+        t.layout = { widths: { customer: 48 } };
+    });
+    const cell = page.locator('#t .dbmn-table-body tr').first().locator('td').nth(1);
+    await expect(cell).toHaveText('Harbour Foods');
+    await expect(cell).not.toHaveClass(/cell-expandable/);   // short: nothing marks it until it is seen cut off
+    await cell.hover();
+    await expect(cell).toHaveClass(/cell-expandable/);
+    await cell.click();
+    await expect(page.locator('.dbmn-modal .cell-detail-pre')).toHaveText('Harbour Foods');
+    await expect(page.locator('.dbmn-modal .dbmn-modal-title')).toContainText('SO-10000: customer');
+    await page.keyboard.press('Escape');
+    // One that fits is left alone: a click on it is a click on its row
+    const fits = page.locator('#t .dbmn-table-body tr').first().locator('td').nth(0);
+    await fits.hover();
+    await expect(fits).not.toHaveClass(/cell-expandable/);
+});

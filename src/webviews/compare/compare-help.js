@@ -25,9 +25,9 @@
         { selector: '#compareSearchBox', help: 'console#search' },
         { selector: '#compareExportBtn', help: 'compare#export' },
         // Results: the grid
-        { selector: '#compareHead .compare-status-head', help: 'compare#filters' },
-        { selector: '#compareHead .compare-col-filter', help: 'compare#filters', first: true },
-        { selector: '#compareBody tr[data-click="compare:record"]', help: 'compare#record', first: true },
+        { selector: '#compareGrid th.compare-status-head', help: 'compare#filters' },
+        { selector: '#compareGrid .compare-col-filter', help: 'compare#filters', first: true },
+        { selector: '#compareGrid .dbmn-table-body tr.compare-row', help: 'compare#record', first: true },
         // Footer
         { selector: '#compareBackBtn, #compareNextBtn', help: 'compare#start' }
     ]);

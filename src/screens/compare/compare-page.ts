@@ -24,7 +24,7 @@ export function buildComparePage(asset: AssetUrl, config: { compareId: string; e
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Compare: ${attr(config.endpointName)}</title>
-    ${sharedStyleLinks(asset, ['atomic', 'core', 'buttons', 'modals', 'tables', 'tabs', 'toast', 'console', 'data-transformer', 'compare', 'column-drag', 'column-head', 'dbmn-footer', 'dbmn-name'])}
+    ${sharedStyleLinks(asset, ['atomic', 'core', 'buttons', 'modals', 'tables', 'tabs', 'toast', 'console', 'data-transformer', 'compare', 'column-drag', 'column-head', 'dbmn-footer', 'dbmn-table', 'dbmn-name'])}
 </head>
 <body class="editor-slide-in" data-endpoint-name="${attr(config.endpointName)}">
     <script src="${asset('shared/button-contrast.js')}"></script>
@@ -166,12 +166,9 @@ export function buildComparePage(asset: AssetUrl, config: { compareId: string; e
             <div id="compareStatusMenu" class="export-dropdown compare-status-menu" role="dialog" aria-label="Filter Status"></div>
             <!-- The Relationship column's filter: Match's pictures, ticked on or off -->
             <div id="compareRelationMenu" class="export-dropdown compare-status-menu" role="dialog" aria-label="Filter relationship"></div>
-            <div id="compareTableContainer" class="table-container">
-                <table class="data-table" id="compareTable">
-                    <thead id="compareHead"></thead>
-                    <tbody id="compareBody"></tbody>
-                </table>
-            </div>
+            <!-- The design system's table (shared/dbmn-table.js): the rows stay with the host and are
+                 asked for as they scroll into view; Find is the toolbar's own box -->
+            <dbmn-table id="compareGrid" class="compare-grid" label="Results" removable></dbmn-table>
         </div>
 
         <!-- The design system's footer (shared/dbmn-footer.js): what you can do on the left, how far
@@ -200,6 +197,7 @@ export function buildComparePage(asset: AssetUrl, config: { compareId: string; e
     ${script('shared/dbmn-clipboard.js')}
     ${script('shared/value-formatter.js')}
     ${script('shared/cell-detail.js')}
+    ${script('shared/dbmn-table.js')}
     ${script('shared/icons.js')}
     ${script('shared/dbmn-footer.js')}
     ${script('shared/dbmn-name.js')}
