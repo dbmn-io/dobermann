@@ -148,15 +148,26 @@ test('the highlight slides to the step that takes over, and folding is shown', a
     expect(await width('dbmn-steps')).toBeLessThan(wide);
 
     // And back: the steps return, the highlight behind the one asked for
-    await page.evaluate(states => { document.getElementById('steps').folded = false; window.show(states, 1); }, at(1));
+    await page.evaluate(states => {
+        // (where the highlight sets off from, noted as its slide begins)
+        const indicator = document.querySelector('.dbmn-steps-indicator');
+        indicator.addEventListener('transitionrun', () => { window.slidFrom = window.slidFrom ?? Math.round(indicator.getBoundingClientRect().left); });
+        document.getElementById('steps').folded = false;
+        window.show(states, 1);
+    }, at(1));
     await expect(page.locator('.dbmn-step:visible')).toHaveCount(4);
     // The fold backwards: every card starts at the last one's place and deals out, the first step travelling longest
     await expect(page.locator('dbmn-steps')).toHaveClass(/is-unfolding/);
     expect(await moved(1)).toMatchObject({ time: '450ms' });
     expect(await moved(3)).toMatchObject({ time: '150ms' });
     expect((await moved(1)).x).toBeGreaterThan((await moved(3)).x);
+    // In order: while they deal out, the step they were on (the last) is the tinted one...
+    await expect(page.locator('.dbmn-step[data-step="4"]')).toHaveAttribute('data-fold-from', '');
     await expect(page.locator('dbmn-steps')).not.toHaveClass(/is-unfolding/);
+    // ...then the highlight leaves from behind it (still right of the first step) and slides home
+    await expect.poll(() => page.evaluate(() => window.slidFrom ?? 0)).toBeGreaterThan(await left('.dbmn-step[data-step="3"]'));
     await expect.poll(async () => (await left('.dbmn-steps-indicator')) - (await left('.dbmn-step[data-step="1"]'))).toBe(0);
+    await expect(page.locator('.dbmn-step[data-fold-from]')).toHaveCount(0);
 });
 
 test('folded while something is still worked out: the tick is a spinner', async ({ page }) => {

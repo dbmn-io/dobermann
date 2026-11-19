@@ -264,15 +264,20 @@
             if (!this._built || this._isFolded) return;
             const btn = this._buttons[this._current - 1];
             if (!btn || !btn.offsetWidth) return;
+            this._behind(btn);
+            if (!this._ready) {
+                // In place before anything may move, so opening the screen slides nothing
+                requestAnimationFrame(() => { this._ready = true; this.classList.add('is-ready'); });
+            }
+        }
+
+        /** Put the highlight behind a step, where it is now. */
+        _behind(btn) {
             // (measured to the part of a pixel: whole pixels leave it a pixel off its step at some widths)
             const box = btn.getBoundingClientRect();
             const mine = this.getBoundingClientRect();
             this._indicator.style.setProperty('--x', `${box.left - mine.left - this.clientLeft}px`);
             this._indicator.style.setProperty('--w', `${box.width}px`);
-            if (!this._ready) {
-                // In place before anything may move, so opening the screen slides nothing
-                requestAnimationFrame(() => { this._ready = true; this.classList.add('is-ready'); });
-            }
         }
 
         /**
@@ -288,7 +293,7 @@
             this.classList.remove('is-folding', 'is-folding-go', 'just-folded', 'is-unfolding', 'is-unfolding-go');
             this.style.removeProperty('width');
             const settle = () => this._buttons.forEach(btn => FOLD_PROPS.forEach(name => btn.style.removeProperty(name)));
-            if (this._buttons) settle();
+            if (this._buttons) { settle(); this._buttons.forEach(btn => btn.removeAttribute('data-fold-from')); }
             // Every step that shows, with how far it is from the last one's place: where the cards stack
             const cards = () => {
                 const shown = this._buttons.filter(btn => btn.offsetWidth > 0);
@@ -307,14 +312,26 @@
                 if (moving) {
                     // The fold, backwards: the cards start stacked where the summary was and deal out
                     // to the left, the nearest home first and the first step last
+                    // In order, so nothing jumps: the step they were on keeps the highlight while the
+                    // cards deal out; once they are home the highlight slides from it to the step asked for
                     const shown = cards();
+                    const from = shown[shown.length - 1];
+                    if (from) from.setAttribute('data-fold-from', '');
                     this.classList.add('is-unfolding');
                     void this.offsetWidth;   // (stacked is drawn before they move)
                     this.classList.add('is-unfolding-go');
                     this._foldTimer = setTimeout(() => {
                         this.classList.remove('is-unfolding', 'is-unfolding-go');
                         settle();
-                        // (the highlight is put behind its step once they are home)
+                        if (from) {
+                            from.removeAttribute('data-fold-from');
+                            // The highlight is put behind the step they were on, at once...
+                            this.classList.remove('is-ready');
+                            this._behind(from);
+                            void this.offsetWidth;
+                            this.classList.add('is-ready');
+                        }
+                        // ...and from there it slides to the one asked for
                         this._place();
                     }, Math.max(0, shown.length - 1) * STAGE + 80);
                 }

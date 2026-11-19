@@ -271,8 +271,9 @@ dbmn-steps.is-unfolding .dbmn-step {
     box-shadow: 0 0 0 1px var(--foot-line);
 }
 dbmn-steps.is-folding .dbmn-step { transition: transform var(--fold-time, 0ms) linear var(--fold-wait, 0ms); }
+/* (the tinted card is the step they are on as the cards go, and the one they were on as they come back) */
 dbmn-steps.is-folding .dbmn-step.is-current,
-dbmn-steps.is-unfolding .dbmn-step.is-current {
+dbmn-steps.is-unfolding .dbmn-step[data-fold-from] {
     background: color-mix(in srgb, var(--foot-accent) 24%, var(--vscode-editor-background));
 }
 dbmn-steps.is-folding-go .dbmn-step { transform: translateX(var(--fold-x, 0)); }
