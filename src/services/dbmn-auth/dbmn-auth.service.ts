@@ -26,6 +26,7 @@ import {
 } from '../../types/dbmn-auth';
 import { IDbmnAuthService } from './dbmn-auth.interface';
 import { getBackend, dbmnStorageKeys } from '../dbmn-backend/backend-config';
+import { SignInLinkTooSoonError, signInLinkWaitSeconds } from './sign-in-link-wait';
 
 /** Cooldown after the FIRST refresh failure — gives a single retry window for
  *  truly transient causes (sign-in mid-refresh, brief Supabase blip). */
@@ -264,6 +265,8 @@ export class DbmnAuthService implements IDbmnAuthService {
                 || (errorData as Record<string, string>).error_description
                 || (errorData as Record<string, string>).error
                 || `Magic link request failed (${response.status})`;
+            const wait = signInLinkWaitSeconds(response.status, raw);
+            if (wait !== undefined) throw new SignInLinkTooSoonError(wait);
             throw new Error(`${raw} (HTTP ${response.status})`);
         }
 

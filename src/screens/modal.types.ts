@@ -28,7 +28,9 @@ export interface DbmnModalSpec {
          *  this runs (spinner on the clicked button, all buttons disabled).
          *  Resolves → modal dismisses with this action's `id`. Rejects →
          *  modal dismisses and the bridge promise rejects with the error,
-         *  so the caller can surface it (typically in a follow-up modal). */
+         *  so the caller can surface it (typically in a follow-up modal), unless
+         *  the error carries `fieldErrors` or a `wait` (modalWaitError): then
+         *  the modal stays open and shows them. */
         onSubmit?: (fields: Record<string, string>) => Promise<void>;
     }>;
     dismissible?: boolean;
@@ -52,4 +54,22 @@ export interface DbmnModalResult {
  *  so the modal opens in its own panel rather than the Hub. */
 export interface ModalHost {
     showModal(spec: DbmnModalSpec): Promise<DbmnModalResult>;
+}
+
+/**
+ * "Not yet: try again in N seconds." An action's `onSubmit` throws an error carrying this (see
+ * modalWaitError) and the modal stays open, with that action's button off and the field's line
+ * counting down, `{seconds}` in `text` read as "47 seconds", until it can be pressed again.
+ */
+export interface ModalWait {
+    actionId: string;
+    field: string;
+    seconds: number;
+    text: string;
+}
+
+export function modalWaitError(wait: ModalWait): Error & { wait: ModalWait } {
+    const error = new Error(wait.text.replace('{seconds}', `${wait.seconds} seconds`)) as Error & { wait: ModalWait };
+    error.wait = wait;
+    return error;
 }

@@ -22,7 +22,8 @@ import * as vscode from 'vscode';
 import { IDbmnAuthService } from '../dbmn-auth/dbmn-auth.interface';
 import { IToastService } from '../notifications/toast.interface';
 import { SystemConfig, validateShortIdentifier } from '../../data-loading/system-schema';
-import { DbmnModalResult, DbmnModalSpec, ModalHost } from '../../screens/modal.types';
+import { DbmnModalResult, DbmnModalSpec, ModalHost, modalWaitError } from '../../screens/modal.types';
+import { SignInLinkTooSoonError } from '../dbmn-auth/sign-in-link-wait';
 import { promptNewSystemInModal, SystemManagerLike } from '../../screens/new-system-prompt';
 
 export type { DbmnModalResult, DbmnModalSpec, ModalHost } from '../../screens/modal.types';
@@ -199,7 +200,15 @@ export async function sendDbmnSignInLinkInApp(
                     onSubmit: async (fields: Record<string, string>) => {
                         const email = (fields.email || '').trim();
                         if (!email) throw new Error('Please enter an email address.');
-                        await dbmnAuth.sendMagicLink(email);
+                        try {
+                            await dbmnAuth.sendMagicLink(email);
+                        } catch (error) {
+                            // Asked again within the minute: the dialog stays open and counts down
+                            if (error instanceof SignInLinkTooSoonError) {
+                                throw modalWaitError({ actionId: 'magic', field: 'email', seconds: error.seconds, text: 'A link was just sent. You can ask for another in {seconds}.' });
+                            }
+                            throw error;
+                        }
                         sentTo = email;
                     }
                 },

@@ -13,6 +13,7 @@ import { expect } from 'chai';
 import { stub, restore, SinonStub } from 'sinon';
 import { DbmnAuthService } from '../../../../services/dbmn-auth/dbmn-auth.service';
 import { DBMN_STORAGE_KEYS } from '../../../../types/dbmn-auth';
+import { SignInLinkTooSoonError } from '../../../../services/dbmn-auth/sign-in-link-wait';
 
 // Minimal JWT with sub, email, exp claims (HS256 header, fake signature)
 function makeJwt(claims: { sub: string; email: string; exp: number }): string {
@@ -98,6 +99,20 @@ describe('DbmnAuthService — lastEmail persistence (#263)', () => {
 
             // Untouched — the previously stored email survives a failed send.
             expect(store.get(DBMN_STORAGE_KEYS.lastEmail)).to.equal('previous@example.com');
+        });
+
+        it('a link asked for again within the minute is a wait the dialog counts down, not a sentence', async () => {
+            const { context } = fakeContext();
+            fetchStub.resolves({
+                ok: false,
+                status: 429,
+                json: async () => ({ code: 429, error_code: 'over_email_send_rate_limit', msg: 'For security purposes, you can only request this after 47 seconds.' })
+            } as Response);
+
+            const service = new DbmnAuthService(context);
+            const err = await service.sendMagicLink('user@example.com').then(() => undefined, (e: unknown) => e);
+            expect(err).to.be.instanceOf(SignInLinkTooSoonError);
+            expect((err as SignInLinkTooSoonError).seconds).to.equal(47);
         });
     });
 

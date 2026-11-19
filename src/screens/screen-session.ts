@@ -6,7 +6,7 @@
  * requests. Moved from WebviewBase, which now delegates here, so VS Code and the web app run
  * the same protocol code.
  */
-import { DbmnModalResult, DbmnModalSpec, ModalHost } from './modal.types';
+import { DbmnModalResult, DbmnModalSpec, ModalHost, ModalWait } from './modal.types';
 
 /** Where messages to the screen go: a VS Code webview panel, or an iframe in the web app. */
 export interface ScreenChannel {
@@ -121,12 +121,15 @@ export class ScreenSession implements ModalHost {
                         // Per-field validation errors ride on the thrown error as `.fieldErrors`;
                         // the screen paints them inline and keeps the modal open.
                         const fieldErrors = (err as { fieldErrors?: Record<string, string> })?.fieldErrors;
+                        // "Not yet": the screen counts the wait down on the field (modalWaitError).
+                        const wait = (err as { wait?: ModalWait })?.wait;
                         this.post({
                             type: 'dbmnModalActionResult',
                             submitId,
                             success: false,
                             error: err instanceof Error ? err.message : String(err),
-                            ...(fieldErrors ? { fieldErrors } : {})
+                            ...(fieldErrors ? { fieldErrors } : {}),
+                            ...(wait ? { wait } : {})
                         });
                     }
                 );

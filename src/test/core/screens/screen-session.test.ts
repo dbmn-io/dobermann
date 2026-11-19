@@ -3,6 +3,7 @@
 /** The screen protocol both hosts share (modals, async submit, links), with no VS Code. */
 import { expect } from 'chai';
 import { ScreenSession } from '../../../screens/screen-session';
+import { modalWaitError } from '../../../screens/modal.types';
 
 function session() {
     const posted: Array<Record<string, unknown>> = [];
@@ -54,6 +55,18 @@ describe('ScreenSession', () => {
             { type: 'dbmnModalActionResult', submitId: 's1', success: false, error: 'Invalid', fieldErrors: { name: 'Invalid' } },
             { type: 'dbmnModalActionResult', submitId: 's2', success: true }
         ]);
+    });
+
+    it('an onSubmit that says "not yet" (modalWaitError) hands the screen the wait to count down', async () => {
+        const { s, posted } = session();
+        const wait = { actionId: 'magic', field: 'email', seconds: 47, text: 'You can ask for another in {seconds}.' };
+        void s.showModal({ actions: [{ id: 'magic', label: 'Email me a link', onSubmit: async () => { throw modalWaitError(wait); } }] });
+        const requestId = (posted[0] as { requestId: string }).requestId;
+
+        await s.handleShared({ type: 'dbmnModalActionPending', requestId, submitId: 's1', actionId: 'magic', fields: { email: 'a@b.c' } });
+        await tick();
+
+        expect(posted[1]).to.deep.equal({ type: 'dbmnModalActionResult', submitId: 's1', success: false, error: 'You can ask for another in 47 seconds.', wait });
     });
 
     it('a result carrying an error rejects; dismissAll resolves the rest as dismissed', async () => {

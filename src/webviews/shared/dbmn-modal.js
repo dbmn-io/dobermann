@@ -609,6 +609,32 @@
             form.appendChild(el('button', { className: 'dbmn-modal-implicit-submit', attrs: { type: 'submit', tabindex: '-1', 'aria-hidden': 'true' } }));
             modal.appendChild(form);
 
+            /** "Not yet: try again in N seconds" from the host (ModalWait in modal.types.ts): the
+             *  action's button stays off and the field's line counts down, then both clear. */
+            let waitTimer = null;
+            function startWait(wait) {
+                clearInterval(waitTimer);
+                const target = fieldInputs.find((f) => f.field.id === wait.field);
+                const button = actionButtons.find((b) => b.getAttribute('data-action-id') === wait.actionId);
+                const ends = Date.now() + Math.max(1, Math.ceil(Number(wait.seconds) || 0)) * 1000;
+                const paint = () => {
+                    const left = Math.ceil((ends - Date.now()) / 1000);
+                    if (left <= 0) {
+                        clearInterval(waitTimer);
+                        waitTimer = null;
+                        if (button) button.disabled = false;
+                        if (target && target.errorEl) target.errorEl.textContent = '';
+                        return;
+                    }
+                    if (button) button.disabled = true;
+                    if (target && target.errorEl) {
+                        target.errorEl.textContent = String(wait.text || '').replace('{seconds}', left === 1 ? '1 second' : left + ' seconds');
+                    }
+                };
+                paint();
+                waitTimer = setInterval(paint, 250);
+            }
+
             // ── Footer / actions ─────────────────────────────────────
             // Actions can carry `awaitsHostSubmit: true` to indicate the
             // host needs to run async work before the modal closes. The
@@ -664,6 +690,11 @@
                             restoreActionButtons();
                             return;
                         }
+                        if (outcome && outcome.wait) {
+                            restoreActionButtons();
+                            startWait(outcome.wait);
+                            return;
+                        }
                         dismiss(action.id);
                     } catch (err) {
                         dismissWithError(action.id, err);
@@ -717,6 +748,7 @@
 
             function dismiss(actionId) {
                 if (activeModal !== handle) return;
+                clearInterval(waitTimer);
                 document.removeEventListener('keydown', onKeydown);
                 backdrop.removeEventListener('mousedown', onBackdropClick);
                 backdrop.remove();
@@ -733,6 +765,7 @@
             // than a normal `{actionId, fields}` resolution.
             function dismissWithError(actionId, err) {
                 if (activeModal !== handle) return;
+                clearInterval(waitTimer);
                 document.removeEventListener('keydown', onKeydown);
                 backdrop.removeEventListener('mousedown', onBackdropClick);
                 backdrop.remove();
@@ -848,6 +881,11 @@
                             window.removeEventListener('message', handler);
                             if (m.success) {
                                 resolve();
+                                return;
+                            }
+                            // "Not yet": the modal stays open and counts the wait down.
+                            if (m.wait) {
+                                resolve({ wait: m.wait });
                                 return;
                             }
                             // Soft-fail path: host has per-field validation errors.
