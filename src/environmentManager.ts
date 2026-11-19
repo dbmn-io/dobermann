@@ -10,6 +10,7 @@ import { refreshTokenKey } from './services/oauth/oauth-refresh';
 import type { SystemConfig } from './data-loading/system-schema';
 import { systemConfiguration, type SystemConfiguration } from './services/systems/system-configuration';
 import { identityOf, type TokenIdentity } from './services/systems/system-claims';
+import { environmentSecretValues } from './services/catalogue/catalogue-safe-form';
 import { headerVariablesOf, variableOptions, type HeaderVariable, type VariableSettings, type VariableSettingsMap } from './services/environment/variable-options';
 
 /**
@@ -305,6 +306,24 @@ export class EnvironmentManager {
         this.systemLookup = lookup;
     }
 
+    /**
+     * Dobermann issue 7: every secret this manager hands out (an environment's secret headers and
+     * variables, its client secret, key and tokens) is told to the app's log, which then never
+     * writes it, whatever the header is called.
+     */
+    private secretSink?: (value: string) => void;
+
+    setSecretSink(sink: (value: string) => void): void {
+        this.secretSink = sink;
+    }
+
+    private tellSecrets(environments: readonly EnvironmentConfig[]): void {
+        if (!this.secretSink) return;
+        for (const environment of environments) {
+            for (const value of environmentSecretValues(environment)) this.secretSink(value);
+        }
+    }
+
     /** #415: the environment's Standard System's configuration, or undefined (own System, no lookup, not found). */
     async systemConfigurationFor(environmentId: string): Promise<SystemConfiguration | undefined> {
         const environment = await this.getEnvironment(environmentId);
@@ -507,11 +526,14 @@ export class EnvironmentManager {
 
     async getEnvironmentToken(environmentId: string): Promise<string | undefined> {
         if (this.deletedTokens.has(environmentId)) return undefined;
-        return await this.context.secrets.get(`env_token_${environmentId}`);
+        const token = await this.context.secrets.get(`env_token_${environmentId}`);
+        if (token) this.secretSink?.(token);
+        return token;
     }
 
     async setEnvironmentToken(environmentId: string, token: string): Promise<void> {
         this.deletedTokens.delete(environmentId);
+        this.secretSink?.(token);
         await this.context.secrets.store(`env_token_${environmentId}`, token);
     }
 
@@ -700,11 +722,9 @@ export class EnvironmentManager {
         }
 
         // Handle version migrations if needed
-        if (stored.version !== this.CURRENT_VERSION) {
-            return await this.migrateEnvironmentCollection(stored);
-        }
-
-        return stored;
+        const collection = stored.version !== this.CURRENT_VERSION ? await this.migrateEnvironmentCollection(stored) : stored;
+        this.tellSecrets(collection.environments ?? []);
+        return collection;
     }
 
     private async saveEnvironments(environments: EnvironmentConfig[], activeEnvironmentId?: string, folders?: string[]): Promise<void> {

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Flexion Tech Pty Ltd
+import { LoggerRegistry as AppLogRegistry } from './utils/logger-registry';
 import * as vscode from 'vscode';
 import type { StartupRecoverySummary } from './services/execution/startup-recovery.service';
 import { getToast } from './services/notifications/get-toast';
@@ -110,6 +111,9 @@ export class Dobermann {
         this.catalogueStore = new SwitchableStoreContext(deviceStore);
         this.endpointManager = new APIEndpointManager(this.catalogueStore);
         this.environmentManager = new EnvironmentManager(this.catalogueStore);
+        // Dobermann issue 7: the environments' secrets are never written to the log
+        const appLogForSecrets = AppLogRegistry.getAppLog();
+        if (appLogForSecrets) this.environmentManager.setSecretSink(value => appLogForSecrets.addSecret(value));
         this.systemManager = new SystemManager(this.catalogueStore);
 
         // GitHub Issue #102: Storage creation moved to async initialize() method
@@ -902,6 +906,7 @@ export class Dobermann {
             this.requestExecutor = new FetchRequestExecutor({
                 environments: this.environmentManager,
                 getToken: (environment, environmentId, options) => this.acquireRequestToken(environment, environmentId, options),
+                secretSink: value => AppLogRegistry.getAppLog()?.addSecret(value),
                 logger: this.logger
             });
         }

@@ -2,6 +2,10 @@
 // Copyright (C) 2026 Flexion Tech Pty Ltd
 import * as vscode from 'vscode';
 import * as fs from 'fs';
+import * as path from 'path';
+import { AppLog } from './services/logging/app-log';
+import { AppLogFile } from './services/logging/app-log-file';
+import { LoggerRegistry as AppLogRegistry } from './utils/logger-registry';
 import { Dobermann } from './dobermann';
 import { createDefaultEndpoint } from './apiConfigManager';
 import { IExecutionMetadataService } from './services/execution/execution-metadata.interface';
@@ -59,6 +63,8 @@ import { createClient } from '@supabase/supabase-js';
 import type { IEnvironmentAuthGate } from './services/environment/auth-gate';
 
 let dobermann: Dobermann;
+/** Dobermann issue 7: the app's one log (made first in activate, saved in deactivate). */
+let appLog: AppLog | undefined;
 
 // Startup recovery (Issue #313): pause what was running or queued when the host
 // went away, remember what was done, and let the Hub tell the user when it opens.
@@ -152,8 +158,21 @@ export async function activate(context: vscode.ExtensionContext) {
     // in Output › DBMN Start-up (and its log file) instead of leaving nothing behind
     const startup = vscode.window.createOutputChannel('DBMN Start-up', { log: true });
     context.subscriptions.push(startup);
+    // Dobermann issue 7: the app's one log, from the first moment. Everything goes to Logs; the
+    // start-up lines are also mirrored to the channel above, the one place a failed start can be
+    // read when the Hub never opens.
+    appLog = new AppLog({
+        mirror: line => {
+            if (line.source !== 'start-up') return;
+            if (line.level === 'error') startup.error(line.message);
+            else if (line.level === 'warn') startup.warn(line.message);
+            else startup.info(line.message);
+        }
+    });
+    AppLogRegistry.setAppLog(appLog);
+    const log = appLog;
     const started = Date.now();
-    const step = (name: string) => startup.info(`${name} (+${Date.now() - started} ms)`);
+    const step = (name: string) => log.write({ level: 'info', source: 'start-up', message: `${name} (+${Date.now() - started} ms)` });
     step('activating');
     try {
         // FIRST: decide which DBMN backend this build talks to. A packaged build is always
@@ -164,6 +183,9 @@ export async function activate(context: vscode.ExtensionContext) {
             env: process.env
         });
         initBackend(backend);
+        // The log is kept per computer, apart for each backend profile (a dev host on the local
+        // stack never mixes its lines into the installed app's)
+        void log.start(new AppLogFile(path.join(context.globalStorageUri.fsPath, 'logs', `app-log${backend.storageSuffix}.jsonl`)));
         if (backend.isDevBuild) {
             console.log(`[DBMN] ${backendLabel(backend)} backend: ${backend.apiUrl} (site ${backend.siteUrl})`);
         }
@@ -496,7 +518,7 @@ export async function activate(context: vscode.ExtensionContext) {
         // This ensures reopening works even when the item is already selected
         step('activated');
     } catch (error) {
-        startup.error(`activation failed (+${Date.now() - started} ms): ${error instanceof Error ? error.message : String(error)}`);
+        log.write({ level: 'error', source: 'start-up', message: `activation failed (+${Date.now() - started} ms): ${error instanceof Error ? error.message : String(error)}`, error });
         // Permitted native fallback: activation can fail before the toast service
         // is wired onto globals, so this must not depend on it.
         vscode.window.showErrorMessage(`Dobermann extension failed to activate: ${error instanceof Error ? error.message : error}`);
@@ -1435,8 +1457,9 @@ async function registerOAuthProvider(context: vscode.ExtensionContext): Promise<
     }
 }
 
-export function deactivate() {
+export async function deactivate() {
     if (dobermann) {
         dobermann.dispose();
     }
+    await appLog?.flush();
 }

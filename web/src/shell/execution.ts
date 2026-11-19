@@ -7,6 +7,7 @@
  * VS Code. Requests go from the browser to the API: one that refuses the browser (CORS) needs
  * DBMN for VS Code.
  */
+import { appLog } from './app-log';
 import { DATA_DIR, LEGACY_DATA_DIR } from '../../../src/services/workspace/workspace-layout';
 import { QueryFileStore } from '../../../src/services/query/query-file-store';
 import { listRunFiles, readRunFile, RUN_ARCHIVE_NAME, runFileExists, writeRunFile } from '../../../src/services/run-content/run-content-store';
@@ -74,16 +75,8 @@ export function useWorkspaceRoot(root: string): void {
 }
 const SCHEMA_PATH = '/dbmn-app/sqlite-schema.sql';
 
-export const consoleLogger: IExtensionDiagnosticLogger = {
-    info: () => undefined,
-    debug: () => undefined,
-    trace: () => undefined,
-    warn: (message: string, ...args: unknown[]) => console.warn(message, ...args),
-    error: (message: string, error?: Error) => console.error(message, error),
-    show: () => undefined,
-    clear: () => undefined,
-    dispose: () => undefined
-};
+/** Dobermann issue 7: the old logging writes to the app's log (warnings and errors also reach the console). */
+export const webLogger: IExtensionDiagnosticLogger = appLog.logger();
 
 export interface WebExecution {
     metadata: ExecutionMetadataService;
@@ -155,7 +148,7 @@ export function engineUnavailableMessage(host = location.host, desktop = !!deskt
 }
 
 export async function startExecution(deps: StartExecutionDeps): Promise<WebExecution> {
-    const logger = consoleLogger;
+    const logger = webLogger;
     fs.writeFileSync(SCHEMA_PATH, schemaSql);
     // #344: this browser's history moves from .active8 to .dbmn, once (nothing older reads it here)
     if (fs.existsSync(`${BROWSER_ROOT}/${LEGACY_DATA_DIR}`) && !fs.existsSync(`${BROWSER_ROOT}/${DATA_DIR}`)) {
@@ -173,7 +166,7 @@ export async function startExecution(deps: StartExecutionDeps): Promise<WebExecu
         await store.initialize();
     } catch (error) {
         if (!(error instanceof SqlJsEngineLoadError)) throw error;
-        console.error('[web] the SQLite engine did not load', error.cause);
+        appLog.write({ level: 'error', source: 'start-up', message: 'The SQLite engine did not load', error: error.cause });
         throw new Error(engineUnavailableMessage());
     }
 
@@ -183,12 +176,12 @@ export async function startExecution(deps: StartExecutionDeps): Promise<WebExecu
     onFolderChange((changed, reason) => {
         if (changed !== databaseFile) return;
         const merged = storage.refreshFromDisk({ save: reason === 'conflict' });
-        console.info(`[Workspace] history ${merged ? 'merged from the folder' : 'already up to date'} (${reason})`);
+        appLog.write({ level: 'info', source: 'app', message: `Run history ${merged ? 'merged from the workspace folder' : 'already up to date'} (${reason})` });
         if (merged) deps.onHistoryChangedElsewhere?.();
     });
     // Never in the way of starting: what didn't move stays in the browser and moves next time
     const movedFromBrowser = folderRoot()
-        ? await moveBrowserRuns(storage, logger).catch(error => { console.warn('[Workspace] could not move this browser\'s runs into the folder yet', error); return 0; })
+        ? await moveBrowserRuns(storage, logger).catch(error => { appLog.write({ level: 'warn', source: 'app', message: 'Could not move this browser\'s runs into the workspace folder yet', error }); return 0; })
         : 0;
     const preloadRun = async (executionId: string): Promise<void> => {
         if (!folderRoot()) return;
@@ -253,6 +246,7 @@ export async function startExecution(deps: StartExecutionDeps): Promise<WebExecu
                     return env ? deps.environments.getEnvironmentToken(env.id) : undefined;
             }
         },
+        secretSink: value => appLog.addSecret(value),
         logger
     });
     // #344 step 4, #374: in the web app, environments set to "Run in: Local agent" send each
@@ -384,7 +378,7 @@ async function moveBrowserRuns(storage: SqlJsExecutionStorage, logger: IExtensio
     // Moved on an earlier start and in the folder's history now: the browser's copy can go
     if (storage.hasExecutions(ids).size === ids.length) {
         for (const entry of fs.readdirSync(BROWSER_ROOT)) fs.rmSync(`${BROWSER_ROOT}/${entry}`, { recursive: true, force: true });
-        console.info(`[Workspace] ${ids.length} runs this browser kept are in the workspace folder now: removed from the browser`);
+        appLog.write({ level: 'info', source: 'app', message: `${ids.length} runs this browser kept are in the workspace folder now: removed from the browser` });
         return 0;
     }
 
@@ -415,6 +409,6 @@ async function moveBrowserRuns(storage: SqlJsExecutionStorage, logger: IExtensio
             else writeRunFile(to, readRunFile(from));
         }
     }
-    if (moved) console.info(`[Workspace] moved ${moved} runs from this browser into the workspace folder`);
+    if (moved) appLog.write({ level: 'info', source: 'app', message: `Moved ${moved} runs from this browser into the workspace folder` });
     return moved;
 }

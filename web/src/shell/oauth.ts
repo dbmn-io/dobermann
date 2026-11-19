@@ -11,6 +11,7 @@
  * The access token and the provider's refresh token are kept in this browser's vault (#362). An
  * expired access token is refreshed without the popup (#359); Request new token signs in again.
  */
+import { appLog } from './app-log';
 import type { EnvironmentManager } from '../../../src/environmentManager';
 import type { ISecretStore } from '../../../src/platform/interfaces/secret-store.interface';
 import type { OAuthActions } from '../../../src/screens/environment/environment-editor.ports';
@@ -29,7 +30,7 @@ export function listenForOAuthCallbacks(): void {
     const deliver = (data: unknown) => {
         const message = data as { type?: string; url?: string };
         if (message?.type !== 'dbmn-oauth-callback' || !message.url) return;
-        deliverOAuthCallback(new URL(message.url).searchParams, warning => console.warn(warning));
+        deliverOAuthCallback(new URL(message.url).searchParams, warning => signInLog.warn(warning));
     };
     try {
         new BroadcastChannel(CHANNEL).onmessage = event => deliver(event.data);
@@ -69,7 +70,10 @@ export interface AgentSignIn {
     isSignedIn(environmentId: string): Promise<boolean>;
 }
 
-const callbackFlow = () => new OAuthFlowHandler(undefined, { redirectUri: () => location.origin + OAUTH_CALLBACK_PATH });
+/** Dobermann issue 6: what a sign-in sent and what came back, in the app's log (secrets removed). */
+const signInLog = appLog.logger('sign-in');
+
+const callbackFlow = () => new OAuthFlowHandler(signInLog, { redirectUri: () => location.origin + OAUTH_CALLBACK_PATH });
 
 /** #359: this browser's refresh tokens, in its vault; one for the whole app (sign-in, the gate, runs). */
 export function webOAuthRefresher(environments: EnvironmentManager, vault: ISecretStore, systems?: OAuthSystems): OAuthTokenRefresher {
@@ -79,7 +83,7 @@ export function webOAuthRefresher(environments: EnvironmentManager, vault: ISecr
         flow: callbackFlow(),
         config: id => configs.getConfig(id),
         saveAccessToken: (id, token) => environments.setEnvironmentToken(id, token.access_token),
-        log: (message, error) => (error ? console.warn(message, error) : console.info(message))
+        log: (message, error) => (error ? signInLog.warn(message, error) : signInLog.info(message))
     });
 }
 

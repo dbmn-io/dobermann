@@ -144,6 +144,25 @@ export function environmentSecrets(environment: EnvironmentConfig): EnvironmentS
     return Object.keys(secrets).length ? secrets : undefined;
 }
 
+/**
+ * Dobermann issue 7: every secret value an environment holds, as plain strings, so the log can
+ * remove them wherever they appear (a header marked secret under any name, a secret variable,
+ * the client secret, the service account's key, its tokens).
+ */
+export function environmentSecretValues(environment: EnvironmentConfig): string[] {
+    const secrets = environmentSecrets(environment);
+    if (!secrets) return [];
+    const values: Array<string | undefined> = [
+        secrets.clientSecret,
+        secrets.serviceAccountKey?.private_key,
+        secrets.serviceAccountKey?.private_key_id,
+        ...Object.values(secrets.tokens ?? {}),
+        ...Object.values(secrets.headers ?? {}),
+        ...Object.values(secrets.variables ?? {})
+    ];
+    return values.filter((v): v is string => typeof v === 'string' && v.length > 0);
+}
+
 /** The environment with its device's secrets put back (onto the shared, safe-form item). */
 export function withEnvironmentSecrets<T extends EnvironmentConfig>(environment: T, secrets: EnvironmentSecrets | undefined): T {
     if (!secrets) return environment;

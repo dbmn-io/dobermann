@@ -2,6 +2,8 @@
 // Copyright (C) 2026 Flexion Tech Pty Ltd
 import { IExtensionDiagnosticLogger } from '../services/logging/extension-diagnostic-logger.interface';
 import { ExtensionDiagnosticLogger } from '../services/logging/extension-diagnostic-logger.service';
+import type { AppLog } from '../services/logging/app-log';
+import { teeLogger } from '../services/logging/tee-logger';
 
 // Type for the simplified global execution logger
 interface ISimpleExecutionLogger {
@@ -21,6 +23,16 @@ interface ISimpleExecutionLogger {
 class LoggerRegistry {
     private static executionLogger: ISimpleExecutionLogger | undefined;
     private static diagnosticLogger: IExtensionDiagnosticLogger | undefined;
+    private static appLog: AppLog | undefined;
+
+    /** Dobermann issue 7: the app's one log, made first thing in activate(). */
+    static setAppLog(log: AppLog): void {
+        this.appLog = log;
+    }
+
+    static getAppLog(): AppLog | undefined {
+        return this.appLog;
+    }
 
     /**
      * Register the execution logger instance (simplified version)
@@ -55,8 +67,10 @@ class LoggerRegistry {
             return this.diagnosticLogger;
         }
 
-        // Fallback: create new instance with same channel name as DI container
-        return new ExtensionDiagnosticLogger('Dobermann Extension Diagnostics');
+        // Fallback: the app's log when there is one (and, until Logs shows everything, the old
+        // Output channel beside it)
+        const channel = new ExtensionDiagnosticLogger('Dobermann Extension Diagnostics');
+        return this.appLog ? teeLogger(this.appLog.logger(), channel) : channel;
     }
 
     /**

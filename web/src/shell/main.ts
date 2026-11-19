@@ -10,6 +10,7 @@
  */
 // First, before any other module is evaluated: the page's backend (#377)
 import '../backend';
+import { appLog, startAppLog } from './app-log';
 import { chooseSystemTheme, chooseTheme, currentThemeMenu, endThemeHint, onThemeChanged, startTheme, themeHintDue } from './theme';
 import { getBackend } from '../../../src/services/dbmn-backend/backend-config';
 import { APIEndpointManager } from '../../../src/apiEndpointManager';
@@ -91,6 +92,8 @@ async function start(): Promise<void> {
     const scope = `${getBackend().profile}:${session.user.id}`;
     const state = new CatalogueState(catalogue, browserDeviceStore(scope), await openBrowserVault(scope));
     await Promise.all([state.load(), mountBrowserFs(scope)]);
+    // Dobermann issue 7: this user's log from before, kept in this browser from now on
+    await startAppLog();
 
     // The Hub's page gets messages the way a webview does: as window message events
     const hubSession = new ScreenSession({ post: message => window.postMessage(message, location.origin) }, screenHost);
@@ -144,6 +147,8 @@ async function start(): Promise<void> {
 
     const endpoints = new APIEndpointManager(state);
     const environments = new EnvironmentManager(state);
+    // Dobermann issue 7: the environments' secrets are never written to the log
+    environments.setSecretSink(value => appLog.addSecret(value));
     const systems = new SystemManager(state);
     startGlobalSystems(client, scope, { systems, endpoints, environments });
     // #415: environments read their Standard System's configuration (claims, org levels)
@@ -170,12 +175,13 @@ async function start(): Promise<void> {
             vsCode = next;
             await hub?.broadcastState();
         } catch (error) {
-            console.warn('[Catalogue] could not tell whether DBMN for VS Code has signed in on this account', error);
+            appLog.write({ level: 'warn', source: 'sync', message: 'Could not tell whether DBMN for VS Code has signed in on this account', error });
         }
     };
+    const syncLog = appLog.logger('sync');
     followCatalogueChanges(catalogue, state, {
         onReloaded: () => { endpoints.notifyChanged(); environments.notifyChanged(); systems.notifyChanged(); void readVsCodeSignals(); },
-        log: (message, error) => (error ? console.warn(message, error) : console.info(message))
+        log: (message, error) => (error ? syncLog.warn(message, error) : syncLog.info(message))
     });
     setInterval(() => { if (document.visibilityState === 'visible') void readVsCodeSignals(); }, 2 * 60 * 1000);
     const tokenExpiry = new TokenExpiryService();
@@ -202,11 +208,7 @@ async function start(): Promise<void> {
         isTokenExpired: token => tokenExpiry.isTokenExpired(token),
         promptAuthExpired: name => promptAuthExpiredInModal(hubSession, name),
         toast,
-        log: {
-            info: message => console.info(message),
-            warn: (message, error) => console.warn(message, error ?? ''),
-            error: (message, error) => console.error(message, error ?? '')
-        }
+        log: appLog.logger('sign-in')
     });
     const snapshotKey = 'hubTabsSnapshot';
     let hub: HubController;
@@ -268,7 +270,7 @@ async function start(): Promise<void> {
 
     // Run API: the same path as VS Code's (RunOrchestrator), on the Hub's modal
     const runs = new RunOrchestrator({
-        logger: { info: () => undefined, warn: () => undefined, debug: () => undefined, trace: () => undefined, error: (m, e) => console.error(m, e), show: () => undefined, clear: () => undefined, dispose: () => undefined },
+        logger: appLog.logger('run'),
         environments,
         endpoints,
         pipeline: { getTransactionPreparationService: () => execution.preparation, getBatchExecutionEngine: () => execution.engine },
@@ -520,7 +522,7 @@ async function start(): Promise<void> {
                 }
             }
         })().catch(error => {
-            console.error('[web] message failed', message.type, error);
+            appLog.write({ level: 'error', source: 'app', message: `A message to the app failed: ${message.type}`, error });
             toast.error(error instanceof Error ? error.message : String(error));
         });
     };
@@ -530,7 +532,7 @@ async function start(): Promise<void> {
 }
 
 start().catch(error => {
-    console.error('[web] start failed', error);
+    appLog.write({ level: 'error', source: 'start-up', message: `DBMN couldn't start: ${error instanceof Error ? error.message : String(error)}`, error });
     void startFailed(error instanceof Error ? error.message : String(error));
 });
 

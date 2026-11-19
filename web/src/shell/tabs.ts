@@ -39,7 +39,7 @@ import { DataTypeDetectionService } from '../../../src/services/data-type-detect
 import { DataTransformationService } from '../../../src/services/data-transformation/data-transformation.service';
 import type { BulkLoadRequest } from '../../../src/services/execution/run-orchestrator';
 import type { BulkLoadResult } from '../../../src/webviews/run-batch/bulk-load-result';
-import { consoleLogger, queryFiles, WebExecution, WORKSPACE_ROOT } from './execution';
+import { queryFiles, WebExecution, webLogger, WORKSPACE_ROOT } from './execution';
 import { buildEndpointPage, buildEnvironmentPage } from '../../../src/screens/pages';
 import { desktopBridge } from './desktop';
 import { ScreenSession } from '../../../src/screens/screen-session';
@@ -160,7 +160,7 @@ export function webTabs(deps: WebTabDeps): HubTabFactory {
                     }
                 },
                 toast: deps.toast,
-                logger: { log: () => undefined, error: (message, error) => consoleLogger.error(message, error instanceof Error ? error : undefined) },
+                logger: { log: () => undefined, error: (message, error) => webLogger.error(message, error instanceof Error ? error : undefined) },
                 host: {
                     close: () => channel.close(),
                     openConsole: (id, batch) => deps.openConsole(id, batch),
@@ -198,7 +198,7 @@ export function webTabs(deps: WebTabDeps): HubTabFactory {
                 state: deps.state.globalState,
                 settings: deps.settings,
                 clipboard: navigator.clipboard,
-                logger: { log: () => undefined, error: (message, error) => consoleLogger.error(message, error) },
+                logger: { log: () => undefined, error: (message, error) => webLogger.error(message, error) },
                 toast: deps.toast,
                 files: {
                     // The browser saves downloads where it saves them: the export is written, then handed over

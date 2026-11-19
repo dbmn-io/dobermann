@@ -16,6 +16,8 @@ import { ExecutionLoggingService } from '../services/logging/execution-logging.s
 import { IExecutionLoggingService } from '../services/logging/execution-logging.interface';
 import { ExtensionDiagnosticLogger } from '../services/logging/extension-diagnostic-logger.service';
 import { IExtensionDiagnosticLogger } from '../services/logging/extension-diagnostic-logger.interface';
+import { teeLogger } from '../services/logging/tee-logger';
+import { LoggerRegistry as LoggerRegistryForAppLog } from '../utils/logger-registry';
 import { DataTypeDetectionService } from '../services/data-type-detection/data-type-detection.service';
 import { IDataTypeDetectionService } from '../services/data-type-detection/data-type-detection.interface';
 import { DataTransformationService } from '../services/data-transformation/data-transformation.service';
@@ -103,7 +105,10 @@ export function registerCoreServices(
 
   // Register extension diagnostic logger for non-execution related logs
   container.registerFactory(CoreServiceTokens.ExtensionDiagnosticLogger, () => {
-    const logger = new ExtensionDiagnosticLogger('DBMN Extension Diagnostics');
+    // Dobermann issue 7: into the app's log, and the old Output channel until Logs shows everything
+    const channel = new ExtensionDiagnosticLogger('DBMN Extension Diagnostics');
+    const appLog = LoggerRegistryForAppLog.getAppLog();
+    const logger = appLog ? teeLogger(appLog.logger(), channel) : channel;
     // Register professionally via LoggerRegistry
     import('../utils/logger-registry').then(({ LoggerRegistry }) => {
       LoggerRegistry.setDiagnosticLogger(logger);

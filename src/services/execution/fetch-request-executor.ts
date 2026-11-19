@@ -22,6 +22,11 @@ import {
 export interface FetchRequestExecutorDependencies {
     environments: RequestEnvironmentLookup;
     getToken: RequestTokenProvider;
+    /**
+     * Dobermann issue 7: the token each request is sent with, whatever the sign-in (OAuth, the
+     * DBMN account, a service account, a pasted token), told to the app's log so it is never written.
+     */
+    secretSink?: (value: string) => void;
     logger: IExtensionDiagnosticLogger;
     /** #392: how the request is sent, when not by the global `fetch` (the desktop app: its main process, no CORS). */
     fetch?: (url: string, init: RequestInit) => Promise<Response>;
@@ -53,6 +58,7 @@ export class FetchRequestExecutor implements IRequestExecutor {
 
         // Issue #126: Handle different authentication methods
         const token = await this.dependencies.getToken(activeEnvironment, environmentId, options);
+        if (token) this.dependencies.secretSink?.(token);
 
         // Issue #113/#126: Check if authentication is required
         const requiresAuth = activeEnvironment?.authMethod !== 'none';
