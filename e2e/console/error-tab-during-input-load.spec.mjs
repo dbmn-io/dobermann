@@ -58,7 +58,7 @@ test('#337: the first result switches to Error while Input is still loading; Err
     // Past the moment the Input redraw was due: the Error tab still shows the one error
     await page.waitForTimeout(800);
     await expect(page.locator('.tab-item[data-tab="errors"]')).toHaveClass(/active/);
-    await expect(page.locator('#data-table tbody tr'), 'one error, not the input file').toHaveCount(1);
-    await expect(page.locator('#data-table')).not.toContainText('SKU-');
+    await expect(page.locator('#console-table .dbmn-table-body > tr.data-row'), 'one error, not the input file').toHaveCount(1);
+    await expect(page.locator('#console-table')).not.toContainText('SKU-');
     expect(pageErrors, 'uncaught errors in the page').toEqual([]);
 });

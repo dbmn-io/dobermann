@@ -935,3 +935,40 @@ test('a column removed from the records is told as such, kept in the layout, and
     if (!(await again.locator('.dbmn-nest-table').count())) await again.locator('.dbmn-nest-toggle').click();
     await expect(again.locator('.dbmn-nest-table thead .column-name')).toHaveText(['line', 'item']);
 });
+
+test('within: a column moves only among its own object\'s columns, and past an object beside it as one', async ({ page }) => {
+    await page.setContent(tablePage());
+    await page.evaluate(() => {
+        const t = document.getElementById('t');
+        window.told = [];
+        t.addEventListener('dbmn-table-layout', e => window.told.push(e.detail));
+        t.columns = [
+            { id: 'sku', name: 'sku', within: ['data'] }, { id: 'name', name: 'name', within: ['data'] },
+            { id: 'zone', name: 'zone', within: ['data', 'location'] }, { id: 'bin', name: 'bin', within: ['data', 'location'] },
+            { id: 'qty', name: 'qty', within: ['data'], numbers: true }
+        ];
+        t.rows = [{ sku: 'DOG-1', name: 'Rope', zone: 'A', bin: 'A-01', qty: 4 }];
+    });
+    const names = () => page.locator('#t thead th .column-name').allTextContents();
+    // Move to end, among its own: zone goes after bin, not after qty
+    await page.locator('#t th[data-col="zone"] .column-name').click({ button: 'right' });
+    await page.locator('.dbmn-context-menu').getByText('Move to end').click();
+    await expect.poll(names).toEqual(['sku', 'name', 'bin', 'zone', 'qty']);
+    expect(await page.evaluate(() => window.told.at(-1))).toMatchObject({ change: 'moved', id: 'zone', to: 3 });
+    // name to the end of its own: past location's two columns (together) and qty
+    await page.locator('#t th[data-col="name"] .column-name').click({ button: 'right' });
+    await page.locator('.dbmn-context-menu').getByText('Move to end').click();
+    await expect.poll(names).toEqual(['sku', 'bin', 'zone', 'qty', 'name']);
+    // A drag held far outside its own: it stays among them, and the table says so
+    await page.evaluate(() => { window.outside = []; document.getElementById('t').addEventListener('dbmn-table-outside', e => window.outside.push(e.detail.id)); });
+    // (to the right: zone held far past qty and name, the end of the page's room)
+    const grab = await page.locator('#t th[data-col="bin"] .column-name').boundingBox();
+    await page.mouse.move(grab.x + 6, grab.y + grab.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(grab.x + 26, grab.y + grab.height / 2, { steps: 4 });
+    await page.mouse.move(grab.x + 900, grab.y + grab.height / 2, { steps: 8 });
+    await page.mouse.up();
+    // It took the last place among its own (after zone), not past qty or name
+    await expect.poll(names).toEqual(['sku', 'zone', 'bin', 'qty', 'name']);
+    expect(await page.evaluate(() => window.outside)).toEqual(['bin']);
+});

@@ -34,7 +34,7 @@
         // Raw tab
         { selector: '#raw-expand-all, #raw-collapse-all', help: 'console#raw-tab' },
         // Table
-        { selector: '#table-head', help: 'console#sorting' },
+        { selector: '#console-table thead', help: 'console#sorting' },
         // Links tab
         { selector: '#links-tab-content .execution-section h3', help: 'chain#links-tab' },
         { selector: '#links-tab-content .links-table tbody tr', help: 'chain#differences', first: true },

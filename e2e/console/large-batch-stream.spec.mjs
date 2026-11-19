@@ -77,15 +77,15 @@ test('the page is usable on the first chunk and counts up as the rest stream in'
 });
 
 test('a live redraw of the Completed tab keeps the scroll position', async ({ page }) => {
-    // The real stylesheet matters here: #table-container is always a scroll box, so clearing
-    // the rows collapses it and the browser snaps scrollTop to 0 before the rows come back.
+    // The real stylesheet matters here: the table's rows scroll in their own box, and a redraw
+    // must not snap it back to the top.
     await open(page, range(1, 301).map(i => response(i)), { loaded: 300, total: 300 }, { styles: true });
     await expect(page.locator('.tab-count[data-tab="success"]')).toHaveText('300');
     await page.evaluate(() => window.dynamicReportManager.switchTab('success'));
-    await page.waitForFunction(() => document.getElementById('table-container').scrollHeight > 1000);
+    await page.waitForFunction(() => document.querySelector('#console-table .dbmn-table-scroll').scrollHeight > 1000);
 
-    await page.evaluate(() => { document.getElementById('table-container').scrollTop = 900; });
-    const before = await page.evaluate(() => document.getElementById('table-container').scrollTop);
+    await page.evaluate(() => { document.querySelector('#console-table .dbmn-table-scroll').scrollTop = 900; });
+    const before = await page.evaluate(() => document.querySelector('#console-table .dbmn-table-scroll').scrollTop);
     expect(before).toBeGreaterThan(0);
 
     // A result lands: the tab redraws after its debounce
@@ -95,7 +95,7 @@ test('a live redraw of the Completed tab keeps the scroll position', async ({ pa
     await page.waitForFunction(() => !!window.dynamicReportManager._renderDebounceTimer);
     await page.waitForFunction(() => !window.dynamicReportManager._renderDebounceTimer);
     await page.waitForTimeout(100);
-    expect(await page.evaluate(() => document.getElementById('table-container').scrollTop)).toBe(before);
+    expect(await page.evaluate(() => document.querySelector('#console-table .dbmn-table-scroll').scrollTop)).toBe(before);
 });
 
 test('a batch still running: results that land while the batch streams in merge, with no duplicates', async ({ page }) => {

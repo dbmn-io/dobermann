@@ -1890,6 +1890,19 @@ body {
     border-radius: 4px;
 }
 
+/* The data tabs' rows: the design system's table, filling the Console below its toolbar (its
+   rows scroll inside it), framed as #table-container is */
+#console-table {
+    flex: 1;
+    min-height: 0;
+    gap: 0;
+}
+#console-table .dbmn-table-scroll {
+    flex: 1;
+    min-height: 0;
+    max-height: none;
+}
+
 #table-container:has(.raw-tab-container) {
     border-top: none;
     border-top-left-radius: 0;

@@ -32,6 +32,9 @@
  *   head(th)                adds what the screen wants to the column's heading (a count, a filter)
  *   sortable: false         no sort for it (a status the screen filters instead)
  *   removable: false        it stays (no x, no Remove): the screen's own column (the Console's Reason)
+ *   within: ['location']    the objects it sits in, outermost first: it moves only among the columns
+ *                           of its own object (or past an object beside it, which moves aside as one);
+ *                           let go outside them, it stays, and the table tells dbmn-table-outside { id }
  *   cell(td, value, row)    after the cell is drawn: the screen marks it (a value that differs, its tint);
  *                           a long value it marks .cell-expandable with data-full (and data-title)
  *                           opens in full on a click, as the table's own do
@@ -42,7 +45,7 @@
  *   orders.redrawHeads();             the headings drawn again (their head(th) hooks run again: a count
  *                                     changed), with the order, widths and sort as they are
  *   orders.addEventListener('dbmn-table-row', e => open(e.detail.row));        a click on a row
- *   orders.addEventListener('dbmn-table-row-menu', e => …e.detail.row…);       a right-click on a row
+ *   orders.addEventListener('dbmn-table-row-menu', e => …e.detail.row, e.detail.event…);   a right-click on a row
  *       (not a click that opens a long value, a list of records or anything with its own action;
  *       a right-click is the screen's to show a menu for: the browser's own is kept from it) `type` ('text', 'number', 'yesno', 'date', 'nested') is what the
  * search box says the column is and which operators it offers; left out, the table looks at the
@@ -466,9 +469,11 @@
                     canDrag: (th, event) => !!event.target.closest('.column-name.is-movable') && !this._fresh,
                     // Grouped or pinned columns: the places are the groups and the single columns, and a
                     // pinned one never moves (nor anything past it); the table draws itself again on a move
-                    units: th => (this._grouped() ? this._dragUnits() : this._plainUnits(th)),
+                    units: th => (this._leveled() ? this._levelUnits(th) : this._grouped() ? this._dragUnits() : this._plainUnits(th)),
                     fixed: th => th.dataset.pinned === 'true',
-                    onMove: (from, to) => (this._grouped() ? this._movedUnit(this._freeAt(from), this._freeAt(to)) : this._moved(from, to)),
+                    onMove: (from, to) => (this._leveled() ? this._movedLevel(from, to) : this._grouped() ? this._movedUnit(this._freeAt(from), this._freeAt(to)) : this._moved(from, to)),
+                    // (let go well outside its own: the screen says where it can go)
+                    onOutside: () => { if (this._held) this.dispatchEvent(new CustomEvent('dbmn-table-outside', { bubbles: true, detail: { id: this._held.id } })); },
                     // (a press that moved nothing is a click or a right-click: nothing is drawn again, so a menu just opened stays)
                     onEnd: () => {
                         if (!this._dragged) return;
@@ -661,6 +666,60 @@
         /* ── Units: a group of columns, or a column on its own ── */
 
         _grouped() { return this._columns.some(c => c.group || c.pinned); }
+
+        /* ── Levels: a column moves only among its own (`within`: the objects it sits in) ── */
+
+        _leveled() { return this._columns.some(c => Array.isArray(c.within) && c.within.length); }
+        /**
+         * The places a column can take: the columns beside it in the same object, each one, or a
+         * run of them that sit in an object inside it (moved past as one). Its heading first.
+         */
+        _levelUnits(th) {
+            const i = this._indexOf(th);
+            const column = this._columns[i];
+            if (!column) return [];
+            const path = column.within || [];
+            // (a pinned column is no place to move to, and nothing moves past it)
+            const inside = c => !c.pinned && path.every((p, k) => (c.within || [])[k] === p);
+            let a = i, b = i;
+            while (a > 0 && inside(this._columns[a - 1])) a--;
+            while (b < this._columns.length - 1 && inside(this._columns[b + 1])) b++;
+            const places = [];
+            for (let k = a; k <= b; k++) {
+                const key = (this._columns[k].within || [])[path.length];
+                const last = places[places.length - 1];
+                if (key !== undefined && last && last.key === key) last.at.push(k);
+                else places.push({ key, at: [k] });
+            }
+            const rows = Array.from(this._body.rows).filter(r => r.cells.length === this._columns.length);
+            const units = places.map(place => {
+                const heads = place.at.map(k => this._head.querySelector(`th[data-col="${CSS.escape(this._columns[k].id)}"]`));
+                // (its headings move with it too, the first one included: all of an object's columns slide as one)
+                const cells = heads.filter(Boolean);
+                place.at.forEach(k => rows.forEach(r => cells.push(r.cells[k])));
+                // (as wide as all its columns: the drag measures its places by them)
+                const first = heads[0], last = heads[heads.length - 1];
+                const left = first ? first.offsetLeft : 0;
+                const width = last ? last.offsetLeft + last.offsetWidth - left : 0;
+                return { head: first, cells, ids: place.at.map(k => this._columns[k].id), left, width };
+            }).filter(u => u.head);
+            this._held = { id: column.id, units };
+            return units;
+        }
+        /** A place among its own taken: its columns go before (or after) the ones there. */
+        _movedLevel(from, to) {
+            const units = this._held ? this._held.units : [];
+            const moving = units[from], target = units[to];
+            if (!moving || !target || from === to) return;
+            const gone = new Set(moving.ids);
+            const rest = this._columns.filter(c => !gone.has(c.id));
+            const block = this._columns.filter(c => gone.has(c.id));
+            const anchor = to > from ? target.ids[target.ids.length - 1] : target.ids[0];
+            const at = rest.findIndex(c => c.id === anchor) + (to > from ? 1 : 0);
+            rest.splice(at, 0, ...block);
+            this._columns = rest;
+            this._dragged = moving.ids[0];
+        }
         /** The columns shown, as the places they move between: a group's columns together, others one by one. */
         _units() {
             const units = [];
@@ -1049,6 +1108,8 @@
             this._sort = dir ? { id: column.id, dir } : null;
             this._heads();
             this._apply();
+            // (a sort is read from its first row, as a search is)
+            this._scroll.scrollTop = 0;
             this._render(true);
             this._tell('sorted', { id: column.id });
         }
@@ -1108,6 +1169,29 @@
             const sorted = this._sort && this._sort.id === column.id;
             // Under a group, or pinned: it sorts and fits; moving and removing are its group's
             const own = !column.group && !column.pinned;
+            if (this._leveled() && own) {
+                const units = this._levelUnits(th);
+                const at = units.findIndex(u => u.ids[0] === column.id);
+                const movable_ = units.length > 1 && !locked;
+                window.ColumnHead.menu(event, {
+                    numbers: this._numbers(column),
+                    dir: sorted ? this._sort.dir : '',
+                    sorted: !!this._sort,
+                    first: at === 0, last: at === units.length - 1,
+                    sort: column.sortable === false ? null : dir => this._sortBy(column, dir),
+                    move: !movable_ ? null : where => {
+                        this._movedLevel(at, where === 'start' ? 0 : units.length - 1);
+                        const id = this._dragged;
+                        this._dragged = null;
+                        this._heads();
+                        this._render(true);
+                        this._tell('moved', { id, to: this._columns.findIndex(c => c.id === id) });
+                    },
+                    fit: () => this._fit(i),
+                    remove: last === 0 || !this.hasAttribute('removable') || locked || column.removable === false ? null : () => this._remove(i)
+                });
+                return;
+            }
             const grouped = this._grouped();
             const unitAt = grouped ? units.findIndex(u => u.columns.some(x => x.column.id === column.id)) : i;
             const firstFree = grouped ? units.findIndex(u => !u.pinned) : 0;
@@ -1360,7 +1444,8 @@
             const row = this._rowAt(index);
             if (!row) return;
             if (type === 'dbmn-table-row-menu') event.preventDefault();
-            this.dispatchEvent(new CustomEvent(type, { bubbles: true, detail: { row, index } }));
+            // (`event`: the click itself, for a menu at the pointer)
+            this.dispatchEvent(new CustomEvent(type, { bubbles: true, detail: { row, index, event } }));
         },
 
         /** The rows shown that have records open, in order, each with how much taller it is: [{ index, state… }]. */

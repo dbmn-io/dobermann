@@ -48,7 +48,7 @@ test('@column search: a column\'s own value, and @ suggests the columns then the
         await page.evaluate(msg => window.postMessage(msg, '*'), m);
         await page.waitForTimeout(20);
     }
-    const rows = page.locator('#data-table tbody tr');
+    const rows = page.locator('#console-table .dbmn-table-body > tr.data-row');
     await expect(rows).toHaveCount(3);
     const box = page.locator('#search-input');
     await expect(box).toHaveAttribute('spellcheck', 'false');   // column names are not spelling mistakes
@@ -114,7 +114,7 @@ test('@column search reaches inside nested data: @column=value and @column.key=v
         await page.evaluate(msg => window.postMessage(msg, '*'), m);
         await page.waitForTimeout(20);
     }
-    const rows = page.locator('#data-table > tbody > tr');
+    const rows = page.locator('#console-table .dbmn-table-body > tr.data-row');
     await expect(rows).toHaveCount(3);
     const box = page.locator('#search-input');
     const search = async (text, orders) => {

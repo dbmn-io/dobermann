@@ -84,10 +84,10 @@ test('a test failure is named on its card, filtered on its own, and explained on
 
     // Error tab: Reason first, whatever the view; not a column the view can hide
     await page.locator('.tab-item[data-tab="errors"]').click();
-    const firstHeader = page.locator('#table-head th').first();
+    const firstHeader = page.locator('#console-table thead th').first();
     await expect(firstHeader.locator('.column-name')).toHaveText('Reason');
     await expect(firstHeader.locator('.col-hide-btn')).toHaveCount(0);
-    const reasons = await page.locator('#table-body tr').evaluateAll(trs => trs.map(tr => tr.querySelector('td')?.textContent?.trim()));
+    const reasons = await page.locator('#console-table .dbmn-table-body > tr.data-row').evaluateAll(trs => trs.map(tr => tr.querySelector('td')?.textContent?.trim()));
     expect(reasons).toEqual([TEST_MESSAGE, TEST_MESSAGE, 'HTTP 400: Bad Request']);
     await page.screenshot({ path: join(ROOT, '.dev-local/428-error-tab.png'), fullPage: true });
 

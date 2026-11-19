@@ -74,7 +74,7 @@ for (const [name, messages] of Object.entries(ORDERS)) {
         await expect(page.locator('.tab-item[data-tab="success"]')).toHaveClass(/active/);
         // The page's own stylesheet is not loaded here, so "hidden" is the class, not the box.
         await expect(page.locator('#empty-state'), 'the empty state is not showing').toHaveClass(/hidden/);
-        await expect(page.locator('#data-table tbody tr')).toHaveCount(2);
+        await expect(page.locator('#console-table .dbmn-table-body > tr.data-row')).toHaveCount(2);
         expect(pageErrors, 'uncaught errors in the page').toEqual([]);
     });
 }

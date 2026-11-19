@@ -63,9 +63,9 @@ async function open(page, data) {
 test('a column is dragged by its name, sorted by its icon, resized by its edge, and removed by x', async ({ page }) => {
     const pageErrors = await open(page, FEW);
 
-    const heads = page.locator('#table-head th');
+    const heads = page.locator('#console-table thead th');
     const names = () => heads.locator('.column-name').allTextContents();
-    const column = n => page.locator('#table-body tr.data-row').evaluateAll((trs, i) => trs.map(tr => tr.cells[i].textContent.trim()), n);
+    const column = n => page.locator('#console-table .dbmn-table-body > tr.data-row').evaluateAll((trs, i) => trs.map(tr => tr.cells[i].textContent.trim()), n);
     const viewOrder = () => page.evaluate(() => window.dynamicReportManager.getActiveView('success').columns[0].children.map(c => c.id.split('.').pop()));
     await expect(heads).toHaveCount(4);
     const was = await names();
@@ -74,7 +74,7 @@ test('a column is dragged by its name, sorted by its icon, resized by its edge, 
     // The name does not sort; the icon does, and a column of numbers says so
     const sku = heads.nth(0), quantity = heads.nth(2);
     await sku.locator('.column-name').click();
-    await expect(page.locator('#table-head th.sort-asc')).toHaveCount(0);
+    await expect(page.locator('#console-table thead th.sort-asc')).toHaveCount(0);
     await expect(quantity.locator('.col-sort-btn')).toHaveAttribute('title', 'Sort smallest first');
     await expect(sku.locator('.col-sort-btn')).toHaveAttribute('title', 'Sort A to Z');
     await sku.locator('.col-sort-btn').click();
@@ -91,13 +91,13 @@ test('a column is dragged by its name, sorted by its icon, resized by its edge, 
     await page.mouse.move(grab.x + 6, grab.y + grab.height / 2);
     await page.mouse.down();
     await page.mouse.move(grab.x + 26, grab.y + grab.height / 2, { steps: 4 });
-    await expect(page.locator('#data-table')).toHaveClass(/col-dragging/);
-    await expect(page.locator('#table-body td.col-lift')).toHaveCount(3);
+    await expect(page.locator('#console-table .dbmn-table-grid')).toHaveClass(/col-dragging/);
+    await expect(page.locator('#console-table .dbmn-table-body td.col-lift')).toHaveCount(3);
     await page.mouse.move(grab.x + 6 + (next.x + next.width / 2) - (first.x + first.width / 2) + 5, grab.y + grab.height / 2, { steps: 8 });
-    await expect(page.locator('#table-body td.col-shift-left').first()).toBeVisible();
+    await expect(page.locator('#console-table .dbmn-table-body td.col-shift-left').first()).toBeVisible();
     await page.mouse.up();
     await expect.poll(names).toEqual(['name', 'sku', 'quantity', 'bin']);
-    await expect(page.locator('#data-table')).not.toHaveClass(/col-dragging/);
+    await expect(page.locator('#console-table .dbmn-table-grid')).not.toHaveClass(/col-dragging/);
     expect(await column(1)).toEqual(['DOG-001', 'DOG-002', 'DOG-003']);
     // The View's own order follows, so it is saved and comes back
     expect(await viewOrder()).toEqual(['name', 'sku', 'quantity', 'bin']);
@@ -109,7 +109,7 @@ test('a column is dragged by its name, sorted by its icon, resized by its edge, 
     expect(await viewOrder()).toEqual(['sku', 'quantity', 'bin', 'name']);
     await heads.nth(1).locator('.column-name').click({ button: 'right' });
     await page.locator('.dbmn-context-menu').getByText('Clear the sort').click();
-    await expect(page.locator('#table-head th.sort-asc, #table-head th.sort-desc')).toHaveCount(0);
+    await expect(page.locator('#console-table thead th.sort-asc, #console-table thead th.sort-desc')).toHaveCount(0);
 
     // The right edge resizes its column only; the width is kept with the View
     const widths = () => heads.evaluateAll(ths => ths.map(th => th.getBoundingClientRect().width));
@@ -149,11 +149,11 @@ test('a column is dragged by its name, sorted by its icon, resized by its edge, 
 
 test('a long result: a dragged column stays where it was put as more rows are drawn', async ({ page }) => {
     const pageErrors = await open(page, MANY);
-    const heads = page.locator('#table-head th');
+    const heads = page.locator('#console-table thead th');
     const names = () => heads.locator('.column-name').allTextContents();
     await expect(heads).toHaveCount(4);
     // Only the rows in view are drawn
-    expect(await page.locator('#table-body tr.data-row').count()).toBeLessThan(600);
+    expect(await page.locator('#console-table .dbmn-table-body > tr.data-row').count()).toBeLessThan(600);
 
     const grab = await heads.nth(0).locator('.column-name').boundingBox();
     const first = await heads.nth(0).boundingBox();
@@ -166,15 +166,15 @@ test('a long result: a dragged column stays where it was put as more rows are dr
     await expect.poll(names).toEqual(['name', 'sku', 'quantity', 'bin']);
 
     // Rows drawn after the move (scrolled into view) are in the new order
-    await page.locator('#table-container').evaluate(box => { box.scrollTop = box.scrollHeight; });
-    const last = page.locator('#table-body tr.data-row').last();
+    await page.locator('#console-table .dbmn-table-scroll').evaluate(box => { box.scrollTop = box.scrollHeight; });
+    const last = page.locator('#console-table .dbmn-table-body > tr.data-row').last();
     await expect(last.locator('td').nth(0)).toHaveText('Toy 600');
     await expect(last.locator('td').nth(1)).toHaveText('DOG-0600');
     // ...and a sort keeps it
     await heads.nth(2).locator('.col-sort-btn').click();
     await expect(heads.nth(2)).toHaveClass(/sort-asc/);
     expect(await names()).toEqual(['name', 'sku', 'quantity', 'bin']);
-    await expect(page.locator('#table-body tr.data-row').first().locator('td').nth(1)).toHaveText('DOG-0001');
+    await expect(page.locator('#console-table .dbmn-table-body > tr.data-row').first().locator('td').nth(1)).toHaveText('DOG-0001');
     expect(pageErrors, 'uncaught errors in the page').toEqual([]);
 });
 
@@ -187,9 +187,9 @@ const NESTED = [
 
 test('a column in a group moves within its group, past a group beside it, and never out of its own', async ({ page }) => {
     const pageErrors = await open(page, NESTED);
-    const heads = page.locator('#table-head th');
+    const heads = page.locator('#console-table thead th');
     const names = () => heads.locator('.column-name').allTextContents();
-    const column = n => page.locator('#table-body tr.data-row').evaluateAll((trs, i) => trs.map(tr => tr.cells[i].textContent.trim()), n);
+    const column = n => page.locator('#console-table .dbmn-table-body > tr.data-row').evaluateAll((trs, i) => trs.map(tr => tr.cells[i].textContent.trim()), n);
     await expect(heads).toHaveCount(6);
     expect(await names()).toEqual(['sku', 'name', 'zone', 'bin', 'aisle', 'quantity']);
 
@@ -206,7 +206,7 @@ test('a column in a group moves within its group, past a group beside it, and ne
         await page.mouse.move(grab.x + 6 + travel, y, { steps: 8 });
         if (check) await check();
         await page.mouse.up();
-        await expect(page.locator('#data-table')).not.toHaveClass(/col-dragging/);
+        await expect(page.locator('#console-table .dbmn-table-grid')).not.toHaveClass(/col-dragging/);
     };
     const levels = () => page.evaluate(() => {
         const last = c => c.id.split('.').pop();
@@ -228,14 +228,15 @@ test('a column in a group moves within its group, past a group beside it, and ne
 
     // Past a group: name goes to the far side of all of location's columns, which slide aside together
     await drag(1, 4, async () => {
-        await expect(page.locator('#table-head th.col-shift-left')).toHaveCount(3);
+        await expect(page.locator('#console-table thead th.col-shift-left')).toHaveCount(3);
     });
     await expect.poll(names).toEqual(['sku', 'bin', 'zone', 'aisle', 'name', 'quantity']);
     expect(await column(4)).toEqual(['Rope Tug', 'Chew Ring', 'Slow Feeder Bowl']);
     expect(await levels()).toEqual(['sku', { location: ['bin', 'zone', 'aisle'] }, 'name', 'quantity']);
 
     // Never out of its group: aisle dragged far to the left stops at the group's start, and says why
-    await drag(3, { by: -600 });
+    // (far: the table fills the window, so its columns are wide)
+    await drag(3, { by: -1500 });
     await expect.poll(names).toEqual(['sku', 'aisle', 'bin', 'zone', 'name', 'quantity']);
     expect(await levels()).toEqual(['sku', { location: ['aisle', 'bin', 'zone'] }, 'name', 'quantity']);
     await expect(page.locator('.dbmn-toast').filter({ hasText: 'aisle can only move among the columns of' })).toBeVisible();
@@ -255,7 +256,7 @@ test('a column in a group moves within its group, past a group beside it, and ne
     expect(await column(0)).toEqual(['DOG-003', 'DOG-002', 'DOG-001']);
     await expect(heads.nth(0).locator('.col-sort-btn')).toHaveAttribute('title', 'Sorted Z to A. Click to clear the sort');
     await heads.nth(0).locator('.col-sort-btn').click();
-    await expect(page.locator('#table-head th.sort-asc, #table-head th.sort-desc')).toHaveCount(0);
+    await expect(page.locator('#console-table thead th.sort-asc, #console-table thead th.sort-desc')).toHaveCount(0);
     expect(await column(0)).toEqual(['DOG-002', 'DOG-001', 'DOG-003']);
     expect(pageErrors, 'uncaught errors in the page').toEqual([]);
 });

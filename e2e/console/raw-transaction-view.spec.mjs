@@ -125,11 +125,11 @@ test('Input tab: filter rows by their transaction\'s status, and right-click to 
 
     await expect(page.locator('#input-status-filter-wrap')).not.toHaveClass(/hidden/);
     await expect(filter.locator('option')).toHaveText(['All (8)', 'Completed (2)', 'Error (2)', 'Running (2)', 'Cancelled (0)', 'Not processed (2)']);
-    await expect(page.locator('#table-head th').first()).toHaveText('Result');
-    await expect(page.locator('#table-body tr.data-row')).toHaveCount(8);
+    await expect(page.locator('#console-table thead th').first()).toHaveText('Result');
+    await expect(page.locator('#console-table .dbmn-table-body > tr.data-row')).toHaveCount(8);
 
     await filter.selectOption('error');
-    const rows = page.locator('#table-body tr.data-row');
+    const rows = page.locator('#console-table .dbmn-table-body > tr.data-row');
     await expect(rows).toHaveCount(2);
     await expect(rows.nth(0).locator('td').nth(0)).toHaveText('Error');
     await expect(rows.nth(0).locator('td').nth(1)).toHaveText('C');
@@ -162,14 +162,18 @@ test('right-click an Error row: view the transaction, reprocess it with its real
 
     // Completed rows offer View only
     await page.locator('.tab-item[data-tab="success"]').click();
-    await page.locator('#table-body tr.data-row').first().click({ button: 'right' });
+    await page.locator('#console-table .dbmn-table-body > tr.data-row').first().click({ button: 'right' });
     await expect(page.locator('.raw-context-menu-item')).toHaveText(['View transaction']);
     await page.keyboard.press('Escape');
     await expect(page.locator('.raw-context-menu')).toHaveCount(0);
 
     // Error rows offer View and Reprocess
     await page.locator('.tab-item[data-tab="errors"]').click();
-    await page.locator('#table-body tr.data-row').first().click({ button: 'right' });
+    // (in view first: a scroll closes the menu, and the page's scroll to the row would land just after it opens)
+    const errorRow = page.locator('#console-table .dbmn-table-body > tr.data-row').first();
+    await errorRow.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(100);
+    await errorRow.click({ button: 'right' });
     await expect(page.locator('.raw-context-menu-item')).toHaveText(['View transaction', 'Reprocess']);
     await page.locator('.raw-context-menu-item[data-action="view"]').click();
 

@@ -42,8 +42,8 @@ test('a JSONL response: a row per line in Completed; Raw shows the lines, then P
     // Completed: one transaction, three rows — one per line
     await page.locator('.tab-item[data-tab="success"]').click();
     await expect(page.locator('.tab-count[data-tab="success"]')).toHaveText('1');
-    await expect(page.locator('#data-table tbody tr')).toHaveCount(3);
-    await expect(page.locator('#data-table')).toContainText('DOG-003');
+    await expect(page.locator('#console-table .dbmn-table-body > tr.data-row')).toHaveCount(3);
+    await expect(page.locator('#console-table')).toContainText('DOG-003');
 
     // Raw: labelled, Lines by default
     await page.locator('.tab-item[data-tab="raw"]').click();

@@ -67,6 +67,6 @@ test('a batch of one: the Completed tab shows the rows the moment it opens', asy
     await expect(page.locator('.tab-item[data-tab="success"]')).toHaveClass(/active/);
     // The page's stylesheet is not loaded here, so "hidden" is the class, not the box.
     await expect(page.locator('#empty-state'), 'the empty state is not showing').toHaveClass(/hidden/);
-    await expect(page.locator('#data-table tbody tr')).toHaveCount(3);
+    await expect(page.locator('#console-table .dbmn-table-body > tr.data-row')).toHaveCount(3);
     expect(pageErrors, 'uncaught errors in the page').toEqual([]);
 });

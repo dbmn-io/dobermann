@@ -46,7 +46,7 @@ async function open(page) {
         await page.evaluate(m => window.postMessage(m, '*'), message);
         await page.waitForTimeout(20);
     }
-    await expect(page.locator('#table-head th').first()).toBeVisible();
+    await expect(page.locator('#console-table thead th').first()).toBeVisible();
     return pageErrors;
 }
 const viewName = page => page.evaluate(() => window.dynamicReportManager.getActiveView('success').name);
@@ -95,14 +95,14 @@ test('a View Reporting reads is locked: it gains columns, and keeps its name, ro
     await edit(page);
     await page.locator('#view-editor-tree input[data-node-id$=".quantity"]').uncheck();
     await page.locator('#view-editor-save').click();
-    await expect(page.locator('#table-head .col-hide-btn').first()).toBeAttached();
-    const had = await page.locator('#table-head th').count();
+    await expect(page.locator('#console-table thead .col-hide-btn').first()).toBeAttached();
+    const had = await page.locator('#console-table thead th').count();
 
     // A saved compare reads it now (as the host tells the page)
     await page.evaluate(n => window.postMessage({ type: 'console.compareViews', payload: { views: { [n]: 1 }, queries: {} } }, '*'), name);
     // The headings can no longer take a column out
-    await expect(page.locator('#table-head .col-hide-btn')).toHaveCount(0);
-    await page.locator('#table-head th').first().locator('.column-name').click({ button: 'right' });
+    await expect(page.locator('#console-table thead .col-hide-btn')).toHaveCount(0);
+    await page.locator('#console-table thead th').first().locator('.column-name').click({ button: 'right' });
     await expect(page.locator('.dbmn-context-menu')).toBeVisible();
     await expect(page.locator('.dbmn-context-menu')).not.toContainText('Remove from the View');
     await page.keyboard.press('Escape');
@@ -125,7 +125,7 @@ test('a View Reporting reads is locked: it gains columns, and keeps its name, ro
     await page.locator('#view-editor-tree input[data-node-id$=".quantity"]').check();
     await expect(selected.locator('button[data-remove]')).toHaveCount(1);
     await page.locator('#view-editor-save').click();
-    await expect(page.locator('#table-head th')).toHaveCount(had + 1);
+    await expect(page.locator('#console-table thead th')).toHaveCount(had + 1);
     expect(await viewName(page)).toBe(name);
     expect(pageErrors, 'uncaught errors in the page').toEqual([]);
 });

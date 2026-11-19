@@ -41,6 +41,7 @@
     <script src="{{MONACO_THEME_URI}}"></script>
     <script src="{{ICONS_SCRIPT}}"></script>
     <script src="{{DBMN_FOOTER_URI}}"></script>
+    <script src="{{DBMN_TABLE_URI}}"></script>
     <script src="{{EDITOR_WINDOW_CONTROLS_SCRIPT}}"></script>
 </head>
 <body class="editor-slide-in">
@@ -157,7 +158,11 @@
                 </div>
             </div>
 
-            <!-- Single Table Container (content changes based on active tab) -->
+            <!-- The data tabs' rows (Completed, Errors, Input): the design system's table
+                 (shared/dbmn-table.js), searched by the find box above -->
+            <dbmn-table id="console-table" class="console-table hidden" label="Results" removable></dbmn-table>
+
+            <!-- Logs, Request and Raw draw here -->
             <div id="table-container" class="table-container">
                 <table id="data-table" class="data-table">
                     <thead id="table-head"></thead>

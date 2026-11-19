@@ -213,10 +213,10 @@
         ['Rename dialog', 'Right-click → Rename in the Hub\'s lists: reports, endpoints, environments, runs', M, 'Hub lists', 'hub/hub-tabs.js (askRename)'],
         ['Tabs in a screen', 'A screen\'s own tabs (Environment, Console)', S, 'Environment, Console', 'shared/tabs.css'],
 
-        ['<dbmn-table>', 'A table of rows: search, sort, move, resize, only the rows in view drawn; rows the page holds, or asked for as they scroll', C, 'Query, Compare, Design system, <dbmn-log>', 'shared/dbmn-table.js'],
+        ['<dbmn-table>', 'A table of rows: search, sort, move, resize, only the rows in view drawn; rows the page holds, or asked for as they scroll', C, 'Query, Compare, Console, Design system, <dbmn-log>', 'shared/dbmn-table.js'],
         ['<dbmn-log>', 'Log lines as a table: the newest in view, followed until you scroll up', C, 'Logs', 'shared/dbmn-log.js'],
         ['<dbmn-level>', 'How serious a log line is: an icon and a word', C, 'Logs, <dbmn-log>', 'shared/dbmn-level.js'],
-        ['Rows inside a row', 'A list of records in a cell, opened inside it, with the screen\'s own buttons beside it (part of <dbmn-table>)', C, 'Design system; the Console has its own today', 'shared/dbmn-table.js'],
+        ['Rows inside a row', 'A list of records in a cell, opened inside it, with the screen\'s own buttons beside it (part of <dbmn-table>)', C, 'Console, Design system', 'shared/dbmn-table.js'],
         ['The Hub\'s pieces', 'Banner, menu, list, tabs, settings rows', P, '', '']
     ];
     function drawInventory() {
@@ -245,7 +245,7 @@
         ['Logs', 'Footer and log', ON, 'dbmn-footer, dbmn-log', ''],
         ['Query', 'Table', ON, 'dbmn-table, its rows asked for as they scroll', ''],
         ['Compare', 'Table', ON, 'dbmn-table: a group per column over its results, their colours and difference marks in each cell', ''],
-        ['Console', 'Table', WAIT, 'Its own table: nested rows, grouped headings, Views', 'Last: needs nested rows and grouped headings in dbmn-table'],
+        ['Console', 'Table', ON, 'dbmn-table for Completed, Errors and Input: Set as Row beside a list of records, each column moving among its own object\'s', 'Logs, Request and Raw draw their own'],
         ['Hub', 'Banner, menu, list, tabs', WAIT, 'Its own markup and styles', 'Described and split into components as each is next worked on']
     ];
     function drawMoving() {

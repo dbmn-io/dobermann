@@ -2409,6 +2409,7 @@ class DynamicReportManager {
         if (tabName === 'info') {
             if (toolbar) toolbar.style.display = 'none';
             if (tableContainer) tableContainer.classList.add('hidden');
+            this.showConsoleTable(false);
             if (infoTabContent) infoTabContent.classList.remove('hidden');
             document.getElementById('empty-state')?.classList.add('hidden');
             return;
@@ -2671,11 +2672,8 @@ class DynamicReportManager {
             const effectiveRowBasis = view.rowBasis || 'root';
             const emptyResponseCount = this.tableBuilder.countResponsesWithNoRows(rawDataForTab, effectiveRowBasis);
 
-            // GitHub Issue #228: Restore saved sort state and apply sorting
+            // GitHub Issue #228: the sort kept with the view (the table sorts by it: tableLayout)
             this.restoreSortState();
-            if (this.sortColumn) {
-                this.sortData(rows, this.sortColumn);
-            }
 
             const sampleResponse = rawDataForTab && rawDataForTab[0];
             let columns = this.viewToLegacyColumnShape(view, sampleResponse);
@@ -2685,36 +2683,12 @@ class DynamicReportManager {
                 columns = window.ConsoleErrorReason.withReasonColumn(rows, columns);
             }
 
-            // Check if search filter is active. Phase 1B.20: route
-            // through the same advanced matcher handleSearch uses
-            // (`SearchMatcher.parseSearchExpression` + matchesRow) so
-            // patterns like `,`-OR, `+`-AND, wildcards, negation,
-            // quoted-exact survive a sort. Previously this branch ran
-            // a naive String.includes which left the table blank
-            // when the user's term contained any non-literal syntax.
-            const searchInput = document.getElementById('search-input');
-            const searchTerm = searchInput ? searchInput.value : '';
-
-            if (searchTerm && searchTerm.trim() !== '' && window.SearchMatcher) {
-                const parsedTerms = window.SearchMatcher.parseSearchExpression(searchTerm);
-                const leafColumns = columns.filter(col => col.type !== 'group');
-                const filteredRows = rows.filter(row => {
-                    return window.SearchMatcher.matchesRow(parsedTerms, row, leafColumns,
-                        (r, colId) => this.extractNestedValue(r, colId));
-                });
-
-                this.renderTable(filteredRows, columns, options);
-                this.updateStats(rows.length, columns.length);
-                this.updateEmptyRowBasisWarning(emptyResponseCount, rawDataForTab.length, effectiveRowBasis);
-                this.updateRootPathSelector(view.rowBasis || 'root');
-                this.updateSearchResults(searchTerm, rows.length, filteredRows.length);
-            } else {
-                this.renderTable(rows, columns, options);
-                this.updateStats(rows.length, columns.length);
-                this.updateEmptyRowBasisWarning(emptyResponseCount, rawDataForTab.length, effectiveRowBasis);
-                this.updateRootPathSelector(view.rowBasis || 'root');
-                this.updateSearchResults(searchTerm, rows.length, rows.length);
-            }
+            // The table searches the rows itself, by what the find box holds (its own matcher,
+            // search-matcher.js), and says how many it shows (dbmn-table-shown → the footer)
+            this.renderTable(rows, columns, options);
+            this.updateStats(rows.length, columns.length);
+            this.updateEmptyRowBasisWarning(emptyResponseCount, rawDataForTab.length, effectiveRowBasis);
+            this.updateRootPathSelector(view.rowBasis || 'root');
 
         } catch (error) {
             this.showEmptyState('Error processing data: ' + error.message);
@@ -3285,122 +3259,172 @@ class DynamicReportManager {
         return schema;
     }
 
+    /*
+     * The data tabs' table is the design system's (shared/dbmn-table.js): it draws only the rows
+     * in view, searches them by the find box, sorts, moves, resizes and removes from the headings,
+     * and opens a list of records inside its cell. This page gives it the View's rows and columns
+     * and keeps in the View what the user does to it (sort, order, widths, columns removed).
+     * Logs, Request and Raw keep #table-container.
+     */
+    consoleTable() {
+        const table = document.getElementById('console-table');
+        if (table && !this._tableWired) {
+            this._tableWired = true;
+            table.rowClass = () => 'data-row';
+            table.searchWith(document.getElementById('search-input'), document.getElementById('search-input-mirror'));
+            table.addEventListener('dbmn-table-layout', event => this.tableChanged(event.detail || {}));
+            table.addEventListener('dbmn-table-shown', event => this.tableShown(event.detail || {}));
+            // A column let go outside its own object's columns: say where it can go
+            table.addEventListener('dbmn-table-outside', event => this.columnLeftItsLevel(event.detail.id));
+            // Issue #296: right-click a Completed or Error row to view its transaction (or reprocess an
+            // error); an Input row's transaction rides along as __tx (Issue #304)
+            table.addEventListener('dbmn-table-row-menu', event => {
+                const tab = this.currentTab;
+                if (tab !== 'success' && tab !== 'errors' && tab !== 'input') return;
+                const source = event.detail.row && event.detail.row.__response;
+                const response = tab === 'input' ? source && source.__tx : source;
+                if (response && window.rawTabHandler) window.rawTabHandler.showTransactionMenu(event.detail.event, response);
+            });
+        }
+        return table;
+    }
+    /** The data tabs show the table; the other tabs show #table-container. */
+    showConsoleTable(on) {
+        document.getElementById('console-table')?.classList.toggle('hidden', !on);
+        document.getElementById('table-container')?.classList.toggle('hidden', !!on);
+    }
+    /** The View's columns as the table has them: each by its path in the response. */
+    tableColumns(columns) {
+        const reason = window.ConsoleErrorReason && window.ConsoleErrorReason.REASON_COLUMN_ID;
+        const view = this.getActiveView(this.currentTab);
+        // The objects each column sits in, in the View: it moves only among its own (as the View keeps them)
+        const within = new Map();
+        const walk = (cols, chain) => (cols || []).forEach(c => {
+            if (!c || !c.id) return;
+            within.set(c.id, chain);
+            if (Array.isArray(c.children) && c.children.length) walk(c.children, chain.concat(c.id));
+        });
+        walk(view && view.columns, []);
+        return columns.filter(c => c && c.type !== 'group').map(c => {
+            const column = { id: c.id, name: c.name || c.id, within: within.get(c.id) || [] };
+            if (c.isAncestor) column.className = 'col-ancestor';
+            // #428: the Error tab's Reason column is not the view's: it stays first, and stays
+            if (c.id === reason) { column.removable = false; column.pinned = true; }
+            // Issue #229 Phase 1B.12: "Set as Row" makes a list of records the View's rows,
+            // beside its count; not where the View is already based on it
+            if (c.type === 'array') column.nested = { controls: () => (view && view.rowBasis !== c.id ? this.setAsRowButton(c.id) : null) };
+            return column;
+        });
+    }
+    setAsRowButton(path) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'set-as-root-btn';
+        b.title = 'Set the row basis of the active view to this array';
+        b.textContent = 'Set as Row';
+        b.setAttribute('data-click', 'console:setRowBasisOnActiveView');
+        b.setAttribute('data-arg', path);
+        return b;
+    }
+    /** What the View keeps of the table: its sort, the widths set, the record columns removed. */
+    tableLayout() {
+        const view = this.getActiveView(this.currentTab) || {};
+        // (the View keeps a width without the cell's padding and border, as the old table drew it)
+        const widths = {};
+        Object.keys(view.columnWidths || {}).forEach(id => { widths[id] = view.columnWidths[id] + 17; });
+        return {
+            widths,
+            sort: this.sortColumn ? { id: this.sortColumn, dir: this.sortDirection === 'desc' ? 'desc' : 'asc' } : null,
+            recordHidden: view.hiddenSubColumns || []
+        };
+    }
     renderTable(data, columns, options = {}) {
-        const tableHead = document.getElementById('table-head');
-        const tableBody = document.getElementById('table-body');
-        const tableContainer = document.getElementById('table-container');
-
-        // Issue #312: a live redraw keeps the user's place. Clearing the body
-        // collapses the container and the browser snaps scrollTop to 0, so
-        // remember it first and put it back once the rows (or the virtual
-        // spacer) give the container its height again.
-        const keepScrollTop = options.keepScroll ? tableContainer.scrollTop : 0;
-        // What is on show, for the find box: `@column.` lists the keys inside a column's nested data
+        // What is on show, for the page's other readers (copy, the View editor's samples)
         this._shownRows = data;
         this._shownColumns = columns;
-
-        // Clear existing content
-        tableHead.innerHTML = '';
-        tableBody.innerHTML = '';
-
-        // Reset virtual scroll state when switching to standard rendering
-        if (this.virtualScrollHandler) {
-            tableContainer.removeEventListener('scroll', this.virtualScrollHandler);
-            this.virtualScrollHandler = null;
-        }
-        // Issue #131: Reset virtual scroll tracking state
-        this.lastRenderedStart = -1;
-        this.lastRenderedEnd = -1;
-        this.virtualScrollData = null;
-        // Reset container styles
-        tableContainer.style.height = '';
-        tableContainer.style.overflow = '';
-        tableContainer.style.position = '';
-
-        if (!data || data.length === 0) {
-            // Only show empty state if we're certain there's no data AND we don't have overall response data
-            // This prevents showing empty state during tab switches when live updates have provided data
-            if (!this.rawData || !this.rawData.responses || this.rawData.responses.length === 0) {
-                document.getElementById('empty-state').classList.remove('hidden');
-                document.getElementById('table-container').classList.add('hidden');
-            }
+        const table = this.consoleTable();
+        if (!table) return;
+        if ((!data || data.length === 0) && (!this.rawData || !this.rawData.responses || this.rawData.responses.length === 0)) {
+            // Only empty when there is no data at all (a tab switch during a live run keeps the table)
+            document.getElementById('empty-state').classList.remove('hidden');
+            this.showConsoleTable(false);
+            document.getElementById('table-container').classList.add('hidden');
             return;
         }
-
         document.getElementById('empty-state').classList.add('hidden');
-        document.getElementById('table-container').classList.remove('hidden');
-
-        // PERFORMANCE: Use virtual scrolling for large datasets (Issue #94)
-        const VIRTUAL_SCROLL_THRESHOLD = 200;
-        if (data.length >= VIRTUAL_SCROLL_THRESHOLD) {
-            this.renderTableVirtual(data, columns, keepScrollTop);
-            return;
+        this.showConsoleTable(true);
+        // Issue #248: a read-only View (Input) neither moves nor removes; a View that Reporting
+        // reads keeps its columns (#298)
+        const view = this.getActiveView(this.currentTab);
+        const readOnly = this.isCurrentViewReadOnly();
+        const locked = !!(view && view.name && this.viewUse(view.name).locked);
+        // (the headings drawn again when that changes: their x and drag are the attributes')
+        const allows = `${readOnly}:${locked}`;
+        table.toggleAttribute('locked', readOnly);
+        table.toggleAttribute('removable', !readOnly && !locked);
+        const redraw = this._tableAllows !== undefined && this._tableAllows !== allows;
+        this._tableAllows = allows;
+        // The columns given again only when they change: a live redraw keeps the user's place (Issue #312)
+        const key = [this.currentTab, view ? view.name : '', columns.map(c => `${c.id}:${c.name}:${c.type}`).join('\u0001')].join('\u0002');
+        if (key !== this._tableKey) {
+            this._tableKey = key;
+            table.columns = this.tableColumns(columns);
+            table.layout = this.tableLayout();
         }
-
-        // Standard rendering for smaller datasets (preserves all features)
-        // Build hierarchical header structure
-        this._headRows = data;   // what the headings' sort icons read: numbers, or text
-        this.renderHierarchicalHeaders(columns, tableHead);
-
-        // Create data rows with rich rendering
-        const groups = columns.filter(col => col.type === 'group');
-        const dataColumns = columns.filter(col => col.type !== 'group');
-        
-        // Get columns in the same visual order as headers
-        const columnsInVisualOrder = this.getColumnsInVisualOrder(groups, dataColumns);
-        
-        data.forEach((row, index) => {
-            if (index === 0) {
-            }
-            
-            const tr = document.createElement('tr');
-            tr.className = 'data-row';
-            // Issue #296: right-click → the transaction behind the row
-            tr._dbmnRow = row;
-            
-            // Render columns in the same order as headers
-            columnsInVisualOrder.forEach(column => {
-                const td = document.createElement('td');
-                const value = this.extractNestedValue(row, column.id);
-                
-                if (index === 0) {
-                }
-                
-                // Use the original unified rendering functions for rich display
-                // Arrays stay as expandable, nested objects are now flattened
-                const baseCellClass = this.getCellClass(column.type);
-                const cellClass = column.isAncestor
-                    ? baseCellClass + ' col-ancestor'
-                    : baseCellClass;
-                if (Array.isArray(value)) {
-                    // Issue #229 Phase 1B.7: column.id is already the
-                    // absolute JSON path under the view model — don't
-                    // prepend currentRoot (which would produce bad paths
-                    // like `data.data.data` and prevent `+ New View`
-                    // visibility from matching saved rowBasis values).
-                    // Issue #238: pass row index so deterministic
-                    // expandableId matches the virtual-scroll path.
-                    const arrayPath = column.id;
-                    td.innerHTML = renderDataAsTable(value, 0, arrayPath, index);
-                    td.className = cellClass;
-                } else {
-                    // Primitive values or flattened nested values
-                    this.applyPrimitiveCell(td, value, cellClass);
-                    const width = this.columnWidthOf(column.id);
-                    if (width) this.applyColumnWidth(td, width);
-                }
-                
-                tr.appendChild(td);
-            });
-
-            tableBody.appendChild(tr);
-        });
-
-        if (keepScrollTop) tableContainer.scrollTop = keepScrollTop; // Issue #312
-
-        // Issue #271: once the table has laid out, flag any cell whose
-        // text is visually truncated as click-to-expand (needs geometry).
-        requestAnimationFrame(() => this.markTruncatedCells(tableBody));
+        else if (redraw) table.redrawHeads();
+        table.rows = data || [];
+        if (!options.keepScroll) {
+            const scroller = table.querySelector('.dbmn-table-scroll');
+            if (scroller) scroller.scrollTop = 0;
+        }
+    }
+    /** How many rows the table shows (its search), in the footer; the copy and export limits follow. */
+    tableShown(detail) {
+        const searching = !!(document.getElementById('search-input')?.value || '').trim();
+        this.currentFilteredRowCount = searching ? detail.shown : null;
+        const rowCount = document.getElementById('row-count');
+        if (rowCount) rowCount.textContent = searching ? `${Number(detail.shown).toLocaleString()} of ${Number(detail.total).toLocaleString()} rows` : `${Number(detail.total).toLocaleString()} rows`;
+        this.updateCopyDropdownLimits();
+        this.updateExportDropdownLimits();
+    }
+    /** What the user did to the table's headings, kept in the View. */
+    tableChanged(d) {
+        if (!this.currentTab) return;
+        const view = this.getActiveView(this.currentTab);
+        if (!view) return;
+        if (d.change === 'sorted') {
+            const sort = d.layout && d.layout.sort;
+            this.sortColumn = sort ? sort.id : null;
+            this.sortDirection = sort ? sort.dir : 'asc';
+            this.saveSortState();
+        } else if (d.change === 'resized' && d.width) {
+            this.saveColumnWidth(d.id, Math.max(24, Math.round(d.width) - 17));
+        } else if (d.change === 'removed') {
+            if (d.records) this.hideSubColumn(`${d.records}.${d.key}`, null, true);
+            else this.hideColumn(d.id);
+        } else if (d.change === 'moved') {
+            this.movedInTable(d.id, (d.layout && d.layout.order) || []);
+        }
+    }
+    /**
+     * A column moved in the table takes its place in the View among the columns of its level
+     * (beside the one it now sits next to). Moved out of its level, it goes back, and the footer
+     * says where it can go.
+     */
+    movedInTable(id, order) {
+        const level = this.columnLevel(id);
+        const item = level && level.list.find(c => c && c.id === id);
+        const holds = (c, target) => !!c && (c.id === target || (c.children || []).some(k => holds(k, target)));
+        const inLevel = target => (level && target ? level.list.find(c => c && c.id && holds(c, target)) : null);
+        const at = order.indexOf(id);
+        const next = at >= 0 ? inLevel(order[at + 1]) : null;
+        const prev = at > 0 ? inLevel(order[at - 1]) : null;
+        if (item && next && next !== item) this.moveColumnInLevel(item, next, false);
+        else if (item && prev && prev !== item) this.moveColumnInLevel(item, prev, true);
+        else this.columnLeftItsLevel(id);
+        // The View's columns as they now stand (moved, or back where they were)
+        this._tableKey = '';
+        this.extractAndRender(this.currentTab, null, { keepScroll: true });
     }
 
     renderTableVirtual(data, columns, keepScrollTop = 0) {
@@ -4500,7 +4524,7 @@ class DynamicReportManager {
     // a statement that should hold across views. We track them as a
     // negative list (`view.hiddenSubColumns`) which renderObjectArrayAsTable
     // honours by absolute path.
-    hideSubColumn(absColId, subtableId) {
+    hideSubColumn(absColId, subtableId, drawn) {
         if (!this.currentTab) return;
         if (this.currentTab !== 'success' && this.currentTab !== 'errors') return;
         const settings = this.userSettings[this.currentTab];
@@ -4517,6 +4541,8 @@ class DynamicReportManager {
             this.pruneEmptyWrappersOn(view);
         });
         debouncedSaveSettings();
+        // (removed in the design system's table: it already shows the records without it)
+        if (drawn) return;
 
         // Re-render only the sub-table HTML so the outer expand-cell
         // stays open and scrolled in place. Raw data is no longer
@@ -4686,6 +4712,7 @@ class DynamicReportManager {
 
     showEmptyState(message) {
         document.getElementById('empty-state').classList.remove('hidden');
+        this.showConsoleTable(false);
         document.getElementById('table-container').classList.add('hidden');
         document.getElementById('empty-state').querySelector('p').textContent = message;
     }
@@ -5032,6 +5059,7 @@ class DynamicReportManager {
         if (dataTable) {
             dataTable.style.display = 'none';
         }
+        this.showConsoleTable(false);
     }
 
     // Helper method to restore table structure when switching to data tabs
@@ -5039,11 +5067,8 @@ class DynamicReportManager {
         // First, clean up all tab content
         this.cleanupAllTabContent();
 
-        // Show the data table for data tabs
-        const dataTable = document.getElementById('data-table');
-        if (dataTable) {
-            dataTable.style.display = 'table';
-        }
+        // The data tabs' rows are the design system's table (renderTable)
+        this.showConsoleTable(true);
 
         // Show toolbar for data tabs
         const toolbar = document.getElementById('report-toolbar');
@@ -6723,34 +6748,23 @@ if (window.RawTabHandler) {
     window.rawTabHandler = dynamicReportManager.rawTabHandler;
 }
 
-// Issue #296: right-click a Completed or Error row to view its
-// transaction (or reprocess an error). Rows carry their response.
-document.getElementById('table-body')?.addEventListener('contextmenu', (event) => {
-    const tab = dynamicReportManager.currentTab;
-    if (tab !== 'success' && tab !== 'errors' && tab !== 'input') return;
-    const tr = event.target.closest('tr.data-row');
-    const source = tr?._dbmnRow?.__response;
-    // Issue #304: an Input row's source is the input record; its
-    // transaction rides along as __tx.
-    const response = tab === 'input' ? source?.__tx : source;
-    if (!response || !window.rawTabHandler) return;
-    window.rawTabHandler.showTransactionMenu(event, response);
-});
+// Issue #296: right-click a row for its transaction: the table says so (consoleTable)
+
 
 // Make report managers globally accessible for onclick handlers and message handlers
 window.dynamicReportManager = dynamicReportManager;
 // #298: the View list shows which Views saved compares read (console-compare.js tells us)
 window.onCompareViewsChanged = () => {
     dynamicReportManager.updateRootPathSelector();
-    // Which Views Reporting reads decides which headings can remove their column
-    const head = document.getElementById('table-head');
+    // Which Views Reporting reads decides whether the headings can remove their column
     // (the name as stored: asking for the View itself tidies the list of Views, which is not this hook's to do)
     const active = dynamicReportManager.currentTab === 'success' && dynamicReportManager.userSettings.success ? dynamicReportManager.userSettings.success.activeView : '';
-    if (head && active && dynamicReportManager.viewUse(active).locked) head.querySelectorAll('th[data-hideable]').forEach(th => {
-        delete th.dataset.hideable;
-        const x = th.querySelector('.col-hide-btn');
-        if (x) x.remove();
-    });
+    const table = document.getElementById('console-table');
+    if (table && active && dynamicReportManager.viewUse(active).locked && table.hasAttribute('removable')) {
+        table.removeAttribute('removable');
+        dynamicReportManager._tableAllows = `${dynamicReportManager.isCurrentViewReadOnly()}:true`;
+        table.redrawHeads();
+    }
 };
 window.reportManager = reportManager;
 
@@ -6960,26 +6974,10 @@ document.addEventListener('DOMContentLoaded', function() {
         if (window.SearchMatcher) window.SearchMatcher.renderHighlight(searchMirrorEl, value);
     }
 
+    // The find box is the table's (dynamicReportManager.consoleTable: searchWith): it colours what
+    // is typed, lists the columns after `@`, and searches the rows a moment after the last key
     if (window.SearchMatcher && window.SearchMatcher.followScroll) window.SearchMatcher.followScroll(searchInputEl, searchMirrorEl);
-    // `@` lists the table's columns (as headed), then the operators: `@status=active`
-    if (window.SearchMatcher && window.SearchMatcher.attachColumnSuggest) {
-        window.SearchMatcher.attachColumnSuggest({
-            input: searchInputEl,
-            headings: () => [...new Set([...document.querySelectorAll('th[data-column-id] .column-name')].map(n => n.textContent.trim()).filter(Boolean))],
-            // `@column.` lists the keys inside that column's nested data, from the rows on show
-            keys: (heading, path) => window.SearchMatcher.nestedKeysFor(dynamicReportManager._shownRows, dynamicReportManager._shownColumns, heading, path, (row, id) => row[id])
-        });
-    }
-
-    searchInputEl.addEventListener('input', function() {
-        const value = this.value;
-        renderSearchHighlight(value);
-        if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
-        // A pause after the last key before searching: a word typed is one search, not one a letter
-        searchDebounceTimer = setTimeout(function() {
-            dynamicReportManager.handleSearch(value);
-        }, 450);
-    });
+    dynamicReportManager.consoleTable();
     searchInputEl.addEventListener('scroll', function() {
         if (searchMirrorEl) searchMirrorEl.scrollLeft = this.scrollLeft;
     });

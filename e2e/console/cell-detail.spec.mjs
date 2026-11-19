@@ -46,11 +46,12 @@ test('a JSON value in a cell opens in full, formatted, in the cell value window'
         await page.waitForTimeout(20);
     }
 
-    const cell = page.locator('#data-table tbody td.cell-expandable', { hasText: 'Chew Toy' });
+    const cell = page.locator('#console-table .dbmn-table-body td.cell-expandable', { hasText: 'Chew Toy' });
     await expect(cell).toHaveCount(1);
     await cell.click();
     const modal = page.locator('.dbmn-modal');
-    await expect(modal.locator('.dbmn-modal-title')).toHaveText('Cell value');
+    // (named by its column, as in every table)
+    await expect(modal.locator('.dbmn-modal-title')).toHaveText('payload');
     await expect(modal.locator('.cell-detail-pre')).toContainText('"label": "Chew Toy"');
     await expect(modal.locator('.cell-detail-select')).toHaveValue('deep');
     expect(pageErrors, 'uncaught errors in the page').toEqual([]);
