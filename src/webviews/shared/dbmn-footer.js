@@ -34,7 +34,11 @@
  * The current step's highlight slides from step to step, and folding is shown, not cut: the user
  * sees where the steps went. Neither moves for someone who asked for less motion.
  *
- * ── <dbmn-progress phase="Sending" count="7 of 10" value="70" tone="ok|warn|error" busy> ──
+ * ── <dbmn-progress phase="Executing" count="91 of 501" note="<1m left" value="18" tone="ok|warn|error" busy> ──
+ *   One line: what is happening, how far, and the one time that matters now (`note`: time left
+ *   while it runs, time taken once done).
+ *   el.stats = [{ label: 'Started', value: '09:15:02' }, { label: 'Taken', value: '13s' }, …];
+ *                                   // the rest, a click (or a hover) away
  * ── <dbmn-status tone="ok|warn|error">Saved</dbmn-status> ──
  */
 (function () {
@@ -93,15 +97,37 @@
     }
 
     class DbmnProgress extends HTMLElement {
-        static get observedAttributes() { return ['phase', 'count', 'value']; }
+        static get observedAttributes() { return ['phase', 'count', 'value', 'note']; }
+
+        constructor() {
+            super();
+            this._stats = [];
+            this._onOutside = e => { if (!this.contains(e.target)) this._close(); };
+            this._onKey = e => { if (e.key === 'Escape' && this._list) { this._close(); this.focus(); } };
+        }
 
         connectedCallback() {
             if (!this._fill) {
+                // (the fill is cut to the box's corners by its own track, so the stats can open outside the box)
+                const track = make('span', 'dbmn-progress-track');
+                track.setAttribute('aria-hidden', 'true');
                 this._fill = make('span', 'dbmn-progress-fill');
-                this._fill.setAttribute('aria-hidden', 'true');
+                track.append(this._fill);
                 this._phase = make('span', 'dbmn-progress-phase');
                 this._count = make('span', 'dbmn-progress-count');
-                this.replaceChildren(this._fill, this._phase, this._count);
+                this._more = make('span', 'dbmn-progress-more');
+                this._more.setAttribute('aria-hidden', 'true');
+                this._more.innerHTML = icon('chevron-up');
+                this.replaceChildren(track, this._phase, this._count, this._more);
+                this.addEventListener('click', event => {
+                    if (!this._stats.length || (this._list && this._list.contains(event.target))) return;
+                    if (this._list) this._close(); else this._open();
+                });
+                this.addEventListener('keydown', event => {
+                    if (!this._stats.length || (event.key !== 'Enter' && event.key !== ' ')) return;
+                    event.preventDefault();
+                    if (this._list) this._close(); else this._open();
+                });
             }
             this.setAttribute('role', 'progressbar');
             this.setAttribute('aria-valuemin', '0');
@@ -109,18 +135,81 @@
             this._draw();
         }
 
+        disconnectedCallback() { this._close(); }
+
         attributeChangedCallback() { this._draw(); }
+
+        /**
+         * The figures behind the one line (started, time taken, time left, how fast, how many
+         * failed…): [{ label, value }]. With some set, a click on the box lists them.
+         */
+        set stats(list) {
+            this._stats = Array.isArray(list) ? list.filter(item => item && item.label) : [];
+            this._draw();
+        }
+        get stats() { return this._stats; }
 
         _draw() {
             if (!this._fill) return;
             const phase = this.getAttribute('phase') || '';
             const count = this.getAttribute('count') || '';
+            // The one time that matters now, beside the count: how long is left while it runs, how long it took once done
+            const note = this.getAttribute('note') || '';
             const value = Math.max(0, Math.min(100, Number(this.getAttribute('value')) || 0));
-            this._phase.textContent = phase;
-            this._count.textContent = count;
+            const right = [count, note].filter(Boolean).join(' · ');
+            if (this._phase.textContent !== phase) this._phase.textContent = phase;
+            if (this._count.textContent !== right) this._count.textContent = right;
             this.style.setProperty('--progress', `${value}%`);
             this.setAttribute('aria-valuenow', String(Math.round(value)));
-            this.setAttribute('aria-valuetext', [phase, count].filter(Boolean).join(', '));
+            this.setAttribute('aria-valuetext', [phase, count, note].filter(Boolean).join(', '));
+            const more = this._stats.length > 0;
+            this.classList.toggle('has-stats', more);
+            this._more.hidden = !more;
+            if (more) {
+                this.tabIndex = 0;
+                this.setAttribute('aria-haspopup', 'true');
+                this.setAttribute('aria-expanded', this._list ? 'true' : 'false');
+                // Everything on hover too, for a glance without a click
+                this.title = this._stats.map(item => `${item.label}: ${item.value}`).join('\n');
+            } else {
+                this.removeAttribute('tabindex');
+                this.removeAttribute('aria-haspopup');
+                this.removeAttribute('aria-expanded');
+                this.removeAttribute('title');
+                this._close();
+            }
+            if (this._list) this._fillList();
+        }
+
+        _fillList() {
+            this._list.replaceChildren(...this._stats.map(item => {
+                const row = make('div', 'dbmn-progress-stat');
+                row.append(make('span', 'dbmn-progress-stat-label', item.label), make('span', 'dbmn-progress-stat-value', String(item.value)));
+                return row;
+            }));
+        }
+
+        _open() {
+            this._list = make('div', 'dbmn-progress-stats');
+            this._list.setAttribute('role', 'group');
+            this._list.setAttribute('aria-label', 'Progress in detail');
+            this._fillList();
+            this.append(this._list);
+            this.removeAttribute('title');
+            this.setAttribute('aria-expanded', 'true');
+            this._more.innerHTML = icon('chevron-down');
+            document.addEventListener('mousedown', this._onOutside, true);
+            document.addEventListener('keydown', this._onKey, true);
+        }
+
+        _close() {
+            if (!this._list) return;
+            this._list.remove();
+            this._list = null;
+            document.removeEventListener('mousedown', this._onOutside, true);
+            document.removeEventListener('keydown', this._onKey, true);
+            if (this._more) this._more.innerHTML = icon('chevron-up');
+            if (this.isConnected) this._draw();
         }
     }
 

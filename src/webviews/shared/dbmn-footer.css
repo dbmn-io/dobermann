@@ -84,7 +84,13 @@ dbmn-progress {
     min-width: 240px;
     padding: 0 12px;
     border-color: var(--progress-c);
+}
+/* (the fill is cut to the box's corners by its track, not by the box: the stats open outside it) */
+dbmn-progress .dbmn-progress-track {
+    position: absolute;
+    inset: 0;
     overflow: hidden;
+    border-radius: inherit;
 }
 dbmn-progress[tone="ok"] { --progress-c: var(--foot-ok); }
 dbmn-progress[tone="warn"] { --progress-c: var(--foot-warn); }
@@ -101,6 +107,33 @@ dbmn-progress .dbmn-progress-count {
     position: relative;
 }
 dbmn-progress .dbmn-progress-phase { font-weight: 600; }
+dbmn-progress .dbmn-progress-count { margin-left: auto; font-variant-numeric: tabular-nums; }
+/* With figures behind it, the box is a button: a click lists them */
+dbmn-progress.has-stats { cursor: pointer; }
+dbmn-progress.has-stats:hover { background: color-mix(in srgb, var(--vscode-foreground) 6%, transparent); }
+dbmn-progress:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 1px; }
+dbmn-progress .dbmn-progress-more { position: relative; display: inline-flex; margin: 0 -4px 0 -8px; color: var(--foot-dim); }
+dbmn-progress .dbmn-progress-more svg { width: 14px; height: 14px; }
+.dbmn-progress-stats {
+    position: absolute;
+    right: 0;
+    bottom: calc(100% + 6px);
+    z-index: 1002;
+    display: grid;
+    grid-template-columns: max-content max-content;
+    gap: 4px 18px;
+    min-width: 100%;
+    box-sizing: border-box;
+    padding: 10px 12px;
+    background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+    border: 1px solid var(--vscode-editorWidget-border, var(--foot-line));
+    border-radius: 6px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+    cursor: default;
+}
+.dbmn-progress-stat { display: contents; }
+.dbmn-progress-stat-label { color: var(--foot-dim); }
+.dbmn-progress-stat-value { justify-self: end; font-variant-numeric: tabular-nums; }
 /* No figure to show yet: the fill sweeps */
 dbmn-progress[busy] .dbmn-progress-fill {
     width: 35%;

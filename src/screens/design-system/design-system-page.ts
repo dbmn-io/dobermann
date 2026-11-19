@@ -193,19 +193,23 @@ steps.folded = true;                      // the last step: steps fold into the 
         </div>
 
         <h3>Progress</h3>
-        <p>The system's tasks: the box is the bar.</p>
+        <p>The system's tasks: the box is the bar. One line says what is happening, how far it has got and the one time that matters now: how long is left while it runs, how long it took once it is done. The rest (when it started, how fast, how many failed) is a click on the box away, or a hover.</p>
         <div class="ds-demo">
             <dbmn-footer inline>
                 <dbmn-actions>
                     <button type="button" class="btn btn-secondary" data-click="ds:run">Run again</button>
                     <button type="button" class="btn btn-primary">Pause</button>
                 </dbmn-actions>
-                <dbmn-progress id="dsProgress" phase="Sending" count="7 of 10" value="70"></dbmn-progress>
+                <dbmn-progress id="dsProgress" phase="Executing" count="91 of 501" note="&lt;1m left" value="18"></dbmn-progress>
             </dbmn-footer>
         </div>
-        <pre class="ds-code"><code>&lt;dbmn-progress phase="Sending" count="7 of 10" value="70"&gt;&lt;/dbmn-progress&gt;
+        <pre class="ds-code"><code>&lt;dbmn-progress phase="Loading input rows" count="82,000 of 100,010" note="1s" value="82"&gt;&lt;/dbmn-progress&gt;
+&lt;dbmn-progress phase="Executing" count="91 of 501" note="&amp;lt;1m left" value="18"&gt;&lt;/dbmn-progress&gt;
+&lt;dbmn-progress phase="Done" count="501" note="took 2m 14s" value="100" tone="ok"&gt;&lt;/dbmn-progress&gt;   tone: ok, warn, error
 &lt;dbmn-progress phase="Fetching" busy&gt;&lt;/dbmn-progress&gt;          no figure yet
-&lt;dbmn-progress phase="Done" count="10 of 10" value="100" tone="ok"&gt;&lt;/dbmn-progress&gt;   tone: ok, warn, error</code></pre>
+
+progress.stats = [{ label: 'Started', value: '09:15:02' }, { label: 'Taken', value: '13s' }, { label: 'Failed', value: '3' }];
+                                                             a click on the box lists them</code></pre>
 
         <h3>Status</h3>
         <p>An editor has no steps and no run: a few words.</p>

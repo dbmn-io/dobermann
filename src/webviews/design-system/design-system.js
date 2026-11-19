@@ -65,17 +65,33 @@
     function run() {
         const bar = $('dsProgress');
         clearInterval(runTimer);
-        let done = 0;
+        const total = 501;
+        let tick = 0;
         bar.removeAttribute('tone');
-        const tick = () => {
-            bar.setAttribute('phase', done < 10 ? 'Sending' : 'Done');
-            bar.setAttribute('count', `${done} of 10`);
-            bar.setAttribute('value', String(done * 10));
-            if (done >= 10) { bar.setAttribute('tone', 'ok'); clearInterval(runTimer); }
-            done += 1;
+        const draw = () => {
+            // Loading first (no estimate yet: the time taken so far), then running (the time left), then done (the time it took)
+            const loading = tick < 4;
+            const done = loading ? 0 : Math.min(total, (tick - 4) * 46);
+            const finished = done >= total;
+            const taken = `${tick}s`;
+            const left = finished ? '' : `${Math.max(1, Math.ceil((total - done) / 46))}s left`;
+            bar.setAttribute('phase', loading ? 'Loading input rows' : finished ? 'Done' : 'Executing');
+            bar.setAttribute('count', loading ? `${(tick + 1) * 125} of ${total}` : finished ? String(total) : `${done} of ${total}`);
+            bar.setAttribute('note', loading ? taken : finished ? `took ${taken}` : left);
+            bar.setAttribute('value', String(loading ? (tick + 1) * 25 : Math.round(done / total * 100)));
+            bar.stats = [
+                { label: 'Started', value: '09:15:02' },
+                { label: 'Taken', value: taken },
+                { label: 'Left', value: loading ? 'Not known yet' : finished ? 'None' : left.replace(' left', '') },
+                { label: 'Speed', value: loading || !done ? 'Not known yet' : '46 a second' },
+                { label: 'Succeeded', value: String(Math.max(0, done - (done > 200 ? 3 : 0))) },
+                { label: 'Failed', value: done > 200 ? '3' : '0' }
+            ];
+            if (finished) { bar.setAttribute('tone', 'ok'); clearInterval(runTimer); }
+            tick += 1;
         };
-        tick();
-        runTimer = setInterval(tick, 400);
+        draw();
+        runTimer = setInterval(draw, 450);
     }
 
     /* ── Colours: the theme's, with what each is for ── */
@@ -309,6 +325,7 @@
     $('dsSteps').addEventListener('dbmn-step', event => go(event.detail.step));
     drawWizard();
     drawWorking();
+    $('dsProgress').stats = [{ label: 'Started', value: '09:15:02' }, { label: 'Taken', value: '13s' }, { label: 'Left', value: 'Under a minute' }, { label: 'Speed', value: '7 a second' }, { label: 'Succeeded', value: '88' }, { label: 'Failed', value: '3' }];
     drawColours();
     drawInventory();
     drawMoving();

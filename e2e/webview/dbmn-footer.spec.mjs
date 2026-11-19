@@ -201,6 +201,31 @@ test('progress: the box is the bar, and says so to a screen reader', async ({ pa
     await bar.evaluate(e => { e.setAttribute('value', '100'); e.setAttribute('count', '10 of 10'); });
     await expect(bar).toHaveAttribute('aria-valuenow', '100');
     await expect(page.locator('.dbmn-progress-count')).toHaveText('10 of 10');
+
+    // The one time that matters sits beside the count, on the same line
+    await bar.evaluate(e => { e.setAttribute('count', '91 of 501'); e.setAttribute('note', '<1m left'); });
+    await expect(page.locator('.dbmn-progress-count')).toHaveText('91 of 501 · <1m left');
+    await expect(bar).toHaveAttribute('aria-valuetext', 'Sending, 91 of 501, <1m left');
+    expect(await bar.evaluate(e => e.getBoundingClientRect().height)).toBe(32);
+
+    // With figures behind it, a click lists them above the box; Escape or a click elsewhere closes
+    await expect(bar).not.toHaveClass(/has-stats/);
+    await bar.evaluate(e => { e.stats = [{ label: 'Started', value: '09:15:02' }, { label: 'Taken', value: '13s' }, { label: 'Failed', value: 3 }]; });
+    await expect(bar).toHaveClass(/has-stats/);
+    await bar.click();
+    await expect(page.locator('.dbmn-progress-stat')).toHaveCount(3);
+    await expect(page.locator('.dbmn-progress-stat').nth(1)).toHaveText('Taken13s');
+    const list = await page.locator('.dbmn-progress-stats').boundingBox();
+    expect(list.y + list.height).toBeLessThanOrEqual((await bar.boundingBox()).y);
+    // They follow the run while open
+    await bar.evaluate(e => { e.stats = [{ label: 'Taken', value: '14s' }]; });
+    await expect(page.locator('.dbmn-progress-stat')).toHaveText(['Taken14s']);
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.dbmn-progress-stats')).toHaveCount(0);
+    await bar.press('Enter');
+    await expect(page.locator('.dbmn-progress-stats')).toHaveCount(1);
+    await page.mouse.click(5, 5);
+    await expect(page.locator('.dbmn-progress-stats')).toHaveCount(0);
 });
 
 // The page itself: built by the screen's own builder (compiled by `npm run build`), its files served from src/
