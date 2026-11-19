@@ -31,7 +31,6 @@
 .query-age-month, .query-age-month.query-age-icon { color: var(--vscode-errorForeground); }
 .query-age .query-age-icon { margin-right: 0; }
 /* How many rows Results shows: said plainly */
-#queryShown { color: var(--vscode-foreground); font-weight: 600; }
 /* Compare's slots, as many as there are views, each a set width (--query-col; past five views,
    narrower). Join's lines put a cell of that width under each */
 /* The gutter is as wide as the widest thing put in it (Join's LEFT JOIN | JOIN, and "Rows after this join"), no wider: the views start at the left and run on to the right */

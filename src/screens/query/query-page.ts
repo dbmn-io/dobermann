@@ -45,7 +45,7 @@ export function buildQueryPage(asset: AssetUrl, config: { queryId: string; name:
             <button type="button" class="btn btn-secondary" id="queryAddFileBtn" data-click="query:addFile" title="A CSV, or a spreadsheet: each sheet you pick becomes a view, its first row the column names">+ Add a file</button>
             <input type="file" id="queryAddFile" class="hidden" accept=".csv,.tsv,.txt,.xlsx,.xls" aria-label="A CSV or Excel file">
             </span>
-            <!-- Results' tools join the views, as Compare's join its slots: find, the count, Distinct, Totals, the SQL, Export -->
+            <!-- Results' tools join the views, as Compare's join its slots: find, Distinct, Totals, the SQL, Export. The count of rows is the footer's (its summary): one place -->
             <div id="queryResultsControls" class="compare-results-controls hidden">
                 <div class="search-container">
                     <div class="search-input-wrapper">
@@ -54,7 +54,6 @@ export function buildQueryPage(asset: AssetUrl, config: { queryId: string; name:
                         <input type="text" id="querySearch" class="search-input" placeholder="Search rows, or @column=value" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off" data-help="console#search">
                     </div>
                 </div>
-                <span class="search-results compare-count" id="queryShown"></span>
                 <!-- Offered only when rows repeat: it says how many -->
                 <label class="query-row font-size-12 hidden" id="queryDistinctLabel" title="SELECT DISTINCT: rows alike in every column shown fold into one"><input type="checkbox" id="queryDistinct"> <span id="queryDistinctText">Distinct</span></label>
                 <label class="query-row font-size-12" title="A total under each column of numbers, for the rows shown"><input type="checkbox" id="queryTotals"> Totals</label>

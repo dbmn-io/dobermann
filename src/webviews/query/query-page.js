@@ -1663,9 +1663,8 @@
             });
             $('queryFoot').replaceChildren(tr);
         }
-        // The rows on screen, in Results' tools and in the footer's summary: a search changes both
+        // The rows on screen, in the footer's summary (the one place the count shows): a search changes it
         ui.shownText = m.shown === m.total ? `${count(m.total)} rows` : `${count(m.shown)} of ${count(m.total)} rows`;
-        $('queryShown').textContent = ui.shownText;
         ui.arrived = true;
         renderBar();
         render(true);
