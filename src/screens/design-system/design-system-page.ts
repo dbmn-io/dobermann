@@ -193,7 +193,7 @@ steps.folded = true;                      // the last step: steps fold into the 
         </div>
 
         <h3>Progress</h3>
-        <p>The system's tasks: the box is the bar. One line says what is happening, how far it has got and the one time that matters now: how long is left while it runs, how long it took once it is done. The rest (how many threads, rows per request, when it started, how fast, how many failed) is a click on the box away, or a hover. What the user may change while it runs is there too: threads as a button for each choice (one the environment does not allow is switched off), and stop on first error as a switch.</p>
+        <p>The system's tasks: the box is the bar. One line says what is happening, how far it has got and the one time that matters now: how long is left while it runs, how long it took once it is done. The rest (how many threads, rows per request, when it started, how fast, how many failed) is a click on the box away, or a hover. What the user may change while it runs is there too: threads as a button for each choice (one the environment does not allow is switched off), and stop on next error as a switch (while a batch runs it is the next error that stops it, not the first).</p>
         <div class="ds-demo">
             <dbmn-footer inline>
                 <dbmn-actions>
@@ -209,7 +209,7 @@ steps.folded = true;                      // the last step: steps fold into the 
 &lt;dbmn-progress phase="Fetching" busy&gt;&lt;/dbmn-progress&gt;          no figure yet
 
 progress.stats = [{ id: 'threads', label: 'Threads', value: 8, options: [1, 2, 4, 8, 16], max: 8 },   a figure the user may change: 16 is over this environment's limit, so it is switched off
-                  { id: 'stopOnError', label: 'Stop on first error', value: false },                    true or false: a switch
+                  { id: 'stopOnError', label: 'Stop on next error', value: false },                    true or false: a switch
                   { label: 'Rows per request', value: '100' }, { label: 'Taken', value: '13s' }, { label: 'Failed', value: '3' }];
                                                              a click on the box lists them
 progress.addEventListener('dbmn-progress-change', e =&gt; post({ type: 'console.setThreads', value: e.detail.value }));

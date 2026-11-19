@@ -42,7 +42,7 @@
  *   A figure the user may change takes its choices or its limits:
  *     { id: 'threads', label: 'Threads', value: 8, options: [1, 2, 4, 8, 16], max: 8 }   a button each; over `max`, switched off
  *     { id: 'retries', label: 'Retries', value: 2, min: 0, max: 5 }                      less and more buttons
- *     { id: 'stopOnError', label: 'Stop on first error', value: false }                  true or false: a switch
+ *     { id: 'stopOnError', label: 'Stop on next error', value: false }                   true or false: a switch
  *   The box asks with 'dbmn-progress-change' ({ id, value }); the screen decides (its controller
  *   keeps the limits) and sets the figure it settles on.
  * ── <dbmn-status tone="ok|warn|error">Saved</dbmn-status> ──
@@ -196,7 +196,7 @@
                 const value = make('span', 'dbmn-progress-stat-value');
                 const steps = typeof item.min === 'number' || typeof item.max === 'number';
                 if (typeof item.value === 'boolean') {
-                    // A yes or no the user may change (stop on the first error): a switch
+                    // A yes or no the user may change (stop on the next error): a switch
                     const btn = make('button', 'dbmn-progress-switch');
                     btn.type = 'button';
                     btn.dataset.step = `${item.id || item.label}:switch`;
