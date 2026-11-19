@@ -31,6 +31,7 @@
  *                           right edge sizes its columns evenly; each column under it sorts and resizes on its own
  *   head(th)                adds what the screen wants to the column's heading (a count, a filter)
  *   sortable: false         no sort for it (a status the screen filters instead)
+ *   removable: false        it stays (no x, no Remove): the screen's own column (the Console's Reason)
  *   cell(td, value, row)    after the cell is drawn: the screen marks it (a value that differs, its tint);
  *                           a long value it marks .cell-expandable with data-full (and data-title)
  *                           opens in full on a click, as the table's own do
@@ -80,7 +81,9 @@
  *       screen to show under its own box; the table shows it under its own)
  *   orders.addEventListener('dbmn-table-layout', e => …e.detail.change, e.detail.layout…);
  *       change: 'sorted' | 'moved' | 'removed' | 'resized', with { id, to, width } as fits;
- *       layout: { order: [ids], hidden: [ids], widths: { id: px } (the ones the user set), sort }.
+ *       layout: { order: [ids], hidden: [ids], widths: { id: px } (the ones the user set), sort,
+ *               recordHidden: ['lines.qty'] (columns removed from a column's records) }.
+ *       A column removed from a column's records is told with { records: column id, key }.
  *       A sort's icon is a clock until the new rows land. Both events are told for `rows` too.
  *   orders.layout = saved;            // after `columns`: the order, widths, hidden columns and sort kept
  *   orders.searchWith(input, mirror); // the screen's own search box, with the @column suggestions
@@ -255,7 +258,10 @@
             const shown = this._columns.map(c => c.id);
             const widths = {};
             Object.keys(this._set).forEach(id => { if (this._widths[id]) widths[id] = this._widths[id]; });
-            return { order: shown, hidden: this._all.map(c => c.id).filter(id => !shown.includes(id)), widths, sort: this._sort ? { id: this._sort.id, dir: this._sort.dir } : null };
+            // (the columns removed from a column's records, as `<column>.<key>`)
+            const recordHidden = [];
+            Object.keys(this._subHidden).forEach(id => Object.keys(this._subHidden[id]).forEach(key => recordHidden.push(`${id}.${key}`)));
+            return { order: shown, hidden: this._all.map(c => c.id).filter(id => !shown.includes(id)), widths, sort: this._sort ? { id: this._sort.id, dir: this._sort.dir } : null, recordHidden };
         }
         set layout(saved) {
             const l = saved || {};
@@ -270,6 +276,15 @@
                 if (w > 0 && this._all.some(c => c.id === id)) { this._widths[id] = Math.round(w); this._set[id] = true; }
             });
             this._sort = l.sort && l.sort.id && this._all.some(c => c.id === l.sort.id) ? { id: l.sort.id, dir: l.sort.dir === 'desc' ? 'desc' : 'asc' } : null;
+            // Columns removed from a column's records: `<column>.<key>`, by the longest column id it starts with
+            if (Array.isArray(l.recordHidden)) {
+                this._subHidden = {};
+                const ids = this._all.map(c => c.id).sort((a, b) => b.length - a.length);
+                l.recordHidden.forEach(path => {
+                    const id = ids.find(c => String(path).startsWith(`${c}.`));
+                    if (id) (this._subHidden[id] = this._subHidden[id] || {})[String(path).slice(id.length + 1)] = true;
+                });
+            }
             this._refresh();
         }
 
@@ -735,7 +750,7 @@
                 th.classList.toggle('sort-desc', dir === 'desc');
                 if (head) {
                     if (column.sortable !== false) actions.append(head.sortButton({ label: name, numbers: this._numbers(column), dir }));
-                    if (own && movable && removable && !column.pinned) actions.append(head.hideButton({ label: name }));
+                    if (own && movable && removable && !column.pinned && column.removable !== false) actions.append(head.hideButton({ label: name }));
                 }
                 const moves = own && movable && !column.pinned;
                 const label = make('span', 'column-name' + (moves ? ' is-movable' : ''), name);
@@ -1058,6 +1073,7 @@
         _remove(i) {
             if (this._columns.length < 2 || this.hasAttribute('locked')) return;
             const gone = this._columns[i];
+            if (!gone || gone.removable === false) return;
             this._columns = this._columns.filter((_, at) => at !== i);
             const sorted = this._sort && this._sort.id === gone.id;
             if (sorted) { this._sort = null; if (!this._source) this._apply(); }
@@ -1103,7 +1119,7 @@
                 sort: column.sortable === false ? null : dir => this._sortBy(column, dir),
                 move: !own || !movable ? null : where => (grouped ? this._movedUnit(unitAt, where === 'start' ? firstFree : units.length - 1) : this._moveTo(i, where === 'start' ? 0 : last)),
                 fit: () => this._fit(i),
-                remove: !own || last === 0 || !this.hasAttribute('removable') || locked ? null : () => this._remove(i)
+                remove: !own || last === 0 || !this.hasAttribute('removable') || locked || column.removable === false ? null : () => this._remove(i)
             });
         }
 
@@ -1325,7 +1341,7 @@
                     // Gone from every row's records of this column, as a column of the table would be
                     (this._subHidden[column.id] = this._subHidden[column.id] || {})[sub] = true;
                     this._render(true);
-                    this._tell('removed', { id: `${column.id}.${sub}` });
+                    this._tell('removed', { id: `${column.id}.${sub}`, records: column.id, key: sub });
                 }
                 return true;
             }

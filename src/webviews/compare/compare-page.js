@@ -1295,12 +1295,14 @@
     }
     function tableSort() { return ui.sort ? { id: cellId(ui.sort.column, ui.sort.place), dir: ui.sort.dir } : null; }
     const nothing = () => document.createDocumentFragment();
+    // A value that is a list of records is compared and tinted like any other: never a table's "3 records"
+    const asValue = { count: () => 0 };
 
     function tableColumns() {
         const side = ui.resultsView === 'side';
         const places = shownPlaces();
         const columns = ui.result.keyColumns.map((id, k) => ({
-            id: cellId(id), name: columnName(id), pinned: true, className: 'compare-key-col',
+            id: cellId(id), name: columnName(id), pinned: true, className: 'compare-key-col', nested: asValue,
             render: (_v, row) => valueNode(row._key[k])
         }));
         if (showRelations()) {
@@ -1315,12 +1317,12 @@
         orderedColumns().forEach(id => {
             const name = columnName(id);
             if (!side) {
-                columns.push({ id: cellId(id), name, className: 'compare-first', render: nothing, head: th => fieldHead(th, id), cell: (td, _v, row) => compactCellFor(td, row, id) });
+                columns.push({ id: cellId(id), name, className: 'compare-first', nested: asValue, render: nothing, head: th => fieldHead(th, id), cell: (td, _v, row) => compactCellFor(td, row, id) });
                 return;
             }
             const group = { id, name, className: `compare-field-head${isShownOnly(id) ? ' compare-shown-head' : ''}`, head: th => fieldHead(th, id) };
             places.forEach((p, i) => columns.push({
-                id: cellId(id, p), name: letter(p), group, className: i ? '' : 'compare-first', render: nothing,
+                id: cellId(id, p), name: letter(p), group, className: i ? '' : 'compare-first', nested: asValue, render: nothing,
                 head: th => subHead(th, p), cell: (td, _v, row) => sideCell(td, row, id, p)
             }));
         });

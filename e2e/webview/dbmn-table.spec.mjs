@@ -900,3 +900,38 @@ test('a short value that is structured (JSON text) opens in full too; short plai
     await expect(notes(0).locator('.cell-expand-icon')).toHaveCount(1);
     await expect(notes(1)).not.toHaveClass(/cell-expandable/);
 });
+
+test('a column that stays (removable: false) has no x and no Remove; the others still go', async ({ page }) => {
+    await page.setContent(tablePage());
+    await page.evaluate(() => {
+        const t = document.getElementById('t');
+        t.columns = [{ id: 'order_no', name: 'order_no' }, { id: 'reason', name: 'Reason', removable: false }, { id: 'qty', name: 'qty', numbers: true }];
+    });
+    await expect(page.locator('#t th[data-col="reason"] .col-hide-btn')).toHaveCount(0);
+    await expect(page.locator('#t th[data-col="qty"] .col-hide-btn')).toHaveCount(1);
+    await page.locator('#t th[data-col="reason"] .column-name').click({ button: 'right' });
+    await expect(page.locator('.dbmn-context-menu')).toBeVisible();
+    await expect(page.locator('.dbmn-context-menu')).not.toContainText('Remove');
+});
+
+test('a column removed from the records is told as such, kept in the layout, and taken back from a saved one', async ({ page }) => {
+    await page.setContent(nestedPage());
+    await page.evaluate(() => { window.told = []; document.getElementById('t').addEventListener('dbmn-table-layout', e => window.told.push(e.detail)); });
+    const lines = parent(page, 'SO-10001').locator('td[data-col="lines"]');
+    await lines.locator('.dbmn-nest-toggle').click();
+    await expect(lines.locator('.dbmn-nest-table thead .column-name')).toHaveText(['line', 'item', 'qty']);
+    await lines.locator('.dbmn-nest-table th[data-sub="item"] .col-hide-btn').click({ force: true });
+    await expect(lines.locator('.dbmn-nest-table thead .column-name')).toHaveText(['line', 'qty']);
+    const told = await page.evaluate(() => window.told.at(-1));
+    expect([told.change, told.id, told.records, told.key, told.layout.recordHidden]).toEqual(['removed', 'lines.item', 'lines', 'item', ['lines.item']]);
+    // A screen's saved layout brings it back as it was left: drawn again, the column stays removed
+    await page.evaluate(() => {
+        const t = document.getElementById('t');
+        const columns = t.columns;
+        t.columns = columns;
+        t.layout = { recordHidden: ['lines.qty'] };
+    });
+    const again = parent(page, 'SO-10001').locator('td[data-col="lines"]');
+    if (!(await again.locator('.dbmn-nest-table').count())) await again.locator('.dbmn-nest-toggle').click();
+    await expect(again.locator('.dbmn-nest-table thead .column-name')).toHaveText(['line', 'item']);
+});
