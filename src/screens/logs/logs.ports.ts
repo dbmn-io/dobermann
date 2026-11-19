@@ -11,7 +11,7 @@ import type { LogEvent } from '../../services/logging/execution-logging.interfac
 export interface LogsPorts {
     /** Every line kept, newest first, a page at a time (LogReader). */
     reader: {
-        page(query: { search?: string; before?: LogCursor; want?: number; budget?: number; stop?: () => boolean }): Promise<LogPage>;
+        page(query: { search?: string; before?: LogCursor; want?: number; budget?: number; stop?: () => boolean; progress?: (at: { day: string; oldest: string; newest: string }) => void }): Promise<LogPage>;
         /** What it remembers of finished batches, dropped (Refresh reads them again). */
         forget?(): void;
     };

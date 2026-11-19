@@ -5,8 +5,8 @@
  * to a URL.
  *
  * The design system's log list fills the page, over its footer: Refresh, Copy and Save on the
- * left; how many lines show, and whether there are older ones, on the right. Not live: Refresh
- * reads the lines again.
+ * left; on the right, how many lines show, or while a search looks back through the days kept,
+ * how far it has got. Not live: Refresh reads the lines again.
  */
 import type { AssetUrl } from '../pages';
 import { sharedStyleLinks } from '../pages';
@@ -40,7 +40,9 @@ export function buildLogsPage(asset: AssetUrl): string {
             <button type="button" class="btn btn-secondary" data-click="logs:copy" title="Copy the lines shown">Copy</button>
             <button type="button" class="btn btn-secondary" data-click="logs:save" title="Save the lines shown to a file">Save</button>
         </dbmn-actions>
+        <!-- How many lines; while a search looks back through the days kept, how far it has got instead -->
         <dbmn-status id="logsStatus"></dbmn-status>
+        <dbmn-progress id="logsSearching" phase="Searching" busy hidden></dbmn-progress>
     </dbmn-footer>
 
     ${script('shared/search-words.js')}

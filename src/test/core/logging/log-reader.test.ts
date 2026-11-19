@@ -114,7 +114,10 @@ describe('LogReader: every line, from where it is kept', () => {
         const reader = new LogReader(new Days(), h);
         const lines = (await reader.page({ want: 100 })).lines.map(r => r.message);
         expect(lines).to.deep.equal(['Row 2: POST /items → 201 Created', 'Row 1: POST /items → 201 Created', 'Batch started: 3 requests']);
-        // A finished batch's lines are made once; a running one's each time it is read
+        // A batch still going is not read again for a few seconds; Refresh (forget) reads it again
+        await reader.page({ want: 100 });
+        expect(h.reads).to.equal(1);
+        reader.forget();
         await reader.page({ want: 100 });
         expect(h.reads).to.equal(2);
     });
@@ -163,5 +166,25 @@ describe('LogReader: never holds up typing', () => {
         clearInterval(timer);
         expect(page).to.include({ done: false, stopped: true });
         expect(longest, 'the longest the page waited (ms)').to.be.lessThan(80);
+    });
+});
+
+describe('LogReader: a batch never finished (paused, left running)', () => {
+    it('is read once for a search, not once for every day since it started and every page', async () => {
+        const left = batch('p1', 'Left paused', Date.now() - 14 * 86_400_000, 1_200, 'paused');
+        let slices = 0;
+        const reader = new LogReader(new Days(), {
+            runs: async () => [left.run],
+            members: async () => left.members,
+            memberPage: async (_id, offset, limit) => { slices++; return left.members.slice(offset, offset + limit); }
+        });
+        // A search nothing matches looks at every day, a page at a time
+        let before: LogCursor | undefined;
+        for (;;) {
+            const page = await reader.page({ search: 'never there', before, budget: 300 });
+            if (page.done) break;
+            before = page.next;
+        }
+        expect(slices, 'slices of 500 read').to.equal(3);
     });
 });

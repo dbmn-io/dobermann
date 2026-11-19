@@ -17,6 +17,7 @@
  *   log.following = false;           // stop keeping the newest line in view (scrolling down does too)
  *   log.search = '@level=error';     // what the search box holds
  *   log.text();                      // the lines shown, as text: what Copy copies
+ *   log.busy = true;                 // a search is looking: the search box's glass turns into the spinner
  *   log.addEventListener('dbmn-log-shown', e => …e.detail.shown, total, following, unseen…);
  *   log.addEventListener('dbmn-log-end', …);     // scrolled down to the oldest line: time for older ones
  *   log.addEventListener('dbmn-log-open', e => …e.detail.open…);   // a line's `open` clicked
@@ -211,6 +212,16 @@
             this._following = !!on;
             if (this._following) { this._unseen = 0; this._toTop(); }
             this._tell();
+        }
+
+        /** A search is looking (the screen's, through every line kept): the glass in the search box spins. */
+        get busy() { return !!this._busy; }
+        set busy(on) {
+            this._busy = !!on;
+            const glass = this.querySelector('.dbmn-table-glass');
+            if (!glass || !window.Icons) return;
+            glass.classList.toggle('is-busy', this._busy);
+            window.Icons.setIcon(glass, this._busy ? 'loader' : 'search');
         }
 
         get search() { return this._table ? this._table.search : ''; }

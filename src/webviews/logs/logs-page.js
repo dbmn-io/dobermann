@@ -13,6 +13,7 @@
     const $ = id => document.getElementById(id);
     const log = $('logsList');
     const status = $('logsStatus');
+    const searching = $('logsSearching');
     const count = n => Number(n || 0).toLocaleString();
     /** What the controller has said about the lines: all of them here, or more further back. */
     const ui = { done: false, shown: undefined };
@@ -25,6 +26,20 @@
     }
     log.addEventListener('dbmn-log-shown', event => { ui.shown = event.detail; tell(); });
 
+    /** While the controller looks through the lines kept: how far back it has got, in place of the count. */
+    function looking(on, back, value) {
+        searching.hidden = !on;
+        status.hidden = on;
+        // (and where the eye is: the search box's glass spins)
+        log.busy = on;
+        if (!on) return;
+        searching.setAttribute('value', String(value || 0));
+        if (back) {
+            const d = new Date(`${back}T12:00:00`);
+            searching.setAttribute('count', `back to ${d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}`);
+        } else searching.removeAttribute('count');
+    }
+
     // A request's line clicked: the controller reads its run log
     log.addEventListener('dbmn-log-open', event => vscode.postMessage({ type: 'logs.open', open: event.detail.open, key: event.detail.key }));
 
@@ -36,6 +51,7 @@
     let searchTimer;
     log.addEventListener('input', () => {
         vscode.postMessage({ type: 'logs.typing' });
+        looking(true);
         clearTimeout(searchTimer);
         searchTimer = setTimeout(() => vscode.postMessage({ type: 'logs.search', text: log.search }), 350);
     });
@@ -62,13 +78,16 @@
     window.addEventListener('message', event => {
         const m = event.data || {};
         switch (m.type) {
+            case 'logs.searching': looking(true, m.back, m.value); break;
             case 'logs.lines':
+                looking(false);
                 ui.done = !!m.done;
                 if (typeof m.search === 'string' && m.search) log.search = m.search;
                 log.lines = m.lines || [];
                 tell();
                 break;
             case 'logs.older':
+                looking(false);
                 ui.done = !!m.done;
                 log.older(m.lines || []);
                 if (!(m.lines || []).length) log.askAgain();

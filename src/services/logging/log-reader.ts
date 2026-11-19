@@ -179,6 +179,9 @@ export function batchRows(batch: RunRecord, members: RunRecord[]): LogRow[] {
     return out;
 }
 
+/** How long the lines of a batch not ended are reused before they are made again. */
+const UNFINISHED_KEPT_MS = 15_000;
+
 /** A batch's requests read this many at a time. */
 const MEMBER_SLICE = 500;
 
@@ -225,6 +228,12 @@ function daysBetween(from: number, to: number): string[] {
 export class LogReader {
     /** A batch's lines, made once: its requests no longer change once it has ended. */
     private readonly made = new Map<string, LogRow[]>();
+    /**
+     * A batch not ended (running, paused, left unfinished) is made again, but not for every day it
+     * spans nor every page of one search: kept a few seconds. (One paused two weeks ago was read
+     * fifteen times a page, and a search over a history with a few took minutes: 2026-11-19.)
+     */
+    private readonly recentlyMade = new Map<string, { at: number; rows: LogRow[] }>();
 
     /**
      * `recent`: the app's latest lines in memory (AppLog.recent), for those written but not yet
@@ -234,11 +243,11 @@ export class LogReader {
 
     /** A batch's lines may change (it is running again, or was resumed): make them again. No id: every batch (Refresh). */
     forget(batchId?: string): void {
-        if (batchId) this.made.delete(batchId);
-        else this.made.clear();
+        if (batchId) { this.made.delete(batchId); this.recentlyMade.delete(batchId); }
+        else { this.made.clear(); this.recentlyMade.clear(); }
     }
 
-    async page(query: { search?: string; before?: LogCursor; want?: number; budget?: number; stop?: () => boolean } = {}): Promise<LogPage> {
+    async page(query: { search?: string; before?: LogCursor; want?: number; budget?: number; stop?: () => boolean; progress?: (at: { day: string; oldest: string; newest: string }) => void } = {}): Promise<LogPage> {
         const want = query.want ?? 500;
         const budget = query.budget ?? 50_000;
         const search = (query.search ?? '').trim();
@@ -282,7 +291,10 @@ export class LogReader {
             since = Date.now();
             return !!query.stop?.();
         };
+        const newest = days[0] ?? '';
+        const oldest = days[days.length - 1] ?? '';
         for (const day of days) {
+            query.progress?.({ day, oldest, newest });
             if (await breathe()) return { lines, next: lines.length ? { time: lines[lines.length - 1].time, key: lines[lines.length - 1].key } : query.before, done: false, stopped: true };
             const rows: LogRow[] = [];
             const appLines = appDays.includes(day) && this.app ? await this.app.read(day).catch(() => [] as LogLine[]) : [];
@@ -317,12 +329,15 @@ export class LogReader {
         }
         const made = this.made.get(run.id);
         if (made) return made;
+        const recent = this.recentlyMade.get(run.id);
+        if (recent && Date.now() - recent.at < UNFINISHED_KEPT_MS) return recent.rows;
         const members = await this.membersOf(run.id, pause);
         if (!members) return undefined;   // stopped part way: nothing kept
         const name = runOf(run);
         const rows = [...batchRows(run, members), ...members.map(m => requestRow({ ...m, environment: m.environment || run.environment }, name)).filter((r): r is LogRow => !!r)];
-        // Kept only once it has ended: a running batch's lines are made again each time
+        // Kept for good once it has ended; not ended, for a few seconds (it may still change)
         if (hasFinished(run)) this.made.set(run.id, rows);
+        else this.recentlyMade.set(run.id, { at: Date.now(), rows });
         return rows;
     }
 

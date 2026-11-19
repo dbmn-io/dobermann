@@ -156,5 +156,19 @@ describe('Logs screen (controller)', () => {
         await controller.handleMessage({ type: 'logs.refresh', text: '@source=run' });
         expect(messages(of(posted, 'logs.lines')[2])).to.include('Row 1: POST /items → 201 Created');
     });
+
+    it('while it looks, the page hears that it is searching and how far back it has got', async () => {
+        const { posted, controller, days } = await setUp();
+        for (let d = 1; d <= 18; d++) for (let i = 0; i < 4_000; i++) days.lines.push({ seq: d * 10_000 + i, time: at(d, 9, i % 60), level: 'info', source: 'sync', message: `l${d}.${i}` });
+        await controller.handleMessage({ type: 'logs.ready' });
+        posted.length = 0;
+        await controller.handleMessage({ type: 'logs.search', text: 'nowhere to be found' });
+        const types = posted.map(m => m.type);
+        expect(types[0]).to.equal('logs.searching');
+        expect(types[types.length - 1]).to.equal('logs.lines');
+        const said = posted.filter(m => m.type === 'logs.searching');
+        expect(said[0]).to.deep.equal({ type: 'logs.searching', value: 0 });
+        for (const m of said.slice(1)) expect(m.value).to.be.within(0, 100).and.to.be.a('number');
+    });
 });
 

@@ -37,8 +37,10 @@ export type LogsMessage =
 
 /** Lines a page brings. */
 export const LOGS_PAGE = 500;
-/** Lines looked at before the page hears how far back the search has got. */
+/** Lines looked at per page asked of the reader (it is asked again until it has a page or is done). */
 export const LOGS_LOOK = 50_000;
+/** How often the page hears how far back a search has got. */
+const PROGRESS_MS = 150;
 
 export class LogsController {
     private closed = false;
@@ -104,14 +106,28 @@ export class LogsController {
         this.post({ type: 'logs.older', lines, done: this.done });
     }
 
-    /** Up to a page of lines older than `before`, saying how far back it has looked while it looks. */
+    /** Up to a page of lines older than `before`, telling the page how far back it has looked while it looks. */
     private async read(asked: number, before: LogCursor | undefined): Promise<LogRow[]> {
         this.reading = true;
+        // How far through the days kept it is: from the newest day it started at to the oldest
+        let range: { newest: number; oldest: number } | undefined;
+        let told = 0;
+        const progress = (at: { day: string; oldest: string; newest: string }) => {
+            const ms = (day: string) => new Date(`${day}T12:00:00`).getTime();
+            range ??= { newest: ms(at.newest), oldest: ms(at.oldest) };
+            const now = Date.now();
+            if (now - told < PROGRESS_MS || asked !== this.asked) return;
+            told = now;
+            const span = range.newest - range.oldest;
+            const value = span > 0 ? Math.round(100 * (range.newest - ms(at.day)) / span) : 100;
+            this.post({ type: 'logs.searching', back: at.day, value: Math.max(0, Math.min(100, value)) });
+        };
+        this.post({ type: 'logs.searching', value: 0 });
         try {
             const lines: LogRow[] = [];
             let from = before;
             for (;;) {
-                const page = await this.ports.reader.page({ search: this.search, before: from, want: LOGS_PAGE - lines.length, budget: LOGS_LOOK, stop: () => asked !== this.asked });
+                const page = await this.ports.reader.page({ search: this.search, before: from, want: LOGS_PAGE - lines.length, budget: LOGS_LOOK, stop: () => asked !== this.asked, progress });
                 if (asked !== this.asked) return [];
                 lines.push(...page.lines);
                 this.done = page.done;

@@ -19,3 +19,5 @@ body.logs-body {
 }
 .logs-page > dbmn-log { flex: 1 1 auto; }
 .logs-footer { flex: 0 0 auto; }
+/* One of the count and the search's progress shows at a time */
+.logs-footer [hidden] { display: none !important; }
