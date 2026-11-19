@@ -328,7 +328,7 @@
         // Always add Sequential option (default)
         const sequentialOption = document.createElement('option');
         sequentialOption.value = '1';
-        sequentialOption.textContent = 'Sequential (Safest)';
+        sequentialOption.textContent = '1 (one at a time)';
         dropdown.appendChild(sequentialOption);
 
         // Add parallel options if enabled in environment
@@ -339,15 +339,15 @@
             parallelOptions.forEach(concurrency => {
                 const option = document.createElement('option');
                 option.value = concurrency.toString();
-                option.textContent = `${concurrency} concurrent requests`;
+                option.textContent = String(concurrency);
                 dropdown.appendChild(option);
             });
 
             // Set details text based on capabilities
-            detailsSpan.textContent = `(up to ${maxAllowed} concurrent requests available)`;
+            detailsSpan.textContent = `(this environment allows up to ${maxAllowed})`;
         } else {
             // Parallel processing not enabled
-            detailsSpan.textContent = '(parallel processing not enabled in environment)';
+            detailsSpan.textContent = '(this environment allows 1)';
         }
 
         // Default to Sequential

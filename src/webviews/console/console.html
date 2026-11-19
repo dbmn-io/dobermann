@@ -213,15 +213,16 @@
                             </div>
                         </div>
                         <div class="stat-item" id="info-threads-stat">
-                            <label class="stat-label" for="info-threads">Processing Mode</label>
+                            <!-- "Threads", James 2026-11-19 ("Processing Mode" is the back end's word) -->
+                            <label class="stat-label" for="info-threads">Threads</label>
                             <select id="info-threads" class="form-select">
-                                <option value="1">Sequential (1 thread)</option>
-                                <option value="2">2 threads</option>
-                                <option value="4">4 threads</option>
-                                <option value="8">8 threads</option>
-                                <option value="16">16 threads</option>
+                                <option value="1">1 (one at a time)</option>
+                                <option value="2">2</option>
+                                <option value="4">4</option>
+                                <option value="8">8</option>
+                                <option value="16">16</option>
                             </select>
-                            <div class="form-description" id="info-threads-desc">Concurrent API calls</div>
+                            <div class="form-description" id="info-threads-desc">API calls at the same time</div>
                         </div>
                     </div>
                 </div>

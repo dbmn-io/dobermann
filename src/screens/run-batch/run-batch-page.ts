@@ -244,9 +244,9 @@ export function buildRunBatchPage(asset: AssetUrl, batchConfig: { endpointId: st
                             </select>
                         </div>
                         <div class="stat-item is-stacked">
-                            <label class="stat-label" for="processingModeDropdown">Processing Mode</label>
+                            <label class="stat-label" for="processingModeDropdown">Threads</label>
                             <select id="processingModeDropdown" data-change="csv:onProcessingModeChange">
-                                <option value="1">Sequential (Safest)</option>
+                                <option value="1">1 (one at a time)</option>
                             </select>
                         </div>
                     </div>

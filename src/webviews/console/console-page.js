@@ -8735,7 +8735,7 @@ function filterThreadsDropdown(envMaxConcurrency) {
     // Update description to show max
     const desc = document.getElementById('info-threads-desc');
     if (desc && maxAllowed < 16) {
-        desc.textContent = `Concurrent API calls (max ${maxAllowed} for this environment)`;
+        desc.textContent = `API calls at the same time (this environment allows up to ${maxAllowed})`;
     }
 }
 

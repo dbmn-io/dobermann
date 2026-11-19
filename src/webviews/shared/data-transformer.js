@@ -5633,9 +5633,9 @@ ${formattedJson}`;
 
         const selectedConcurrency = parseInt(dropdown.value);
         if (selectedConcurrency === 1) {
-            detailsSpan.textContent = '(transactions processed one at a time)';
+            detailsSpan.textContent = '(one request at a time)';
         } else {
-            detailsSpan.textContent = `(${selectedConcurrency} API calls run simultaneously)`;
+            detailsSpan.textContent = `(${selectedConcurrency} requests at the same time)`;
         }
     }
 
