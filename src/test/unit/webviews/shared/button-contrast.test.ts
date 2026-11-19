@@ -20,8 +20,9 @@ const contrastModule = require(SCRIPT) as {
     parseColor(value: string): { r: number; g: number; b: number; a: number } | null;
     contrast(a: object, b: object): number;
     correctButton(theme: { pageBackground: string; pageText: string; fill: string; hoverFill: string; text: string }): { text: string | null; hoverFill: string | null };
+    correctPrimaryFill(theme: { pageBackground: string; pageText: string; fill: string; accents: string[] }): { fill: string; text: string; hoverFill: string } | null;
 };
-const { parseColor, contrast, correctButton, MIN_TEXT_CONTRAST } = contrastModule;
+const { parseColor, contrast, correctButton, correctPrimaryFill, MIN_TEXT_CONTRAST } = contrastModule;
 const ratio = (a: string, b: string) => contrast(parseColor(a)!, parseColor(b)!);
 
 /** The theme properties a page is given, per theme. */
@@ -106,6 +107,25 @@ describe('Readable buttons in every theme', () => {
         });
     });
 
+    describe('the main action always stands apart', () => {
+        // Retro '82's colours, as a DBMN tab got them with no button colours (Run Batch's Next drew as plain text)
+        const retro = { pageBackground: '#00172E', pageText: '#A7C9C6' };
+        it('a theme with no fill for it: the first accent that stands out, with the text that reads on it', () => {
+            const fixed = correctPrimaryFill({ ...retro, fill: '', accents: ['', '#FAA968'] })!;
+            expect(fixed.fill).to.equal('#faa968');
+            expect(ratio(fixed.text, fixed.fill)).to.be.at.least(MIN_TEXT_CONTRAST);
+            expect(fixed.hoverFill).to.match(/^#[0-9a-f]{6}$/);
+        });
+        it('a fill that is the page\'s own colour counts as none; an accent that is the page\'s too is passed over', () => {
+            const fixed = correctPrimaryFill({ ...retro, fill: '#00172E', accents: ['#01182f', '#FAA968'] })!;
+            expect(fixed.fill).to.equal('#faa968');
+        });
+        it('a theme whose main action stands out already is left alone, and so is one with no accent to use', () => {
+            expect(correctPrimaryFill({ ...retro, fill: '#FAA968', accents: ['#3F8F8A'] })).to.equal(null);
+            expect(correctPrimaryFill({ ...retro, fill: '', accents: ['', 'var(--x)'] })).to.equal(null);
+        });
+    });
+
     describe('in a page', () => {
         function page(theme: Theme) {
             const dom = new JSDOM('<!DOCTYPE html><html><body><button class="btn btn-secondary">Use a folder…</button></body></html>', { runScripts: 'outside-only' });
@@ -125,6 +145,12 @@ describe('Readable buttons in every theme', () => {
             expect(corrected('--vscode-button-secondaryHoverBackground')).to.match(/^#[0-9a-f]{6}$/);
             expect(corrected('--vscode-button-foreground'), 'the main action is left alone').to.equal('');
             expect(root.style.getPropertyValue('--vscode-button-secondaryForeground'), 'the theme is not rewritten').to.equal('#ffcead');
+        });
+
+        it('the main action with no fill of its own gets the accent on <body>, with its text', () => {
+            const { corrected } = page({ '--vscode-editor-background': '#00172E', '--vscode-foreground': '#A7C9C6', '--vscode-focusBorder': '#FAA968' } as unknown as Theme);
+            expect(corrected('--vscode-button-background')).to.equal('#faa968');
+            expect(corrected('--vscode-button-foreground')).to.equal('#00172e');
         });
 
         it('a theme that already reads gets nothing added', () => {

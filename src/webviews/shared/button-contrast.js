@@ -16,6 +16,9 @@
  *      background colour reads best on that fill — and only if that is better.
  *   3. The hover fill is kept when the text still reads on it. When it does not, hover
  *      becomes a slightly lighter or darker shade of the button's own fill.
+ *   4. The main action always stands apart: a theme that gives it no fill, or the page's own
+ *      colour, has it filled with the theme's first accent that stands out from the page
+ *      (focus border, link colour, …), with whichever text reads on it.
  * A theme whose pairs already read (VS Code's own themes) is left exactly as it is.
  *
  * How: the corrected values are set as the same `--vscode-button-*` properties on <body>.
@@ -52,6 +55,10 @@
     ];
     const PAGE_TEXT = '--vscode-foreground';
     const PAGE_BACKGROUND = '--vscode-editor-background';
+    /** The main action stands apart from the page: below this against it, it has no fill to speak of. */
+    const MIN_FILL_CONTRAST = 1.3;
+    /** Where the main action's fill comes from when the theme gives it none (or the page's own): the theme's accents, in turn. */
+    const ACCENTS = ['--vscode-focusBorder', '--vscode-textLink-foreground', '--vscode-progressBar-background', '--vscode-charts-blue'];
 
     /** `#rgb`, `#rgba`, `#rrggbb`, `#rrggbbaa`, `rgb()` and `rgba()`; null for anything else. */
     function parseColor(value) {
@@ -140,6 +147,25 @@
         return { text: textChanged ? toHex(text) : null, hoverFill };
     }
 
+    /**
+     * The main action's fill when the theme leaves it out, or makes it the page's own colour (a
+     * Next that looks like every other button): the first of the theme's accents that stands out
+     * from the page, with whichever text reads on it. Null when the theme's fill is fine.
+     */
+    function correctPrimaryFill(theme) {
+        const pageBackground = parseColor(theme.pageBackground);
+        const pageText = parseColor(theme.pageText);
+        if (!pageBackground || !pageText) return null;
+        const page = over(pageBackground, WHITE);
+        const fillRaw = parseColor(theme.fill);
+        if (fillRaw && contrast(over(fillRaw, page), page) >= MIN_FILL_CONTRAST) return null;
+        const accent = (theme.accents || []).map(parseColor).filter(Boolean).map(c => over(c, page)).find(c => contrast(c, page) >= MIN_FILL_CONTRAST);
+        if (!accent) return null;
+        const text = [over(pageText, accent), page].sort((a, b) => contrast(b, accent) - contrast(a, accent))[0];
+        const hoverFill = mix(accent, luminance(text) < luminance(accent) ? WHITE : BLACK, HOVER_SHIFT);
+        return { fill: toHex(accent), text: toHex(text), hoverFill: toHex(hoverFill) };
+    }
+
     function read(style, name) {
         return String(style.getPropertyValue(name) || '').trim();
     }
@@ -159,14 +185,20 @@
             if (value && current !== value) doc.body.style.setProperty(name, value);
             if (!value && current) doc.body.style.removeProperty(name);
         };
-        for (const kind of KINDS) {
-            const corrected = correctButton({
+        KINDS.forEach((kind, i) => {
+            // The main action first: a theme that gives it no fill of its own gets one from its accents
+            const primary = i === 0 ? correctPrimaryFill({
+                pageBackground: theme(PAGE_BACKGROUND), pageText: theme(PAGE_TEXT),
+                fill: theme(kind.fill), accents: ACCENTS.map(theme)
+            }) : null;
+            if (i === 0) set(kind.fill, primary && primary.fill);
+            const corrected = primary ? { text: primary.text, hoverFill: primary.hoverFill } : correctButton({
                 pageBackground: theme(PAGE_BACKGROUND), pageText: theme(PAGE_TEXT),
                 fill: theme(kind.fill), hoverFill: theme(kind.hoverFill), text: theme(kind.text)
             });
             set(kind.text, corrected.text);
             set(kind.hoverFill, corrected.hoverFill);
-        }
+        });
     }
 
     /** Apply now (or when the page has a body), and again whenever the theme changes. */
@@ -186,5 +218,5 @@
         else doc.addEventListener('DOMContentLoaded', watchBody);
     }
 
-    return { MIN_TEXT_CONTRAST, parseColor, contrast, correctButton, apply, start };
+    return { MIN_TEXT_CONTRAST, parseColor, contrast, correctButton, correctPrimaryFill, apply, start };
 }));
