@@ -194,6 +194,7 @@
         ['<dbmn-progress>', 'The system\'s progress: the box is the bar', C, 'Console', 'shared/dbmn-footer.js'],
         ['<dbmn-status>', 'A few words of status (Saved, Not saved yet)', C, 'Edit Endpoint, Edit Environment', 'shared/dbmn-footer.js'],
         ['DbmnModal', 'Dialogs: a question, a form, an alert', M, 'Every screen', 'shared/dbmn-modal.js'],
+        ['DbmnFunctions', 'Functions on a column, ticked in order, tried on its values before and after', M, 'Design system; Query, Compare and Run Batch next', 'shared/dbmn-functions.js'],
         ['DbmnToast', 'Messages in the corner', M, 'Every screen', 'shared/dbmn-toast.js'],
         ['DbmnContextMenu', 'A right-click menu', M, 'Hub lists, tables', 'shared/dbmn-context-menu.js'],
         ['Icons', 'The one list of icons, and icons by job', M, 'Every screen', 'shared/icons.js'],
@@ -386,12 +387,47 @@
         };
     }
 
+    /* ── Dialogs: functions on a column (DbmnFunctions), over a made-up column ── */
+    async function openFunctionsDemo() {
+        // A made-up column: C1's codes, written with leading zeros and spaces that BL's are not
+        const before = [' 000412', '000413 ', '000414', '  000415', '000416'];
+        const base = ['412', '413', '414', '415', '417'];
+        const fns = {
+            trim: v => v.trim(),
+            upper: v => v.toUpperCase(),
+            ltrimZeros: v => v.replace(/^0+/, ''),
+            first: (v, p) => v.slice(0, p.n),
+            replace: (v, p) => v.split(p.from || '').join(p.to || '')
+        };
+        const applied = await window.DbmnFunctions.open({
+            column: 'C1.sku',
+            functions: [
+                { id: 'trim', label: 'Trim spaces', sql: ['TRIM(', 'x', ')'] },
+                { id: 'upper', label: 'Upper case', sql: ['UPPER(', 'x', ')'] },
+                { id: 'ltrimZeros', label: 'Drop leading zeros', sql: ['LTRIM(', 'x', ", '0')"] },
+                { id: 'first', label: 'First characters', sql: ['SUBSTR(', 'x', ', 1, ', { key: 'n', number: true, label: 'How many characters' }, ')'] },
+                { id: 'replace', label: 'Replace text', sql: ['REPLACE(', 'x', ", '", { key: 'from', label: 'Text to replace' }, "', '", { key: 'to', label: 'Replace it with' }, "')"] },
+                { id: 'translate', label: 'Translate values', sql: ['TRANSLATE(', 'x', ', ', { key: 'table', label: 'Lookup table', kind: 'lookup', options: [{ id: 'uom', name: 'Units of measure', count: 12 }, { id: 'sites', name: 'Site codes', count: 40 }] }, ')'] }
+            ],
+            defaults: { n: 4, from: '-', to: '' },
+            asLabel: 'Compares as',
+            baseLabel: 'BL',
+            sample: applied => new Promise(done => setTimeout(() => {
+                const after = before.map(v => applied.reduce((value, a) => (fns[a.id] ? fns[a.id](value, a.params) : value), v));
+                done({ rows: before.map((v, i) => ({ before: v, after: after[i], base: base[i] })), agree: after.filter((v, i) => v === base[i]).length / base.length });
+            }, 120)),
+            onOpenLookup: id => window.DbmnToast && window.DbmnToast.info(`Would open the lookup table "${id}" in Reporting`)
+        });
+        $('dsFunctionsSaid').textContent = applied ? `Applied: ${applied.map(a => a.id).join(', ') || 'none'}` : 'Cancelled';
+    }
+
     window.DbmnActions.register({
         'ds:log': () => $('dsLog').append(logLines(5, Date.now())),
         'ds:back': () => go(current - 1),
         'ds:next': () => { if (current < STEPS.length) go(current + 1); },
         'ds:run': run,
         'ds:theme': () => { const button = hubThemeButton(); if (button) button.click(); },
+        'ds:functions': openFunctionsDemo,
         'ds:confirm': () => {
             window.DbmnModal.confirm({ title: 'Delete the query?', body: 'Only the report is deleted: the data in History stays.', confirmLabel: 'Delete', confirmVariant: 'danger' })
                 .then(yes => window.DbmnToast.info(yes ? 'You chose Delete' : 'Nothing was deleted'));

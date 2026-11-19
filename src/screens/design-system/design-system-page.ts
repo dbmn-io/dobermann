@@ -23,7 +23,7 @@ export function buildDesignSystemPage(asset: AssetUrl): string {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Design system</title>
-    ${sharedStyleLinks(asset, ['atomic', 'core', 'buttons', 'modals', 'tables', 'tabs', 'toast', 'console', 'data-transformer', 'compare', 'column-drag', 'column-head', 'query', 'dbmn-footer', 'dbmn-table', 'dbmn-log', 'dbmn-name'])}
+    ${sharedStyleLinks(asset, ['atomic', 'core', 'buttons', 'modals', 'tables', 'tabs', 'toast', 'console', 'data-transformer', 'compare', 'column-drag', 'column-head', 'query', 'dbmn-footer', 'dbmn-table', 'dbmn-log', 'dbmn-name', 'dbmn-functions'])}
     <link rel="stylesheet" href="${asset('design-system/design-system.css')}">
 </head>
 <body class="editor-slide-in ds-page">
@@ -295,6 +295,20 @@ Icons.icon('check')                                   the SVG as text</code></pr
 const { actionId, fields } = await DbmnModal.show({ title, fields: [{ id: 'name', type: 'text', label: 'Name' }], actions: [{ id: 'save', label: 'Save', variant: 'primary' }] });
 DbmnToast.success('Saved');   DbmnToast.warn('…');   DbmnToast.error('…', { persistent: true });
 DbmnContextMenu.show(event, [{ id: 'rename', label: 'Rename', icon: 'pencil' }], id =&gt; …);</code></pre>
+
+        <h3>Functions on a column</h3>
+        <p>One dialog wherever a column is changed on its way in: Query's Join and Columns, Compare's Map, Run Batch's Map. Tick any; they apply in the order ticked, each written around the column's name with its values typed in place. Beside them: what they make, and a few values before and after. With a column to compare against (Compare's BL), its values on the same rows too, and how many agree. Try it: tick Trim spaces, then Drop leading zeros.</p>
+        <div class="ds-demo ds-row">
+            <button type="button" class="btn btn-secondary" data-click="ds:functions">Functions on C1.sku</button>
+            <span class="form-hint" id="dsFunctionsSaid"></span>
+        </div>
+        <pre class="ds-code"><code>const applied = await DbmnFunctions.open({ column: 'C1.sku', functions, applied, defaults: { n: 4 },
+    asLabel: 'Compares as', baseLabel: 'BL',            // leave baseLabel out: no column to compare with
+    sample: async applied =&gt; ({ rows: [{ before, after, base }], agree: 0.93 }),   // an older answer is dropped
+    onOpenLookup: id =&gt; … });                           // a lookup table's Open: the dialog closes first
+// [{ id, params }] in the order ticked, or null
+{ id: 'first', label: 'First characters', sql: ['SUBSTR(', 'x', ', 1, ', { key: 'n', label: 'How many', number: true }, ')'] }
+{ key: 'table', label: 'Lookup table', kind: 'lookup', options: [{ id, name, count }] }   // a value picked from saved tables</code></pre>
     </section>
 
     <section class="ds-section" id="tables">
@@ -409,6 +423,7 @@ log.addEventListener('dbmn-log-open', e =&gt; …e.detail.open…);   // a line'
     ${script('shared/icons.js')}
     ${script('shared/help-mode.js')}
     ${script('shared/dbmn-modal.js')}
+    ${script('shared/dbmn-functions.js')}
     ${script('shared/dbmn-context-menu.js')}
     ${script('shared/dbmn-toast.js')}
     ${script('shared/dbmn-clipboard.js')}

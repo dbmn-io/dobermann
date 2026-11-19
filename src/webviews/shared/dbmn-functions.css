@@ -1,0 +1,84 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Copyright (C) 2026 Flexion Tech Pty Ltd */
+/*
+ * DbmnFunctions (dbmn-functions.js): the functions on a column, in a dialog. The list of
+ * functions on the left; what they make and a few values, before and after, on the right.
+ */
+.dbmn-fx-form {
+    display: grid;
+    grid-template-columns: 320px minmax(0, 1fr);
+    gap: 20px;
+    align-items: start;
+    width: min(780px, calc(100vw - 96px));
+}
+.dbmn-fx-side { display: grid; gap: 8px; min-width: 0; }
+.dbmn-fx-side > .form-hint { margin: 0; min-height: 18px; }
+.dbmn-fx-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.dbmn-fx-list { display: grid; gap: 2px; }
+.dbmn-fx-line {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    column-gap: 8px;
+    row-gap: 1px;
+    align-items: center;
+    padding: 5px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+}
+.dbmn-fx-line:hover { background: var(--dbmn-list-hoverBackground, rgba(128, 128, 128, 0.12)); }
+.dbmn-fx-line > .dbmn-fx-code { grid-column: 2; }
+.dbmn-fx-code { font-family: var(--dbmn-editor-font-family, monospace); font-size: 12px; line-height: 20px; overflow-wrap: anywhere; }
+.dbmn-fx-code strong { color: var(--dbmn-textLink-foreground); font-weight: 600; }
+.dbmn-fx-code input,
+.dbmn-fx-code select {
+    height: 20px;
+    padding: 0 4px;
+    margin: 0 1px;
+    max-width: 100%;
+    font-family: inherit;
+    font-size: 12px;
+    vertical-align: top;
+    box-sizing: border-box;
+}
+.dbmn-fx-code input[type="number"] { width: 6ch; }
+/* A lookup table that no longer exists */
+.dbmn-fx-code select.is-missing { border-color: var(--dbmn-inputValidation-errorBorder); color: var(--dbmn-errorForeground); }
+.dbmn-fx-order { margin-left: 8px; font-size: 11px; font-weight: 600; color: var(--dbmn-textLink-foreground); }
+.dbmn-fx-sql {
+    display: block;
+    box-sizing: border-box;
+    min-height: calc(3 * 18px + 14px);
+    padding: 6px 8px;
+    font-family: var(--dbmn-editor-font-family, monospace);
+    font-size: 12px;
+    line-height: 18px;
+    border: 1px solid var(--dbmn-panel-border, rgba(128, 128, 128, 0.35));
+    border-radius: 4px;
+    overflow-wrap: anywhere;
+    user-select: text;
+}
+.dbmn-fx-sample-box { margin: 0; }
+.dbmn-fx-sample { table-layout: fixed; width: 100%; }
+.dbmn-fx-sample th,
+.dbmn-fx-sample td { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* A value the functions changed; one that now matches the column compared with */
+.dbmn-fx-sample td.dbmn-fx-changed { color: var(--dbmn-textLink-foreground); }
+.dbmn-fx-sample td.dbmn-fx-agrees { color: var(--dbmn-testing-iconPassed, var(--dbmn-charts-green)); }
+.dbmn-fx-agree { margin: 0; }
+.dbmn-fx-agree.is-good { color: var(--dbmn-testing-iconPassed, var(--dbmn-charts-green)); }
+.dbmn-fx-agree.is-low { color: var(--dbmn-editorWarning-foreground); }
+.dbmn-fx-note { margin: 0; }
+.dbmn-fx-clear,
+.dbmn-fx-open {
+    padding: 0;
+    border: none;
+    background: none;
+    color: var(--dbmn-textLink-foreground);
+    font: inherit;
+    cursor: pointer;
+}
+.dbmn-fx-open { margin-left: 4px; font-size: 11px; }
+.dbmn-fx-clear:hover,
+.dbmn-fx-open:hover { text-decoration: underline; }
+.dbmn-fx-clear:disabled { visibility: hidden; }
+@media (max-width: 700px) { .dbmn-fx-form { grid-template-columns: minmax(0, 1fr); } }
