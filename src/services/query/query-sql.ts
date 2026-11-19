@@ -12,6 +12,7 @@
  */
 import { CALC_VIEW } from './query-types';
 import type { ColumnRef, QueryFn, QueryJoin, QueryKey, QuerySpec, QueryView } from './query-types';
+import { columnFnSql } from '../column-functions/column-functions';
 
 const PLAIN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 /** Words SQLite won't take as a bare name. */
@@ -74,21 +75,7 @@ export function tableSql(view: QueryView, tables: Map<string, string>): string {
 }
 
 function applyFns(sql: string, fns: QueryFn[] | undefined): string {
-    let out = sql;
-    for (const f of fns ?? []) {
-        switch (f.fn) {
-            case 'trim': out = `TRIM(${out})`; break;
-            case 'upper': out = `UPPER(${out})`; break;
-            case 'lower': out = `LOWER(${out})`; break;
-            case 'text': out = `CAST(${out} AS TEXT)`; break;
-            case 'number': out = `CAST(${out} AS NUMERIC)`; break;
-            case 'ltrimZeros': out = `LTRIM(${out}, '0')`; break;
-            case 'first': out = `SUBSTR(${out}, 1, ${wholeNumber(f.n)})`; break;
-            case 'last': out = `SUBSTR(${out}, -${wholeNumber(f.n)})`; break;
-            case 'replace': out = `REPLACE(${out}, ${quoteText(f.from)}, ${quoteText(f.to)})`; break;
-        }
-    }
-    return out;
+    return columnFnSql(sql, fns);
 }
 
 /** `names`: what the SQL calls each view (refNames). */

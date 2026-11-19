@@ -679,138 +679,45 @@
         return wrap;
     }
 
-    /** ƒ: functions on the column, ticked from a list. Each is written as its SQL with the
-     * column's own name in it and its values typed in place. They apply in the order they are
-     * ticked (each ticked row says its place); the SQL they make together and a few of the
-     * column's values, as they are and as the functions leave them, show beside the list. */
+    /** ƒ: functions on the column, in the design system's dialog (shared/dbmn-functions.js), the
+     * same one Compare and Run Batch use. They apply in the order they are ticked; a few of the
+     * column's values, as they are and as the functions leave them, come from the host. Query keeps
+     * a function as { fn, n, from, to }; the dialog speaks { id, params }. */
     async function pickFns(join, ref) {
+        if (!window.DbmnFunctions) return;
         const viewId = ref.view || join.view;
         const v = view(viewId);
         const name = (v ? v.name + '.' : '') + (ref.column || 'column');
-        const body = el('div', 'dbmn-modal-field query-fx-form');
-        const group = el('div');
-        group.setAttribute('role', 'group');
-        group.setAttribute('aria-label', 'Functions');
-        const sample = el('div', 'table-container');
-        const table = el('table', 'data-table');
-        const head = el('thead');
-        const headRow = el('tr');
-        headRow.append(el('th', '', name), el('th', '', 'Joins as'));
-        head.appendChild(headRow);
-        const rows = el('tbody');
-        table.append(head, rows);
-        sample.appendChild(table);
-        const note = el('p', 'form-hint', '');
-        const made = el('code', 'query-fx-sql font-mono', name);
-        const clear = el('button', 'compare-match-drill', 'Clear all');
-        clear.type = 'button';
-
-        // The ticked ones, in the order they were ticked
-        let order = (ref.fns || []).map(f => f.fn).filter(id => FNS.some(d => d.id === id));
-        const options = FNS.map(def => {
-            const had = (ref.fns || []).find(f => f.fn === def.id);
-            const row = el('label');
-            const box = el('input');
-            box.type = 'checkbox';
-            box.value = def.id;
-            box.checked = !!had;
-            const code = el('small', 'font-mono');
-            const inputs = {};
-            const tick = on => {
-                box.checked = on;
-                order = order.filter(id => id !== def.id);
-                if (on) order.push(def.id);
-                ask();
-            };
-            def.sql.forEach(piece => {
-                if (piece === 'x') { code.appendChild(el('strong', '', name)); return; }
-                if (typeof piece === 'string') { code.appendChild(document.createTextNode(piece)); return; }
-                const input = el('input', 'dbmn-modal-input');
-                input.type = piece.number ? 'number' : 'text';
-                if (piece.number) input.min = '1';
-                input.value = had ? had[piece.key] : FN_DEFAULTS[piece.key];
-                input.setAttribute('aria-label', piece.label);
-                input.dataset.fnValue = piece.key;
-                // Typing a value ticks its function; a click in the box is not a click on the row
-                // A text box is as wide as what is in it, so a saved value is in sight when the dialog opens
-                const fit = () => { if (!piece.number) input.size = Math.min(40, Math.max(6, input.value.length + 1)); };
-                fit();
-                input.addEventListener('input', () => { fit(); if (box.checked) ask(); else tick(true); });
-                // A value copied from a table comes with a tab or spaces around it, which would match nothing
-                input.addEventListener('paste', e => {
-                    const text = e.clipboardData ? e.clipboardData.getData('text') : '';
-                    if (text === text.trim()) return;
-                    e.preventDefault();
-                    input.setRangeText(text.trim(), input.selectionStart, input.selectionEnd, 'end');
-                    input.dispatchEvent(new Event('input'));
-                });
-                input.addEventListener('click', e => e.preventDefault());
-                inputs[piece.key] = input;
-                code.appendChild(input);
-            });
-            box.addEventListener('change', () => tick(box.checked));
-            const label = el('span', '', def.label);
-            const place = el('b', 'query-fx-order', '');
-            label.appendChild(place);
-            row.append(box, label, code);
-            group.appendChild(row);
-            return { def, box, inputs, place };
+        const toQuery = applied => applied.filter(a => FNS.some(d => d.id === a.id)).map(a => Object.assign({ fn: a.id }, a.params || {}));
+        const fromQuery = fns => (fns || []).filter(f => FNS.some(d => d.id === f.fn)).map(f => {
+            const params = {};
+            Object.keys(f).forEach(k => { if (k !== 'fn') params[k] = f[k]; });
+            return { id: f.fn, params };
         });
-        clear.addEventListener('click', () => { options.forEach(o => { o.box.checked = false; }); order = []; ask(); });
-
-        function picked() {
-            return order.map(id => {
-                const o = options.find(x => x.def.id === id);
-                const f = { fn: id };
-                if (o.inputs.n) f.n = Math.max(1, parseInt(o.inputs.n.value, 10) || 1);
-                if (o.inputs.from) f.from = o.inputs.from.value;
-                if (o.inputs.to) f.to = o.inputs.to.value;
-                return f;
-            });
-        }
-        const ORDINAL = ['1st', '2nd', '3rd'];
-        let seq = 0;
-        function ask() {
-            seq += 1;
-            const fns = picked();
-            made.textContent = fnSql(fns, name);
-            clear.disabled = !fns.length;
-            // With more than one ticked, each says when it applies
-            options.forEach(o => {
-                const at = order.indexOf(o.def.id);
-                o.place.textContent = order.length > 1 && at >= 0 ? (ORDINAL[at] || `${at + 1}th`) : '';
-            });
-            post({ type: 'query.fnSample', view: viewId, column: ref.column, fns, seq });
-        }
+        let asked = 0;
+        const waiting = new Map();
         ui.fnSample = m => {
-            if (m.seq !== seq) return;
-            rows.replaceChildren(...(m.rows || []).map(r => {
-                const tr = el('tr');
-                tr.append(el('td', 'font-mono', show(r[0])), el('td', 'font-mono' + (show(r[0]) === show(r[1]) ? '' : ' text-link'), show(r[1])));
-                // A value too long for its half is cut short: the whole of it on hover
-                Array.from(tr.cells).forEach(td => { td.title = td.textContent; });
-                return tr;
-            }));
-            note.textContent = m.error || ((m.rows || []).length ? '' : 'No values to show yet.');
+            const resolve = waiting.get(m.seq);
+            if (!resolve) return;
+            waiting.delete(m.seq);
+            resolve({ rows: (m.rows || []).map(r => ({ before: r[0], after: r[1] })), agree: null, error: m.error });
         };
-        function show(value) { return value === null || value === undefined ? '' : typeof value === 'string' ? value : String(value); }
-
-        const list = el('div', 'query-fx-side');
-        const top = el('p', 'form-hint query-row');
-        top.append(el('span', '', 'Tick any. They apply in the order you tick them.'), clear);
-        list.append(top, group);
-        const side = el('div', 'query-fx-side');
-        side.append(el('p', 'form-hint', 'The column joins as'), made, sample, note);
-        body.append(list, side);
-        ask();
-        const answer = await window.DbmnModal.show({
-            title: `Functions on ${ref.column || 'the column'}`, body, size: 'lg',
-            actions: [{ id: 'cancel', label: 'Cancel', variant: 'secondary' }, { id: 'ok', label: 'Apply', variant: 'primary' }]
+        const applied = await window.DbmnFunctions.open({
+            title: `Functions on ${ref.column || 'the column'}`,
+            column: name,
+            functions: FNS.map(d => ({ id: d.id, label: d.label, sql: d.sql })),
+            defaults: FN_DEFAULTS,
+            applied: fromQuery(ref.fns),
+            asLabel: 'Joins as',
+            sample: list => new Promise(resolve => {
+                const seq = ++asked;
+                waiting.set(seq, resolve);
+                post({ type: 'query.fnSample', view: viewId, column: ref.column, fns: toQuery(list), seq });
+            })
         });
-        const fns = picked();
         ui.fnSample = null;
-        if (answer.actionId !== 'ok') return;
-        ref.fns = fns;
+        if (!applied) return;
+        ref.fns = toQuery(applied).map(f => (f.n === undefined ? f : Object.assign(f, { n: Math.max(1, parseInt(f.n, 10) || 1) })));
         sendJoin(join);
     }
 

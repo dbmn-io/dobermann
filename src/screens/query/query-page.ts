@@ -21,7 +21,7 @@ export function buildQueryPage(asset: AssetUrl, config: { queryId: string; name:
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Query: ${attr(config.name)}</title>
-    ${sharedStyleLinks(asset, ['atomic', 'core', 'buttons', 'modals', 'tables', 'tabs', 'toast', 'console', 'data-transformer', 'compare', 'column-drag', 'column-head', 'query', 'dbmn-footer', 'dbmn-table', 'dbmn-name'])}
+    ${sharedStyleLinks(asset, ['atomic', 'core', 'buttons', 'modals', 'tables', 'tabs', 'toast', 'console', 'data-transformer', 'compare', 'column-drag', 'column-head', 'query', 'dbmn-footer', 'dbmn-table', 'dbmn-name', 'dbmn-functions'])}
 </head>
 <body class="editor-slide-in">
     <script src="${asset('shared/button-contrast.js')}"></script>
@@ -134,6 +134,7 @@ export function buildQueryPage(asset: AssetUrl, config: { queryId: string; name:
     ${script('shared/dbmn-footer.js')}
     ${script('shared/dbmn-table.js')}
     ${script('shared/dbmn-name.js')}
+    ${script('shared/dbmn-functions.js')}
     ${script('shared/editor-window-controls.js')}
     <!-- The Console's Chain dialog, as it is: Chain here posts the same messages -->
     ${script('console/modules/console-chain.js')}

@@ -8,6 +8,7 @@
  * joins to the views before it, and picks the columns to show. The clicks write SQL
  * (query-sql.ts) and SQLite runs it (query-engine.ts): what the user reads is what runs.
  */
+import type { ColumnFn } from '../column-functions/column-functions';
 
 /** A view in the query: `name` is what the user sees and the table's name in the SQL. */
 export interface QueryView {
@@ -21,21 +22,11 @@ export interface QueryView {
 }
 
 /**
- * Tidies a column before it joins, for keys from different systems. A small closed set, each one
- * a standard SQLite function: TRIM, UPPER, LOWER, LTRIM(x, '0'), SUBSTR(x, 1, n), SUBSTR(x, -n),
- * REPLACE(x, from, to). Applied in order, the first innermost.
+ * Tidies a column before it joins, for keys from different systems: the functions Query, Compare
+ * and Run Batch share (src/services/column-functions), each a standard SQLite function, applied
+ * in order, the first innermost.
  */
-export type QueryFn =
-    | { fn: 'trim' }
-    | { fn: 'upper' }
-    | { fn: 'lower' }
-    | { fn: 'ltrimZeros' }
-    /** CAST(x AS TEXT) and CAST(x AS NUMERIC): the number 123 meets the text "123". */
-    | { fn: 'text' }
-    | { fn: 'number' }
-    | { fn: 'first'; n: number }
-    | { fn: 'last'; n: number }
-    | { fn: 'replace'; from: string; to: string };
+export type QueryFn = ColumnFn;
 
 /** One column of one view, tidied by `fns` if any. */
 export interface ColumnRef {
