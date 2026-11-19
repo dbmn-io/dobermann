@@ -59,6 +59,7 @@
  *   rows on screen stay where they are and the new ones are counted; back at that end, it follows
  *   again. Only for a live feed (Logs): a table without `follow` never moves by itself.
  *   orders.following                  // true while it follows; set it to start or stop
+ *   orders.setRows(rows, { older: true })   // rows added at the far end (a log's earlier lines): the view stays put
  *   orders.addEventListener('dbmn-table-follow', e => …e.detail.following, e.detail.unseen…);
  *
  * ── Rows inside a row ──
@@ -211,6 +212,12 @@
             this._refresh();
         }
         get rows() { return this._rows; }
+        /** Rows given again; `older`: the new ones are older, at the far end from the newest (a log's
+         *  earlier lines, asked for by scrolling to them): the view stays exactly where it is. */
+        setRows(list, opts) {
+            this._far = !!(opts && opts.older);
+            try { this.rows = list; } finally { this._far = false; }
+        }
 
         /** The rows the search shows, in the order shown (rows the page holds). */
         get shown() { return this._source ? [] : this._view.map(i => this._rows[i]); }
@@ -539,7 +546,7 @@
             const s = this._scroll;
             // (scrolled away since the last rows, its scroll event not yet heard: it has stopped following)
             if (this._following && !this._atEdge()) this._following = false;
-            this._pending = { more: Math.max(0, more), top: s.scrollTop, fromBottom: s.scrollHeight - s.scrollTop };
+            this._pending = { more: Math.max(0, more), top: s.scrollTop, fromBottom: s.scrollHeight - s.scrollTop, far: !!this._far };
         }
         /** The new rows are drawn: at the newest while following, else exactly where it was, the new ones counted. */
         _after() {
@@ -547,6 +554,8 @@
             this._pending = null;
             if (!was || !this._edge()) return;
             const s = this._scroll;
+            // Older rows, at the far end: nothing on screen moves, and nothing new to count
+            if (was.far) { this._hold(() => { s.scrollTop = was.top; }); this._render(false); return; }
             if (this._following) this._toEdge();
             else {
                 this._unseen += was.more;

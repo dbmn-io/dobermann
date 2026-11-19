@@ -24,13 +24,6 @@ dbmn-log .dbmn-table-count { display: none; }
 dbmn-log td { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 dbmn-log td:first-child { font-variant-numeric: tabular-nums; }
 
-/* A search looking: the search box's glass is the steps' spinner */
-dbmn-log .dbmn-table-glass.is-busy svg { animation: dbmn-log-spin 0.9s linear infinite; }
-@keyframes dbmn-log-spin { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) {
-    dbmn-log .dbmn-table-glass.is-busy svg { animation: none; }
-}
-
 .dbmn-log-message.has-detail {
     cursor: pointer;
     text-decoration: underline dotted color-mix(in srgb, var(--dbmn-foreground, var(--vscode-foreground)) 45%, transparent);

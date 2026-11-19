@@ -95,14 +95,19 @@
         return row.detail ? `${head}\n${String(row.detail).replace(/^/gm, '    ')}` : head;
     }
 
+    /*
+     * The table does the following (follow="top"): the newest line kept in view while the view is
+     * at the top, the lines on screen held still and the new ones counted once scrolled down, and
+     * the search box's spinner (busy). This element keeps the lines in time order, says when the
+     * oldest is reached, and tells the screen what shows.
+     */
     class DbmnLog extends HTMLElement {
         constructor() {
             super();
             this._rows = [];        // newest first
             this._keys = new Set();
-            this._following = true;
-            this._unseen = 0;
             this._built = false;
+            this._follow = { following: true, unseen: 0 };
         }
 
         connectedCallback() {
@@ -111,17 +116,24 @@
             const table = document.createElement('dbmn-table');
             table.setAttribute('searchable', '');
             table.setAttribute('removable', '');
+            table.setAttribute('follow', 'top');
             table.setAttribute('label', this.getAttribute('label') || 'Log lines');
             table.setAttribute('placeholder', this.getAttribute('placeholder') || 'Search the lines, or @level=error, @source=sign-in, @run=…');
             this._table = table;
             this.replaceChildren(table);
             table.columns = COLUMNS;
             table.rows = this._rows;
+            if (this._busy) table.busy = true;
             this._scroll = table.querySelector('.dbmn-table-scroll');
-            if (this._scroll) this._scroll.addEventListener('scroll', () => { this._scrolled(); this._end(); }, { passive: true });
+            if (this._scroll) this._scroll.addEventListener('scroll', () => this._end(), { passive: true });
             table.addEventListener('dbmn-table-shown', event => {
                 event.stopPropagation();
                 this._shown = event.detail;
+                this._tell();
+            });
+            table.addEventListener('dbmn-table-follow', event => {
+                event.stopPropagation();
+                this._follow = event.detail;
                 this._tell();
             });
             table.addEventListener('click', event => {
@@ -138,25 +150,17 @@
             this._rows = [];
             this._keys = new Set();
             this._add(list);
-            this._unseen = 0;
             this._asked = false;
             this._fill();
-            this._toTop();
+            // (a new set of lines: the newest in view, followed)
+            if (this._table) this._table.following = true;
             this._tell();
         }
 
-        /** New lines, at the top. Scrolled down to older ones, the lines on screen stay where they are. */
+        /** New lines, at the top. Scrolled down to older ones, the lines on screen stay where they are (the table counts the new). */
         append(list) {
-            const s = this._scroll;
-            const fromBottom = s ? s.scrollHeight - s.scrollTop : 0;
-            const added = this._add(list);
-            if (!added) return;
-            // Scrolled down since (its scroll event not yet heard): stay there
-            if (this._following && s && s.scrollTop > NEAR) this._following = false;
-            if (!this._following) this._unseen += added;
+            if (!this._add(list)) return;
             this._fill();
-            if (this._following) this._toTop();
-            else if (s) this._hold(() => { s.scrollTop = s.scrollHeight - fromBottom; });
             this._tell();
         }
 
@@ -165,10 +169,7 @@
             const added = this._add(list);
             this._asked = false;
             if (!added) return;
-            const s = this._scroll;
-            const top = s ? s.scrollTop : 0;
-            this._fill();
-            if (s) this._hold(() => { s.scrollTop = top; });
+            if (this._table) this._table.setRows(this._rows, { older: true });
             this._tell();
         }
 
@@ -184,19 +185,21 @@
             }
             if (!fresh.length) return 0;
             fresh.sort(newest);
-            const first = this._rows[0];
-            const last = this._rows[this._rows.length - 1];
+            // A new array, never the one the table holds: it counts what was added by how many more there are
+            const rows = this._rows;
+            const first = rows[0];
+            const last = rows[rows.length - 1];
             // Newer than all (live lines) go first, older than all (scrolled back) go last; otherwise everything is put in order
-            if (!first || newest(fresh[fresh.length - 1], first) < 0) this._rows.unshift(...fresh);
-            else if (newest(fresh[0], last) > 0) this._rows.push(...fresh);
-            else { this._rows.push(...fresh); this._rows.sort(newest); }
+            if (!first || newest(fresh[fresh.length - 1], first) < 0) this._rows = fresh.concat(rows);
+            else if (newest(fresh[0], last) > 0) this._rows = rows.concat(fresh);
+            else this._rows = rows.concat(fresh).sort(newest);
             return fresh.length;
         }
 
         /** Scrolled down to the oldest line here: say so once, until older lines come. */
         _end() {
             const s = this._scroll;
-            if (this._pinning || this._asked || !s) return;
+            if (this._asked || !s || !this._rows.length) return;
             if (s.scrollHeight - s.scrollTop - s.clientHeight > NEAR * 3) return;
             this._asked = true;
             this.dispatchEvent(new CustomEvent('dbmn-log-end', { bubbles: true }));
@@ -207,21 +210,18 @@
             this._asked = false;
         }
 
-        get following() { return this._following; }
+        get following() { return this._table ? this._table.following : this._follow.following; }
         set following(on) {
-            this._following = !!on;
-            if (this._following) { this._unseen = 0; this._toTop(); }
+            if (this._table) this._table.following = !!on;
+            else this._follow = { following: !!on, unseen: 0 };
             this._tell();
         }
 
-        /** A search is looking (the screen's, through every line kept): the glass in the search box spins. */
+        /** A search is looking (the screen's, through every line kept): the search box's glass spins (the table's busy). */
         get busy() { return !!this._busy; }
         set busy(on) {
             this._busy = !!on;
-            const glass = this.querySelector('.dbmn-table-glass');
-            if (!glass || !window.Icons) return;
-            glass.classList.toggle('is-busy', this._busy);
-            window.Icons.setIcon(glass, this._busy ? 'loader' : 'search');
+            if (this._table) this._table.busy = this._busy;
         }
 
         get search() { return this._table ? this._table.search : ''; }
@@ -235,39 +235,16 @@
             return rows.map(textOf).join('\n');
         }
 
-        /** Give the table the rows (it sizes its columns from the first it gets). */
+        /** Give the table the rows: it keeps the newest in view, or the view still (follow="top"). */
         _fill() {
             if (this._table) this._table.rows = this._rows;
-        }
-
-        /** Move the view without it counting as the user scrolling. */
-        _hold(move) {
-            this._pinning = true;
-            move();
-            requestAnimationFrame(() => { this._pinning = false; });
-        }
-
-        /** The newest line in view. */
-        _toTop() {
-            if (!this._scroll) return;
-            this._hold(() => { this._scroll.scrollTop = 0; });
-        }
-
-        _scrolled() {
-            if (this._pinning) return;
-            const atTop = this._scroll.scrollTop <= NEAR;
-            if (atTop === this._following) return;
-            // Scrolled down: the lines stay where they are. Back at the top: following again
-            this._following = atTop;
-            if (atTop) this._unseen = 0;
-            this._tell();
         }
 
         _tell() {
             const shown = this._shown || { shown: this._rows.length, total: this._rows.length };
             this.dispatchEvent(new CustomEvent('dbmn-log-shown', {
                 bubbles: true,
-                detail: { shown: shown.shown, total: shown.total, following: this._following, unseen: this._unseen }
+                detail: { shown: shown.shown, total: shown.total, following: this.following, unseen: this._follow.unseen || 0 }
             }));
         }
     }
