@@ -3,12 +3,12 @@
 /**
  * Compare's page (#298). Any host: `asset` maps a path under src/webviews to a URL.
  *
- * Run Batch's stepped layout (#csvBatchContainer, .csv-step, the shared step bar) holding the
- * Console's pieces (the stat cards, .data-table, the find box). The footer is Run Batch's: Back
- * and Next, then the step bar: Select, Match, Columns, Results. The four slots (BL, C1 to C3) sit
- * across the top of every step, where Results has them, with its toolbar. Work shows on the
- * step bar, as in Run Batch: no progress panel of its own. On Results the footer folds into the
- * peek strip.
+ * Run Batch's stepped layout (#csvBatchContainer, .csv-step) holding the Console's pieces (the
+ * stat cards, .data-table, the find box). The footer is the design system's (shared/dbmn-footer.js):
+ * Back and Next, then the steps: Select, Match, Columns, Results. The four slots (BL, C1 to C3)
+ * sit across the top of every step, where Results has them, with its toolbar. Work shows on the
+ * steps (the step it leads to turns): no progress panel of its own. On Results the steps fold
+ * into a summary of what is on screen.
  */
 import type { AssetUrl } from '../pages';
 import { sharedStyleLinks } from '../pages';
@@ -23,7 +23,7 @@ export function buildComparePage(asset: AssetUrl, config: { compareId: string; e
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Compare: ${attr(config.endpointName)}</title>
-    ${sharedStyleLinks(asset, ['atomic', 'core', 'buttons', 'modals', 'tables', 'tabs', 'toast', 'console', 'data-transformer', 'compare', 'column-drag', 'column-head'])}
+    ${sharedStyleLinks(asset, ['atomic', 'core', 'buttons', 'modals', 'tables', 'tabs', 'toast', 'console', 'data-transformer', 'compare', 'column-drag', 'column-head', 'dbmn-footer'])}
 </head>
 <body class="editor-slide-in" data-endpoint-name="${attr(config.endpointName)}">
     <script src="${asset('shared/button-contrast.js')}"></script>
@@ -75,6 +75,9 @@ export function buildComparePage(asset: AssetUrl, config: { compareId: string; e
         </div>
 
         <!-- Step 1: Select — the Baseline and the results to compare with it (shared/compare-picker.js) -->
+        <!-- What is being worked out, and how far it has got, while results are read, matched or compared: the
+             footer's steps only turn (shared/dbmn-footer.js), so the detail is here, in the screen -->
+        <p id="compareWorking" class="compare-working hidden" role="status" aria-live="polite"></p>
         <div id="compareSelectStep" class="csv-step hidden">
             <div class="execution-section">
                 <h3>Select</h3>
@@ -167,22 +170,16 @@ export function buildComparePage(asset: AssetUrl, config: { compareId: string; e
             </div>
         </div>
 
-        <div class="webview-footer named-footer">
-            <div class="footer-content">
-                <!-- The compare's name, as a query's: typed on any step -->
-                <div class="report-foot">
-                    <label class="report-name">
-                        <span class="report-name-label">Compare name</span>
-                        <input type="text" id="compareName" value="${attr(config.endpointName)}" spellcheck="false" autocomplete="off" placeholder="Name the compare" maxlength="30">
-                    </label>
-                    <nav id="compareStepper" class="batch-stepper" aria-label="Compare steps"></nav>
-                </div>
-                <!-- Run Batch's Back and Next. Next on Compare compares (its label says so) -->
-                <div class="footer-button-container">
-                    <button type="button" id="compareNextBtn" class="btn btn-primary" data-click="compare:next" disabled>Next</button>
-                </div>
-            </div>
-        </div>
+        <!-- The design system's footer (shared/dbmn-footer.js): what you can do on the left, how far
+             along on the right. The compare's name is its tab's: double-click the tab to rename it.
+             Next on Columns compares (its label says so) -->
+        <dbmn-footer>
+            <dbmn-actions>
+                <button type="button" id="compareBackBtn" class="btn btn-secondary" data-click="compare:back" disabled>Back</button>
+                <button type="button" id="compareNextBtn" class="btn btn-primary" data-click="compare:next" disabled>Next</button>
+            </dbmn-actions>
+            <dbmn-steps id="compareStepper" label="Compare steps"></dbmn-steps>
+        </dbmn-footer>
     </div>
 
     ${script('shared/search-matcher.js')}
@@ -191,7 +188,6 @@ export function buildComparePage(asset: AssetUrl, config: { compareId: string; e
     ${script('shared/column-drag.js')}
     ${script('shared/column-head.js')}
     ${script('shared/dbmn-context-menu.js')}
-    ${script('shared/step-bar.js')}
     ${script('shared/compare-picker.js')}
     ${script('shared/help-mode.js')}
     ${script('compare/compare-help.js')}
@@ -201,6 +197,7 @@ export function buildComparePage(asset: AssetUrl, config: { compareId: string; e
     ${script('shared/value-formatter.js')}
     ${script('shared/cell-detail.js')}
     ${script('shared/icons.js')}
+    ${script('shared/dbmn-footer.js')}
     ${script('shared/editor-window-controls.js')}
     <script src="${asset('compare/compare-page.js')}" data-compare-id="${attr(config.compareId)}"></script>
 </body>

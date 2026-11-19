@@ -8,8 +8,9 @@
  * is compared; from the Console, BL is the result it showed), Match (the key, which must pair
  * records one to one), Compare (the columns and which rows), Results: the results as buttons (BL
  * picks another Baseline; C1 to C3 show or hide), Side by side or Compact, and the grid. Back
- * and Next in the footer, as in Run Batch. Work shows on the step bar, on the step it leads to
- * (startWork), and the screen moves once that step is ready, so the steps never flash past. */
+ * and Next in the footer (the design system's, shared/dbmn-footer.js). Work shows on the steps, on
+ * the step it leads to (startWork), and the screen moves once that step is ready, so the steps
+ * never flash past. The compare's name is its tab's (double-click the tab). */
 (function () {
     'use strict';
     const vscode = acquireVsCodeApi();
@@ -67,8 +68,10 @@
         running: false        // opened to run as saved: Results are on the way
     };
 
-    // The step bar is the footer and the only navigation
-    const bar = window.StepBar.create($('compareStepper'), STEPS, { onStep: n => goTo(n) });
+    // The footer's steps (shared/dbmn-footer.js): shown what stands, they say which step was asked for
+    const bar = $('compareStepper');
+    bar.steps = STEPS;
+    bar.addEventListener('dbmn-step', event => goTo(event.detail.step));
 
     function post(message) { vscode.postMessage(message); }
     /** Two counts share a slot: 105K, 72.1K (the whole number on hover); under 10,000 as it is. */
@@ -155,24 +158,35 @@
             const n = i + 1;
             if (n === at) {
                 if (!work) return { status: 'current', summary: summaryOf(n) };
-                const measured = typeof work.progress === 'number';
-                return { status: 'current', summary: work.summary, checking: !measured, ...(measured ? { progress: work.progress } : {}) };
+                // (steps and a progress bar never show together: the step's number turns, and what it is doing is its hover text)
+                return { status: 'current', summary: work.summary, checking: true, title: work.summary };
             }
             if (n < at) return { status: 'done', summary: summaryOf(n) };
             if (work) return { status: 'pending', summary: '' };
             const blocked = waitsFor(n);
-            if (!blocked) return { status: 'available', summary: summaryOf(n), title: `Go to ${STEPS[i].label}` };
+            if (!blocked) return { status: 'available', summary: summaryOf(n) };
             if (n === ui.step + 1) return { status: 'blocked', waitsFor: blocked, summary: `Waits for ${blocked}` };
             return { status: 'pending', summary: '' };
         });
-        bar.render(states, at, ui.endpoint ? `Compare: ${ui.endpoint.name}` : 'Compare');
+        bar.render(states, at);
+        // How far the work has got ("Checking the match · 125,010 of 420,020") is said in the screen: the steps only turn
+        const working = $('compareWorking');
+        const says = work && work.plan.length ? work.summary : '';
+        working.classList.toggle('hidden', !says);
+        if (working.textContent !== says) working.textContent = says;
+        // On Results the wizard is done: the steps fold into what is on screen (click it for the steps).
+        // Only once the results are in, and not while they are read, matched or compared again;
+        // quick work on Results (Counting, Exporting) keeps the summary and turns its tick
+        bar.summary = [summaryOf(1), summaryOf(2), summaryOf(RESULTS)].filter(Boolean);
+        bar.folded = ui.shown && ui.step === RESULTS && !!ui.result && !(work && (work.step !== RESULTS || work.plan.length));
         renderFooterButtons();
     }
-    /** Back and Next, as in Run Batch. Next on Columns compares (it says so); Results has no Next. */
+    /** Back and Next. Next says where it goes; on Columns it compares (it says so); Results has no Next. */
     function renderFooterButtons() {
         const next = $('compareNextBtn');
         next.classList.toggle('hidden', !ui.shown || ui.step === RESULTS);
-        next.textContent = ui.step === 3 ? 'Generate' : 'Next';
+        next.textContent = ui.step === 3 ? 'Generate' : ui.step < 3 ? `Next: ${STEPS[ui.step].label}` : 'Next';
+        $('compareBackBtn').disabled = !ui.shown || ui.step === 1 || ui.busy;
         next.disabled = ui.busy || (ui.step === 1 ? !ui.picked : !!waitsFor(ui.step + 1));
         next.title = ui.step === 1 && !ui.picked ? 'Tick at least one result to compare with the Baseline' : '';
     }
@@ -197,10 +211,10 @@
         updatePeek();
         if (n === RESULTS) requestRows(true);
     }
-    /** Results give the grid the whole height: the step bar folds into the peek strip (the
-     * full-window editor's, core.css). It comes back up while something runs, for its progress. */
+    /** The footer stays on Results: its steps fold into the summary (renderBar), and its buttons
+     * are still to hand. (It used to shrink to a strip.) */
     function updatePeek() {
-        document.body.classList.toggle('is-footer-peek', ui.shown && ui.step === RESULTS && !ui.work);
+        document.body.classList.remove('is-footer-peek');
     }
     /** The step the user clicked: earlier steps open as they are, later ones once ready. */
     function goTo(n) {
@@ -2132,11 +2146,9 @@
         switch (m.type) {
             case 'compare.named':
                 ui.name = m.name || ui.name;
-                $('compareName').value = ui.name;
                 break;
             case 'compare.init':
                 ui.name = m.name || '';
-                if (document.activeElement !== $('compareName')) $('compareName').value = ui.name;
                 ui.endpoint = m.endpoint;
                 ui.sources = m.sources || [];
                 ui.runs = m.runs || [];
@@ -2290,13 +2302,6 @@
     /* ---------- Actions ---------- */
 
     let searchTimer = null;
-    // The compare's name, typed on any step. Emptied, it goes back to the name it has
-    $('compareName').addEventListener('change', () => {
-        const name = $('compareName').value.trim();
-        if (name) post({ type: 'compare.rename', name });
-        else $('compareName').value = ui.name || '';
-    });
-
     window.DbmnActions.register({
         'compare:back': () => { if (!ui.busy && ui.step > 1) showStep(ui.step - 1); },
         'compare:next': () => next(),
