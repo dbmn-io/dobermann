@@ -146,6 +146,10 @@
     function waitsFor(n) {
         if (n >= 2 && views().length === 0) return 'Views';
         if (n >= 3 && !joinsReady()) return 'Join';
+        // A new query is walked through: a step opens once the one before it has been visited, so
+        // Join and Columns are seen before Results (a view left unjoined still sits out and holds
+        // nothing up). A saved query, opened again, has been through them: every step is open
+        if (n > (ui.reached || 1) + 1) return STEPS[n - 2].label;
         return '';
     }
     function renderBar() {
@@ -190,6 +194,7 @@
         if (n < 1 || n > 4 || (n > ui.step && waitsFor(n))) return;
         if (n === 4 && ui.step !== 4) ui.arrived = false;
         ui.step = n;
+        ui.reached = Math.max(ui.reached || 1, n);
         PANELS.forEach((id, i) => $(id).classList.toggle('hidden', i + 1 !== n));
         $('queryResultsControls').classList.toggle('hidden', n !== 4);
         renderTop();
@@ -1897,6 +1902,8 @@
                 ui.start = m.empty ? 'edit' : m.start;
                 // Run shows Results and nothing else while the query is read; Edit shows Views
                 ui.step = ui.start === 'results' ? 4 : 1;
+                // (a query with nothing in it yet is new: its steps open one at a time)
+                ui.reached = m.empty ? 1 : 4;
                 PANELS.forEach((id, i) => $(id).classList.toggle('hidden', i + 1 !== ui.step));
                 $('queryResultsControls').classList.toggle('hidden', ui.step !== 4);
                 renderBar();
