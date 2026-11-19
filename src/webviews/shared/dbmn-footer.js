@@ -39,6 +39,9 @@
  *   while it runs, time taken once done).
  *   el.stats = [{ label: 'Started', value: '09:15:02' }, { label: 'Taken', value: '13s' }, …];
  *                                   // the rest, a click (or a hover) away
+ *   A figure the user may change takes its limits: { id: 'threads', label: 'Threads', value: 8, min: 1, max: 16 }.
+ *   It gets less and more buttons, and the box asks with 'dbmn-progress-change' ({ id, value });
+ *   the screen decides (its controller keeps the limits) and sets the figure it settles on.
  * ── <dbmn-status tone="ok|warn|error">Saved</dbmn-status> ──
  */
 (function () {
@@ -120,11 +123,12 @@
                 this._more.innerHTML = icon('chevron-up');
                 this.replaceChildren(track, this._phase, this._count, this._more);
                 this.addEventListener('click', event => {
-                    if (!this._stats.length || (this._list && this._list.contains(event.target))) return;
+                    // (a click inside the list is the list's own; asked of the click's path, since stepping a figure draws the list again mid-click)
+                    if (!this._stats.length || (this._list && event.composedPath().includes(this._list))) return;
                     if (this._list) this._close(); else this._open();
                 });
                 this.addEventListener('keydown', event => {
-                    if (!this._stats.length || (event.key !== 'Enter' && event.key !== ' ')) return;
+                    if (!this._stats.length || (event.key !== 'Enter' && event.key !== ' ') || event.target !== this) return;
                     event.preventDefault();
                     if (this._list) this._close(); else this._open();
                 });
@@ -182,11 +186,42 @@
         }
 
         _fillList() {
+            // (a figure being stepped keeps the keyboard's place when the list is drawn again)
+            const held = this._list.contains(document.activeElement) ? document.activeElement.dataset.step : '';
             this._list.replaceChildren(...this._stats.map(item => {
                 const row = make('div', 'dbmn-progress-stat');
-                row.append(make('span', 'dbmn-progress-stat-label', item.label), make('span', 'dbmn-progress-stat-value', String(item.value)));
+                const value = make('span', 'dbmn-progress-stat-value');
+                const steps = typeof item.min === 'number' || typeof item.max === 'number';
+                if (!steps) value.textContent = String(item.value);
+                else {
+                    // A figure the user may change (how many requests run at once): less, the figure, more.
+                    // The box only asks: the screen decides, and sets the figure it settles on
+                    const now = Number(item.value) || 0;
+                    const by = item.step || 1;
+                    const change = (dir, name, to) => {
+                        const btn = make('button', 'dbmn-progress-step');
+                        btn.type = 'button';
+                        btn.dataset.step = `${item.id || item.label}:${dir}`;
+                        btn.innerHTML = icon(dir < 0 ? 'minus' : 'plus');
+                        btn.title = `${name} ${item.label.toLowerCase()}`;
+                        btn.setAttribute('aria-label', btn.title);
+                        btn.disabled = (typeof item.min === 'number' && to < item.min) || (typeof item.max === 'number' && to > item.max);
+                        btn.addEventListener('click', () => {
+                            this.dispatchEvent(new CustomEvent('dbmn-progress-change', { bubbles: true, detail: { id: item.id || item.label, value: to } }));
+                        });
+                        return btn;
+                    };
+                    value.classList.add('is-stepped');
+                    value.append(change(-1, 'Fewer', now - by), make('span', 'dbmn-progress-step-value', String(item.value)), change(1, 'More', now + by));
+                    if (typeof item.max === 'number') value.title = `Up to ${item.max}`;
+                }
+                row.append(make('span', 'dbmn-progress-stat-label', item.label), value);
                 return row;
             }));
+            if (held) {
+                const again = Array.from(this._list.querySelectorAll('.dbmn-progress-step')).find(btn => btn.dataset.step === held);
+                if (again && !again.disabled) again.focus();
+            }
         }
 
         _open() {

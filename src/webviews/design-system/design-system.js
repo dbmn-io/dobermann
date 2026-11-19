@@ -62,6 +62,7 @@
 
     /* ── Progress: a run to watch ── */
     let runTimer = 0;
+    let threads = 8;
     function run() {
         const bar = $('dsProgress');
         clearInterval(runTimer);
@@ -80,6 +81,9 @@
             bar.setAttribute('note', loading ? taken : finished ? `took ${taken}` : left);
             bar.setAttribute('value', String(loading ? (tick + 1) * 25 : Math.round(done / total * 100)));
             bar.stats = [
+                // How it is being run: the two figures people go looking for. Threads can be changed here, up to the environment's limit
+                { id: 'threads', label: 'Threads', value: threads, min: 1, max: 16 },
+                { label: 'Rows per request', value: '100' },
                 { label: 'Started', value: '09:15:02' },
                 { label: 'Taken', value: taken },
                 { label: 'Left', value: loading ? 'Not known yet' : finished ? 'None' : left.replace(' left', '') },
@@ -325,7 +329,13 @@
     $('dsSteps').addEventListener('dbmn-step', event => go(event.detail.step));
     drawWizard();
     drawWorking();
-    $('dsProgress').stats = [{ label: 'Started', value: '09:15:02' }, { label: 'Taken', value: '13s' }, { label: 'Left', value: 'Under a minute' }, { label: 'Speed', value: '7 a second' }, { label: 'Succeeded', value: '88' }, { label: 'Failed', value: '3' }];
+    // (a screen's controller would check the change against the environment's limit; here it is taken as asked)
+    $('dsProgress').addEventListener('dbmn-progress-change', event => {
+        if (event.detail.id !== 'threads') return;
+        threads = event.detail.value;
+        $('dsProgress').stats = $('dsProgress').stats.map(item => (item.id === 'threads' ? Object.assign({}, item, { value: threads }) : item));
+    });
+    $('dsProgress').stats = [{ id: 'threads', label: 'Threads', value: 8, min: 1, max: 16 }, { label: 'Rows per request', value: '100' }, { label: 'Started', value: '09:15:02' }, { label: 'Taken', value: '13s' }, { label: 'Left', value: 'Under a minute' }, { label: 'Speed', value: '7 a second' }, { label: 'Succeeded', value: '88' }, { label: 'Failed', value: '3' }];
     drawColours();
     drawInventory();
     drawMoving();

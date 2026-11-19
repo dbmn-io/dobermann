@@ -220,6 +220,23 @@ test('progress: the box is the bar, and says so to a screen reader', async ({ pa
     // They follow the run while open
     await bar.evaluate(e => { e.stats = [{ label: 'Taken', value: '14s' }]; });
     await expect(page.locator('.dbmn-progress-stat')).toHaveText(['Taken14s']);
+    // A figure the user may change has less and more buttons: the box asks, the screen answers
+    await bar.evaluate(e => {
+        window.asked = [];
+        e.addEventListener('dbmn-progress-change', event => {
+            window.asked.push(event.detail);
+            e.stats = e.stats.map(item => (item.id === event.detail.id ? { ...item, value: event.detail.value } : item));
+        });
+        e.stats = [{ id: 'threads', label: 'Threads', value: 15, min: 1, max: 16 }, { label: 'Rows per request', value: 100 }];
+    });
+    const more = page.locator('.dbmn-progress-step[aria-label="More threads"]');
+    await more.click();
+    await expect(page.locator('.dbmn-progress-step-value')).toHaveText('16');
+    await expect(more).toBeDisabled();                       // at the limit it was given
+    await page.locator('.dbmn-progress-step[aria-label="Fewer threads"]').click();
+    expect(await page.evaluate(() => window.asked)).toEqual([{ id: 'threads', value: 16 }, { id: 'threads', value: 15 }]);
+    await expect(page.locator('.dbmn-progress-stats')).toHaveCount(1);   // stepping never closes the list
+    await expect(page.locator('.dbmn-progress-stat').nth(1)).toHaveText('Rows per request100');
     await page.keyboard.press('Escape');
     await expect(page.locator('.dbmn-progress-stats')).toHaveCount(0);
     await bar.press('Enter');

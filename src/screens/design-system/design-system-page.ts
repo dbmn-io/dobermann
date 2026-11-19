@@ -193,7 +193,7 @@ steps.folded = true;                      // the last step: steps fold into the 
         </div>
 
         <h3>Progress</h3>
-        <p>The system's tasks: the box is the bar. One line says what is happening, how far it has got and the one time that matters now: how long is left while it runs, how long it took once it is done. The rest (when it started, how fast, how many failed) is a click on the box away, or a hover.</p>
+        <p>The system's tasks: the box is the bar. One line says what is happening, how far it has got and the one time that matters now: how long is left while it runs, how long it took once it is done. The rest (how many threads, rows per request, when it started, how fast, how many failed) is a click on the box away, or a hover. A figure the user may change, like threads, has less and more buttons there.</p>
         <div class="ds-demo">
             <dbmn-footer inline>
                 <dbmn-actions>
@@ -208,8 +208,11 @@ steps.folded = true;                      // the last step: steps fold into the 
 &lt;dbmn-progress phase="Done" count="501" note="took 2m 14s" value="100" tone="ok"&gt;&lt;/dbmn-progress&gt;   tone: ok, warn, error
 &lt;dbmn-progress phase="Fetching" busy&gt;&lt;/dbmn-progress&gt;          no figure yet
 
-progress.stats = [{ label: 'Started', value: '09:15:02' }, { label: 'Taken', value: '13s' }, { label: 'Failed', value: '3' }];
-                                                             a click on the box lists them</code></pre>
+progress.stats = [{ id: 'threads', label: 'Threads', value: 8, min: 1, max: 16 },      a figure the user may change
+                  { label: 'Rows per request', value: '100' }, { label: 'Taken', value: '13s' }, { label: 'Failed', value: '3' }];
+                                                             a click on the box lists them
+progress.addEventListener('dbmn-progress-change', e =&gt; post({ type: 'console.setThreads', value: e.detail.value }));
+                                                             the box only asks: the controller keeps the limit and answers with new stats</code></pre>
 
         <h3>Status</h3>
         <p>An editor has no steps and no run: a few words.</p>

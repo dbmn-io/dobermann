@@ -134,6 +134,26 @@ dbmn-progress .dbmn-progress-more svg { width: 14px; height: 14px; }
 .dbmn-progress-stat { display: contents; }
 .dbmn-progress-stat-label { color: var(--foot-dim); }
 .dbmn-progress-stat-value { justify-self: end; font-variant-numeric: tabular-nums; }
+/* A figure that can be changed: less, the figure, more */
+.dbmn-progress-stat-value.is-stepped { display: inline-flex; align-items: center; gap: 6px; }
+.dbmn-progress-step-value { min-width: 2ch; text-align: center; }
+.dbmn-progress-step {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    border: 1px solid var(--foot-line);
+    border-radius: 3px;
+    background: none;
+    color: inherit;
+    cursor: pointer;
+}
+.dbmn-progress-step svg { width: 12px; height: 12px; }
+.dbmn-progress-step:hover:not(:disabled) { border-color: var(--foot-accent); background: color-mix(in srgb, var(--foot-accent) 14%, transparent); }
+.dbmn-progress-step:disabled { opacity: 0.4; cursor: default; }
+.dbmn-progress-step:focus-visible { outline: 1px solid var(--vscode-focusBorder); }
 /* No figure to show yet: the fill sweeps */
 dbmn-progress[busy] .dbmn-progress-fill {
     width: 35%;
