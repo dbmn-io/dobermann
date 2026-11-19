@@ -346,6 +346,7 @@ table.addEventListener('dbmn-table-follow', e =&gt; …e.detail.following, e.det
 
         <h3>Rows inside a row</h3>
         <p>A value that is a list of records (an order's lines, its packages) shows as a count with a chevron, and opens inside its own cell: a small table with its own headings, which sort and can be removed. Two lists in one row each open in their own cell, side by side. The first 100 records show. What is open stays open through a search or a sort, and a search that finds the order shows all its records. Try it: open the lines and the packages of one order, then sort the table.</p>
+        <p>The switch at the end of that line shows a column's records full width instead: in a row of their own under the order, across the table. It is for the whole column (every order's lines), kept with the screen's layout, and the same switch puts them back in their cells.</p>
         <div class="ds-demo">
             <dbmn-table id="dsNested" label="Orders with their lines and packages" searchable removable></dbmn-table>
         </div>
@@ -355,7 +356,8 @@ orders.rowKey = row =&gt; row.order_no;       // what makes a row the same row (
 
 { id: 'lines', name: 'lines', nested: { count: row =&gt; row.lineCount, rows: row =&gt; fetchLines(row) } }
                                            // records fetched when the cell is opened
-nested: { controls: (row, value) =&gt; button } // the screen's own buttons beside "3 records" (Set as Row)</code></pre>
+nested: { controls: (row, value) =&gt; button } // the screen's own buttons beside "3 records" (Set as Row)
+orders.layout = { recordsWide: ['lines'] };  // these columns' records full width, under their row (told: change 'records-wide')</code></pre>
     </section>
 
     <section class="ds-section" id="logs">

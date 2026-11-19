@@ -86,7 +86,8 @@
  *   orders.addEventListener('dbmn-table-layout', e => …e.detail.change, e.detail.layout…);
  *       change: 'sorted' | 'moved' | 'removed' | 'resized', with { id, to, width } as fits;
  *       layout: { order: [ids], hidden: [ids], widths: { id: px } (the ones the user set), sort,
- *               recordHidden: ['lines.qty'] (columns removed from a column's records) }.
+ *               recordHidden: ['lines.qty'] (columns removed from a column's records),
+ *               recordsWide: ['lines'] (columns whose records open full width, under their row) }.
  *       A column removed from a column's records is told with { records: column id, key }.
  *       A sort's icon is a clock until the new rows land. Both events are told for `rows` too.
  *   orders.layout = saved;            // after `columns`: the order, widths, hidden columns and sort kept
@@ -170,6 +171,7 @@
             this._totals = null;
             this._open = new Map();     // rows with a list of records open: row key → Map(column id → its state)
             this._subHidden = {};       // record columns the user removed, by column id
+            this._wide = new Set();     // columns whose records open full width, under their row
             this.rowKey = null;         // row => what makes it the same row (else the row object itself)
             this._following = true;     // (with `follow`) the newest row is kept in view
             this._unseen = 0;           // rows that came while it was not
@@ -271,7 +273,7 @@
             // (the columns removed from a column's records, as `<column>.<key>`)
             const recordHidden = [];
             Object.keys(this._subHidden).forEach(id => Object.keys(this._subHidden[id]).forEach(key => recordHidden.push(`${id}.${key}`)));
-            return { order: shown, hidden: this._all.map(c => c.id).filter(id => !shown.includes(id)), widths, sort: this._sort ? { id: this._sort.id, dir: this._sort.dir } : null, recordHidden };
+            return { order: shown, hidden: this._all.map(c => c.id).filter(id => !shown.includes(id)), widths, sort: this._sort ? { id: this._sort.id, dir: this._sort.dir } : null, recordHidden, recordsWide: [...this._wide] };
         }
         set layout(saved) {
             const l = saved || {};
@@ -286,6 +288,8 @@
                 if (w > 0 && this._all.some(c => c.id === id)) { this._widths[id] = Math.round(w); this._set[id] = true; }
             });
             this._sort = l.sort && l.sort.id && this._all.some(c => c.id === l.sort.id) ? { id: l.sort.id, dir: l.sort.dir === 'desc' ? 'desc' : 'asc' } : null;
+            // Columns whose records open full width
+            if (Array.isArray(l.recordsWide)) this._wide = new Set(l.recordsWide.filter(id => this._all.some(c => c.id === id)));
             // Columns removed from a column's records: `<column>.<key>`, by the longest column id it starts with
             if (Array.isArray(l.recordHidden)) {
                 this._subHidden = {};
@@ -954,7 +958,7 @@
             const actions = th.querySelector('.header-actions');
             const wide = window.ColumnHead.textWidth;
             let need = wide(name, name.textContent) + actions.offsetWidth + 22;
-            Array.from(this._body.rows).forEach(r => { if (r.cells[i]) need = Math.max(need, wide(r.cells[i], r.cells[i].textContent) + 20); });
+            Array.from(this._body.rows).forEach(r => { if (!r._main && r.cells[i]) need = Math.max(need, wide(r.cells[i], r.cells[i].textContent) + 20); });
             const width = this._setWidth(i, Math.min(window.ColumnHead.MAX_FIT, need));
             this._tell('resized', { id: this._columns[i].id, width });
         }
@@ -994,6 +998,7 @@
                 if (td.classList.contains('cell-expandable')) expandIcon(td);
                 tr.append(td);
             });
+            if (row && this._open.size && this._wide.size) this._wideRows(tr, row);
             return tr;
         }
 
@@ -1249,6 +1254,8 @@
                 return;
             }
             const box = this._scroll;
+            // (records full width are as wide as the window the rows scroll in: they stay in it as the table scrolls sideways)
+            if (box.clientWidth) this._table.style.setProperty('--table-nest-room', `${box.clientWidth}px`);
             const open = this._openList();
             if (open.length) { this._renderTall(force, total, open); return; }
             const at = { scrollTop: box.scrollTop, viewportHeight: box.clientHeight || 400, rowHeight: this._rowH, totalRows: total };
@@ -1260,7 +1267,7 @@
             // (an even start keeps the rows' stripes where they were)
             const start = seen.start - (seen.start % 2);
             const rows = [];
-            for (let i = start; i < seen.end; i++) rows.push(this._row(this._rowAt(i)));
+            for (let i = start; i < seen.end; i++) rows.push(...this._drawn(this._row(this._rowAt(i))));
             this._body.replaceChildren(...rows);
             if (window.Icons) window.Icons.injectIcons(this._body);
             const pad = win.paddings({ start, end: seen.end, totalRows: total, rowHeight: at.rowHeight });
@@ -1303,12 +1310,18 @@
             // The screen's own controls beside it (the Console's "Set as Row"): their clicks are the screen's
             const extra = column.nested && typeof column.nested.controls === 'function' ? column.nested.controls(row, value) : null;
             const controls = (Array.isArray(extra) ? extra : extra ? [extra] : []).filter(n => n instanceof Node);
-            if (controls.length) {
-                const line = make('div', 'array-controls dbmn-nest-controls');
-                line.append(toggle, ...controls);
-                wrap.append(line);
-            } else wrap.append(toggle);
-            if (state) wrap.append(this._nestBody(column, value, row, state));
+            // Full width, under the row, or in this cell: for every row's records of this column (kept with the layout)
+            const wide = this._wide.has(column.id);
+            const span = make('button', 'dbmn-nest-span icon');
+            span.type = 'button';
+            span.dataset.icon = wide ? 'fold-horizontal' : 'unfold-horizontal';
+            span.title = wide ? 'Show the records in their cell' : 'Show the records full width, under the row';
+            span.setAttribute('aria-label', span.title);
+            span.setAttribute('aria-pressed', String(wide));
+            const line = make('div', 'array-controls dbmn-nest-controls');
+            line.append(toggle, ...controls, span);
+            wrap.append(line);
+            if (state && !wide) wrap.append(this._nestBody(column, value, row, state));
             return wrap;
         },
         _nestBody(column, value, row, state) {
@@ -1385,11 +1398,55 @@
             return box;
         },
         /** A click inside a cell's records: open or close them, sort them, remove one of their columns, see a long value. True when it was one. */
+        /** A row drawn, and the rows of its records drawn full width under it. */
+        _drawn(tr) { return tr._under ? [tr, ...tr._under] : [tr]; },
+        /** Where a drawn row is among the rows (a row of records full width counts as its row's). */
+        _mainIndex(tr) {
+            const main = tr._main || tr;
+            let i = 0;
+            for (const r of this._body.rows) {
+                if (r === main) return i;
+                if (!r._main) i++;
+            }
+            return -1;
+        },
+        /** The row drawn at a place among the rows. */
+        _mainAt(i) {
+            let n = 0;
+            for (const r of this._body.rows) {
+                if (r._main) continue;
+                if (n === i) return r;
+                n++;
+            }
+            return null;
+        },
+        /** A row's open records of a full-width column: a row of their own under it, across the table. */
+        _wideRows(tr, row) {
+            const under = [];
+            this._columns.forEach(column => {
+                if (!this._wide.has(column.id)) return;
+                const state = this._stateOf(row, column.id);
+                const value = row[column.id];
+                const n = this._nestCount(column, value, row);
+                if (!state || !n) return;
+                const below = make('tr', 'dbmn-nest-wide-row');
+                const td = make('td', 'has-nested dbmn-nest-wide');
+                td.colSpan = this._columns.length;
+                td.dataset.col = column.id;
+                const box = make('div', 'dbmn-nest-wide-box');
+                box.append(make('div', 'dbmn-nest-wide-name', `${column.name || column.id} · ${count(n)} record${n === 1 ? '' : 's'}`), this._nestBody(column, value, row, state));
+                td.append(box);
+                below.append(td);
+                below._main = tr;
+                under.push(below);
+            });
+            if (under.length) tr._under = under;
+        },
         _nestClick(event) {
             const td = event.target.closest('td.has-nested');
             if (!td || !this._body.contains(td)) return false;
-            const tr = td.parentElement;
-            const index = this._rendered.start + Array.prototype.indexOf.call(this._body.rows, tr);
+            const tr = td.parentElement._main || td.parentElement;
+            const index = this._rendered.start + this._mainIndex(tr);
             const row = this._rowAt(index);
             const column = this._all.find(c => c.id === td.dataset.col);
             if (!row || !column) return true;
@@ -1406,7 +1463,7 @@
                 this._openAt = null;
                 this._render(true);
                 // (the same chevron takes the keyboard again: the cell was drawn anew)
-                let again = this._body.rows[index - this._rendered.start];
+                let again = this._mainAt(index - this._rendered.start);
                 // Opened: its column grows to show the records whole (to a limit, and never a width the user set)
                 const inner = again && again.querySelector(`td[data-col="${window.CSS && CSS.escape ? CSS.escape(column.id) : column.id}"] .dbmn-nest-table`);
                 if (inner && this._sized && !this._set[column.id]) {
@@ -1415,10 +1472,21 @@
                         this._widths[column.id] = need;
                         this._colgroup();
                         this._render(true);
-                        again = this._body.rows[index - this._rendered.start];
+                        again = this._mainAt(index - this._rendered.start);
                     }
                 }
                 const button = again && again.querySelector(`td[data-col="${window.CSS && CSS.escape ? CSS.escape(column.id) : column.id}"] .dbmn-nest-toggle`);
+                if (button) button.focus({ preventScroll: true });
+                return true;
+            }
+            // Full width or in the cell: every row's records of this column, kept with the layout
+            if (event.target.closest('.dbmn-nest-span')) {
+                const wide = !this._wide.has(column.id);
+                if (wide) this._wide.add(column.id); else this._wide.delete(column.id);
+                this._render(true);
+                this._tell('records-wide', { id: column.id, wide });
+                const again = this._mainAt(index - this._rendered.start);
+                const button = again && again.querySelector(`td[data-col="${window.CSS && CSS.escape ? CSS.escape(column.id) : column.id}"] .dbmn-nest-span`);
                 if (button) button.focus({ preventScroll: true });
                 return true;
             }
@@ -1449,7 +1517,7 @@
             const tr = event.target.closest('tr');
             if (!tr || !this._body.contains(tr) || tr.classList.contains('dbmn-table-waiting')) return;
             if (event.target.closest('button, a, input, select, td.has-nested') || String(window.getSelection())) return;
-            const index = this._rendered.start + Array.prototype.indexOf.call(this._body.rows, tr);
+            const index = this._rendered.start + this._mainIndex(tr);
             const row = this._rowAt(index);
             if (!row) return;
             if (type === 'dbmn-table-row-menu') event.preventDefault();
@@ -1495,16 +1563,17 @@
             let start = win.indexAt(Math.max(0, top - 350));
             start -= start % 2;
             const end = Math.min(total, win.indexAt(top + tall + 700) + 1);
-            const rows = [];
-            for (let i = start; i < end; i++) rows.push(this._row(this._rowAt(i)));
+            const rows = [], mains = [];
+            for (let i = start; i < end; i++) { const tr = this._row(this._rowAt(i)); mains.push(tr); rows.push(...this._drawn(tr)); }
             this._body.replaceChildren(...rows);
             if (window.Icons) window.Icons.injectIcons(this._body);
             this._rendered = { start, end };
-            // How tall each open row turned out: the rows under it are placed by that
+            // How tall each open row turned out (with its records' own row, full width): the rows under it are placed by that
             open.forEach(o => {
-                const tr = o.index >= start && o.index < end ? this._body.rows[o.index - start] : null;
+                const tr = o.index >= start && o.index < end ? mains[o.index - start] : null;
                 if (!tr) return;
-                const extra = Math.max(0, tr.getBoundingClientRect().height - h);
+                const under = (tr._under || []).reduce((sum, u) => sum + u.getBoundingClientRect().height, 0);
+                const extra = Math.max(0, tr.getBoundingClientRect().height + under - h);
                 o.extra = extra;
                 o.cells.forEach(state => { state.extra = extra; });
             });

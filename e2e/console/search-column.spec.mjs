@@ -149,5 +149,20 @@ test('@column search reaches inside nested data: @column=value and @column.key=v
     await box.pressSequentially('~beans');
     await expect(rows).toHaveCount(1);
     await expect(rows.first()).toContainText('SO-2');
+
+    // The records full width, under their row: the switch beside Set as Row, kept with the View
+    await box.fill('');
+    await box.press('Escape');
+    await expect(rows).toHaveCount(3);
+    // (by its kind: the Console's column ids are the View's paths)
+    const cell = rows.first().locator('td.has-nested');
+    await cell.locator('.dbmn-nest-toggle').click();
+    await cell.locator('.dbmn-nest-span').click();
+    const wide = page.locator('#console-table .dbmn-table-body > tr.dbmn-nest-wide-row');
+    await expect(wide).toHaveCount(1);
+    await expect(wide.locator('.dbmn-nest-table tbody tr')).toHaveCount(2);
+    const kept = await page.evaluate(() => window.dynamicReportManager.getActiveView('success').recordsWide);
+    expect(kept).toHaveLength(1);
+    expect(kept[0]).toMatch(/itemCode$/);
     expect(pageErrors).toEqual([]);
 });

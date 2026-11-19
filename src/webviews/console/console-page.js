@@ -3293,7 +3293,9 @@ class DynamicReportManager {
         return {
             widths,
             sort: this.sortColumn ? { id: this.sortColumn, dir: this.sortDirection === 'desc' ? 'desc' : 'asc' } : null,
-            recordHidden: view.hiddenSubColumns || []
+            recordHidden: view.hiddenSubColumns || [],
+            // The lists of records shown full width, under their row (the rest open in their cell)
+            recordsWide: view.recordsWide || []
         };
     }
     renderTable(data, columns, options = {}) {
@@ -3362,6 +3364,10 @@ class DynamicReportManager {
             else this.hideColumn(d.id);
         } else if (d.change === 'moved') {
             this.movedInTable(d.id, (d.layout && d.layout.order) || []);
+        } else if (d.change === 'records-wide') {
+            // Full width or in the cell, per column: kept with the View
+            view.recordsWide = (d.layout && d.layout.recordsWide) || [];
+            if (this.currentTab === 'success' || this.currentTab === 'errors') debouncedSaveSettings();
         }
     }
     /**

@@ -53,6 +53,34 @@ dbmn-table [hidden] { display: none !important; }
 .dbmn-nest-toggle .expand-icon { display: inline-flex; }
 /* The screen's own buttons beside "3 records" (the Console's "Set as Row") */
 .dbmn-nest-controls { display: flex; align-items: center; gap: 8px; }
+/* Full width or in the cell: a small icon button at the end of that line */
+.dbmn-nest-span {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    background: none;
+    color: var(--dbmn-descriptionForeground);
+    cursor: pointer;
+    line-height: 0;
+}
+.dbmn-nest-span:hover,
+.dbmn-nest-span[aria-pressed="true"] { color: var(--dbmn-foreground); border-color: var(--dbmn-panel-border, rgba(128, 128, 128, 0.35)); }
+.dbmn-nest-span:focus-visible { outline: 1px solid var(--dbmn-focusBorder); outline-offset: 1px; }
+.dbmn-nest-span svg { width: 14px; height: 14px; }
+/* A row's records full width: a row of their own under it, across the table, in view as the
+   table scrolls sideways (their own table scrolls inside when wider still) */
+.dbmn-table-grid td.dbmn-nest-wide { padding: 2px 0 8px; white-space: normal; overflow: visible; max-width: none; }
+.dbmn-nest-wide-box {
+    position: sticky;
+    left: 0;
+    width: var(--table-nest-room, 100%);
+    box-sizing: border-box;
+    padding: 0 12px;
+}
+.dbmn-nest-wide-box .dbmn-nest-content.array-content { max-width: 100%; overflow-x: auto; }
+.dbmn-nest-wide-name { margin: 2px 0 4px; font-size: 11px; color: var(--dbmn-descriptionForeground); }
 .dbmn-nest-toggle .expand-icon svg { width: 11px; height: 11px; }
 .dbmn-nest-toggle:focus-visible { outline: 1px solid var(--dbmn-focusBorder); outline-offset: 1px; }
 /* (console.css lets an opened list spill out of its panel: here it stays in its cell and scrolls) */

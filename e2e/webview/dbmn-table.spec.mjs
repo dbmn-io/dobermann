@@ -972,3 +972,41 @@ test('within: a column moves only among its own object\'s columns, and past an o
     await expect.poll(names).toEqual(['sku', 'zone', 'bin', 'qty', 'name']);
     expect(await page.evaluate(() => window.outside)).toEqual(['bin']);
 });
+
+test('records full width: the switch beside "N records" opens them in a row of their own under the row, for the whole column, and back', async ({ page }) => {
+    await page.setContent(nestedPage());
+    await page.evaluate(() => { window.told = []; document.getElementById('t').addEventListener('dbmn-table-layout', e => window.told.push(e.detail)); });
+    const row = parent(page, 'SO-10001');
+    const lines = row.locator('td[data-col="lines"]');
+    await lines.locator('.dbmn-nest-toggle').click();
+    await expect(lines.locator('.dbmn-nest-table')).toHaveCount(1);
+    const span = lines.locator('.dbmn-nest-span');
+    await expect(span).toHaveAttribute('aria-pressed', 'false');
+    await expect(span).toHaveAttribute('title', 'Show the records full width, under the row');
+    await span.click();
+    // In a row of its own, under the order, across every column; the order's cell keeps only its line
+    const wide = page.locator('#t .dbmn-table-body > tr.dbmn-nest-wide-row');
+    await expect(wide).toHaveCount(1);
+    expect(await wide.locator('> td').evaluate(td => td.colSpan)).toBe(4);
+    await expect(wide.locator('.dbmn-nest-wide-name')).toHaveText('lines · 2 records');
+    await expect(wide.locator('.dbmn-nest-table tbody tr')).toHaveCount(2);
+    await expect(parent(page, 'SO-10001').locator('td[data-col="lines"] .dbmn-nest-table')).toHaveCount(0);
+    expect(await page.evaluate(() => window.told.at(-1))).toMatchObject({ change: 'records-wide', id: 'lines', wide: true, layout: { recordsWide: ['lines'] } });
+    // It sits under its row, before the next one
+    const [above, under, next] = await Promise.all([parent(page, 'SO-10001'), wide, parent(page, 'SO-10002')].map(l => l.boundingBox()));
+    expect(under.y).toBeGreaterThanOrEqual(above.y + above.height - 1);
+    expect(next.y).toBeGreaterThanOrEqual(under.y + under.height - 1);
+    // The whole column: another order's lines open full width too
+    await parent(page, 'SO-10002').locator('td[data-col="lines"] .dbmn-nest-toggle').click();
+    await expect(wide).toHaveCount(2);
+    // Its records' headings still sort, and a click on the order's row is still the row's
+    await wide.first().locator('th[data-sub="qty"] .col-sort-btn').click();
+    await expect(wide.first().locator('th[data-sub="qty"]')).toHaveCount(1);
+    // Back into the cell: the same switch
+    await parent(page, 'SO-10001').locator('td[data-col="lines"] .dbmn-nest-span').click();
+    await expect(wide).toHaveCount(0);
+    await expect(parent(page, 'SO-10001').locator('td[data-col="lines"] .dbmn-nest-table')).toHaveCount(1);
+    // A saved layout brings it back full width
+    await page.evaluate(() => { const t = document.getElementById('t'); const c = t.columns; t.columns = c; t.layout = { recordsWide: ['lines'] }; });
+    await expect(page.locator('#t .dbmn-table-body > tr.dbmn-nest-wide-row')).toHaveCount(2);
+});
