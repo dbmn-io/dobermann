@@ -65,6 +65,8 @@
  *   orders.rowKey = row => row.order_no;      // what makes a row the same row; needed with `source`
  *   { id: 'lines', name: 'lines', nested: { count: row => row.lineCount, rows: row => fetchLines(row) } }
  *                                             // records that are fetched when the cell is opened
+ *   nested: { controls: (row, value) => button }   // the screen's own buttons beside "3 records"
+ *                                             // (the Console's "Set as Row"); a click on one is the screen's
  *
  * ── Rows that stay with the screen ──
  *   orders.source = { total: 5310, page: (start, count, { search, sort }) => rows | Promise };
@@ -123,6 +125,16 @@
         return el;
     }
     const count = n => Number(n || 0).toLocaleString();
+    /** A cell that opens in full shows so on hover: the maximise icon at its right edge (console.css). */
+    function expandIcon(td) {
+        if (!window.Icons || !window.Icons.icon || td.querySelector(':scope > .cell-expand-icon')) return;
+        const icon = make('span', 'cell-expand-icon');
+        icon.setAttribute('aria-hidden', 'true');
+        icon.innerHTML = window.Icons.icon('maximize-2');
+        td.append(icon);
+    }
+    /** Worth opening in full though short: JSON, BASE64, ZPL (cell-detail.js). */
+    const structured = text => !!(window.CellDetail && window.CellDetail.worthOpening && text && window.CellDetail.worthOpening(text));
     function textOf(value) {
         if (value === null || value === undefined) return '';
         return typeof value === 'object' ? JSON.stringify(value) : String(value);
@@ -411,6 +423,7 @@
                 td.classList.add('cell-expandable');
                 if (!td.dataset.full) td.dataset.full = td.textContent;
                 td.title = 'Click to see it all';
+                expandIcon(td);
             });
 
             // A right-click on a row is the screen's (its record, its menu), when it listens for it
@@ -888,13 +901,14 @@
                     td.textContent = text;
                     // (a value cut short by its column's width is whole on hover)
                     if (text.length > 20) td.title = text;
-                    if (text.length > LONG || (value && typeof value === 'object')) {
+                    if (text.length > LONG || (value && typeof value === 'object') || structured(text)) {
                         td.classList.add('cell-expandable');
                         td.title = 'Click to see it all';
                         td.dataset.full = typeof value === 'object' && value ? JSON.stringify(value) : text;
                     }
                 }
                 if (typeof column.cell === 'function') column.cell(td, value, row);
+                if (td.classList.contains('cell-expandable')) expandIcon(td);
                 tr.append(td);
             });
             return tr;
@@ -1177,7 +1191,14 @@
             const chevron = make('span', 'expand-icon');
             chevron.dataset.icon = state ? 'chevron-down' : 'chevron-right';
             toggle.append(chevron, document.createTextNode(`${count(count_)} record${count_ === 1 ? '' : 's'}`));
-            wrap.append(toggle);
+            // The screen's own controls beside it (the Console's "Set as Row"): their clicks are the screen's
+            const extra = column.nested && typeof column.nested.controls === 'function' ? column.nested.controls(row, value) : null;
+            const controls = (Array.isArray(extra) ? extra : extra ? [extra] : []).filter(n => n instanceof Node);
+            if (controls.length) {
+                const line = make('div', 'array-controls dbmn-nest-controls');
+                line.append(toggle, ...controls);
+                wrap.append(line);
+            } else wrap.append(toggle);
             if (state) wrap.append(this._nestBody(column, value, row, state));
             return wrap;
         },
@@ -1243,6 +1264,7 @@
                         td.title = 'Click to see it all';
                         td.dataset.full = v && typeof v === 'object' ? JSON.stringify(v) : text;
                         td.dataset.name = key;
+                        expandIcon(td);
                     }
                     tr.append(td);
                 });

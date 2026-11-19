@@ -120,6 +120,10 @@ test('a structured value opens in full', async ({ page }) => {
     await page.setContent(tablePage());
     const cell = page.locator('#t .dbmn-table-body tr').nth(1).locator('td.cell-expandable');
     await expect(cell).toContainText('Awaiting stock');
+    // It says so on hover: the maximise icon at its right edge, as in every table
+    await expect(cell.locator('.cell-expand-icon svg')).toHaveCount(1);
+    await cell.hover();
+    await expect(cell.locator('.cell-expand-icon')).toHaveCSS('opacity', '1');
     await cell.click();
     await expect(page.locator('.cell-detail, .dbmn-modal').first()).toBeVisible();
 });
@@ -851,6 +855,7 @@ test('a value cut off by its column\'s width opens in full when the pointer find
     await expect(cell).not.toHaveClass(/cell-expandable/);   // short: nothing marks it until it is seen cut off
     await cell.hover();
     await expect(cell).toHaveClass(/cell-expandable/);
+    await expect(cell.locator('.cell-expand-icon')).toHaveCount(1);
     await cell.click();
     await expect(page.locator('.dbmn-modal .cell-detail-pre')).toHaveText('Harbour Foods');
     await expect(page.locator('.dbmn-modal .dbmn-modal-title')).toContainText('SO-10000: customer');
@@ -859,4 +864,39 @@ test('a value cut off by its column\'s width opens in full when the pointer find
     const fits = page.locator('#t .dbmn-table-body tr').first().locator('td').nth(0);
     await fits.hover();
     await expect(fits).not.toHaveClass(/cell-expandable/);
+});
+
+test('the screen\'s own controls sit beside a cell\'s records ("Set as Row"): their clicks are the screen\'s, the toggle still opens them', async ({ page }) => {
+    await page.setContent(nestedPage());
+    await page.evaluate(() => {
+        const t = document.getElementById('t');
+        window.asked = []; window.clicked = [];
+        t.addEventListener('dbmn-table-row', e => window.clicked.push(e.detail.row.order_no));
+        t.columns = t.columns.map(c => (c.id !== 'lines' ? c : { ...c, nested: { controls: row => {
+            const b = document.createElement('button');
+            b.className = 'set-as-root-btn';
+            b.textContent = 'Set as Row';
+            b.addEventListener('click', () => window.asked.push(row.order_no));
+            return b;
+        } } }));
+    });
+    const lines = parent(page, 'SO-10001').locator('td[data-col="lines"]');
+    await expect(lines.locator('.dbmn-nest-controls .dbmn-nest-toggle')).toHaveText('2 records');
+    await lines.locator('.set-as-root-btn').click();
+    expect(await page.evaluate(() => [window.asked, window.clicked])).toEqual([['SO-10001'], []]);
+    await lines.locator('.dbmn-nest-toggle').click();
+    await expect(lines.locator('.dbmn-nest-table tbody tr')).toHaveCount(2);
+    await expect(lines.locator('.set-as-root-btn')).toHaveCount(1);
+});
+
+test('a short value that is structured (JSON text) opens in full too; short plain text does not', async ({ page }) => {
+    await page.setContent(tablePage());
+    await page.evaluate(() => {
+        const t = document.getElementById('t');
+        t.rows = [{ order_no: 'SO-1', customer: 'Harbour Foods', qty: 1, notes: '{"hold":true}' }, { order_no: 'SO-2', customer: 'Kettle and Co', qty: 2, notes: 'ok' }];
+    });
+    const notes = n => page.locator('#t .dbmn-table-body tr').nth(n).locator('td').nth(3);
+    await expect(notes(0)).toHaveClass(/cell-expandable/);
+    await expect(notes(0).locator('.cell-expand-icon')).toHaveCount(1);
+    await expect(notes(1)).not.toHaveClass(/cell-expandable/);
 });

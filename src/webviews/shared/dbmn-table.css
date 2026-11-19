@@ -51,6 +51,8 @@ dbmn-table [hidden] { display: none !important; }
    The cell grows down; records wider than their column scroll inside it */
 .dbmn-table-grid td.has-nested { white-space: normal; overflow: visible; max-width: none; }
 .dbmn-nest-toggle .expand-icon { display: inline-flex; }
+/* The screen's own buttons beside "3 records" (the Console's "Set as Row") */
+.dbmn-nest-controls { display: flex; align-items: center; gap: 8px; }
 .dbmn-nest-toggle .expand-icon svg { width: 11px; height: 11px; }
 .dbmn-nest-toggle:focus-visible { outline: 1px solid var(--dbmn-focusBorder); outline-offset: 1px; }
 /* (console.css lets an opened list spill out of its panel: here it stays in its cell and scrolls) */

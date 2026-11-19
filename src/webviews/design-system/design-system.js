@@ -216,7 +216,7 @@
         ['<dbmn-table>', 'A table of rows: search, sort, move, resize, only the rows in view drawn; rows the page holds, or asked for as they scroll', C, 'Query, Compare, Design system, <dbmn-log>', 'shared/dbmn-table.js'],
         ['<dbmn-log>', 'Log lines as a table: the newest in view, followed until you scroll up', C, 'Logs', 'shared/dbmn-log.js'],
         ['<dbmn-level>', 'How serious a log line is: an icon and a word', C, 'Logs, <dbmn-log>', 'shared/dbmn-level.js'],
-        ['Rows inside a row', 'A list of records in a cell, opened inside it (part of <dbmn-table>)', C, 'Design system; the Console has its own today', 'shared/dbmn-table.js'],
+        ['Rows inside a row', 'A list of records in a cell, opened inside it, with the screen\'s own buttons beside it (part of <dbmn-table>)', C, 'Design system; the Console has its own today', 'shared/dbmn-table.js'],
         ['The Hub\'s pieces', 'Banner, menu, list, tabs, settings rows', P, '', '']
     ];
     function drawInventory() {

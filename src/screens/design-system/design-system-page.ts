@@ -354,7 +354,8 @@ table.addEventListener('dbmn-table-follow', e =&gt; …e.detail.following, e.det
 orders.rowKey = row =&gt; row.order_no;       // what makes a row the same row (needed when rows stay with the screen)
 
 { id: 'lines', name: 'lines', nested: { count: row =&gt; row.lineCount, rows: row =&gt; fetchLines(row) } }
-                                           // records fetched when the cell is opened</code></pre>
+                                           // records fetched when the cell is opened
+nested: { controls: (row, value) =&gt; button } // the screen's own buttons beside "3 records" (Set as Row)</code></pre>
     </section>
 
     <section class="ds-section" id="logs">
