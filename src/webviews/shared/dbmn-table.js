@@ -140,7 +140,14 @@
             const matcher = window.SearchMatcher;
             this._input.addEventListener('input', () => this._searched());
             if (matcher && matcher.followScroll) matcher.followScroll(this._input, this._mirror);
-            if (matcher && matcher.attachColumnSuggest) matcher.attachColumnSuggest({ input: this._input, headings: () => this._columns.map(c => c.name || c.id) });
+            if (matcher && matcher.attachColumnSuggest) {
+                matcher.attachColumnSuggest({
+                    input: this._input,
+                    headings: () => this._columns.map(c => c.name || c.id),
+                    // `@column.` lists the keys inside that column's nested data
+                    keys: (heading, path) => matcher.nestedKeysFor(this._rows, this._all.map(c => ({ id: c.id, name: c.name || c.id })), heading, path, (row, id) => row[id])
+                });
+            }
 
             this._scroll.addEventListener('scroll', () => this._render(false), { passive: true });
             this._head.addEventListener('click', event => {

@@ -8,7 +8,7 @@
 import { expect } from 'chai';
 import { describe, it } from 'mocha';
 
-const { parseSearchExpression, matchesValue, matchesRow, tokenizeForDisplay, columnSuggestions } = require('../../../webviews/shared/search-matcher.js');
+const { parseSearchExpression, matchesValue, matchesRow, tokenizeForDisplay, columnSuggestions, nestedKeys, nestedKeysFor } = require('../../../webviews/shared/search-matcher.js');
 
 // Helper to extract a flat value from a row by key
 function extractValue(row: Record<string, unknown>, key: string): unknown {
@@ -825,5 +825,42 @@ describe('Search: @column terms on nested data', () => {
         expect(found('@itemCode~olive')).to.deep.equal(['SO-1']);
         expect(found('@order=SO-2')).to.deep.equal(['SO-2']);
         expect(found('@itemCode.key=A-2207, @order=SO-3')).to.deep.equal(['SO-1', 'SO-3']);
+    });
+});
+
+// `@column.` lists the keys inside a column's nested data, then the operators
+describe('Search: suggestions inside nested data', () => {
+    const cells = [[{ key: 'A-2207', value: 'Olive oil', dims: { weight: 1, 'box size': 3 } }], [{ key: 'B-0418', qty: 6 }], 'plain', null];
+    const keysOf = (heading: string, path: string[]) => (heading === 'itemCode' ? nestedKeys(cells, path) : []);
+    const texts = (typed: string) => columnSuggestions(typed, ['order', 'itemCode'], keysOf).map((s: { text: string }) => s.text);
+
+    it('finds the keys of the objects in a list, first seen first, and under a path', () => {
+        expect(nestedKeys(cells, [])).to.deep.equal(['key', 'value', 'dims', 'qty']);
+        expect(nestedKeys(cells, ['dims'])).to.deep.equal(['weight']);          // a key with a space cannot be typed: left out
+        expect(nestedKeys(cells, ['nope'])).to.deep.equal([]);
+        const rows = [{ 'data.itemCode': cells[0] }, { 'data.itemCode': cells[1] }];
+        expect(nestedKeysFor(rows, [{ id: 'data.itemCode', name: 'itemCode', type: 'array' }], 'ITEMCODE', [], (r: Record<string, unknown>, id: string) => r[id])).to.deep.equal(['key', 'value', 'dims', 'qty']);
+    });
+
+    it('a nested column says so, and typed in full offers a dot before the operators', () => {
+        const all = columnSuggestions('@', ['order', 'itemCode'], keysOf);
+        expect(all.map((s: { text: string; label: string }) => `${s.text} ${s.label}`)).to.deep.equal(['@itemCode column, nested', '@order column']);
+        expect(texts('@itemCode')[0]).to.equal('.');
+        expect(texts('@itemCode')).to.include('=');
+        expect(texts('@order')[0]).to.equal('=');                                // a plain column: no dot
+    });
+
+    it('after the dot it lists the keys, narrows as you type, then the operators', () => {
+        expect(texts('@itemCode.')).to.deep.equal(['@itemCode.key', '@itemCode.value', '@itemCode.dims', '@itemCode.qty']);
+        expect(texts('@itemCode.v')).to.deep.equal(['@itemCode.value']);
+        expect(texts('status @ITEMCODE.K')).to.deep.equal(['@itemCode.key']);
+        expect(texts('@itemCode.key')[0]).to.equal('=');
+        expect(texts('@itemCode.dims')[0]).to.equal('.');                        // keys within keys
+        expect(texts('@itemCode.dims.')).to.deep.equal(['@itemCode.dims.weight']);
+        expect(texts('@order.')).to.deep.equal([]);                              // nothing nested in it
+    });
+
+    it('with no keys given, suggestions are as they were', () => {
+        expect(columnSuggestions('@sta', ['status']).map((s: { text: string; label: string }) => `${s.text} ${s.label}`)).to.deep.equal(['@status column']);
     });
 });

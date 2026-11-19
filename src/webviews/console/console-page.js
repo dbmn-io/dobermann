@@ -3295,6 +3295,9 @@ class DynamicReportManager {
         // remember it first and put it back once the rows (or the virtual
         // spacer) give the container its height again.
         const keepScrollTop = options.keepScroll ? tableContainer.scrollTop : 0;
+        // What is on show, for the find box: `@column.` lists the keys inside a column's nested data
+        this._shownRows = data;
+        this._shownColumns = columns;
 
         // Clear existing content
         tableHead.innerHTML = '';
@@ -6967,7 +6970,9 @@ document.addEventListener('DOMContentLoaded', function() {
     if (window.SearchMatcher && window.SearchMatcher.attachColumnSuggest) {
         window.SearchMatcher.attachColumnSuggest({
             input: searchInputEl,
-            headings: () => [...new Set([...document.querySelectorAll('th[data-column-id] .column-name')].map(n => n.textContent.trim()).filter(Boolean))]
+            headings: () => [...new Set([...document.querySelectorAll('th[data-column-id] .column-name')].map(n => n.textContent.trim()).filter(Boolean))],
+            // `@column.` lists the keys inside that column's nested data, from the rows on show
+            keys: (heading, path) => window.SearchMatcher.nestedKeysFor(dynamicReportManager._shownRows, dynamicReportManager._shownColumns, heading, path, (row, id) => row[id])
         });
     }
 

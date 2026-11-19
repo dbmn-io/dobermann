@@ -130,5 +130,24 @@ test('@column search reaches inside nested data: @column=value and @column.key=v
     await search('@itemCode.key!=A-2207', ['SO-2', 'SO-3']);
     await search('@itemCode.nope=A-2207', []);
     await search('', ['SO-1', 'SO-2', 'SO-3']);
+
+    // Typing the dot lists the keys inside the column; picking one goes on to the operators
+    const options = page.locator('.column-suggest-option');
+    await box.fill('@item');
+    await expect(options.first()).toContainText('@itemCode');
+    await expect(options.first()).toContainText('nested');
+    await box.fill('@itemCode');
+    await expect(options.first().locator('.column-suggest-text')).toHaveText('.');
+    await box.press('Enter');
+    await expect(box).toHaveValue('@itemCode.');
+    await expect(options.locator('.column-suggest-text')).toHaveText(['@itemCode.key', '@itemCode.value', '@itemCode.qty']);
+    await box.pressSequentially('v');
+    await expect(options.locator('.column-suggest-text')).toHaveText(['@itemCode.value']);
+    await box.press('Enter');
+    await expect(box).toHaveValue('@itemCode.value');
+    await expect(options.first().locator('.column-suggest-text')).toHaveText('=');
+    await box.pressSequentially('~beans');
+    await expect(rows).toHaveCount(1);
+    await expect(rows.first()).toContainText('SO-2');
     expect(pageErrors).toEqual([]);
 });

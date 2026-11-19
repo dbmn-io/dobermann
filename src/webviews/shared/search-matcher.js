@@ -729,34 +729,97 @@ function renderHighlight(mirrorEl, value) {
  * first); a column picked or typed in full lists the operators. Pure: the box asks with what is
  * typed up to the caret and the column headings.
  */
+/**
+ * The keys found inside nested data (lists and objects), under a path of keys: what `@column.`
+ * can be followed by. First seen first, from the values given (a sample of a column's cells).
+ */
+function nestedKeys(values, path) {
+    var seen = {};
+    var out = [];
+    var walk = function (value, rest) {
+        if (out.length >= 50) return;
+        if (Array.isArray(value)) { for (var i = 0; i < value.length; i++) walk(value[i], rest); return; }
+        if (value === null || typeof value !== 'object' || value.$dbmnMissing === true) return;
+        Object.keys(value).forEach(function (key) {
+            if (rest.length) { if (key.toLowerCase() === rest[0].toLowerCase()) walk(value[key], rest.slice(1)); return; }
+            var low = key.toLowerCase();
+            if (!seen[low] && !/[\s=!~<>",.@]/.test(key)) { seen[low] = true; out.push(key); }
+        });
+    };
+    (values || []).forEach(function (value) { walk(value, path || []); });
+    return out;
+}
+
+/** The keys inside the column a heading names, from the first rows: for a find box's `keys`. */
+function nestedKeysFor(rows, columns, heading, path, extract) {
+    var named = (columns || []).filter(function (c) { return c.type !== 'group' && columnNamed(c, heading); });
+    if (!named.length) return [];
+    var values = [];
+    (rows || []).slice(0, 200).forEach(function (row) {
+        named.forEach(function (c) { values.push(extract ? extract(row, c.id) : row[c.id]); });
+    });
+    return nestedKeys(values, path);
+}
+
 var OP_WORDS = { '=': 'is (a|b either, 1..9 between)', '!=': 'is not', '~': 'contains', '!~': "doesn't contain", '>': 'more than', '<': 'less than', '>=': 'at least', '<=': 'at most' };
-function columnSuggestions(typed, headings) {
+function columnSuggestions(typed, headings, keysOf) {
     var text = String(typed || '');
     var names = (headings || []).filter(function (h) { return h; });
     var quote = function (h) { return /\s/.test(h) ? '"' + h + '"' : h; };
+    var keys = function (heading, path) { return (keysOf && keysOf(heading, path)) || []; };
     var at = /(^|[\s,])@("[^"]*|[^\s=!~<>",]*)$/.exec(text);
     if (at) {
         var start = at.index + at[1].length;
-        var partial = unquote(at[2]).toLowerCase();
+        var typedName = unquote(at[2]);
+        var partial = typedName.toLowerCase();
+        // `@column.`: the keys inside that column's nested data (then the keys inside those)
+        var inside = nestedSuggestions(typedName, names, keys, start, text);
+        if (inside) return inside;
         var exact = names.filter(function (h) { return h.toLowerCase() === partial; });
-        // Typed in full: on to the operators
-        if (exact.length && at[2].length) return opSuggestions(text, text.length);
+        // Typed in full: on to the operators (and a dot, when it holds nested data)
+        if (exact.length && at[2].length) return opSuggestions(text, text.length, keys(exact[0], []).length > 0);
         return names
             .map(function (h) { return { h: h, pos: h.toLowerCase().indexOf(partial) }; })
             .filter(function (x) { return x.pos !== -1; })
             .sort(function (a, b) { return (a.pos === 0 ? 0 : 1) - (b.pos === 0 ? 0 : 1) || a.h.localeCompare(b.h); })
             .slice(0, 10)
-            .map(function (x) { return { text: '@' + quote(x.h), label: 'column', start: start, end: text.length }; });
+            .map(function (x) { return { text: '@' + quote(x.h), label: keys(x.h, []).length ? 'column, nested' : 'column', start: start, end: text.length }; });
     }
     // `@column ` picked: the operators
     var named = /(^|[\s,])@("[^"]+"|[^\s=!~<>",]+)$/.exec(text);
     if (named) return opSuggestions(text, text.length);
     return [];
 }
-function opSuggestions(text, end) {
-    return COLUMN_OPS.slice().sort(function (a, b) {
+
+/** After `@column.` (and `@column.key.`): the keys there, those holding what is typed first; a key typed in full, the operators. */
+function nestedSuggestions(typedName, names, keys, start, text) {
+    if (typedName.indexOf('.') < 0) return null;
+    var low = typedName.toLowerCase();
+    // The longest heading the text starts with, a dot after it
+    var heading = names.filter(function (h) { return !/\s/.test(h) && low.indexOf(h.toLowerCase() + '.') === 0; })
+        .sort(function (a, b) { return b.length - a.length; })[0];
+    if (!heading) return null;
+    var parts = typedName.slice(heading.length + 1).split('.');
+    var last = parts.pop();
+    var path = parts;
+    var found = keys(heading, path);
+    if (!found.length) return null;
+    var lead = '@' + heading + '.' + (path.length ? path.join('.') + '.' : '');
+    var whole = found.filter(function (k) { return k.toLowerCase() === last.toLowerCase(); });
+    if (whole.length && last.length) return opSuggestions(text, text.length, keys(heading, path.concat([whole[0]])).length > 0);
+    return found
+        .map(function (k) { return { k: k, pos: k.toLowerCase().indexOf(last.toLowerCase()) }; })
+        .filter(function (x) { return x.pos !== -1; })
+        .sort(function (a, b) { return (a.pos === 0 ? 0 : 1) - (b.pos === 0 ? 0 : 1); })
+        .slice(0, 12)
+        .map(function (x) { return { text: lead + x.k, label: keys(heading, path.concat([x.k])).length ? 'key, nested' : 'key', start: start, end: text.length }; });
+}
+function opSuggestions(text, end, nested) {
+    var ops = COLUMN_OPS.slice().sort(function (a, b) {
         return ['=', '!=', '~', '!~', '>', '<', '>=', '<='].indexOf(a) - ['=', '!=', '~', '!~', '>', '<', '>=', '<='].indexOf(b);
     }).map(function (op) { return { text: op, label: OP_WORDS[op], start: end, end: end, op: true }; });
+    // Nested data: a dot goes on to the keys inside it
+    return nested ? [{ text: '.', label: 'a key inside it', start: end, end: end, op: true }].concat(ops) : ops;
 }
 
 /**
@@ -764,7 +827,9 @@ function opSuggestions(text, end) {
  * the operators. Arrow keys move, Enter or Tab picks, Esc closes. Picking writes into the box and
  * fires its input event, so the page searches and colours as if it were typed.
  *
- *   SearchMatcher.attachColumnSuggest({ input, headings: () => ['sku', 'status', …] })
+ *   SearchMatcher.attachColumnSuggest({ input, headings: () => ['sku', 'status', …],
+ *       keys: (heading, path) => ['key', 'value', …] })     optional: the keys inside a column's nested
+ *                                                           data, listed after `@column.` (nestedKeysFor)
  */
 function attachColumnSuggest(opts) {
     var input = opts && opts.input;
@@ -780,7 +845,7 @@ function attachColumnSuggest(opts) {
     function close() { list.hidden = true; shown = []; }
     function render() {
         var caret = input.selectionEnd == null ? input.value.length : input.selectionEnd;
-        shown = caret === input.value.length ? columnSuggestions(input.value, opts.headings ? opts.headings() : []) : [];
+        shown = caret === input.value.length ? columnSuggestions(input.value, opts.headings ? opts.headings() : [], opts.keys) : [];
         if (!shown.length) { close(); return; }
         if (active >= shown.length) active = 0;
         list.innerHTML = shown.map(function (s, i) {
@@ -845,8 +910,8 @@ function followScroll(input, mirror) {
 // Export for use in both browser and Node.js environments
 if (typeof module !== 'undefined' && module.exports) {
     // Node.js/CommonJS
-    module.exports = { parseSearchExpression, matchesValue, matchesRow, tokenizeForDisplay, renderHighlight, columnSuggestions, COLUMN_OPS };
+    module.exports = { parseSearchExpression, matchesValue, matchesRow, tokenizeForDisplay, renderHighlight, columnSuggestions, nestedKeys, nestedKeysFor, COLUMN_OPS };
 } else {
     // Browser/Global
-    window.SearchMatcher = { parseSearchExpression, matchesValue, matchesRow, tokenizeForDisplay, renderHighlight, columnSuggestions, attachColumnSuggest, followScroll, COLUMN_OPS };
+    window.SearchMatcher = { parseSearchExpression, matchesValue, matchesRow, tokenizeForDisplay, renderHighlight, columnSuggestions, nestedKeys, nestedKeysFor, attachColumnSuggest, followScroll, COLUMN_OPS };
 }

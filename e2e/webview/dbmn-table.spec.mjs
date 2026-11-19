@@ -105,6 +105,17 @@ test('a right-click on a heading lists what it can do, and moves the column', as
     expect((await names(page))[0]).toBe('notes');
 });
 
+test('search reaches inside a nested value, and @column. lists its keys', async ({ page }) => {
+    await page.setContent(tablePage());
+    const box = page.locator('#t .search-input');
+    await box.fill('@notes.reason~stock');
+    await expect(page.locator('#t .dbmn-table-count')).toHaveText('1 of 3,000 rows');
+    await box.fill('@notes');
+    await expect(page.locator('#t .column-suggest-option .column-suggest-text').first()).toHaveText('.');
+    await box.fill('@notes.');
+    await expect(page.locator('#t .column-suggest-option .column-suggest-text')).toHaveText(['@notes.reason']);
+});
+
 test('a structured value opens in full', async ({ page }) => {
     await page.setContent(tablePage());
     const cell = page.locator('#t .dbmn-table-body tr').nth(1).locator('td.cell-expandable');
