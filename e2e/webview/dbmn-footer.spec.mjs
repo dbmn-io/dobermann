@@ -119,6 +119,20 @@ test('a step that is working shows a spinner in place of its number', async ({ p
     await expect(working.locator('.dbmn-step-mark')).not.toHaveText('2');
 });
 
+test('a summary part can be shortened on screen and whole on hover', async ({ page }) => {
+    await page.setContent(footerPage());
+    await page.evaluate(states => {
+        window.show(states, 4);
+        const steps = document.getElementById('steps');
+        steps.summary = ['3 views', { text: '1.2M rows', title: '1,234,567 rows' }];
+        steps.folded = true;
+    }, at(4));
+    const parts = page.locator('.dbmn-steps-summary .dbmn-steps-part');
+    await expect(parts).toHaveText(['3 views', '1.2M rows']);
+    await expect(parts.nth(1)).toHaveAttribute('title', '1,234,567 rows');
+    await expect(parts.nth(0)).not.toHaveAttribute('title', /./);
+});
+
 test('folded: the steps become a summary button that lists them', async ({ page }) => {
     await page.setContent(footerPage());
     await page.evaluate(states => {

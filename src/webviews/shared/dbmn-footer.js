@@ -28,6 +28,7 @@
  *                                   // status: current, done, needs, available, blocked, pending, locked, skipped
  *   el.addEventListener('dbmn-step', e => goTo(e.detail.step));   // 1-based; only steps that are open
  *   el.summary = ['3 views', '19 columns', '412 of 5,310 rows'];  // what is on screen
+ *   el.summary = ['3 views', { text: '1.2M rows', title: '1,234,567 rows' }];   // a part shortened, whole on hover
  *   el.folded = true;               // the wizard is done: the steps slide away behind the summary
  *                                   // button, which opens the list of steps
  *
@@ -324,7 +325,8 @@
         get steps() { return this._steps; }
 
         set summary(parts) {
-            this._summary = Array.isArray(parts) ? parts.filter(Boolean) : parts ? [String(parts)] : [];
+            // (a part is its words, or { text, title }: shortened on screen, whole on hover)
+            this._summary = Array.isArray(parts) ? parts.filter(p => p && (typeof p !== 'object' || p.text)) : parts ? [parts] : [];
             this._draw();
         }
         get summary() { return this._summary; }
@@ -411,7 +413,10 @@
                 const kids = [mark];
                 parts.forEach((part, i) => {
                     if (i) { const dot = make('span', 'dbmn-steps-dot', '·'); dot.setAttribute('aria-hidden', 'true'); kids.push(dot); }
-                    kids.push(make('span', 'dbmn-steps-part', part));
+                    const words = part && typeof part === 'object' ? part : { text: String(part) };
+                    const span = make('span', 'dbmn-steps-part', String(words.text));
+                    if (words.title) span.title = String(words.title);
+                    kids.push(span);
                 });
                 const chevron = make('span', 'dbmn-steps-chevron');
                 chevron.setAttribute('aria-hidden', 'true');
