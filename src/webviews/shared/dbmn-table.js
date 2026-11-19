@@ -30,6 +30,14 @@
  * 1, where text's is A to Z); left out, the table looks at the values: a column of numbers or of
  * true and false sorts as numbers. A value that is a number sits right.
  *
+ * ── A live list: following the newest rows ──
+ *   <dbmn-table follow="top">        the newest rows are at the top (follow="bottom": at the bottom)
+ *   While the newest row is in view, rows given later keep it in view. Scrolled away from it, the
+ *   rows on screen stay where they are and the new ones are counted; back at that end, it follows
+ *   again. Only for a live feed (Logs): a table without `follow` never moves by itself.
+ *   orders.following                  // true while it follows; set it to start or stop
+ *   orders.addEventListener('dbmn-table-follow', e => …e.detail.following, e.detail.unseen…);
+ *
  * ── Rows inside a row ──
  *   A value that is a list of records (an order's lines) shows as "3 records" with a chevron, and
  *   opens INSIDE its cell: a small table with its own headings, which sort and can be removed.
@@ -123,6 +131,8 @@
             this._open = new Map();     // rows with a list of records open: row key → Map(column id → its state)
             this._subHidden = {};       // record columns the user removed, by column id
             this.rowKey = null;         // row => what makes it the same row (else the row object itself)
+            this._following = true;     // (with `follow`) the newest row is kept in view
+            this._unseen = 0;           // rows that came while it was not
         }
 
         connectedCallback() {
@@ -151,6 +161,7 @@
         get columns() { return this._columns.slice(); }
 
         set rows(list) {
+            this._before(Array.isArray(list) ? list.length - this._rows.length : 0);
             this._rows = Array.isArray(list) ? list : [];
             this._source = null;
             this._kinds = null;
@@ -178,7 +189,9 @@
         /** The screen's rows changed: ask again. From the top, or `keep` the place (a live refresh). `total` when it is known. */
         reload(opts) {
             if (!this._source) return;
+            const more = opts && typeof opts.total === 'number' ? opts.total - this._total : 0;
             if (opts && typeof opts.total === 'number') this._source.total = opts.total;
+            if (opts && opts.keep) this._before(more);
             this._again(!!(opts && opts.keep));
         }
 
@@ -324,7 +337,7 @@
             if (matcher && matcher.followScroll) matcher.followScroll(this._input, this._mirror);
             this._suggest(this._input);
 
-            this._scroll.addEventListener('scroll', () => this._render(false), { passive: true });
+            this._scroll.addEventListener('scroll', () => { this._render(false); this._scrolledBy(); }, { passive: true });
             this._head.addEventListener('click', event => {
                 const th = event.target.closest('th');
                 if (!th) return;
@@ -395,6 +408,68 @@
             // (set before it was on the page: the first page is asked for now)
             if (this._source && this._fresh) this._ask(0);
             this._render(true);
+            if (!this._source) this._after();
+        }
+
+        /* ── A live list: following the newest rows ── */
+
+        _edge() { const at = this.getAttribute('follow'); return at === null ? '' : at === 'bottom' ? 'bottom' : 'top'; }
+        get following() { return !!this._edge() && this._following; }
+        set following(on) {
+            this._following = !!on;
+            if (this._following) { this._unseen = 0; this._toEdge(); }
+            this._tellFollow();
+        }
+        _tellFollow() {
+            this.dispatchEvent(new CustomEvent('dbmn-table-follow', { bubbles: true, detail: { following: this.following, unseen: this._unseen } }));
+        }
+        /** Moves the view without it counting as the user scrolling. */
+        _hold(move) {
+            this._holding = true;
+            move();
+            requestAnimationFrame(() => { this._holding = false; });
+        }
+        _toEdge() {
+            if (!this._built) return;
+            const s = this._scroll;
+            this._hold(() => { s.scrollTop = this._edge() === 'bottom' ? s.scrollHeight : 0; });
+            this._render(false);
+        }
+        /** New rows are about to be shown (`more` of them): note where the view is, to keep it there or follow. */
+        _before(more) {
+            if (!this._edge() || !this._built) { this._pending = null; return; }
+            const s = this._scroll;
+            // (scrolled away since the last rows, its scroll event not yet heard: it has stopped following)
+            if (this._following && !this._atEdge()) this._following = false;
+            this._pending = { more: Math.max(0, more), top: s.scrollTop, fromBottom: s.scrollHeight - s.scrollTop };
+        }
+        /** The new rows are drawn: at the newest while following, else exactly where it was, the new ones counted. */
+        _after() {
+            const was = this._pending;
+            this._pending = null;
+            if (!was || !this._edge()) return;
+            const s = this._scroll;
+            if (this._following) this._toEdge();
+            else {
+                this._unseen += was.more;
+                // New rows at the top push the rest down: the view goes down with them
+                this._hold(() => { s.scrollTop = this._edge() === 'top' ? s.scrollHeight - was.fromBottom : was.top; });
+                this._render(false);
+            }
+            this._tellFollow();
+        }
+        _atEdge() {
+            const s = this._scroll;
+            return this._edge() === 'bottom' ? s.scrollHeight - s.scrollTop - s.clientHeight < 30 : s.scrollTop <= 30;
+        }
+        /** The user scrolled: away from the newest stops following, back to it starts again. */
+        _scrolledBy() {
+            if (this._holding || !this._edge()) return;
+            const at = this._atEdge();
+            if (at === this._following) return;
+            this._following = at;
+            if (at) this._unseen = 0;
+            this._tellFollow();
         }
 
         /* ── Rows that stay with the screen ── */
@@ -436,8 +511,13 @@
                 this._heads();   // (a sort's clock is its arrow again)
                 this._apply();
                 if (!this._sized || this._sizedEmpty) { this._unsize(); this._size(); }
+                const kept = this._keep;
                 if (!this._keep) this._scroll.scrollTop = 0;
                 this._keep = false;
+                this._rendered = { start: -1, end: -1 };
+                this._render(true);
+                if (kept) this._after();
+                return;
             }
             this._rendered = { start: -1, end: -1 };
             this._render(true);
@@ -694,6 +774,7 @@
                 this._show(view);
                 if (!keep) this._scroll.scrollTop = 0;
                 this._render(true);
+                if (keep) this._after();
             };
             slice();
         }

@@ -321,6 +321,12 @@ orders.addEventListener('dbmn-table-shown', e =&gt; …e.detail.total…);
 
 locked                                     attribute: columns can be neither moved nor removed</code></pre>
 
+        <h3>A live list</h3>
+        <p>A table fed as things happen (the log below) keeps its newest row in view. Scroll away and the rows you are reading stay exactly where they are while the new ones are counted; back at the newest, it follows again. Only a live list does this: a table without <code>follow</code> never moves by itself.</p>
+        <pre class="ds-code"><code>&lt;dbmn-table follow="top"&gt;                  the newest rows at the top; follow="bottom": at the bottom
+table.following = false;                   // stop, or start again
+table.addEventListener('dbmn-table-follow', e =&gt; …e.detail.following, e.detail.unseen…);</code></pre>
+
         <h3>Rows inside a row</h3>
         <p>A value that is a list of records (an order's lines, its packages) shows as a count with a chevron, and opens inside its own cell: a small table with its own headings, which sort and can be removed. Two lists in one row each open in their own cell, side by side. The first 100 records show. What is open stays open through a search or a sort, and a search that finds the order shows all its records. Try it: open the lines and the packages of one order, then sort the table.</p>
         <div class="ds-demo">

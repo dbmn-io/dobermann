@@ -533,3 +533,86 @@ test('the search box says what each column is, offers what fits, and says how th
     await box.fill('kettle');
     await expect(page.locator('#t .dbmn-table-reads')).toBeHidden();
 });
+
+/* ── A live list: following the newest rows ── */
+
+test('follow: the newest rows stay in view; scrolled away, the rows on screen stay put and the new ones are counted', async ({ page }) => {
+    await page.setContent(tablePage());
+    await page.evaluate(() => {
+        const t = document.getElementById('t');
+        window.follows = [];
+        t.addEventListener('dbmn-table-follow', e => window.follows.push(e.detail));
+        t.setAttribute('follow', 'top');
+        t.columns = [{ id: 'n', name: 'n' }, { id: 'line', name: 'line' }];
+        window.lines = Array.from({ length: 500 }, (_, i) => ({ n: 500 - i, line: 'line ' + (500 - i) }));
+        t.rows = window.lines;
+        // Newer lines go in at the top
+        window.add = k => { const top = window.lines[0].n; window.lines = Array.from({ length: k }, (_, i) => ({ n: top + k - i, line: 'line ' + (top + k - i) })).concat(window.lines); t.rows = window.lines; };
+    });
+    const first = () => page.locator('#t .dbmn-table-body tr').first().locator('td').first().textContent();
+    const inView = () => page.evaluate(() => {
+        const box = document.querySelector('#t .dbmn-table-scroll').getBoundingClientRect();
+        const head = document.querySelector('#t thead th').getBoundingClientRect();   // (the headings stay at the top of the box)
+        const row = Array.from(document.querySelectorAll('#t .dbmn-table-body tr')).find(r => r.getBoundingClientRect().top >= head.bottom - 1);
+        return { n: row.cells[0].textContent, at: Math.round(row.getBoundingClientRect().top - box.top) };
+    });
+    expect(await page.evaluate(() => document.getElementById('t').following)).toBe(true);
+    // At the top: new lines are followed
+    await page.evaluate(() => window.add(3));
+    expect(await first()).toBe('503');
+    expect(await page.locator('#t .dbmn-table-scroll').evaluate(s => s.scrollTop)).toBe(0);
+    expect(await page.evaluate(() => window.follows.at(-1))).toEqual({ following: true, unseen: 0 });
+    // Scrolled down: it stops following, and says so
+    await page.locator('#t .dbmn-table-scroll').evaluate(s => { s.scrollTop = 2000; });
+    await expect.poll(() => page.evaluate(() => window.follows.at(-1))).toEqual({ following: false, unseen: 0 });
+    const before = await inView();
+    // New lines now: the row being read stays exactly where it is, and they are counted
+    await page.evaluate(() => window.add(5));
+    await expect.poll(() => page.evaluate(() => window.follows.at(-1))).toEqual({ following: false, unseen: 5 });
+    expect(await inView()).toEqual(before);
+    await page.evaluate(() => window.add(2));
+    expect(await page.evaluate(() => window.follows.at(-1))).toEqual({ following: false, unseen: 7 });
+    expect(await inView()).toEqual(before);
+    // Back at the top: following again, nothing unseen
+    await page.locator('#t .dbmn-table-scroll').evaluate(s => { s.scrollTop = 0; });
+    await expect.poll(() => page.evaluate(() => window.follows.at(-1))).toEqual({ following: true, unseen: 0 });
+    expect(await first()).toBe('510');
+    // Told to stop, it stays put though it is at the top; told to follow, it goes to the newest
+    await page.evaluate(() => { document.getElementById('t').following = false; window.add(1); });
+    expect(await page.evaluate(() => window.follows.at(-1))).toEqual({ following: false, unseen: 1 });
+    await page.locator('#t .dbmn-table-scroll').evaluate(s => { s.scrollTop = 900; });
+    await page.evaluate(() => { document.getElementById('t').following = true; });
+    expect(await page.locator('#t .dbmn-table-scroll').evaluate(s => s.scrollTop)).toBe(0);
+    expect(await first()).toBe('511');
+});
+
+test('follow="bottom": the newest rows are at the bottom; without follow a table never moves by itself', async ({ page }) => {
+    await page.setContent(tablePage());
+    await page.evaluate(() => {
+        const t = document.getElementById('t');
+        window.follows = [];
+        t.addEventListener('dbmn-table-follow', e => window.follows.push(e.detail));
+        t.columns = [{ id: 'n', name: 'n' }];
+        window.lines = Array.from({ length: 400 }, (_, i) => ({ n: i + 1 }));
+        t.rows = window.lines;
+        window.add = k => { const last = window.lines.at(-1).n; window.lines = window.lines.concat(Array.from({ length: k }, (_, i) => ({ n: last + i + 1 }))); t.rows = window.lines; };
+    });
+    const gap = () => page.locator('#t .dbmn-table-scroll').evaluate(s => Math.round(s.scrollHeight - s.scrollTop - s.clientHeight));
+    // No follow: rows added, nothing moves, nothing is told
+    await page.locator('#t .dbmn-table-scroll').evaluate(s => { s.scrollTop = 1500; });
+    await page.evaluate(() => window.add(10));
+    expect(await page.locator('#t .dbmn-table-scroll').evaluate(s => s.scrollTop)).toBe(1500);
+    expect(await page.evaluate(() => window.follows.length)).toBe(0);
+    // Following the bottom: there from the moment it is asked, and after each lot of new rows
+    await page.evaluate(() => { const t = document.getElementById('t'); t.setAttribute('follow', 'bottom'); t.following = true; });
+    expect(await gap()).toBeLessThan(2);
+    await page.evaluate(() => window.add(4));
+    expect(await gap()).toBeLessThan(2);
+    await expect(page.locator('#t .dbmn-table-body tr').last()).toHaveText('414');
+    // Scrolled up: it stays where it is and counts
+    await page.locator('#t .dbmn-table-scroll').evaluate(s => { s.scrollTop = 1000; });
+    await expect.poll(() => page.evaluate(() => window.follows.at(-1).following)).toBe(false);
+    await page.evaluate(() => window.add(6));
+    expect(await page.locator('#t .dbmn-table-scroll').evaluate(s => s.scrollTop)).toBe(1000);
+    expect(await page.evaluate(() => window.follows.at(-1))).toEqual({ following: false, unseen: 6 });
+});
