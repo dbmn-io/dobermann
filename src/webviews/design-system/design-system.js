@@ -388,6 +388,22 @@
         };
     }
 
+    /* ── Tables: editing (editable), over a few made-up rows of stock to load ── */
+    function drawEdit() {
+        const table = $('dsEdit');
+        if (!table) return;
+        table.style.setProperty('--table-height', '220px');
+        table.columns = [{ id: 'sku', name: 'sku', editable: false }, { id: 'description', name: 'description' }, { id: 'qty', name: 'qty', numbers: true }, { id: 'uom', name: 'uom' }];
+        const items = [['A-2207', 'Olive oil 1 L'], ['A-3110', 'Sea salt 500 g'], ['B-0418', 'Espresso beans 1 kg'], ['C-7001', 'Paper cups 250'], ['C-7004', 'Napkins 1000']];
+        table.rows = Array.from({ length: 40 }, (_, i) => ({ sku: `${items[i % 5][0]}-${String(i + 1).padStart(2, '0')}`, description: items[i % 5][1], qty: 6 + (i * 7) % 50, uom: i % 3 ? 'EA' : 'CS' }));
+        // (as a screen would: a quantity below zero is refused, and said why)
+        table.addEventListener('dbmn-table-edit', e => {
+            if (e.detail.changes.some(c => c.id === 'qty' && Number(c.value) < 0)) { e.preventDefault(); $('dsEditSaid').textContent = 'Refused: a quantity can\'t be below zero.'; return; }
+            const n = e.detail.changes.length;
+            $('dsEditSaid').textContent = `${e.detail.kind}: ${n} cell${n === 1 ? '' : 's'}${e.detail.left ? `, ${e.detail.left} with nowhere to go` : ''}`;
+        });
+    }
+
     /* ── Lining columns up (<dbmn-map>): three made-up results, kept here as the screen would keep them ── */
     function drawMap() {
         const map = $('dsMap');
@@ -533,6 +549,7 @@
     drawTable();
     drawNested();
     drawMap();
+    drawEdit();
     drawPaged();
     drawLog();
     if (window.Icons) window.Icons.injectIcons(document.body);

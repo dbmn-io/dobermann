@@ -19,7 +19,7 @@
  *   orders.rows = [{ order_no: 'SO-10412', qty: 24, state: 'Open' }, …];
  *   orders.addEventListener('dbmn-table-shown', e => …e.detail.shown, e.detail.total…);
  *
- * Attributes: `searchable` (the search box and the count), `removable` (x on a heading),
+ * Attributes: `editable` (a cell at a time, as a spreadsheet: below), `searchable` (the search box and the count), `removable` (x on a heading),
  * `locked` (columns can be neither moved nor removed), `label` (what the table holds, for a
  * screen reader), `placeholder` (the search box's).
  *
@@ -52,6 +52,18 @@
  * values (a date is ISO 8601 text). No type is ever shown in a heading. `numbers` says the column sorts as numbers (its sort icon is 0 to
  * 1, where text's is A to Z); left out, the table looks at the values: a column of numbers or of
  * true and false sorts as numbers. A value that is a number sits right.
+ *
+ * ── Editing: the `editable` attribute (rows the page holds) ──
+ *   A click holds a cell; the arrow keys, Tab, Home, End and Page Up/Down move from it. Enter, F2,
+ *   a double-click or typing edits it: Enter keeps the value and goes down, Tab across, Esc gives
+ *   it up, a click elsewhere keeps it. Delete empties it. A block copied from a spreadsheet pastes
+ *   from the held cell (tab between cells, a line a row); Ctrl+C copies the cell. Ctrl+Z undoes,
+ *   Ctrl+Y (or Ctrl+Shift+Z) does again; a paste is one step.
+ *   { id, name, editable: false }        a column that is only read
+ *   orders.addEventListener('dbmn-table-edit', e => …e.detail.kind ('edit' | 'paste' | 'undo' | 'redo'),
+ *       e.detail.changes [{ row, id, index, value, old }], e.detail.left (pasted cells with nowhere to go)…);
+ *   A listener may change a change's `value`, or refuse them all with preventDefault(); otherwise
+ *   the table writes them into the rows and draws them. A number stays a number when it reads as one.
  *
  * ── A live list: following the newest rows ──
  *   <dbmn-table follow="top">        the newest rows are at the top (follow="bottom": at the bottom)
@@ -436,6 +448,8 @@
             });
             this._body.addEventListener('click', event => {
                 if (this._nestClick(event)) return;
+                // Editable: a click holds the cell (a double-click, Enter or typing edits it)
+                if (this._editClick(event)) return;
                 const td = event.target.closest('td.cell-expandable');
                 if (!td) { this._rowEvent('dbmn-table-row', event); return; }
                 if (!window.CellDetail || String(window.getSelection())) return;
@@ -497,6 +511,7 @@
                 });
             }
             this._built = true;
+            if (this.hasAttribute('editable')) this._editInit();
         }
 
         /** Everything again: the columns or the rows changed. */
@@ -1274,6 +1289,7 @@
             this._spacer(this._above, pad.top);
             this._spacer(this._below, pad.bottom);
             this._rendered = { start, end: seen.end };
+            if (this._active) this._markActive();
             // Pages far from here are let go: scrolled back to, they are asked for again
             if (this._pages.size > KEEP_PAGES) {
                 const here = Math.floor(start / PAGE);
@@ -1568,6 +1584,7 @@
             this._body.replaceChildren(...rows);
             if (window.Icons) window.Icons.injectIcons(this._body);
             this._rendered = { start, end };
+            if (this._active) this._markActive();
             // How tall each open row turned out (with its records' own row, full width): the rows under it are placed by that
             open.forEach(o => {
                 const tr = o.index >= start && o.index < end ? mains[o.index - start] : null;
@@ -1602,6 +1619,223 @@
                     return Math.max(0, Math.min(total - 1, Math.floor((y - shift) / h)));
                 }
             };
+        }
+    });
+
+
+    /* ── Editing (the `editable` attribute): a cell at a time, as a spreadsheet ── */
+    Object.assign(DbmnTable.prototype, {
+        _editable() { return this.hasAttribute('editable') && !this._source; },
+        /** What a column takes: not one marked editable: false, nor a cell that holds a list of records. */
+        _canEdit(column, row) {
+            return !!column && column.editable !== false && !(row && this._nestCount(column, row[column.id], row) > 0);
+        },
+        /** The keys, paste and copy come to a hidden box while the table has hold of them (a page gets the clipboard only in a box). */
+        _editInit() {
+            if (this._keys) return;
+            const keys = make('textarea', 'dbmn-table-keys');
+            keys.setAttribute('aria-hidden', 'true');
+            keys.tabIndex = -1;
+            keys.addEventListener('keydown', event => this._editKey(event));
+            keys.addEventListener('paste', event => this._editPaste(event));
+            keys.addEventListener('copy', event => this._editCopy(event));
+            keys.addEventListener('blur', () => this.classList.remove('is-editing-grid'));
+            keys.addEventListener('focus', () => this.classList.add('is-editing-grid'));
+            this.append(keys);
+            this._keys = keys;
+            this._undo = [];
+            this._redo = [];
+            this._body.addEventListener('dblclick', event => {
+                if (!this._editable()) return;
+                const at = this._cellAt(event.target);
+                if (at) { this._select(at.index, at.id); this._editStart(); }
+            });
+        },
+        /** Where a cell is: the row's place among the rows shown, and its column. */
+        _cellAt(target) {
+            const td = target && target.closest && target.closest('td');
+            if (!td || !this._body.contains(td) || td.parentElement._main || td.parentElement.classList.contains('dbmn-table-waiting')) return null;
+            const column = this._columns[td.cellIndex];
+            const index = this._rendered.start + this._mainIndex(td.parentElement);
+            return column && index >= 0 ? { index, id: column.id } : null;
+        },
+        /** A click on a cell holds it: the keys move from there. */
+        _editClick(event) {
+            if (!this._editable()) return false;
+            if (event.target.closest('button, a, input, select, textarea, td.has-nested')) return false;
+            const at = this._cellAt(event.target);
+            if (!at) return false;
+            this._select(at.index, at.id);
+            return true;
+        },
+        _select(index, id) {
+            const length = this._length();
+            if (!length || !this._columns.length) return;
+            index = Math.max(0, Math.min(length - 1, index));
+            if (!this._columns.some(c => c.id === id)) id = this._columns[0].id;
+            this._active = { index, id };
+            this._editInit();
+            this._intoView();
+            this._markActive();
+            this._keys.focus({ preventScroll: true });
+        },
+        /** The held cell drawn as held (it moves with the drawing as the rows scroll). */
+        _markActive() {
+            if (!this._built) return;
+            this._body.querySelectorAll('td.dbmn-cell-active').forEach(td => td.classList.remove('dbmn-cell-active'));
+            const a = this._active;
+            if (!a || this._editing) return;
+            const tr = this._mainAt(a.index - this._rendered.start);
+            const at = this._columns.findIndex(c => c.id === a.id);
+            const td = tr && at >= 0 ? tr.cells[at] : null;
+            if (td) td.classList.add('dbmn-cell-active');
+        },
+        /** The held cell in view: the rows scroll to it, and the columns sideways. */
+        _intoView() {
+            const a = this._active;
+            if (!a) return;
+            const s = this._scroll;
+            const head = this._head.getBoundingClientRect().height;
+            const top = a.index * this._rowH, bottom = top + this._rowH;
+            if (top < s.scrollTop) s.scrollTop = top;
+            else if (bottom + head > s.scrollTop + s.clientHeight) s.scrollTop = bottom + head - s.clientHeight;
+            this._render(false);
+            const tr = this._mainAt(a.index - this._rendered.start);
+            const td = tr && tr.cells[this._columns.findIndex(c => c.id === a.id)];
+            if (td && td.scrollIntoView) td.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+        },
+        _move(rows, cols) {
+            const a = this._active;
+            if (!a) return;
+            const at = this._columns.findIndex(c => c.id === a.id);
+            const col = this._columns[Math.max(0, Math.min(this._columns.length - 1, at + cols))];
+            this._select(a.index + rows, col ? col.id : a.id);
+        },
+        _editKey(event) {
+            const a = this._active;
+            if (!a) return;
+            const mod = event.ctrlKey || event.metaKey;
+            const page = Math.max(1, Math.floor(this._scroll.clientHeight / this._rowH) - 1);
+            const k = event.key;
+            if (mod && (k === 'z' || k === 'Z')) { event.preventDefault(); (event.shiftKey ? this._redoLast() : this._undoLast()); return; }
+            if (mod && (k === 'y' || k === 'Y')) { event.preventDefault(); this._redoLast(); return; }
+            if (mod) return;   // (copy and paste come as their own events)
+            const moves = { ArrowDown: [1, 0], ArrowUp: [-1, 0], ArrowRight: [0, 1], ArrowLeft: [0, -1], PageDown: [page, 0], PageUp: [-page, 0] };
+            if (moves[k]) { event.preventDefault(); this._move(...moves[k]); return; }
+            if (k === 'Tab') { event.preventDefault(); this._move(0, event.shiftKey ? -1 : 1); return; }
+            if (k === 'Home') { event.preventDefault(); this._select(a.index, this._columns[0].id); return; }
+            if (k === 'End') { event.preventDefault(); this._select(a.index, this._columns[this._columns.length - 1].id); return; }
+            if (k === 'Enter' || k === 'F2') { event.preventDefault(); this._editStart(); return; }
+            if (k === 'Escape') { this._active = null; this._markActive(); this._keys.blur(); return; }
+            if (k === 'Delete' || k === 'Backspace') { event.preventDefault(); this._writeCells([{ index: a.index, id: a.id, value: '' }], 'edit'); return; }
+            // A key that types: the cell is edited, starting from it
+            if (k.length === 1 && !event.altKey) { event.preventDefault(); this._editStart(k); }
+        },
+        /** The held cell becomes a box to type in: Enter keeps it and goes down, Tab across, Esc gives it up. */
+        _editStart(typed) {
+            const a = this._active;
+            if (!a || this._editing) return;
+            const row = this._rowAt(a.index);
+            const column = this._columns.find(c => c.id === a.id);
+            if (!row || !this._canEdit(column, row)) return;
+            const tr = this._mainAt(a.index - this._rendered.start);
+            const td = tr && tr.cells[this._columns.indexOf(column)];
+            if (!td) return;
+            const old = row[column.id];
+            const input = make('input', 'dbmn-cell-input');
+            input.type = 'text';
+            input.value = typed !== undefined ? typed : textOf(old);
+            input.setAttribute('aria-label', `${column.name || column.id}, row ${a.index + 1}`);
+            td.classList.add('dbmn-cell-editing');
+            td.replaceChildren(input);
+            this._editing = { input, td };
+            input.focus();
+            if (typed === undefined) input.select();
+            else input.setSelectionRange(input.value.length, input.value.length);
+            let done = false;
+            const finish = (keep, then) => {
+                if (done) return;
+                done = true;
+                this._editing = null;
+                if (keep && input.value !== textOf(old)) this._writeCells([{ index: a.index, id: column.id, value: input.value }], 'edit');
+                else this._render(true);
+                if (then) then();
+                this._markActive();
+                this._keys.focus({ preventScroll: true });
+            };
+            input.addEventListener('keydown', event => {
+                if (event.key === 'Enter') { event.preventDefault(); finish(true, () => this._move(event.shiftKey ? -1 : 1, 0)); }
+                else if (event.key === 'Tab') { event.preventDefault(); finish(true, () => this._move(0, event.shiftKey ? -1 : 1)); }
+                else if (event.key === 'Escape') { event.preventDefault(); finish(false); }
+                event.stopPropagation();
+            });
+            // A click elsewhere keeps what was typed
+            input.addEventListener('blur', () => finish(true));
+        },
+        /** Many cells pasted from a spreadsheet: tab between cells, a line a row, from the held cell. */
+        _editPaste(event) {
+            const a = this._active;
+            if (!a || this._editing) return;
+            const text = event.clipboardData ? event.clipboardData.getData('text/plain') : '';
+            if (!text) return;
+            event.preventDefault();
+            const lines = text.replace(/\r\n?/g, '\n').split('\n');
+            if (lines.length > 1 && lines[lines.length - 1] === '') lines.pop();
+            const at = this._columns.findIndex(c => c.id === a.id);
+            const changes = [];
+            let left = 0;
+            lines.forEach((line, r) => {
+                line.split('\t').forEach((value, c) => {
+                    const column = this._columns[at + c];
+                    const index = a.index + r;
+                    if (!column || index >= this._length()) { left += 1; return; }
+                    changes.push({ index, id: column.id, value });
+                });
+            });
+            this._writeCells(changes, 'paste', left);
+        },
+        _editCopy(event) {
+            const a = this._active;
+            if (!a || !event.clipboardData) return;
+            const row = this._rowAt(a.index);
+            event.preventDefault();
+            event.clipboardData.setData('text/plain', row ? textOf(row[a.id]) : '');
+        },
+        /**
+         * Values given to cells: told first (the screen may change a value, or refuse them all), then
+         * kept in the rows and drawn. A number stays a number when what was typed reads as one.
+         */
+        _writeCells(changes, kind, left) {
+            const told = changes.map(ch => {
+                // (undo and redo go by the row itself: a sort since has moved it)
+                const row = ch.row || this._rowAt(ch.index);
+                const column = this._columns.find(c => c.id === ch.id);
+                if (!row || !this._canEdit(column, row)) return null;
+                const old = row[ch.id];
+                let value = ch.value;
+                if (typeof value === 'string' && typeof old === 'number' && value.trim() !== '' && isFinite(Number(value))) value = Number(value);
+                return { row, id: ch.id, index: ch.index, value, old };
+            }).filter(Boolean);
+            if (!told.length) return;
+            const event = new CustomEvent('dbmn-table-edit', { bubbles: true, cancelable: true, detail: { kind, changes: told, left: left || 0 } });
+            if (!this.dispatchEvent(event)) { this._render(true); this._markActive(); return; }
+            told.forEach(ch => { ch.row[ch.id] = ch.value; });
+            if (kind !== 'undo' && kind !== 'redo') { this._undo.push(told); this._redo = []; }
+            this._kinds = null;
+            this._render(true);
+            this._markActive();
+        },
+        _undoLast() {
+            const last = this._undo.pop();
+            if (!last) return;
+            this._redo.push(last);
+            this._writeCells(last.map(ch => ({ row: ch.row, index: ch.index, id: ch.id, value: ch.old })), 'undo');
+        },
+        _redoLast() {
+            const last = this._redo.pop();
+            if (!last) return;
+            this._undo.push(last);
+            this._writeCells(last.map(ch => ({ row: ch.row, index: ch.index, id: ch.id, value: ch.value })), 'redo');
         }
     });
 

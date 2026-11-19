@@ -1010,3 +1010,77 @@ test('records full width: the switch beside "N records" opens them in a row of t
     await page.evaluate(() => { const t = document.getElementById('t'); const c = t.columns; t.columns = c; t.layout = { recordsWide: ['lines'] }; });
     await expect(page.locator('#t .dbmn-table-body > tr.dbmn-nest-wide-row')).toHaveCount(2);
 });
+
+/* ── Editing (the editable attribute) ── */
+
+const editPage = () => tablePage().replace('<dbmn-table id="t" label="Orders" searchable removable></dbmn-table>', '<dbmn-table id="t" label="Orders" editable></dbmn-table>')
+    .replace("t.rows = Array.from({ length: 3000 }", "window.edits = []; t.addEventListener('dbmn-table-edit', e => window.edits.push({ kind: e.detail.kind, left: e.detail.left, changes: e.detail.changes.map(c => [c.id, c.old, c.value]) })); t.rows = Array.from({ length: 3000 }");
+const td = (p, r, c) => p.locator('#t .dbmn-table-body > tr').nth(r).locator('td').nth(c);
+
+test('editable: a click holds a cell, the keys move it, Enter edits, Enter again keeps the value and goes down; Esc gives it up', async ({ page }) => {
+    await page.setContent(editPage());
+    await td(page, 0, 1).click();
+    await expect(td(page, 0, 1)).toHaveClass(/dbmn-cell-active/);
+    await page.keyboard.press('ArrowRight');
+    await expect(td(page, 0, 2)).toHaveClass(/dbmn-cell-active/);
+    await page.keyboard.press('ArrowDown');
+    await expect(td(page, 1, 2)).toHaveClass(/dbmn-cell-active/);
+    // Enter edits; what is typed is kept with Enter, and the hold goes down a row
+    await page.keyboard.press('Enter');
+    const box = td(page, 1, 2).locator('input.dbmn-cell-input');
+    await expect(box).toBeFocused();
+    await box.fill('41');
+    await page.keyboard.press('Enter');
+    await expect(td(page, 1, 2)).toHaveText('41');
+    await expect(td(page, 2, 2)).toHaveClass(/dbmn-cell-active/);
+    expect(await page.evaluate(() => [window.edits, typeof document.getElementById('t').rows[1].qty])).toEqual([[{ kind: 'edit', left: 0, changes: [['qty', 7, 41]] }], 'number']);
+    // Typing starts an edit from that key; Esc gives it up
+    await page.keyboard.type('Z');
+    await expect(td(page, 2, 2).locator('input')).toHaveValue('Z');
+    await page.keyboard.press('Escape');
+    await expect(td(page, 2, 2)).toHaveText('14');
+    expect(await page.evaluate(() => window.edits.length)).toBe(1);
+});
+
+test('editable: a block pastes from the held cell, as one step that undoes and does again; copy takes the cell', async ({ page }) => {
+    await page.setContent(editPage());
+    await td(page, 0, 1).click();
+    // A spreadsheet's block: two rows, two cells each, and one cell past the last column (nowhere to go)
+    await page.evaluate(() => {
+        const data = new DataTransfer();
+        data.setData('text/plain', 'Acme\t5\r\nBeta\t6\tspare\r\n');
+        document.activeElement.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
+    });
+    await expect(td(page, 0, 1)).toHaveText('Acme');
+    await expect(td(page, 1, 2)).toHaveText('6');
+    expect(await page.evaluate(() => window.edits.at(-1))).toEqual({ kind: 'paste', left: 0, changes: [['customer', 'Harbour Foods', 'Acme'], ['qty', 0, 5], ['customer', 'Kettle and Co', 'Beta'], ['qty', 7, 6], ['notes', { reason: 'Awaiting stock' }, 'spare']] });
+    await page.keyboard.press('Control+z');
+    await expect(td(page, 0, 1)).toHaveText('Harbour Foods');
+    await expect(td(page, 1, 2)).toHaveText('7');
+    await page.keyboard.press('Control+y');
+    await expect(td(page, 0, 1)).toHaveText('Acme');
+    const copied = await page.evaluate(() => {
+        const data = new DataTransfer();
+        document.activeElement.dispatchEvent(new ClipboardEvent('copy', { clipboardData: data, bubbles: true, cancelable: true }));
+        return data.getData('text/plain');
+    });
+    expect(copied).toBe('Acme');
+});
+
+test('editable: the screen can refuse a change or a column; a list of records is not edited', async ({ page }) => {
+    await page.setContent(editPage());
+    await page.evaluate(() => {
+        const t = document.getElementById('t');
+        t.columns = [{ id: 'order_no', name: 'order_no', editable: false }, { id: 'customer', name: 'customer' }, { id: 'qty', name: 'qty', numbers: true }];
+        t.addEventListener('dbmn-table-edit', e => { if (e.detail.changes.some(c => c.id === 'qty' && Number(c.value) < 0)) e.preventDefault(); });
+    });
+    await td(page, 0, 0).dblclick();
+    await expect(td(page, 0, 0).locator('input')).toHaveCount(0);
+    await td(page, 0, 2).dblclick();
+    await td(page, 0, 2).locator('input').fill('-3');
+    await page.keyboard.press('Enter');
+    await expect(td(page, 0, 2)).toHaveText('0');
+    await page.keyboard.press('ArrowUp');
+    await page.keyboard.press('Delete');
+    await expect(td(page, 0, 2)).toHaveText('');
+});

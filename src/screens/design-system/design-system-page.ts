@@ -353,6 +353,17 @@ orders.addEventListener('dbmn-table-shown', e =&gt; …e.detail.total…);
 
 locked                                     attribute: columns can be neither moved nor removed</code></pre>
 
+        <h3>Editing</h3>
+        <p>With <code>editable</code>, a table is a spreadsheet: click a cell to hold it, move with the arrow keys and Tab, type (or Enter, or double-click) to edit, Enter to keep it and go down, Esc to give it up. A block copied from a spreadsheet pastes from the held cell; Ctrl+Z undoes, Ctrl+Y does again. The screen hears every change and can refuse it. Try it: paste three rows from a spreadsheet onto <code>qty</code>.</p>
+        <div class="ds-demo">
+            <dbmn-table id="dsEdit" label="Stock to load" editable></dbmn-table>
+            <p class="form-hint" id="dsEditSaid"></p>
+        </div>
+        <pre class="ds-code"><code>&lt;dbmn-table editable&gt;                    a cell at a time (rows the page holds)
+{ id: 'sku', name: 'sku', editable: false }   a column only read
+table.addEventListener('dbmn-table-edit', e =&gt; …e.detail.kind ('edit' | 'paste' | 'undo' | 'redo'), e.detail.changes [{ row, id, value, old }]…);
+                                           // change a value, or e.preventDefault() to refuse them</code></pre>
+
         <h3>A live list</h3>
         <p>A table fed as things happen (the log below) keeps its newest row in view. Scroll away and the rows you are reading stay exactly where they are while the new ones are counted; back at the newest, it follows again. Only a live list does this: a table without <code>follow</code> never moves by itself.</p>
         <pre class="ds-code"><code>&lt;dbmn-table follow="top"&gt;                  the newest rows at the top; follow="bottom": at the bottom
