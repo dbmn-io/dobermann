@@ -239,3 +239,26 @@
 .ds-join { display: inline-flex; flex-direction: column; align-items: center; gap: 2px; font-size: 11px; color: var(--dbmn-descriptionForeground); }
 .ds-join-btn { display: inline-flex; align-items: center; gap: 3px; padding: 2px 6px; }
 .ds-join-caret { font-size: 10px; color: var(--dbmn-descriptionForeground); }
+
+/* Lanes demo: the slots and run chips as a screen would draw them (Query's own markup; colours from the lanes) */
+.ds-lane-slot {
+    padding: 5px 8px 6px;
+    border-radius: 3px;
+    background: color-mix(in srgb, var(--lanes-run-c, var(--lanes-view-c)) 18%, transparent);
+    box-shadow: inset 0 -2px 0 var(--lanes-run-c, var(--lanes-view-c));
+    font-weight: 600;
+    font-size: 13px;
+}
+.dbmn-lane-head.ds-lane-slot { background: color-mix(in srgb, var(--lanes-view-c) 18%, transparent); box-shadow: inset 0 -2px 0 var(--lanes-view-c); margin-bottom: 4px; }
+.ds-lane-chip {
+    margin: 0 2px 4px;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 11.5px;
+    background: color-mix(in srgb, var(--lanes-run-c) 30%, transparent);
+    border-bottom: 2px solid var(--lanes-run-c);
+}
+.ds-lane-chip b, .ds-lane-slot b { margin-right: 4px; }
+.ds-lane-fx { font-style: italic; color: var(--dbmn-descriptionForeground); }
+.ds-lane-says { align-self: center; padding: 4px 8px; font-size: 12px; color: var(--dbmn-descriptionForeground); }
+.ds-row .btn[aria-pressed="true"] { box-shadow: inset 0 0 0 1px var(--dbmn-focusBorder); color: var(--dbmn-foreground); }

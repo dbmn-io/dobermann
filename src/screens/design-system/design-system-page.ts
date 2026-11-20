@@ -23,7 +23,7 @@ export function buildDesignSystemPage(asset: AssetUrl): string {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Design system</title>
-    ${sharedStyleLinks(asset, ['atomic', 'core', 'buttons', 'modals', 'tables', 'tabs', 'toast', 'console', 'data-transformer', 'compare', 'column-drag', 'column-head', 'query', 'dbmn-footer', 'dbmn-table', 'dbmn-log', 'dbmn-name', 'dbmn-functions', 'dbmn-map'])}
+    ${sharedStyleLinks(asset, ['atomic', 'core', 'buttons', 'modals', 'tables', 'tabs', 'toast', 'console', 'data-transformer', 'compare', 'column-drag', 'column-head', 'query', 'dbmn-footer', 'dbmn-table', 'dbmn-log', 'dbmn-name', 'dbmn-functions', 'dbmn-map', 'dbmn-lanes'])}
     <link rel="stylesheet" href="${asset('design-system/design-system.css')}">
 </head>
 <body class="editor-slide-in ds-page">
@@ -48,6 +48,7 @@ export function buildDesignSystemPage(asset: AssetUrl): string {
             <a href="#dialogs">Dialogs and messages</a>
             <a href="#tables">Tables</a>
             <a href="#mapping">Lining columns up</a>
+            <a href="#lanes">Lanes</a>
             <a href="#logs">Logs</a>
             <a href="#adding">Adding a component</a>
         </nav>
@@ -423,6 +424,37 @@ map.matched = { c1: { text: '1,180 of 1,198 match BL', tone: 'ok' } };
 //       dbmn-map-add { mode }, dbmn-map-remove { line }, dbmn-map-leftover { source, column }</code></pre>
     </section>
 
+    <section class="ds-section" id="lanes">
+        <h2>Lanes <span class="ds-chip is-component">Shared styles</span></h2>
+        <p>One grid every line shares: a gutter on the left, a lane per view as wide as its runs, an end column for + AND and &times;. Every row sits on the same tracks, so a slot is always over its lane and a run's cells under its chip, at any width; nothing is measured. When the views can't fit, the whole step scrolls sideways as one. A view's lane splits into its runs (BL, C1&hellip;), each in its own colour; the first run wears the view's. Query's steps are built on it.</p>
+        <div class="ds-row">
+            <button type="button" class="btn btn-secondary" id="dsLanesHead" data-click="ds:lanes" data-arg="head" aria-pressed="true">One heading over the runs</button>
+            <button type="button" class="btn btn-secondary" id="dsLanesSlots" data-click="ds:lanes" data-arg="slots" aria-pressed="false">A slot per run</button>
+        </div>
+        <div class="ds-demo">
+            <div class="dbmn-lanes" id="dsLanes"></div>
+        </div>
+        <h3>Runs, another endpoint and a file</h3>
+        <div class="ds-demo">
+            <div class="dbmn-lanes" id="dsLanesMixed"></div>
+        </div>
+        <pre class="ds-code"><code>DbmnLanes.apply(step, [{ runs: 4 }, { runs: 1 }, { runs: 1 }]);   // sets --lanes-tracks and --lanes-min on the step
+&lt;div class="dbmn-lanes"&gt;                                       // the step: scrolls sideways when the rows can't fit
+  &lt;div class="dbmn-lanes-row"&gt;
+    &lt;div class="dbmn-lanes-gutter"&gt;Key&lt;/div&gt;                  // .is-name: the left-aligned bold name
+    &lt;div class="dbmn-lane dbmn-view-0 dbmn-runs-4 dbmn-cells"&gt;  // a view's lane, split into its runs, as cells
+      &lt;button class="dbmn-cell dbmn-run-0"&gt;&lt;span class="dbmn-cell-value"&gt;gtin&lt;/span&gt;&lt;/button&gt;   // is-diff is-blank is-dim
+      …                                                       // is-picked is-empty is-add is-calc; .dbmn-cell-fx
+    &lt;/div&gt;
+    &lt;div class="dbmn-lane dbmn-view-1 dbmn-runs-1"&gt;…&lt;/div&gt;     // every view's lane, in order, empty ones too
+    &lt;div class="dbmn-lanes-end"&gt;+ AND ×&lt;/div&gt;                 // always there
+  &lt;/div&gt;
+  &lt;div class="dbmn-lanes-row"&gt;&lt;div class="dbmn-lanes-gutter"&gt;&lt;/div&gt;&lt;div class="dbmn-lanes-span"&gt;…&lt;/div&gt;&lt;div class="dbmn-lanes-end"&gt;&lt;/div&gt;&lt;/div&gt;
+&lt;/div&gt;
+.dbmn-lane-head  one heading across a split lane        .dbmn-lane-run  a run's own place in it
+.dbmn-view-0…5   a view's colour                        .dbmn-run-0…3   a run's (run 0 is its view's)</code></pre>
+    </section>
+
     <section class="ds-section" id="logs">
         <h2>Logs <span class="ds-chip is-component">Component</span></h2>
         <p>A log line looks the same wherever it shows: the Logs screen today, the Console's request log next.</p>
@@ -474,6 +506,7 @@ log.addEventListener('dbmn-log-open', e =&gt; …e.detail.open…);   // a line'
     ${script('shared/dbmn-modal.js')}
     ${script('shared/dbmn-functions.js')}
     ${script('shared/dbmn-map.js')}
+    ${script('shared/dbmn-lanes.js')}
     ${script('shared/dbmn-context-menu.js')}
     ${script('shared/relation-glyph.js')}
     ${script('shared/dbmn-toast.js')}

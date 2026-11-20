@@ -1,0 +1,269 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Copyright (C) 2026 Flexion Tech Pty Ltd */
+/*
+ * The lanes grid (dbmn-lanes.js sets the tracks): a gutter, a lane per view split into its runs,
+ * an end column. Every row shares the tracks, so every line lines up. Light DOM, plain classes:
+ *
+ *   .dbmn-lanes            the container: holds the tracks, scrolls sideways when the rows can't fit
+ *     .dbmn-lanes-row      one line on the tracks
+ *       .dbmn-lanes-gutter the first cell (.is-name: the left-aligned bold name)
+ *       .dbmn-lane         a view's lane, one per view, in order, empty ones too
+ *                          (.dbmn-view-N its colour; .dbmn-runs-N split into N run columns)
+ *         .dbmn-lane-head  across a split lane: one heading over its runs
+ *         .dbmn-lane-run   a run's cell (.dbmn-run-N its colour)
+ *       .dbmn-lanes-end    the last cell, always there
+ *       .dbmn-lanes-span   one cell across every lane    .dbmn-lanes-full  across the whole row
+ *       .dbmn-lanes-rule   a line across the lanes (Columns: the report above, what it doesn't use below)
+ *   .is-pending            on a cell, a run's place, a head, a span or a gutter: being worked out
+ *                          (quiet text, a small turning ring, nothing moves when the value comes)
+ *   .is-following          a container DbmnLanes.together keeps in step with another (no bar of its own)
+ *   .dbmn-cells            on a split lane: spreadsheet cells, 1px lines between them
+ *     .dbmn-cell           (.dbmn-cell-value, .dbmn-cell-fx; is-diff is-blank is-dim is-picked
+ *                          is-empty is-add is-calc; a <button> gets the hover and focus look)
+ *
+ * --lanes-c is an element's own colour (a run's, else its view's) for a screen's own pieces;
+ * --lanes-view-c and --lanes-run-c the view's and the run's.
+ *
+ * Colours are the theme's only. The mock-up's own: accent #5a8fc0 / #9cc8f2 → --dbmn-focusBorder,
+ * warn #e0b45a → --dbmn-editorWarning-foreground, bad → --dbmn-errorForeground, calc #c9a94a →
+ * --dbmn-charts-yellow, line → --dbmn-panel-border, quiet → --dbmn-descriptionForeground.
+ * Lanes and run cells have no padding of their own (content goes in the cells), so run edges
+ * line up on every row.
+ */
+
+.dbmn-lanes {
+    --lanes-line: var(--dbmn-panel-border, rgba(128, 128, 128, 0.35));
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    overflow-x: auto;
+    min-width: 0;
+}
+
+.dbmn-lanes-row {
+    display: grid;
+    grid-template-columns: var(--lanes-tracks, 230px 1fr 130px);
+    column-gap: var(--lanes-gap, 6px);
+    min-width: var(--lanes-min, 0);
+    align-items: stretch;
+}
+
+/* Every cell of a row: shrinks to its track, never past it; text stays on one line */
+.dbmn-lanes-row > *,
+.dbmn-lane > * {
+    min-width: 0;
+}
+
+.dbmn-lanes-gutter {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    padding-right: 8px;
+    font-size: 12px;
+    color: var(--dbmn-descriptionForeground);
+    text-align: right;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.dbmn-lanes-gutter.is-name {
+    justify-content: flex-start;
+    text-align: left;
+    color: var(--dbmn-foreground);
+    font-weight: 600;
+}
+
+/* A view's lane: its colour, lightly. Split, it is a grid of its runs */
+.dbmn-lane {
+    --lanes-view-c: var(--dbmn-charts-blue, #3794ff);
+    background: color-mix(in srgb, var(--lanes-view-c) 7%, transparent);
+    border-radius: 3px;
+}
+.dbmn-lane[class*="dbmn-runs-"] {
+    display: grid;
+    column-gap: 1px;
+    align-items: stretch;
+}
+.dbmn-runs-1 { grid-template-columns: minmax(0, 1fr); }
+.dbmn-runs-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.dbmn-runs-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.dbmn-runs-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
+.dbmn-lane-head {
+    grid-column: 1 / -1;
+}
+.dbmn-lane-head,
+.dbmn-lane-run {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.dbmn-lanes-end {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding-left: 6px;
+}
+
+.dbmn-lanes-span { grid-column: 2 / -2; min-width: 0; min-height: 24px; display: flex; align-items: center; }
+.dbmn-lanes-full { grid-column: 1 / -1; min-width: 0; }
+
+/* Colours: a view's (the order Query's slots have), and its runs' (the first run is the view's own) */
+.dbmn-view-0 { --lanes-view-c: var(--dbmn-charts-blue, #3794ff); }
+.dbmn-view-1 { --lanes-view-c: var(--dbmn-charts-green, #89d185); }
+.dbmn-view-2 { --lanes-view-c: var(--dbmn-charts-purple, #b180d7); }
+.dbmn-view-3 { --lanes-view-c: var(--dbmn-charts-orange, #d18616); }
+.dbmn-view-4 { --lanes-view-c: var(--dbmn-charts-red, #f14c4c); }
+.dbmn-view-5 { --lanes-view-c: var(--dbmn-charts-yellow, #cca700); }
+.dbmn-run-0 { --lanes-run-c: var(--lanes-view-c, var(--dbmn-charts-blue, #3794ff)); }
+.dbmn-run-1 { --lanes-run-c: var(--dbmn-charts-orange, #d18616); }
+.dbmn-run-2 { --lanes-run-c: var(--dbmn-charts-yellow, #cca700); }
+.dbmn-run-3 { --lanes-run-c: var(--dbmn-charts-red, #f14c4c); }
+
+/* Spreadsheet cells: a split lane's runs as cells with 1px lines between them */
+.dbmn-lane.dbmn-cells {
+    background: var(--lanes-line);
+    border: 1px solid var(--lanes-line);
+    border-radius: 3px;
+    overflow: hidden;
+}
+.dbmn-cell {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 1px;
+    min-width: 0;
+    min-height: 30px;
+    padding: 5px 8px;
+    border: 0;
+    border-radius: 0;
+    background: color-mix(in srgb, var(--lanes-run-c, var(--lanes-view-c, transparent)) 10%, var(--dbmn-editor-background, transparent));
+    color: var(--dbmn-foreground);
+    font: inherit;
+    text-align: left;
+}
+.dbmn-cell-value {
+    font-family: var(--dbmn-editor-font-family, monospace);
+    font-size: 12.5px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+/* (a cell with ƒ: the value leaves it room) */
+.dbmn-cell:has(> .dbmn-cell-fx) { padding-right: 26px; }
+.dbmn-cell-fx {
+    position: absolute;
+    right: 4px;
+    top: 50%;
+    transform: translateY(-50%);
+}
+.dbmn-cell-fx.is-quiet { opacity: 0; }
+.dbmn-cell:hover .dbmn-cell-fx.is-quiet,
+.dbmn-cell-fx.is-quiet:focus-visible { opacity: 1; }
+
+button.dbmn-cell { cursor: pointer; }
+button.dbmn-cell:hover,
+button.dbmn-cell:focus-visible {
+    background: color-mix(in srgb, var(--dbmn-focusBorder, #007fd4) 22%, var(--dbmn-editor-background, transparent));
+    outline: none;
+}
+
+.dbmn-cell.is-diff .dbmn-cell-value { color: var(--dbmn-editorWarning-foreground, #cca700); }
+.dbmn-cell.is-blank { background: var(--dbmn-editor-background, transparent); }
+.dbmn-cell.is-dim { opacity: 0.35; }
+.dbmn-cell.is-picked { box-shadow: inset 0 0 0 1px var(--dbmn-focusBorder, #007fd4); }
+.dbmn-cell.is-empty {
+    background: var(--dbmn-editor-background, transparent);
+    color: var(--dbmn-descriptionForeground);
+    font-size: 12px;
+}
+.dbmn-cell.is-calc {
+    --lanes-run-c: var(--dbmn-charts-yellow, #cca700);
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+}
+/* An empty place to add into: a + shows while the row is hovered (or the cell has focus) */
+.dbmn-cell.is-add {
+    align-items: center;
+    justify-content: center;
+    background: var(--dbmn-editor-background, transparent);
+}
+.dbmn-cell.is-add::after {
+    content: '+';
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--dbmn-descriptionForeground);
+    opacity: 0;
+}
+.dbmn-lanes-row:hover .dbmn-cell.is-add::after,
+.dbmn-cell.is-add:focus-visible::after { opacity: 1; }
+.dbmn-cell.is-add:hover::after,
+.dbmn-cell.is-add:focus-visible::after { color: var(--dbmn-focusBorder, #007fd4); }
+
+@media (prefers-reduced-motion: no-preference) {
+    .dbmn-cell-fx.is-quiet, .dbmn-cell.is-add::after { transition: opacity 0.12s; }
+}
+
+/* Working: a lane cell, a run's place, a span or a gutter whose value is still being worked out
+   (counts, samples). The text stays where the value will be, quiet, with the app's small turning
+   ring at its right edge, drawn over the padding: nothing moves when the value arrives. Reduced
+   motion: the ring stands still, dashed. */
+.dbmn-cell.is-pending,
+.dbmn-lane-run.is-pending,
+.dbmn-lane-head.is-pending,
+.dbmn-lanes-span.is-pending,
+.dbmn-lanes-gutter.is-pending {
+    position: relative;
+    color: var(--dbmn-descriptionForeground);
+    padding-right: 24px;
+}
+.dbmn-cell.is-pending .dbmn-cell-value { color: var(--dbmn-descriptionForeground); }
+.dbmn-cell.is-pending .dbmn-cell-fx { display: none; }
+.dbmn-cell.is-pending::after,
+.dbmn-lane-run.is-pending::after,
+.dbmn-lane-head.is-pending::after,
+.dbmn-lanes-span.is-pending::after,
+.dbmn-lanes-gutter.is-pending::after {
+    content: '';
+    position: absolute;
+    right: 6px;
+    top: 50%;
+    width: 10px;
+    height: 10px;
+    margin-top: -6px;
+    border: 2px solid color-mix(in srgb, currentColor 25%, transparent);
+    border-top-color: currentColor;
+    border-radius: 50%;
+    animation: dbmn-lanes-spin 0.8s linear infinite;
+}
+@keyframes dbmn-lanes-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+    .dbmn-cell.is-pending::after,
+    .dbmn-lane-run.is-pending::after,
+    .dbmn-lane-head.is-pending::after,
+    .dbmn-lanes-span.is-pending::after,
+    .dbmn-lanes-gutter.is-pending::after { animation: none; border-style: dashed; }
+}
+
+/* The line across the lanes (Columns: the report above it, what it doesn't use below); a cell
+   in the gutter beside it holds what sits on the line (+ Calculated) */
+.dbmn-lanes-rule {
+    grid-column: 2 / -2;
+    align-self: center;
+    height: 0;
+    border-top: 1px solid var(--lanes-line);
+}
+
+/* --lanes-c: the element's own colour (a run's, else its view's), for a screen's own pieces that
+   read one colour (Query: --compare-c: var(--lanes-c)) */
+[class*="dbmn-view-"] { --lanes-c: var(--lanes-view-c); }
+[class*="dbmn-run-"] { --lanes-c: var(--lanes-run-c); }
+
+/* A container that follows another sideways (DbmnLanes.together: the header's slot row): no
+   scrollbar of its own; the step's bar moves both */
+.dbmn-lanes.is-following { scrollbar-width: none; }
+.dbmn-lanes.is-following::-webkit-scrollbar { display: none; }

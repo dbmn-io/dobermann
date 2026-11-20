@@ -194,6 +194,7 @@
         ['<dbmn-progress>', 'The system\'s progress: the box is the bar', C, 'Console', 'shared/dbmn-footer.js'],
         ['<dbmn-status>', 'A few words of status (Saved, Not saved yet)', C, 'Edit Endpoint, Edit Environment', 'shared/dbmn-footer.js'],
         ['DbmnModal', 'Dialogs: a question, a form, an alert', M, 'Every screen', 'shared/dbmn-modal.js'],
+        ['Lanes', 'One grid every line shares: a gutter, a lane per view split into its runs, an end column; spreadsheet cells', S, 'Design system; Query next', 'shared/dbmn-lanes.css, shared/dbmn-lanes.js'],
         ['<dbmn-map>', 'Which column in each source is which, a line at a time: key, functions, how many agree', C, 'Design system; Compare and Run Batch next', 'shared/dbmn-map.js'],
         ['DbmnFunctions', 'Functions on a column, ticked in order, tried on its values before and after', M, 'Design system; Query, Compare and Run Batch next', 'shared/dbmn-functions.js'],
         ['DbmnToast', 'Messages in the corner', M, 'Every screen', 'shared/dbmn-toast.js'],
@@ -553,7 +554,71 @@
         drawJoinButton();
     }
 
+    /* ── Lanes: the mock-up's cases on the one grid (made up: a stock check over four runs, and with Counts and a file) ── */
+    const lanesUi = { mode: 'head' };
+    const div = (cls, text, title) => { const d = el('div', cls, text); if (title || text) d.title = title || text; return d; };
+    const cell = (run, value, more) => {
+        const b = el('button', `dbmn-cell dbmn-run-${run}${more && more.cls ? ' ' + more.cls : ''}`);
+        b.type = 'button';
+        b.title = (more && more.title) || value;
+        b.append(el('span', 'dbmn-cell-value', value));
+        if (more && more.fx) { const f = el('span', 'dbmn-cell-fx ds-lane-fx' + (more.fx === 'quiet' ? ' is-quiet' : ''), 'ƒ'); b.append(f); }
+        return b;
+    };
+    const lane = (view, runs, cells, extra) => {
+        const l = el('div', `dbmn-lane dbmn-view-${view} dbmn-runs-${runs}${extra ? ' ' + extra : ''}`);
+        l.append(...cells);
+        return l;
+    };
+    const row = (gutter, lanes, end, nameCls) => {
+        const r = el('div', 'dbmn-lanes-row');
+        r.append(div('dbmn-lanes-gutter' + (nameCls ? ' is-name' : ''), gutter), ...lanes, div('dbmn-lanes-end', end || ''));
+        return r;
+    };
+    const RUNS = [['BL', 'PROD · 20 Nov 09:12'], ['C1', 'PROD · 21 Nov 09:10'], ['C2', 'UAT · 21 Nov 09:30'], ['C3', 'UAT · 21 Nov 14:02']];
+    /** The slots: one heading over a view's runs (with a chip each), or a slot per run. */
+    function slotLane(view, name, runs) {
+        if (runs.length > 1 && lanesUi.mode === 'head') {
+            return lane(view, runs.length, [div('dbmn-lane-head ds-lane-slot', name), ...runs.map(([id, when], i) => {
+                const chip = div(`dbmn-lane-run dbmn-run-${i} ds-lane-chip`, '', `${id} · ${when}`);
+                chip.append(el('b', '', id), document.createTextNode(' ' + when));
+                return chip;
+            })]);
+        }
+        return lane(view, runs.length, runs.map(([id, when], i) => {
+            const slot = div(`dbmn-lane-run dbmn-run-${i} ds-lane-slot`, '', `${id} · ${name} · ${when}`);
+            slot.append(el('b', '', runs.length > 1 ? `${id} ` : ''), document.createTextNode(name));
+            return slot;
+        }));
+    }
+    function drawLanes() {
+        if (!window.DbmnLanes) return;
+        $('dsLanesHead').setAttribute('aria-pressed', String(lanesUi.mode === 'head'));
+        $('dsLanesSlots').setAttribute('aria-pressed', String(lanesUi.mode === 'slots'));
+        // Four runs of one view
+        const one = $('dsLanes');
+        window.DbmnLanes.apply(one, [{ runs: 4 }]);
+        one.replaceChildren(
+            row('Stock check', [slotLane(0, 'inventory · GET /inventory', RUNS)], '+ Add', true),
+            row('Key', [lane(0, 4, [cell(0, 'gtin', { fx: 'quiet' }), cell(1, 'gtin, the same'), cell(2, 'gtin, the same'), cell(3, 'gtin, the same')], 'dbmn-cells')], '+ AND  ×'),
+            row('available', [lane(0, 4, [cell(0, '48', { fx: true }), cell(1, '48'), cell(2, '46', { cls: 'is-diff', title: '46: not the same as BL\'s 48' }), cell(3, '48')], 'dbmn-cells')], '×'),
+            row('location', [lane(0, 4, [cell(0, 'DC-WEST-01'), cell(1, 'DC-WEST-01'), cell(2, '', { cls: 'is-blank', title: 'Blank' }), cell(3, 'DC-WEST-02', { cls: 'is-diff' })], 'dbmn-cells')], '×'),
+            row('', [lane(0, 4, [cell(0, 'Add a column', { cls: 'is-empty' }), cell(1, '', { cls: 'is-add', title: 'Add a column here' }), cell(2, '', { cls: 'is-add', title: 'Add a column here' }), cell(3, '', { cls: 'is-add', title: 'Add a column here' })], 'dbmn-cells')], ''),
+            (() => { const r = el('div', 'dbmn-lanes-row'); r.append(div('dbmn-lanes-gutter', 'After this join'), div('dbmn-lanes-span ds-lane-says', '4 of 4 in the compare · C1 1,198 · C2 1,199 · C3 1,150 one to one'), div('dbmn-lanes-end', '')); return r; })()
+        );
+        // Runs, another endpoint and a file
+        const mixed = $('dsLanesMixed');
+        window.DbmnLanes.apply(mixed, [{ runs: 2 }, { runs: 1 }, { runs: 1 }]);
+        mixed.replaceChildren(
+            row('Stock and counts', [slotLane(0, 'inventory · GET /inventory', RUNS.slice(0, 2)), slotLane(1, 'counts · GET /cycle-counts', [['', 'UAT · 21 Nov']]), slotLane(2, 'Prices.csv', [['', 'file']])], '+ Add', true),
+            row('Key', [lane(0, 2, [cell(0, 'gtin', { fx: 'quiet' }), cell(1, 'gtin, the same')], 'dbmn-cells'), lane(1, 1, [cell(0, 'item_code', { fx: 'quiet' })], 'dbmn-cells'), lane(2, 1, [cell(0, 'Not compared', { cls: 'is-empty' })], 'dbmn-cells')], '+ AND  ×'),
+            row('counted', [lane(0, 2, [cell(0, '', { cls: 'is-blank' }), cell(1, '', { cls: 'is-blank' })], 'dbmn-cells'), lane(1, 1, [cell(0, '47', { cls: 'is-picked' })], 'dbmn-cells'), lane(2, 1, [cell(0, '', { cls: 'is-dim' })], 'dbmn-cells')], '×'),
+            row('margin', [lane(0, 2, [cell(0, 'price − cost', { cls: 'is-calc', fx: true }), cell(1, '', { cls: 'is-blank' })], 'dbmn-cells'), lane(1, 1, []), lane(2, 1, [])], '×')
+        );
+    }
+
     window.DbmnActions.register({
+        'ds:lanes': mode => { lanesUi.mode = mode === 'slots' ? 'slots' : 'head'; drawLanes(); },
         'ds:log': () => $('dsLog').append(logLines(5, Date.now())),
         'ds:back': () => go(current - 1),
         'ds:next': () => { if (current < STEPS.length) go(current + 1); },
@@ -620,6 +685,7 @@
     drawTable();
     drawNested();
     drawMap();
+    drawLanes();
     drawEdit();
     drawLookup();
     drawPaged();
