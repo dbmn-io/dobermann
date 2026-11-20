@@ -48,17 +48,23 @@ describe('Logs search over a big run history never freezes the page', function (
     after(() => fs.rmSync(dir, { recursive: true, force: true }));
 
     /**
-     * How long this machine may hold the page. Fixed limits flaked on slower CI runners (94 ms
-     * once, against 80), so the limit scales with the machine: half of what reading one batch
-     * whole (the old way, which froze it) takes here, and never under 80 ms. Here that is
-     * ~150 ms, so 80; on a runner twice as slow, about 150. The freeze was 1–2 s; either way it fails.
+     * How long this machine may hold the page. Fixed limits flaked on GitHub's shared runners
+     * (94 and 84 ms, against 80), so the limit scales with the machine: half of what reading one
+     * batch whole (the old way, which froze it) takes here, the middle of three reads, and never
+     * under 80 ms (150 on CI). Here that is ~150 ms, so 80. The freeze was 1–2 s: it fails anywhere.
      */
-    let limit = 80;
+    const FLOOR = process.env.CI ? 150 : 80;
+    let limit = FLOOR;
     before(async () => {
         const [batch] = await storage.getAllTransactions();
-        const t = Date.now();
-        await storage.getBatchMemberExecutions(batch.id);
-        limit = Math.max(80, Math.round((Date.now() - t) / 2));
+        const reads: number[] = [];
+        for (let i = 0; i < 3; i++) {
+            const t = Date.now();
+            await storage.getBatchMemberExecutions(batch.id);
+            reads.push(Date.now() - t);
+        }
+        reads.sort((a, b) => a - b);
+        limit = Math.max(FLOOR, Math.round(reads[1] / 2));
     });
 
     const metadata = () => ({
@@ -88,15 +94,20 @@ describe('Logs search over a big run history never freezes the page', function (
     it('`@level=war` (warn, a character deleted): every batch is read, and the page is never held for long', async () => {
         const { posted, controller } = screen();
         let last = Date.now();
-        let longest = 0;
-        const probe = setInterval(() => { const now = Date.now(); longest = Math.max(longest, now - last); last = now; }, 1);
+        const waits: number[] = [];
+        const probe = setInterval(() => { const now = Date.now(); waits.push(now - last); last = now; }, 1);
         await controller.handleMessage({ type: 'logs.search', text: '@level=war' });
         clearInterval(probe);
         const answer = posted.find(m => m.type === 'logs.lines')!;
         expect(answer.lines).to.deep.equal([]);
         expect(answer.done).to.equal(true);
-        // (read whole, one batch of these held it 150 ms or more; read in slices, under 30)
-        expect(longest, `the longest the page waited (ms; limit ${limit})`).to.be.lessThan(limit);
+        // (read whole, each of the 8 batches held it 150 ms or more; read in slices, under 30.)
+        // The second-longest wait: one hiccup of a shared runner is not the search, while reading
+        // whole holds it once a batch, so that still fails. One long hold (a freeze, 1–2 s, all at
+        // once) is caught by the longest, with room for a hiccup.
+        waits.sort((a, b) => b - a);
+        expect(waits[1] ?? 0, `the second-longest the page waited (ms; limit ${limit}; longest ${waits[0]})`).to.be.lessThan(limit);
+        expect(waits[0] ?? 0, `the longest the page waited (ms; limit ${limit * 4})`).to.be.lessThan(limit * 4);
     });
 
     it('a key while it is looking stops it at once', async () => {
