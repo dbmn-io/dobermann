@@ -61,12 +61,15 @@ export interface QueryJoin {
 }
 
 /**
- * A calculated column: a name and an SQL expression over the views' columns, each by its view's
- * letter (a.quantityOnHand - b.reorderPoint). In `select` it is `{ view: '', column: name }`.
+ * A calculated column: a name and what it works out. `formula` is the builder's language
+ * (formula.ts), every column as its whole path (@Stock.quantityOnHand); `expr` is SQL over the
+ * views' columns, each by its view's letter (a.quantityOnHand - b.reorderPoint), as calculated
+ * columns were written before the builder: it runs as it is. In `select` it is `{ view: '', column: name }`.
  */
 export interface QueryCalc {
     name: string;
     expr: string;
+    formula?: string;
 }
 
 /** The `view` of a ColumnRef that names a calculated column. */

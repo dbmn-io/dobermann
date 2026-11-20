@@ -44,6 +44,21 @@ export function valueSql(param: string): string {
     return `CASE WHEN typeof(${param}) = 'real' AND ${param} = CAST(${param} AS INTEGER) THEN CAST(${param} AS INTEGER) ELSE ${param} END`;
 }
 
+/**
+ * The most rows a query may make. sql.js holds a query's rows in the page's memory, and a join on
+ * a column that repeats (status, not sku) can make millions from a few thousand: past this the
+ * query is not run, so it can never take the page down. Below it nothing is stopped: a join that
+ * repeats rows says so in its counts, and the user fixes it.
+ */
+export const MAX_QUERY_ROWS = 2_000_000;
+
+/** Join number `join` would make `rows` rows: more than `limit`. */
+export interface TooManyRows {
+    join: number;
+    rows: number;
+    limit: number;
+}
+
 export class QuerySession {
     private readonly db: Database;
     private readonly tables: Map<string, string>;
@@ -111,6 +126,37 @@ export class QuerySession {
         const step = Math.ceil(total / max);
         const out = this.run(`SELECT * FROM (SELECT *, ROW_NUMBER() OVER () AS "__dbmn_n" FROM (${this.sql()})) WHERE ("__dbmn_n" - 1) % ${step} = 0`);
         return { columns: out.columns.slice(0, -1), rows: out.rows.map(r => r.slice(0, -1)) };
+    }
+
+    /**
+     * How many rows join number `index` makes, worked out from how many rows hold each key value
+     * on each side, without making them. Only the joins before it are made, and each of those is
+     * under the limit (tooManyRows checks them in order).
+     */
+    rowsAfterJoin(index: number): number {
+        const join = this.spec.joins[index];
+        if (!join) throw new Error(`Query: no join ${index}`);
+        const rightView = this.spec.views.find(v => v.id === join.view);
+        if (!rightView) throw new Error(`Query: no view "${join.view}"`);
+        const names = refNames(this.spec.views);
+        const ks = join.on.map((_, i) => `k${i}`);
+        const notNull = ks.map(k => `${k} IS NOT NULL`).join(' AND ');
+        const same = ks.map(k => `lg.${k} = rg.${k}`).join(' AND ');
+        const [leftRows, matchedRows, pairs] = this.run(`WITH _l AS (SELECT ${join.on.map((p, i) => `${keySql(p.left, names)} AS k${i}`).join(', ')} ${fromSql(this.spec, index)}),
+_r AS (SELECT ${join.on.map((p, i) => `${keySql(p.right, names)} AS k${i}`).join(', ')} FROM ${tableSql(rightView, this.tables)}),
+_lg AS (SELECT ${ks.join(', ')}, COUNT(*) AS n FROM _l WHERE ${notNull} GROUP BY ${ks.join(', ')}),
+_rg AS (SELECT ${ks.join(', ')}, COUNT(*) AS n FROM _r WHERE ${notNull} GROUP BY ${ks.join(', ')})
+SELECT (SELECT COUNT(*) FROM _l), COALESCE(SUM(lg.n), 0), COALESCE(SUM(lg.n * rg.n), 0) FROM _lg AS lg JOIN _rg AS rg ON ${same}`).rows[0].map(Number);
+        return pairs + (join.kind === 'left' ? leftRows - matchedRows : 0);
+    }
+
+    /** The first join that would make more than `limit` rows, or undefined when every join is under it. */
+    tooManyRows(limit = MAX_QUERY_ROWS): TooManyRows | undefined {
+        for (let i = 0; i < this.spec.joins.length; i++) {
+            const rows = this.rowsAfterJoin(i);
+            if (rows > limit) return { join: i, rows, limit };
+        }
+        return undefined;
     }
 
     /** How many rows the query makes. */

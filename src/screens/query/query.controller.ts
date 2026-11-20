@@ -24,6 +24,7 @@ import { ConsoleViewsStore } from '../../services/console/console-views-store';
 import { buildCompareSide, CompareView } from '../../services/compare/compare-side';
 import { isComparableRun } from '../../services/compare/compare-store';
 import { QueryRowData, QuerySession } from '../../services/query/query-engine';
+import type { TooManyRows } from '../../services/query/query-engine';
 import { allColumns, columnSql, defaultColumns, fromSql, joinKeyColumns, quoteName, tableNames, writeSql } from '../../services/query/query-sql';
 import { reportNameProblem } from '../../services/compare/report-name';
 import { cleanViewName, getQuery, guessViewName, MAX_QUERY_VIEWS, moveView, moveViewFirst, nameViews, newSourceId, QuerySource, renameView, saveQuery, SavedQuery, untickBlanks, untickClashes } from '../../services/query/query-store';
@@ -699,6 +700,12 @@ export class QueryController {
                 if (!session) return;
                 columns = spec.select.length ? spec.select : defaultColumns(spec);
                 sql = session.sql();
+                // A join that would make far too many rows is never made: it would fill the page's memory
+                const tooMany = session.tooManyRows();
+                if (tooMany) {
+                    stats = spec.joins.map((_, i) => (i <= tooMany.join ? session.joinStats(i) : null));
+                    throw new Error(tooManyRowsText(tooMany, spec));
+                }
                 total = session.count();
                 // Rows alike in every column shown: what Distinct would fold (or has)
                 const other = Number(session.run(`SELECT COUNT(*) FROM (${writeSql({ ...spec, distinct: !spec.distinct })})`).rows[0]?.[0] ?? 0);
@@ -987,6 +994,8 @@ export class QueryController {
         const own = this.query?.sql;
         const key = own ?? session.sql();
         if (!this.result || this.result.key !== key) {
+            const tooMany = own ? undefined : session.tooManyRows();
+            if (tooMany) throw new Error(tooManyRowsText(tooMany, spec));
             const out = own ? session.run(own) : session.rows();
             const columns = own ? out.columns.map(column => ({ view: CALC_VIEW, column })) : spec.select.length ? spec.select : defaultColumns(spec);
             this.result = { key, columns, rows: out.rows };
@@ -1087,4 +1096,11 @@ function compareValues(a: unknown, b: unknown): number {
     if (blankA || blankB) return blankA === blankB ? 0 : blankA ? 1 : -1;
     if (typeof a === 'number' && typeof b === 'number') return a - b;
     return String(a).localeCompare(String(b), undefined, { numeric: true });
+}
+
+/** Why a query was not run: the join, how many rows it would make, and what to do. */
+export function tooManyRowsText(tooMany: TooManyRows, spec: QuerySpec): string {
+    const join = spec.joins[tooMany.join];
+    const view = spec.views.find(v => v.id === join?.view)?.name ?? `join ${tooMany.join + 1}`;
+    return `Joining ${view} would make ${tooMany.rows.toLocaleString('en')} rows, more than a query can hold (${tooMany.limit.toLocaleString('en')}), so it was not run. Join on a column that repeats less, or add another column to the join.`;
 }

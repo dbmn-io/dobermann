@@ -11,8 +11,10 @@
  * function can become SQL.
  */
 import { CALC_VIEW } from './query-types';
-import type { ColumnRef, QueryFn, QueryJoin, QueryKey, QuerySpec, QueryView } from './query-types';
+import type { ColumnRef, QueryCalc, QueryFn, QueryJoin, QueryKey, QuerySpec, QueryView } from './query-types';
 import { columnFnSql } from '../column-functions/column-functions';
+import { formulaSql, parseFormula } from './formula';
+import type { FormulaColumn } from './formula';
 
 const PLAIN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 /** Words SQLite won't take as a bare name. */
@@ -161,12 +163,34 @@ export function defaultColumns(spec: QuerySpec): ColumnRef[] {
     return [...out, ...(spec.calc ?? []).map(c => ({ view: CALC_VIEW, column: c.name }))];
 }
 
-/** One column of SELECT: a view's column, or a calculated one as `(its expression) AS its name`. */
-function selectSql(ref: ColumnRef, spec: QuerySpec, names: Map<string, string>): string {
-    if (ref.view !== CALC_VIEW) return columnSql(ref, names);
+const COLUMN_KEY = '\n';
+
+/** The columns a formula can name: each view's, as `@view.column` (a column "address.city" two levels deep). */
+export function formulaColumns(spec: QuerySpec): FormulaColumn[] {
+    return spec.views.flatMap(v => v.columns.map(column => ({ key: `${v.id}${COLUMN_KEY}${column}`, path: [v.name, ...column.split('.')] })));
+}
+
+/**
+ * A calculated column's SQL: its formula's (formula.ts), or its SQL as it was typed. A COMPARE
+ * formula is several columns, one per side, named `name 1`, `name 2`...
+ */
+export function calcSql(calc: QueryCalc, spec: QuerySpec, names: Map<string, string>): string[] {
+    if (!calc.formula) return [`(${calc.expr}) AS ${quoteName(calc.name)}`];
+    const parsed = parseFormula(calc.formula, formulaColumns(spec));
+    const column = (key: string): string => {
+        const at = key.indexOf(COLUMN_KEY);
+        return columnSql({ view: key.slice(0, at), column: key.slice(at + 1) }, names);
+    };
+    if (parsed.compare) return parsed.compare.map((side, i) => `${formulaSql(side, column)} AS ${quoteName(`${calc.name} ${i + 1}`)}`);
+    return [`${formulaSql(parsed.tree, column)} AS ${quoteName(calc.name)}`];
+}
+
+/** One column of SELECT (or several, for a COMPARE): a view's column, or a calculated one as `its SQL AS its name`. */
+function selectSql(ref: ColumnRef, spec: QuerySpec, names: Map<string, string>): string[] {
+    if (ref.view !== CALC_VIEW) return [columnSql(ref, names)];
     const calc = spec.calc?.find(c => c.name === ref.column);
     if (!calc) throw new Error(`Query: no calculated column "${ref.column}"`);
-    return `(${calc.expr}) AS ${quoteName(calc.name)}`;
+    return calcSql(calc, spec, names);
 }
 
 export interface WriteSqlOptions {
@@ -180,7 +204,7 @@ const SELECT_WIDTH = 100;
 
 export function writeSql(spec: QuerySpec, options: WriteSqlOptions = {}): string {
     const names = refNames(spec.views);
-    const select = (spec.select.length ? spec.select : defaultColumns(spec)).map(c => selectSql(c, spec, names));
+    const select = (spec.select.length ? spec.select : defaultColumns(spec)).flatMap(c => selectSql(c, spec, names));
     if (!select.length) throw new Error('Query: no columns');
     // The columns wrap under the first one, a line of about a hundred characters each
     const head = `SELECT ${spec.distinct ? 'DISTINCT ' : ''}`;
