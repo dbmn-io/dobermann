@@ -26,6 +26,7 @@ import { EnvironmentWebviewManager } from '../environment/environment-manager';
 import { CompareWebview, compareStateStore } from '../compare/compare-webview';
 import { DesignSystemWebview } from '../design-system/design-system-webview';
 import { LogsWebview } from '../logs/logs-webview';
+import { LookupWebview } from '../lookup/lookup-webview';
 import type { IExecutionLoggingService } from '../../services/logging/execution-logging.interface';
 import { CoreServiceTokens } from '../../container/core-services-registry';
 import { LoggerRegistry as AppLogRegistry } from '../../utils/logger-registry';
@@ -216,6 +217,12 @@ export class HubWebviewManager extends WebviewBase {
     async openBatchTab(endpointId: string, chain?: ChainHandoff): Promise<void> {
         await this.ensurePanel();
         await this.controller.openBatchTab(endpointId, chain);
+    }
+
+    /** A lookup table, asked for by a query's Translate values (dbmn.openLookupTable). */
+    async openLookupTab(id: string): Promise<void> {
+        await this.ensurePanel();
+        await this.controller.openLookupTab(id);
     }
 
     /** A compare started in a Console (#298): its tab opens on Match. */
@@ -541,6 +548,15 @@ export class HubWebviewManager extends WebviewBase {
                 return embed(manager, bridge, html);
             },
             // Dobermann issue 7: the app's log, the one every part of the app writes to
+            // A lookup table: kept with the saved queries, in the same state
+            lookup: async ({ id, name, renamed }, channel) => {
+                const bridge = bridgeFor(channel);
+                const container = this.dobermannInstance?.serviceContainer;
+                const state = container ? compareStateStore(container, this.context) : this.context.globalState;
+                const manager = new LookupWebview(this.context, state, { id, name, onRenamed: renamed });
+                const { html } = await manager.createWebviewEmbedded({ context: 'general' }, bridge);
+                return { ...embed(manager, bridge, html), rename: (newName: string) => manager.rename(newName) };
+            },
             logs: async ({ search }, channel) => {
                 const log = AppLogRegistry.getAppLog();
                 if (!log) throw new Error('The log has not started');

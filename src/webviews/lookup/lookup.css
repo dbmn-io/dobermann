@@ -1,0 +1,34 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Copyright (C) 2026 Flexion Tech Pty Ltd */
+/* A lookup table's screen (lookup-page.ts): the table fills the window above the footer. */
+body.lookup-body {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    overflow: hidden;
+}
+.lookup-page {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    /* (the footer is fixed to the window's bottom edge: its height is left free, so the Add row line shows) */
+    padding: 10px 10px 54px;
+}
+.lookup-page > dbmn-table { flex: 1 1 auto; min-height: 0; }
+.lookup-page > dbmn-table .dbmn-table-scroll { flex: 1 1 auto; min-height: 0; max-height: none; }
+.lookup-gone { color: var(--vscode-descriptionForeground); }
+.lookup-footer { flex: 0 0 auto; }
+.lookup-key { display: inline-flex; align-items: center; gap: 6px; color: var(--vscode-descriptionForeground); }
+.lookup-key select {
+    padding: 3px 6px;
+    border: 1px solid var(--vscode-dropdown-border, var(--vscode-panel-border));
+    border-radius: 4px;
+    background: var(--vscode-dropdown-background);
+    color: var(--vscode-dropdown-foreground);
+    font: inherit;
+}
+.lookup-page > dbmn-table[hidden] { display: none; }

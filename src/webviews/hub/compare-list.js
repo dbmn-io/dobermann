@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Flexion Tech Pty Ltd
 /**
- * The Hub's Compare list (#298): the saved compares, newest first. A compare starts in a
+ * The Hub's Compare list (#298): the saved compares, newest first. The Reporting list since:
+ * queries too, and the lookup tables a query's Translate values reads (src/screens/lookup). A compare starts in a
  * Console (Compare on the Completed tab) and is saved once Select picks its results
  * (compare-store, state.compares).
  *
@@ -55,10 +56,22 @@
     function asQuery(c) {
         return !!c.isQuery && !(c.joins || []).some(j => j.kind === 'compare');
     }
-    /** Every report, the newest first. */
+    /** The lookup tables, shaped like the reports (one list, one search, one Delete). */
+    function lookups(state) {
+        return (state.lookupTables || []).map(t => ({
+            id: t.id, name: t.name, isLookup: true, endpointName: t.name || 'Lookup table', path: '', method: '', tags: [], systemId: '',
+            sources: [], columns: t.columns || [], rows: t.rows || 0, updatedAt: t.updatedAt
+        }));
+    }
+    /** Every report and lookup table, the newest first. */
     function reports(state) {
-        const when = r => new Date(r.updatedAt || r.comparedAt || r.createdAt).getTime();
-        return compares(state).concat(queries(state)).sort((a, b) => when(b) - when(a));
+        const when = r => new Date(r.updatedAt || r.comparedAt || r.createdAt).getTime() || 0;
+        return compares(state).concat(queries(state), lookups(state)).sort((a, b) => when(b) - when(a));
+    }
+    /** "code · ERP unit · WMS unit": a lookup table's columns, the key first */
+    function lookupColumns(t) {
+        const cols = (t.columns || []).slice().sort((a, b) => (b.key ? 1 : 0) - (a.key ? 1 : 0));
+        return cols.length ? cols.map(c => c.name).join(' · ') : 'no columns';
     }
     /** "Inventory + Items + Suppliers": a query's views, in the order joined */
     function joined(q) {
@@ -78,6 +91,16 @@
 
     async function remove(c) {
         if (!host || !window.DbmnModal) return;
+        if (c.isLookup) {
+            const yes = await window.DbmnModal.confirm({
+                title: 'Delete lookup table',
+                body: `Delete the lookup table ${c.endpointName}? A query that uses it can't run until it uses another.`,
+                confirmLabel: 'Delete',
+                confirmVariant: 'danger'
+            });
+            if (yes) host.postMessage({ type: 'deleteLookup', id: c.id });
+            return;
+        }
         const sure = await window.DbmnModal.confirm({
             title: c.isQuery ? 'Delete query' : 'Delete compare',
             body: `Delete the ${c.isQuery ? 'query' : 'compare'} ${c.endpointName}? Only the report is deleted: the data in History stays.`,
@@ -141,8 +164,15 @@
                     '<span class="icon" data-icon="plus"></span>' +
                     '<span>New Query</span>' +
                 '</button>' +
+            '</div>' +
+            '<div class="hub-add-split-group">' +
+                '<button type="button" class="hub-add-split-primary" id="newLookupBtn" title="A table of codes and what they stand for, for a query to translate values with">' +
+                    '<span class="icon" data-icon="plus"></span>' +
+                    '<span>New lookup table</span>' +
+                '</button>' +
             '</div>';
-        addRow.querySelector('button').addEventListener('click', () => host && host.postMessage({ type: 'newQuery' }));
+        addRow.querySelector('#newQueryBtn').addEventListener('click', () => host && host.postMessage({ type: 'newQuery' }));
+        addRow.querySelector('#newLookupBtn').addEventListener('click', () => host && host.postMessage({ type: 'newLookup' }));
         list.hidden = all.length === 0;
         list.replaceChildren(addRow, ...shown.map(c => {
             const row = document.createElement('div');
@@ -150,18 +180,24 @@
             row.tabIndex = 0;
             row.className = 'catalogue-row tx-row';
             row.dataset.compareId = c.id;
-            row.title = c.isQuery ? 'Edit the query. Right-click to run, rename, duplicate or delete it.' : 'Open its Results. Right-click to edit, rename, duplicate or delete it.';
-            const sub = c.isQuery
+            row.title = c.isLookup ? 'Edit the lookup table. Right-click to rename, duplicate or delete it.'
+                : c.isQuery ? 'Edit the query. Right-click to run, rename, duplicate or delete it.' : 'Open its Results. Right-click to edit, rename, duplicate or delete it.';
+            const sub = c.isLookup
+                ? [`${c.rows.toLocaleString()} row${c.rows === 1 ? '' : 's'}`, ago(new Date(c.updatedAt).getTime())].join(' · ')
+                : c.isQuery
                 ? [typeof c.rows === 'number' ? `${c.rows.toLocaleString()} rows` : 'not run yet', ago(new Date(c.updatedAt || c.createdAt).getTime())].join(' · ')
                 : [found(c), ago(new Date(c.comparedAt || c.createdAt).getTime())].join(' · ');
+            const glyph = c.isLookup ? 'sheet' : asQuery(c) ? 'blend' : 'scale';
+            const kind = c.isLookup ? 'Lookup table' : asQuery(c) ? 'Query' : 'Compare';
+            const second = c.isLookup ? lookupColumns(c) : c.isQuery ? joined(c) : null;
             row.innerHTML =
-                '<span class="tx-status-icon icon" data-icon="' + (asQuery(c) ? 'blend' : 'scale') + '" title="' + (asQuery(c) ? 'Query' : 'Compare') + '"></span>' +
+                '<span class="tx-status-icon icon" data-icon="' + glyph + '" title="' + kind + '"></span>' +
                 '<span class="tx-row-main">' +
                     '<span class="catalogue-row-name" title="' + escapeHtml(c.endpointName) + '">' + (c.endpointName ? marked(c.endpointName) : '(unnamed)') + '</span>' +
-                    '<span class="catalogue-row-path" title="' + escapeHtml(c.isQuery ? joined(c) : sides(c)) + '">' + marked(c.isQuery ? joined(c) : `${c.endpoint && c.endpoint !== c.endpointName ? c.endpoint + ' · ' : ''}${c.sources[0].view} · ${sides(c)}`) + '</span>' +
+                    '<span class="catalogue-row-path" title="' + escapeHtml(second !== null ? second : sides(c)) + '">' + marked(second !== null ? second : `${c.endpoint && c.endpoint !== c.endpointName ? c.endpoint + ' · ' : ''}${c.sources[0].view} · ${sides(c)}`) + '</span>' +
                 '</span>' +
                 '<span class="tx-row-meta"><span class="tx-row-sub">' + escapeHtml(sub) + '</span></span>';
-            const open = start => host && host.postMessage({ type: 'openCompare', compareId: c.id, start });
+            const open = start => host && host.postMessage(c.isLookup ? { type: 'openLookup', id: c.id } : { type: 'openCompare', compareId: c.id, start });
             // A query always opens on Views, where each view says how old its data is; a compare opens on its Results
             const first = c.isQuery ? 'edit' : 'results';
             // In select mode a click ticks the row and a double-click opens it, as in History
@@ -189,7 +225,7 @@
             });
             row.addEventListener('contextmenu', ev => {
                 if (!window.DbmnContextMenu) return;
-                window.DbmnContextMenu.show(ev, (c.isQuery ? [
+                window.DbmnContextMenu.show(ev, (c.isQuery || c.isLookup ? [
                     { id: 'edit', label: 'Open', icon: 'circle-play' }
                 ] : [
                     { id: 'open', label: 'Open', icon: 'circle-play' }
@@ -202,7 +238,7 @@
                     if (action === 'open') open('results');
                     else if (action === 'edit') open('edit');
                     else if (action === 'rename') rename(c);
-                    else if (action === 'duplicate') host && host.postMessage({ type: 'duplicateCompare', compareId: c.id });
+                    else if (action === 'duplicate') host && host.postMessage(c.isLookup ? { type: 'duplicateLookup', id: c.id } : { type: 'duplicateCompare', compareId: c.id });
                     else if (action === 'delete') void remove(c);
                 });
             });
@@ -242,6 +278,7 @@
             if (q.methods.length && q.methods.indexOf(String(c.method).toUpperCase()) === -1) return false;
             if (tags.length && !lower(c.tags).some(t => tags.indexOf(t) !== -1)) return false;
             if (systems.length && systems.indexOf(c.systemId) === -1) return false;
+            if (envs.length && c.isLookup) return false;
             if (envs.length && !c.sources.some(src => envs.indexOf(String(src.environment || '').toLowerCase()) !== -1)) return false;
             const when = new Date(c.updatedAt || c.comparedAt || c.createdAt).getTime();
             if (since && !(when >= Date.now() - since)) return false;
@@ -249,6 +286,7 @@
                 if (range.from && when < new Date(range.from + 'T00:00:00').getTime()) return false;
                 if (range.to && when > new Date(range.to + 'T23:59:59.999').getTime()) return false;
             }
+            if (c.isLookup) return W.matches(words, `${c.endpointName}\nlookup table\n${lookupColumns(c)}`);
             return W.matches(words, c.isQuery
                 ? `${c.endpointName}\nquery\n${joined(c)}\n${c.sources.map(src => src.endpointName).join(' ')}`
                 : `${c.endpointName}\n${c.endpoint}\n${c.path}\n${c.method}\n${c.sources[0].view}\n${sides(c)}\n${found(c)}\n${(c.tags || []).join(' ')}`);
@@ -285,6 +323,8 @@
         host = h;
         const add = document.getElementById('newQueryEmpty');
         if (add) add.addEventListener('click', () => host && host.postMessage({ type: 'newQuery' }));
+        const addLookup = document.getElementById('newLookupEmpty');
+        if (addLookup) addLookup.addEventListener('click', () => host && host.postMessage({ type: 'newLookup' }));
         const select = document.getElementById('compareSelectMode');
         if (select) select.addEventListener('change', () => { selectMode = select.checked; if (!selectMode) selectedIds.clear(); render(); });
         const bulk = document.getElementById('compareBulkDelete');

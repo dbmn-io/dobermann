@@ -53,6 +53,9 @@
         'openCompare',
         'duplicateCompare',
         'newQuery',
+        'newLookup',
+        'openLookup',
+        'duplicateLookup',
         'runEndpoint',
         'addEndpoint',
         'addEnvironment'
@@ -66,6 +69,7 @@
         console: 'transactions',
         batchConsole: 'transactions',
         compare: 'compare',
+        lookup: 'compare',
         logs: 'logs'
     };
 

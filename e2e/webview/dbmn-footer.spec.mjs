@@ -397,7 +397,7 @@ test('the design system page draws every section from the real files, with no er
     await expect(page.locator('#dsInventory .dbmn-table-body .ds-chip')).toHaveText(['Planned', 'Planned']);
     await page.locator('#dsInventory .search-input').fill('');
     // Which screen is on which component, in the same table
-    await expect(page.locator('#dsMoving .dbmn-table-count')).toHaveText('13 rows');
+    await expect(page.locator('#dsMoving .dbmn-table-count')).toHaveText('14 rows');
     await page.locator('#dsMoving .search-input').fill('@screen=query');
     await expect(page.locator('#dsMoving .dbmn-table-body .ds-chip')).toHaveText(['On it', 'On it']);
 

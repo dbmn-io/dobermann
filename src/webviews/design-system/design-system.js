@@ -248,6 +248,7 @@
         ['Edit Environment', 'Footer and status', ON, 'dbmn-footer, dbmn-status', ''],
         ['Design system', 'Table', ON, 'dbmn-table', ''],
         ['Logs', 'Footer and log', ON, 'dbmn-footer, dbmn-log', ''],
+        ['Lookup table', 'Footer and table', ON, 'dbmn-footer, dbmn-status, dbmn-table editable (add-row, row-delete, edit-columns, a key column)', ''],
         ['Query', 'Table', ON, 'dbmn-table, its rows asked for as they scroll', ''],
         ['Compare', 'Table', ON, 'dbmn-table: a group per column over its results, their colours and difference marks in each cell', ''],
         ['Console', 'Table', ON, 'dbmn-table for Completed, Errors and Input: Set as Row beside a list of records, each column moving among its own object\'s', 'Logs, Request and Raw draw their own'],

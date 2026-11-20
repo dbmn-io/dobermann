@@ -46,6 +46,7 @@ import { DataTransformationService } from '../../../src/services/data-transforma
 import type { BulkLoadRequest } from '../../../src/services/execution/run-orchestrator';
 import type { BulkLoadResult } from '../../../src/webviews/run-batch/bulk-load-result';
 import { queryFiles, WebExecution, webLogger, WORKSPACE_ROOT } from './execution';
+import { lookupTab } from './lookup-tab';
 import { buildEndpointPage, buildEnvironmentPage } from '../../../src/screens/pages';
 import { desktopBridge } from './desktop';
 import { ScreenSession } from '../../../src/screens/screen-session';
@@ -64,6 +65,8 @@ export interface WebTabDeps {
     openEnvironment(environmentId: string): Promise<void>;
     openEndpoint(endpointId: string): Promise<void>;
     openConsole(executionId: string, isBatch: boolean): Promise<void>;
+    /** A lookup table's tab (a query's Translate values opens the table it reads). */
+    openLookup(id: string): Promise<void>;
     runEndpoint(endpoint: APIEndpointConfig): Promise<void>;
     executeBulkLoad(request: BulkLoadRequest): Promise<BulkLoadResult>;
     /** GitHub Issue #396: the DBMN sign-in, when that is why a batch did not start. */
@@ -183,6 +186,8 @@ export function webTabs(deps: WebTabDeps): HubTabFactory {
             const screen = { handle: (m: Record<string, unknown>) => controller.handleMessage(m as never), dispose: () => controller.dispose() };
             return { ...tab(buildComparePage(asset, { compareId, endpointName }), session, screen), name: `Compare: ${endpointName}` };
         },
+        // A lookup table: kept with the saved queries, in this browser's state
+        lookup: lookupTab({ state: deps.state.globalState, toast: deps.toast }),
         // The design system's page: components on show, nothing to run
         design: async channel => tab(buildDesignSystemPage(asset), sessionFor(channel), { handle: async () => undefined, dispose: () => undefined }),
         // Dobermann issue 7: the app's log; Save is a download, as exports are

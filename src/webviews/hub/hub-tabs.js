@@ -34,6 +34,7 @@
         batchConsole: 'folder-tree-play',
         batch:        'folder-tree-play',
         compare:      'scale',
+        lookup:       'sheet',
         design:       'layers',
         logs:         'scroll-text',
         page:         'settings'

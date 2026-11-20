@@ -70,6 +70,11 @@ export interface LookupTablesStoreOptions {
 
 const ID_PREFIX = 'lkp-';
 
+/** Whether an id is a lookup table's (the Hub's Reporting list holds reports and lookup tables). */
+export function isLookupId(id: string): boolean {
+    return typeof id === 'string' && id.startsWith(ID_PREFIX);
+}
+
 /**
  * Who hears of a change: every store on this state, in this process (the Hub saves a table, an
  * open Query tab reruns), so not one store's own list.

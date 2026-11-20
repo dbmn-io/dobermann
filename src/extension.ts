@@ -848,6 +848,27 @@ export async function activate(context: vscode.ExtensionContext) {
         }
     });
 
+    // A lookup table, opened from a query's Translate values (the Reporting list opens it in the Hub itself)
+    const openLookupTableCommand = vscode.commands.registerCommand('dbmn.openLookupTable', async (id?: string) => {
+        try {
+            if (typeof id !== 'string' || !id) return;
+            if (!hubManagerInstance) {
+                const { HubWebviewManager, resolveHubDependencies } = require('./webviews/hub/hub-manager');
+                const deps = resolveHubDependencies(dobermann.serviceContainer);
+                hubManagerInstance = new HubWebviewManager(
+                    context,
+                    deps.endpointManager,
+                    deps.environmentManager,
+                    deps.systemManager,
+                    dobermann
+                );
+            }
+            await hubManagerInstance!.openLookupTab(id);
+        } catch (error) {
+            getToast()?.error(`Error opening the lookup table: ${error instanceof Error ? error.message : String(error)}`);
+        }
+    });
+
     const testEndpointCommand = vscode.commands.registerCommand('dbmn.testEndpoint', async (item: any) => {
         if (item.endpoint) {
             try {
@@ -1317,6 +1338,7 @@ export async function activate(context: vscode.ExtensionContext) {
         smartRunCommand, // GitHub Issue #232: Smart Run command
         runBatchCommand, // GitHub Issue #98: Run Batch moved to dedicated webview
         openCompareCommand, // #298
+        openLookupTableCommand,
         testEndpointCommand,
         addEnvironmentCommand,
         openEnvironmentFromTreeCommand,

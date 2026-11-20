@@ -666,6 +666,52 @@ describe('HubController: a header pick is drawn at once (2026-11-13)', () => {
         expect(h.of('hubState').length).to.be.greaterThan(1);
     });
 
+    it('Lookup tables on the Reporting list: new opens its tab, listed with the queries, renamed, copied, deleted', async () => {
+        const { LookupTablesStore } = await import('../../../services/lookup-tables/lookup-tables');
+        const state = new MemoryKeyValueStore();
+        const opened: Array<Record<string, unknown>> = [];
+        const h = hub({
+            compares: { state: () => state },
+            tabs: {
+                endpoint: async () => ({ html: '', handle: async () => undefined, dispose: () => undefined }),
+                environment: async () => ({ html: '', handle: async () => undefined, dispose: () => undefined }),
+                lookup: async (config, channel) => {
+                    opened.push({ ...config, tabId: channel.tabId });
+                    return { html: '<p>lookup</p>', handle: async () => undefined, dispose: () => undefined, rename: async (name: string) => { await new LookupTablesStore(state).rename(String(config.id), name); } };
+                }
+            }
+        });
+        await h.controller.handle({ type: 'ready' });
+        await h.controller.handle({ type: 'newLookup' });
+        const store = new LookupTablesStore(state);
+        const [made] = await store.list();
+        expect(made.name).to.equal('Lookup table');
+        expect(opened.map(o => o.tabId)).to.deep.equal([`lookup:${made.id}`]);
+        expect(h.of('mountEmbeddedTab').at(-1)).to.include({ tabType: 'lookup', refId: made.id, name: 'Lookup table' });
+        // The Hub's state lists it (its columns and how many rows), for the Reporting list
+        const listed = (h.of('hubState').at(-1) as { lookupTables: Array<{ id: string; rows: number }> }).lookupTables;
+        expect(listed.map(t => [t.id, t.rows])).to.deep.equal([[made.id, 0]]);
+        // Open again: the same tab, focused; Query's lookup.open the same
+        await h.controller.handle({ type: 'lookup.open', id: made.id });
+        expect(opened).to.have.length(1);
+        expect(h.of('focusEmbeddedTab').at(-1)).to.include({ tabId: `lookup:${made.id}` });
+        // Renamed from the list while open: its screen keeps the name
+        await h.controller.handle({ type: 'renameReport', compareId: made.id, name: 'Unit codes' });
+        expect((await store.get(made.id))?.name).to.equal('Unit codes');
+        // Duplicated: a copy, opened
+        await h.controller.handle({ type: 'duplicateLookup', id: made.id });
+        const copy = (await store.list()).find(t => t.id !== made.id)!;
+        expect(copy.name).to.equal('Unit codes copy');
+        expect(opened.map(o => o.tabId)).to.include(`lookup:${copy.id}`);
+        // Delete, one or with the reports selected: gone, its tab closed
+        await h.controller.handle({ type: 'deleteCompares', compareIds: [copy.id] });
+        await h.controller.handle({ type: 'deleteLookup', id: made.id });
+        expect(await store.list()).to.deep.equal([]);
+        // A deleted table asked for: said so, no tab
+        await h.controller.handle({ type: 'openLookup', id: made.id });
+        expect(h.events.some(e => e === 'warn This lookup table has been deleted.')).to.equal(true);
+    });
+
     it('Rename from the Hub\'s lists: endpoints and environments by their own rules; not over an open editor', async () => {
         const h = hub();
         await h.controller.handle({ type: 'ready' });

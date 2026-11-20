@@ -69,6 +69,13 @@ export interface HubTabFactory {
     design?(channel: TabChannel): Promise<HubTab>;
     /** Dobermann issue 7: the Logs screen (src/screens/logs), one tab, opened on a search when asked. */
     logs?(config: { search?: string }, channel: TabChannel): Promise<LogsTab>;
+    /** A lookup table (src/screens/lookup): its rows and columns, kept as they are typed. `renamed`: its tab follows a rename. */
+    lookup?(config: { id: string; name: string; renamed?(name: string): void }, channel: TabChannel): Promise<LookupTab>;
+}
+
+export interface LookupTab extends HubTab {
+    /** Renamed from the Hub's list while open: its screen keeps the name. */
+    rename?(name: string): Promise<void> | void;
 }
 
 export interface LogsTab extends HubTab {
@@ -77,7 +84,7 @@ export interface LogsTab extends HubTab {
 }
 
 export interface SerializedHubTab {
-    type: 'endpoint' | 'environment' | 'batch' | 'console' | 'batchConsole' | 'compare' | 'design' | 'logs' | 'page';
+    type: 'endpoint' | 'environment' | 'batch' | 'console' | 'batchConsole' | 'compare' | 'design' | 'logs' | 'lookup' | 'page';
     refId: string;
     name?: string;
     /** Had unsaved changes when captured: restoring can't bring the edits back, so say so. */

@@ -17,7 +17,8 @@ import { TagManagerService } from '../../services/tags/tag-manager.service';
 import { promptNewSystemInModal } from '../new-system-prompt';
 import { promptNewEnvironmentInModal, type NewEnvironmentDraft } from '../new-environment-prompt';
 import type { ScreenSession } from '../screen-session';
-import { BatchTab, HubPorts, HubTab, HubTabsSnapshot, LogsTab, SerializedHubTab, TabChannel } from './hub.ports';
+import { BatchTab, HubPorts, HubTab, HubTabsSnapshot, LogsTab, LookupTab, SerializedHubTab, TabChannel } from './hub.ports';
+import { isLookupId, LookupTablesStore } from '../../services/lookup-tables/lookup-tables';
 import { askBeforeCancellingBatch } from '../console/batch-cancel';
 import { askHowToResume } from '../console/batch-resume';
 import { headerVariablesOf, headerVariablesPicking, type VariableBearer } from '../../services/environment/variable-options';
@@ -202,6 +203,7 @@ export class HubController {
                 // A report's name is its tab's: open, its own screen checks the name (unique, not too
                 // long) and keeps it; not open (the Reporting list's Rename), it is renamed here, by the same check
                 const compareId = str('compareId');
+                if (compareId && isLookupId(compareId)) { await this.renameLookup(compareId, str('name') ?? ''); break; }
                 const name = cleanName(str('name') ?? '', REPORT_NAME_MAX);
                 const open = compareId ? this.tabs.get(`compare:${compareId}`) : undefined;
                 if (compareId && open) {
@@ -231,6 +233,20 @@ export class HubController {
                 if (str('compareId')) await this.openCompareTab(str('compareId')!, start === 'edit' || start === 'match' ? start : 'results');
                 break;
             }
+            // Lookup tables (Reporting): a new one opens to be filled; Query's Translate values opens one by id
+            case 'newLookup':
+                await this.newLookup();
+                break;
+            case 'openLookup':
+            case 'lookup.open':
+                if (str('id')) await this.openLookupTab(str('id')!);
+                break;
+            case 'duplicateLookup':
+                if (str('id')) await this.duplicateLookup(str('id')!);
+                break;
+            case 'deleteLookup':
+                if (str('id')) await this.deleteLookup(str('id')!);
+                break;
             case 'newQuery': {
                 // Reporting's New query: an empty query, opened on Views
                 const state = this.ports.compares?.state();
@@ -412,6 +428,8 @@ export class HubController {
             transactionsTotal: transactions.length,
             compares: this.ports.compares ? savedCompares(this.ports.compares.state()) : [],
             queries: this.ports.compares ? listQueries(this.ports.compares.state()) : [],
+            // Lookup tables, kept with the queries: their names, columns and how many rows (Reporting's list)
+            lookupTables: (await this.lookups()?.list()) ?? [],
             dbmnSettings: {
                 autoOpenConsoleOnCompletion: settings.get('dbmn', 'execution.autoOpenConsoleOnCompletion', true),
                 treatNetworkErrorsAsCritical: settings.get('dbmn', 'execution.treatNetworkErrorsAsCritical', true),
@@ -1172,6 +1190,73 @@ export class HubController {
         await this.mount(id, channel => factory({ search }, channel), { type: 'mountEmbeddedTab', tabType: 'logs', refId: 'app', name: 'Logs' });
     }
 
+    // ─── Lookup tables (src/services/lookup-tables): kept with the saved queries ───
+
+    private lookups(): LookupTablesStore | undefined {
+        const state = this.ports.compares?.state();
+        return state ? new LookupTablesStore(state) : undefined;
+    }
+
+    /** A lookup table's tab: one per table, its name its title. Gone since: said so. */
+    async openLookupTab(id: string): Promise<void> {
+        const table = await this.lookups()?.get(id);
+        if (!table) {
+            this.ports.toast.warn('This lookup table has been deleted.');
+            return;
+        }
+        const tabId = `lookup:${id}`;
+        if (this.tabs.has(tabId)) {
+            this.focus(tabId, id, table.name);
+            return;
+        }
+        const factory = this.ports.tabs.lookup;
+        if (!factory) return;
+        const renamed = (name: string) => {
+            this.session.post({ type: 'embeddedTabName', tabId, name });
+            void this.broadcastState();
+        };
+        await this.mount(tabId, channel => factory({ id, name: table.name, renamed }, channel),
+            { type: 'mountEmbeddedTab', tabType: 'lookup', refId: id, name: table.name });
+    }
+
+    /** Reporting's New lookup table: a key and a value column, opened to be filled. */
+    private async newLookup(): Promise<void> {
+        const store = this.lookups();
+        if (!store) return;
+        const table = await store.create('Lookup table');
+        await this.broadcastState();
+        await this.openLookupTab(table.id);
+    }
+
+    private async renameLookup(id: string, raw: string): Promise<void> {
+        const name = cleanName(raw, REPORT_NAME_MAX);
+        if (!name) return;
+        const open = this.tabs.get(`lookup:${id}`);
+        if (open) {
+            await (open.tab as LookupTab).rename?.(name);
+            return;
+        }
+        try { await this.lookups()?.rename(id, name); }
+        catch (error) { this.ports.toast.warn(message(error)); return; }
+        await this.broadcastState();
+    }
+
+    private async duplicateLookup(id: string): Promise<void> {
+        try {
+            const copy = await this.lookups()?.duplicate(id);
+            if (!copy) return;
+            await this.broadcastState();
+            await this.openLookupTab(copy.id);
+        } catch (error) { this.ports.toast.warn(message(error)); }
+    }
+
+    /** Deleted (the list asked first): a query that uses it says it is missing and doesn't run. */
+    private async deleteLookup(id: string): Promise<void> {
+        await this.lookups()?.remove(id);
+        if (this.tabs.has(`lookup:${id}`)) this.closeTabFromHost(`lookup:${id}`);
+        await this.broadcastState();
+    }
+
     async openCompareTab(compareId: string, start: 'results' | 'match' | 'edit' = 'results'): Promise<void> {
         const state = this.ports.compares?.state();
         // A query is a report too: it opens in the same kind of tab, on its own screen
@@ -1301,6 +1386,8 @@ export class HubController {
 
     /** Delete a saved compare (the list asked first). Its results stay in History. */
     private async deleteCompare(compareId: string): Promise<void> {
+        // (the Reporting list's Delete, one or those selected, holds lookup tables too)
+        if (isLookupId(compareId)) { await this.deleteLookup(compareId); return; }
         const state = this.ports.compares?.state();
         if (!state) return;
         if (isQueryId(compareId)) {
@@ -1457,6 +1544,7 @@ export class HubController {
                 else if (t.type === 'compare') await this.openCompareTab(t.refId);
                 else if (t.type === 'design') await this.openDesignTab();
                 else if (t.type === 'logs') await this.openLogsTab();
+                else if (t.type === 'lookup') await this.openLookupTab(t.refId);
                 else if (t.type === 'console' || t.type === 'batchConsole') await this.openConsoleTab(t.refId, t.type === 'batchConsole');
                 else if (t.type === 'page') {
                     // Hub-native page tabs (Settings, Account, Import/Export, #292): the page re-hosts the section

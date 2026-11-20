@@ -342,6 +342,7 @@ async function start(): Promise<void> {
             openEnvironment: id => hub.openEnvironmentTab(id),
             openEndpoint: id => hub.openEndpointTab(id, false),
             openConsole: (id, isBatch) => hub.openConsoleTab(id, isBatch),
+            openLookup: id => hub.openLookupTab(id),
             runEndpoint,
             executeBulkLoad: request => runs.executeBulkLoad(request),
             promptSignIn: async () => { location.replace('/signin.html'); },

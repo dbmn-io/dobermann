@@ -16,7 +16,7 @@ const SRC = path.resolve(__dirname, '..', '..', '..', '..', 'src');
 
 /** What the web app and the desktop app show: the Hub and the screens it opens in tabs. */
 const WEB_SCREENS = [
-    'webviews/hub', 'webviews/endpoint', 'webviews/environment', 'webviews/console', 'webviews/run-batch', 'webviews/compare', 'webviews/query', 'webviews/design-system', 'webviews/logs',
+    'webviews/hub', 'webviews/endpoint', 'webviews/environment', 'webviews/console', 'webviews/run-batch', 'webviews/compare', 'webviews/query', 'webviews/design-system', 'webviews/logs', 'webviews/lookup',
     'webviews/shared', 'screens'
 ];
 
