@@ -86,6 +86,8 @@
         return v < 10000 ? v.toLocaleString() : new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 }).format(v);
     }
     function views() { return (ui.state && ui.state.views) || []; }
+    /** The lookup tables Translate values can read: { id, name, count, columns }. */
+    function lookupTables() { return (ui.state && ui.state.lookupTables) || []; }
     function viewAt(id) { return views().findIndex(v => v.id === id); }
     function view(id) { return views().find(v => v.id === id); }
     /** A view's colour: Compare's four, then four more, then round again. */
@@ -712,8 +714,9 @@
         const viewId = ref.view || (join && join.view);
         const v = view(viewId);
         const name = (v ? v.name + '.' : '') + (ref.column || 'column');
-        const toQuery = applied => applied.filter(a => FNS.some(d => d.id === a.id)).map(a => Object.assign({ fn: a.id }, a.params || {}));
-        const fromQuery = fns => (fns || []).filter(f => FNS.some(d => d.id === f.fn)).map(f => {
+        const known = id => FNS.some(d => d.id === id) || id === 'translate';
+        const toQuery = applied => applied.filter(a => known(a.id)).map(a => Object.assign({ fn: a.id }, a.params || {}));
+        const fromQuery = fns => (fns || []).filter(f => known(f.fn)).map(f => {
             const params = {};
             Object.keys(f).forEach(k => { if (k !== 'fn') params[k] = f[k]; });
             return { id: f.fn, params };
@@ -724,15 +727,19 @@
             const resolve = waiting.get(m.seq);
             if (!resolve) return;
             waiting.delete(m.seq);
-            resolve({ rows: (m.rows || []).map(r => ({ before: r[0], after: r[1] })), agree: null, error: m.error });
+            resolve(Object.assign({ rows: (m.rows || []).map(r => ({ before: r[0], after: r[1] })), agree: null, error: m.error }, m.table ? { table: m.table, value: m.value } : {}));
         };
         const applied = await window.DbmnFunctions.open({
             title: `Functions on ${ref.column || 'the column'}`,
             column: name,
-            functions: FNS.map(d => ({ id: d.id, label: d.label, sql: d.sql })),
+            // Translate values when there are lookup tables (Reporting's): the table, its from and to columns
+            functions: FNS.concat(lookupTables().length ? [{ id: 'translate', label: 'Translate values', sql: ['TRANSLATE(', 'x', ', ', { key: 'table', label: 'Lookup table', kind: 'lookup', options: lookupTables() }, ')'] }] : [])
+                .map(d => ({ id: d.id, label: d.label, sql: d.sql })),
             defaults: FN_DEFAULTS,
             applied: fromQuery(ref.fns),
             asLabel: join ? 'Joins as' : 'Shows as',
+            // A lookup table opens in its own tab, from Reporting
+            onOpenLookup: id => post({ type: 'query.openLookup', id }),
             sample: list => new Promise(resolve => {
                 const seq = ++asked;
                 waiting.set(seq, resolve);
@@ -1219,12 +1226,27 @@
         // The rows the compare leaves: every record of every view in it, one row each
         const last = joins[joins.length - 1];
         const after = {};
+        // A key on more than one row of a view: each of those rows meets every row with the same key (extra rows, false DIFFs)
+        const repeats = [];
+        const repeatSign = (n, rows, where) => {
+            const w = el('span', 'query-warn query-compare-repeat', `${count(n)} repeat`);
+            const i = el('i', 'query-sign');
+            i.dataset.icon = 'triangle-alert';
+            w.prepend(i);
+            w.title = `${count(n)} key ${n === 1 ? 'value is' : 'values are'} on more than one row of ${where} (${count(rows)} rows): each of them is compared with every row that has the same key, so Results has extra rows and DIFFs that aren't real. Add a column to the key (+ AND) so each record has one row.`;
+            repeats.push(where);
+            return w;
+        };
         views().forEach(v => {
             if (!members.includes(v.id)) return;
             const cell = el('div', 'query-at query-after');
             const join = joinOf(v.id);
-            if (v.id === baseline.id) cell.appendChild(el('span', 'query-made', count(v.rows || 0)));
-            else if (join && join.stats) {
+            if (v.id === baseline.id) {
+                cell.appendChild(el('span', 'query-made', count(v.rows || 0)));
+                const st = first.stats;
+                const n = st ? (st.keys.manyToOne || 0) + (st.keys.manyToMany || 0) : 0;
+                if (n) cell.prepend(repeatSign(n, (st.rows.manyToOne || 0) + (st.rows.manyToMany || 0), v.run || v.name));
+            } else if (join && join.stats) {
                 const st = join.stats;
                 const only = st.rightRows - st.rightMatched;
                 const said = el('span', 'query-made query-compare-stat');
@@ -1232,6 +1254,8 @@
                 if (only) said.append(el('span', '', `${count(only)} only here`));
                 said.title = `${v.name}: ${count(st.rightMatched)} records match a record before it in the compare; ${count(only)} match none and are kept, as rows of their own`;
                 cell.appendChild(said);
+                const n = (st.keys.oneToMany || 0) + (st.keys.manyToMany || 0);
+                if (n) cell.prepend(repeatSign(n, (st.records.oneToMany || 0) + (st.records.manyToMany || 0), v.run || v.name));
             }
             after[v.id] = cell;
         });
@@ -1240,6 +1264,12 @@
         const made = line('query-made-line', after, [total], [el('span', 'query-lead-text', 'Rows after this compare')]);
         made.dataset.kind = 'made';
         band.appendChild(made);
+        // Said once, in words, under it: what a repeated key does, and the remedy
+        if (repeats.length) {
+            const note = el('p', 'query-warn query-compare-repeat-note',
+                `The key repeats in ${repeats.join(' and ')}: a record on more than one row is compared with every row that has the same key, so Results shows extra rows and DIFFs that aren't real. Add a column to the key (+ AND) so each record has one row.`);
+            band.appendChild(note);
+        }
         return band;
     }
 

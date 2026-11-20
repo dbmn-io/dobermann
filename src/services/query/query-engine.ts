@@ -16,6 +16,7 @@
 import type { Database, SqlJsStatic, SqlValue } from 'sql.js';
 import { fromSql, keySql, leftKeySql, quoteName, refNames, tableNames, tableSql, writeSql, WriteSqlOptions } from './query-sql';
 import { keepsUnmatched } from './query-types';
+import { lookupTableSql } from '../column-functions/column-functions';
 import type { QueryJoinStats, QueryRelationship, QueryRows, QueryValue, QuerySpec } from './query-types';
 
 export type QueryRowData = Record<string, unknown>;
@@ -90,6 +91,23 @@ export class QuerySession {
                 onProgress?.(end);
                 if (end < rows.length) await new Promise<void>(resolve => setTimeout(resolve, 0));
             }
+        } finally {
+            insert.free();
+        }
+    }
+
+    /** A lookup table, for Translate values: its rows as text, its columns by id (column-functions.ts lookupTableSql). */
+    loadLookup(table: { id: string; columns: { id: string }[]; rows: Array<Record<string, string>> }): void {
+        const name = lookupTableSql(table.id);
+        const cols = table.columns.map(c => `"${c.id.replace(/"/g, '""')}"`);
+        this.db.run(`DROP TABLE IF EXISTS ${name}`);
+        if (!cols.length) { this.db.run(`CREATE TABLE ${name} (x)`); return; }
+        this.db.run(`CREATE TABLE ${name} (${cols.join(', ')})`);
+        const insert = this.db.prepare(`INSERT INTO ${name} VALUES (${cols.map(() => '?').join(', ')})`);
+        try {
+            this.db.run('BEGIN');
+            for (const row of table.rows) insert.run(table.columns.map(c => (row[c.id] === undefined || row[c.id] === null ? null : String(row[c.id]))));
+            this.db.run('COMMIT');
         } finally {
             insert.free();
         }

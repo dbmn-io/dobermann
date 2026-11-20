@@ -13,7 +13,7 @@ import { QuerySession } from '../../../services/query/query-engine';
 import { alignCompareJoins, isCompare, queryCompare, runJoin } from '../../../services/query/query-compare';
 import { nextRunName, runName } from '../../../services/query/query-store';
 import type { QuerySource } from '../../../services/query/query-store';
-import { compareKeySql, defaultColumns, formulaColumns, resultColumns } from '../../../services/query/query-sql';
+import { compareKeySql, defaultColumns, formulaColumns, lookupsUsed, resultColumns, writeSql } from '../../../services/query/query-sql';
 import { rowStatus } from '../../../services/query/query-status';
 import { resolvePath, shortRef } from '../../../services/query/formula';
 import type { QueryJoin, QueryKey, QuerySpec } from '../../../services/query/query-types';
@@ -148,6 +148,24 @@ describe('A compare inside Query', () => {
         it('nothing compared: no status', () => {
             assert.strictEqual(rowStatus([{ view: 'stk', column: 'sku' }], [['A']], [], [], v => v), undefined);
         });
+    });
+
+    it('Translate values: a lookup table\'s from column becomes its to column; a value it hasn\'t stays', async () => {
+        const spec: QuerySpec = {
+            views: [{ id: 'itm', name: 'Items', columns: ['sku', 'uom'] }],
+            joins: [],
+            select: [{ view: 'itm', column: 'sku' }, { view: 'itm', column: 'uom', fns: [{ fn: 'translate', table: 'units', from: 'erp', to: 'wms' }] }]
+        };
+        assert.deepStrictEqual(lookupsUsed(spec), ['units']);
+        const s = new QuerySession(SQL, spec);
+        await s.load('itm', [{ sku: 'A', uom: 'each' }, { sku: 'B', uom: 'case' }, { sku: 'C', uom: 'box' }, { sku: 'D', uom: null }]);
+        s.loadLookup({ id: 'units', columns: [{ id: 'erp' }, { id: 'wms' }, { id: 'fin' }], rows: [{ erp: 'each', wms: 'EA', fin: 'UNIT' }, { erp: 'case', wms: 'CS', fin: 'CASE' }] });
+        assert.deepStrictEqual(s.run(writeSql(spec)).rows.map(r => r[1]), ['EA', 'CS', 'box', null]);
+        // To another column of the same table: Finance's
+        const fin: QuerySpec = { ...spec, select: [{ view: 'itm', column: 'uom', fns: [{ fn: 'translate', table: 'units', from: 'erp', to: 'fin' }] }] };
+        s.setSpec(fin);
+        assert.deepStrictEqual(s.run(writeSql(fin)).rows.map(r => r[0]), ['UNIT', 'CASE', 'box', null]);
+        s.close();
     });
 
     describe('runs of a view', () => {

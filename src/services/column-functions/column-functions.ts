@@ -26,12 +26,19 @@ export type ColumnFn =
     | { fn: 'number' }
     | { fn: 'first'; n: number }
     | { fn: 'last'; n: number }
-    | { fn: 'replace'; from: string; to: string };
+    | { fn: 'replace'; from: string; to: string }
+    /**
+     * Translate values: a lookup table's row whose `from` column holds the value gives its `to`
+     * column (table and columns by id, so a rename keeps it); a value the table hasn't stays as it
+     * is. Only SQL can: the table is loaded where the query runs (lookupTableSql). In memory it is
+     * left as it is.
+     */
+    | { fn: 'translate'; table: string; from: string; to: string };
 
 export type ColumnFnId = ColumnFn['fn'];
 
 /** A piece of a function as the dialog writes it: 'x' (the column), text, or a value typed in place. */
-export type ColumnFnPiece = 'x' | string | { key: 'n' | 'from' | 'to'; label: string; number?: boolean };
+export type ColumnFnPiece = 'x' | string | { key: 'n' | 'from' | 'to' | 'table'; label: string; number?: boolean; kind?: 'lookup' };
 
 export interface ColumnFnDefinition {
     id: ColumnFnId;
@@ -78,9 +85,24 @@ export function columnFnSql(sql: string, fns: ColumnFn[] | undefined): string {
             case 'first': out = `SUBSTR(${out}, 1, ${wholeNumber(f.n)})`; break;
             case 'last': out = `SUBSTR(${out}, -${wholeNumber(f.n)})`; break;
             case 'replace': out = `REPLACE(${out}, ${quoteText(f.from)}, ${quoteText(f.to)})`; break;
+            case 'translate': {
+                const col = (id: string): string => `"${String(id).replace(/"/g, '""')}"`;
+                out = `COALESCE((SELECT ${col(f.to)} FROM ${lookupTableSql(f.table)} WHERE ${col(f.from)} = CAST(${out} AS TEXT) LIMIT 1), ${out})`;
+                break;
+            }
         }
     }
     return out;
+}
+
+/** A lookup table's name where a query runs: loaded under it before the query reads it (query-engine.ts loadLookup). */
+export function lookupTableSql(id: string): string {
+    return `"__lookup_${String(id).replace(/[^A-Za-z0-9_]/g, '_')}"`;
+}
+
+/** The lookup tables functions read. */
+export function lookupsIn(fns: ColumnFn[] | undefined): string[] {
+    return (fns ?? []).flatMap(f => (f.fn === 'translate' && f.table ? [f.table] : []));
 }
 
 /** What a value is, as Query's tables hold it: a number, text, or blank. */
@@ -152,6 +174,8 @@ function applyOne(v: ColumnValue, f: ColumnFn): ColumnValue {
         case 'first': return chars(asText(v)).slice(0, wholeNumber(f.n)).join('');
         case 'last': return chars(asText(v)).slice(-wholeNumber(f.n)).join('');
         case 'replace': return f.from === '' ? asText(v) : asText(v).split(f.from).join(f.to);
+        // (needs the table, which only SQL has: see columnFnSql)
+        case 'translate': return v;
     }
 }
 

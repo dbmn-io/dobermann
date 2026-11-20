@@ -25,14 +25,16 @@ import { buildCompareSide, CompareView } from '../../services/compare/compare-si
 import { isComparableRun } from '../../services/compare/compare-store';
 import { QueryRowData, QuerySession } from '../../services/query/query-engine';
 import type { TooManyRows } from '../../services/query/query-engine';
-import { allColumns, columnSql, compareKeySql, defaultColumns, formulaColumns, fromSql, joinKeyColumns, quoteName, refNames, resultColumns as resultColumnRefs, tableNames, writeSql } from '../../services/query/query-sql';
+import { allColumns, columnSql, compareKeySql, defaultColumns, formulaColumns, fromSql, joinKeyColumns, lookupsUsed, quoteName, refNames, resultColumns as resultColumnRefs, tableNames, writeSql } from '../../services/query/query-sql';
 import { FORMULA_FUNCTIONS, formulaSql, fullRef, fullText, parseFormula, shortRef, shortText } from '../../services/query/formula';
 import { reportNameProblem } from '../../services/compare/report-name';
-import { cleanViewName, getQuery, guessViewName, MAX_QUERY_VIEWS, moveView, moveViewFirst, nameViews, newSourceId, nextRunName, QuerySource, renameView, runName, saveQuery, SavedQuery, untickBlanks, untickClashes } from '../../services/query/query-store';
+import { cleanViewName, getQuery, guessViewName, VIEW_NAME_MAX, MAX_QUERY_VIEWS, moveView, moveViewFirst, nameViews, newSourceId, nextRunName, QuerySource, renameView, runName, saveQuery, SavedQuery, untickBlanks, untickClashes } from '../../services/query/query-store';
 import { columnTypes, spread, TYPE_SAMPLE, type ColumnType } from '../../services/query/column-types';
 import { CALC_VIEW, QUERY_JOIN_KINDS } from '../../services/query/query-types';
 import { alignCompareJoins, MAX_COMPARE_VIEWS, queryCompare, runJoin } from '../../services/query/query-compare';
 import { rowStatus, type RowStatus } from '../../services/query/query-status';
+import { lookupsIn } from '../../services/column-functions/column-functions';
+import type { LookupTablesReader, LookupTableSummary } from '../../services/lookup-tables/lookup-tables';
 import type { ColumnRef, QueryFn, QueryJoin, QueryJoinKind, QueryJoinStats, QuerySpec } from '../../services/query/query-types';
 import { ConsoleExportService } from '../../services/console/export.service';
 import type { ColumnDefinition } from '../../types/console-messages';
@@ -55,6 +57,10 @@ export interface QueryPorts extends ComparePorts {
     openRunBatch?(endpoint: APIEndpointConfig, chain: ChainHandoff): Promise<void>;
     /** Where a file view's rows are kept on this computer, so the query opens and runs without the file. */
     queryFiles?: QueryFileStore;
+    /** The lookup tables Translate values reads (Reporting's): shared live, a deleted one missing. */
+    lookups?: LookupTablesReader;
+    /** Open a lookup table in its own tab (from Translate values in the functions dialog). */
+    openLookup?(id: string): Promise<void>;
 }
 
 export interface QueryConfig {
@@ -123,7 +129,48 @@ export class QueryController {
      */
     private readonly chain: ConsoleChainHandler;
 
+    /** Lookup tables loaded in the session, by id: the version loaded (a table edited since is loaded again). */
+    private lookupsLoaded = new Map<string, string>();
+    private lookupList: LookupTableSummary[] = [];
+    private stopLookups?: () => void;
+
+    /** Translate values with no from or to yet: the table's first column becomes its second (until both are picked). */
+    private withLookupColumns(fns: QueryFn[]): QueryFn[] {
+        return fns.map(f => {
+            if (f.fn !== 'translate') return f;
+            const t = this.lookupList.find(x => x.id === f.table);
+            const cols = t?.columns ?? [];
+            return { ...f, from: f.from || cols[0]?.id || '', to: f.to || cols[1]?.id || cols[0]?.id || '' };
+        });
+    }
+
+    /**
+     * The lookup tables the query's functions read, loaded where it runs (each as it is now: an
+     * edit is read again). One that has been deleted stops the query: it says so, and does not run.
+     */
+    private async loadLookups(session: QuerySession, spec: QuerySpec): Promise<void> {
+        const used = lookupsUsed(spec);
+        if (!used.length) return;
+        if (!this.ports.lookups) throw new Error('This query translates values with a lookup table, and lookup tables are not available here.');
+        for (const id of used) {
+            const table = await this.ports.lookups.get(id);
+            if (!table) throw new Error('A lookup table this query translates with has been deleted, so it can\'t run. Untick Translate values on its column, or pick another table.');
+            if (this.lookupsLoaded.get(id) === table.updatedAt) continue;
+            session.loadLookup(table);
+            this.lookupsLoaded.set(id, table.updatedAt);
+        }
+    }
+
     constructor(private readonly session_: ScreenSession, private readonly ports: QueryPorts, private readonly config: QueryConfig) {
+        // A lookup table edited or deleted (in Reporting): a query that reads it runs again
+        this.stopLookups = ports.lookups?.onChange(change => {
+            void this.ports.lookups?.list().then(list => { this.lookupList = list; });
+            const { spec } = this.query ? this.spec() : { spec: undefined };
+            if (!spec || !lookupsUsed(spec).includes(change.id)) return;
+            this.lookupsLoaded.delete(change.id);
+            this.result = undefined;
+            void this.refresh();
+        });
         this.views = new ConsoleViewsStore({ state: ports.state, endpoints: ports.endpoints, log: m => ports.logger?.log(m) });
         this.extractor = new ResponseDataExtractor({ executionMetadataService: ports.metadata });
         this.chain = new ConsoleChainHandler({
@@ -162,6 +209,7 @@ export class QueryController {
 
     dispose(): void {
         this.closed = true;
+        this.stopLookups?.();
         this.session_.dismissAll();
         this.session?.close();
         this.session = undefined;
@@ -235,8 +283,8 @@ export class QueryController {
                         // A run's own column is its first run's, filled in below: its pairs need only their left side
                         const isRun = runsOf(q).has(join.view);
                         join.on = (message.on as PagePair[]).filter(p => p?.left?.column && (p?.right?.column || isRun)).map(p => ({
-                            left: { parts: [{ view: p.left.view, column: p.left.column, ...(p.left.fns?.length ? { fns: p.left.fns } : {}) }] },
-                            right: { parts: [{ view: join.view, column: p.right.column, ...(p.right.fns?.length ? { fns: p.right.fns } : {}) }] }
+                            left: { parts: [{ view: p.left.view, column: p.left.column, ...(p.left.fns?.length ? { fns: this.withLookupColumns(p.left.fns) } : {}) }] },
+                            right: { parts: [{ view: join.view, column: p.right.column, ...(p.right.fns?.length ? { fns: this.withLookupColumns(p.right.fns) } : {}) }] }
                         }));
                     }
                     // One key across the compare: every Compare join after the first joins on the first one's key
@@ -246,7 +294,7 @@ export class QueryController {
                 case 'query.setSelect': return await this.change(q => {
                     q.select = Array.isArray(message.select) ? (message.select as ColumnRef[]).map(c => ({
                         view: String(c.view), column: String(c.column),
-                        ...(Array.isArray(c.fns) && c.fns.length ? { fns: c.fns } : {}),
+                        ...(Array.isArray(c.fns) && c.fns.length ? { fns: this.withLookupColumns(c.fns) } : {}),
                         ...(typeof c.group === 'string' && c.group.trim() ? { group: c.group.trim() } : {})
                     })) : undefined;
                 });
@@ -261,7 +309,13 @@ export class QueryController {
                 case 'query.setSql': return await this.setSql(String(message.sql ?? ''));
                 case 'query.latest': return await this.useLatest(String(message.id));
                 case 'query.viewRows': return this.viewRows(String(message.id), String(message.search ?? ''), Number(message.seq));
-                case 'query.fnSample': return this.fnSample(message as unknown as { view: string; column: string; fns?: QueryFn[]; seq: number });
+                case 'query.openLookup': {
+                    const id = String(message.id ?? '');
+                    if (id && this.ports.openLookup) await this.ports.openLookup(id);
+                    else if (id) this.ports.toast.info('Lookup tables open from Reporting.');
+                    return;
+                }
+                case 'query.fnSample': return await this.fnSample(message as unknown as { view: string; column: string; fns?: QueryFn[]; seq: number });
                 case 'query.setWidth': return await this.change(q => {
                     const key = String(message.key ?? '');
                     const width = Math.round(Number(message.width));
@@ -398,7 +452,8 @@ export class QueryController {
         if (!run) throw new Error('That result is no longer in History.');
         const label = nextRunName(query, head.id);
         const source: QuerySource = {
-            ...head, id: newSourceId(), name: guessViewName(`${head.name}_${label}`, query.sources.map(s => s.name)),
+            // Its name in the SQL: the view's, cut to leave room for its run (CompareSt_C1)
+            ...head, id: newSourceId(), name: guessViewName(`${head.name.slice(0, VIEW_NAME_MAX - label.length - 1)}_${label}`, query.sources.map(s => s.name)),
             runOf: head.id, run: label, executionId, isBatch: run.executionType === 'batch',
             environment: run.environment || 'Unknown', executedAt: iso(run.startedAt || run.createdAt)
         };
@@ -559,8 +614,14 @@ export class QueryController {
     }
 
     /** A few of a column's values, as they are and as `fns` leave them: the function dialog's sample. */
-    private fnSample(message: { view: string; column: string; fns?: QueryFn[]; seq: number }): void {
+    private async fnSample(message: { view: string; column: string; fns?: QueryFn[]; seq: number }): Promise<void> {
         const tables = tableNames(this.spec().spec.views);
+        // Translate values being tried: its table loaded, its columns filled in
+        message.fns = this.withLookupColumns(message.fns ?? []);
+        for (const id of lookupsIn(message.fns)) {
+            const table = await this.ports.lookups?.get(id);
+            if (table && this.session && this.lookupsLoaded.get(id) !== table.updatedAt) { this.session.loadLookup(table); this.lookupsLoaded.set(id, table.updatedAt); }
+        }
         const table = tables.get(message.view);
         let rows: unknown[][] = [];
         let error: string | undefined;
@@ -573,7 +634,11 @@ export class QueryController {
                 error = e instanceof Error ? e.message : String(e);
             }
         }
-        this.post({ type: 'query.fnSample', seq: message.seq, rows, error });
+        // Translate values: the whole table for the dialog, and this column's value to light its row
+        const last = [...(message.fns ?? [])].reverse().find(f => f.fn === 'translate');
+        const lookup = last && last.fn === 'translate' ? await this.ports.lookups?.get(last.table) : undefined;
+        const lookupTable = lookup ? { columns: lookup.columns.map(c => ({ id: c.id, name: c.name })), rows: lookup.rows } : undefined;
+        this.post({ type: 'query.fnSample', seq: message.seq, rows, error, ...(lookupTable ? { table: lookupTable, value: rows[0]?.[0] ?? null } : {}) });
     }
 
     /** Every column a formula can name: its key, its whole @ path, the shortest that is unique, and a value from it. */
@@ -835,6 +900,8 @@ export class QueryController {
                 // The report's columns (Columns' step); Results' own, a COMPARE calculation a column per side
                 columns = spec.select.length ? spec.select : defaultColumns(spec);
                 resultColumns = resultColumnRefs(spec);
+                if (this.ports.lookups) this.lookupList = await this.ports.lookups.list();
+                await this.loadLookups(session, spec);
                 sql = session.sql();
                 // A join that would make far too many rows is never made: it would fill the page's memory
                 const tooMany = session.tooManyRows();
@@ -954,6 +1021,8 @@ export class QueryController {
             compare: queryCompare(query.joins) ?? null,
             // Results' Status: the places a row can differ or be missing in (none: no compared column)
             statusPlaces: this.statusPlaces(),
+            // Translate values: the lookup tables to pick from, each with its columns
+            lookupTables: this.lookupList.map(t => ({ id: t.id, name: t.name, count: t.rows, columns: t.columns.map(c => ({ id: c.id, name: c.name })) })),
             maxCompare: MAX_COMPARE_VIEWS,
             // Results' columns: the steps', or what the user's own SQL makes
             resultColumns: (now.resultColumns ?? now.columns ?? []).map((c, i) => ({ view: c.view, column: c.column, type: now.resultTypes?.[i] ?? 'text', ...(c.group ? { group: c.group } : {}) })),
@@ -977,6 +1046,7 @@ export class QueryController {
         }
         this.session?.close();
         this.session = undefined;
+        this.lookupsLoaded.clear();
         const SQL = await this.ports.sql();
         const session = new QuerySession(SQL, spec);
         for (const view of spec.views) {
@@ -1120,6 +1190,7 @@ export class QueryController {
         if (!session || !spec.views.length) return undefined;
         let result: QueryResult;
         try {
+            await this.loadLookups(session, spec);
             result = this.read(session, spec);
         } catch (error) {
             // The user's own SQL no longer runs (the page says why): no rows. The steps' SQL failing is an error

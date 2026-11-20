@@ -12,7 +12,7 @@
  */
 import { CALC_VIEW } from './query-types';
 import type { ColumnRef, QueryCalc, QueryFn, QueryJoin, QueryJoinKind, QueryKey, QuerySpec, QueryView } from './query-types';
-import { columnFnSql } from '../column-functions/column-functions';
+import { columnFnSql, lookupsIn } from '../column-functions/column-functions';
 import { formulaSql, parseFormula } from './formula';
 import { compareLeftKeys } from './query-compare';
 import type { FormulaColumn } from './formula';
@@ -216,6 +216,13 @@ function selectSql(ref: ColumnRef, spec: QuerySpec, names: Map<string, string>):
     const calc = spec.calc?.find(c => c.name === ref.column);
     if (!calc) throw new Error(`Query: no calculated column "${ref.column}"`);
     return calcSql(calc, spec, names);
+}
+
+/** The lookup tables a query's functions read (Translate values), in its joins and its columns. */
+export function lookupsUsed(spec: QuerySpec): string[] {
+    const keys = spec.joins.flatMap(j => j.on.flatMap(p => [p.left, p.right]));
+    const fns = [...keys.flatMap(k => [...(k.fns ?? []), ...k.parts.flatMap(p => p.fns ?? [])]), ...spec.select.flatMap(c => c.fns ?? [])];
+    return [...new Set(lookupsIn(fns))];
 }
 
 /**

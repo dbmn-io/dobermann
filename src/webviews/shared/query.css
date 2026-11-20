@@ -335,3 +335,7 @@
 .query-status-tools[hidden] { display: none; }
 .query-status-tools select { font-size: 12px; }
 .query-status-tag { background: color-mix(in srgb, var(--vscode-descriptionForeground) 45%, transparent); }
+/* A compare's key repeating in a view: its count, and once, in words, what to do */
+.query-compare-repeat { display: inline-flex; align-items: center; gap: 3px; font-size: 11.5px; margin-right: auto; }
+.query-compare-verdict .query-lead { flex: 1 1 auto; max-width: none; }
+.query-compare-repeat-note { margin: 4px 0 0; font-size: 12px; white-space: normal; text-align: left; }

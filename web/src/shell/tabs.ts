@@ -25,6 +25,7 @@ import { CompareController } from '../../../src/screens/compare/compare.controll
 import { buildComparePage } from '../../../src/screens/compare/compare-page';
 import type { ComparePorts } from '../../../src/screens/compare/compare.ports';
 import { QueryController } from '../../../src/screens/query/query.controller';
+import { LookupTablesStore } from '../../../src/services/lookup-tables/lookup-tables';
 import { buildQueryPage } from '../../../src/screens/query/query-page';
 import { buildDesignSystemPage } from '../../../src/screens/design-system/design-system-page';
 import { buildLogsPage } from '../../../src/screens/logs/logs-page';
@@ -174,7 +175,7 @@ export function webTabs(deps: WebTabDeps): HubTabFactory {
             };
             if (isQueryId(compareId)) {
                 // A query: Compare's ports and SQLite, started from the app's own wasm file
-                const query = new QueryController(session, { ...ports, sql: () => (sqlEngine ??= initSqlJs({ locateFile: () => sqlWasmUrl })), systemName: async id => (await deps.systems.getSystem(id))?.name, openRunBatch: (endpoint, chain) => deps.openBatch(endpoint.id, chain), queryFiles }, { queryId: compareId, start });
+                const query = new QueryController(session, { ...ports, sql: () => (sqlEngine ??= initSqlJs({ locateFile: () => sqlWasmUrl })), systemName: async id => (await deps.systems.getSystem(id))?.name, openRunBatch: (endpoint, chain) => deps.openBatch(endpoint.id, chain), queryFiles, lookups: new LookupTablesStore(deps.state.globalState) }, { queryId: compareId, start });
                 const queryScreen = { handle: (m: Record<string, unknown>) => query.handleMessage(m as never), dispose: () => query.dispose() };
                 return { ...tab(buildQueryPage(asset, { queryId: compareId, name: endpointName }), session, queryScreen), name: `Query: ${endpointName}` };
             }
