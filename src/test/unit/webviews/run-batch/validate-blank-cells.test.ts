@@ -28,7 +28,7 @@ function load() {
     // Modifiers as the grid builds them from the template ({{supplierSku:string|opt}})
     const v = (name: string, optional = false) => ({ name, dataType: 'string', modifiers: w.DTDataEntryGrid.parseModifiersForGrid(optional ? 'opt' : '', 'string') });
     w.CSVHandler.setState({
-        modalStep: 3, gridInitialized: true, gridUndoStack: [],
+        modalStep: 3, gridInitialized: true, gridUndoStack: [], gridRowsLoaded: true,
         virtualScrollActive: true, virtualScroll: { lastRenderedStart: -1, lastRenderedEnd: -1 },
         gridValidationErrors: new Map(),
         gridTemplateVariables: [v('location.gln'), v('product.supplier.gln'), v('reorderQty'), v('supplierSku', true)],

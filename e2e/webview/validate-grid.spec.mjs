@@ -20,7 +20,7 @@ const SCRIPTS = ['shared/icons.js', 'shared/search-matcher.js', 'shared/value-fo
 // gtin: exactly 14 characters; uom: upper case; qty: a whole number, 0 or more; due: a date, optional; active: yes/no
 const BODY = JSON.stringify({ items: [{ gtin: '{{gtin:string|14}}', uom: '{{uom:string|upper}}', qty: '{{qty:number|int|>=0}}', due: '{{due:date|opt}}', active: '{{active:boolean}}' }] });
 
-const gridPage = () => `<!doctype html><html><head>
+const gridPage = (body = BODY) => `<!doctype html><html><head>
 <style>:root{--vscode-foreground:#ccc;--vscode-editor-background:#1e1e1e;--vscode-panel-border:#444;--vscode-input-background:#2a2a2a;--vscode-input-border:#555;--vscode-focusBorder:#4daafc}
 ${STYLES.map(read).join('\n')}
 body{margin:0;padding:16px;width:1000px;background:#1e1e1e;color:#ccc;font:13px sans-serif}
@@ -31,7 +31,7 @@ ${SCRIPTS.map(rel => `<script>${read(rel)}</script>`).join('\n')}</head><body>
 <script>
   window.state = { modalStep: 3 };
   DTDataEntryGrid.init(window.state, () => null);
-  DTDataEntryGrid.initializeDataEntryGrid({ body: ${JSON.stringify(BODY)} });
+  DTDataEntryGrid.initializeDataEntryGrid({ body: ${JSON.stringify(body)} });
   // (Run Batch wires the footer button as data-click="grid:toggleErrorFilter")
   document.getElementById('gridErrorFilterBtn').addEventListener('click', () => DTDataEntryGrid.toggleErrorFilter());
   window.load = rows => {
@@ -187,4 +187,51 @@ test('many rows: only the rows in view are drawn', async ({ page }) => {
     await loaded(page, Array.from({ length: 20000 }, (_, i) => [String(10000000000000 + i), 'EA', String(i % 9), '', 'true']));
     await expect(page.locator('.grid-hint')).toHaveText(/^20,000 rows\./);
     expect(await body(page).count()).toBeLessThan(120);
+});
+
+test('typed rows: deleting one keeps every other row in view, numbered again (the filter is for rows loaded)', async ({ page }) => {
+    await page.setContent(gridPage());
+    // Row 1 complete; rows 2 and 3 empty (to fix)
+    await td(page, 0, 1).click();
+    await page.keyboard.type('00012345600012');
+    await page.keyboard.press('Tab');
+    await page.keyboard.type('EA');
+    await page.keyboard.press('Tab');
+    await page.keyboard.type('5');
+    await page.keyboard.press('Enter');
+    await page.keyboard.press('Escape');
+    await page.evaluate(() => { DTDataEntryGrid.addGridRow({ skipFocus: true }); DTDataEntryGrid.addGridRow({ skipFocus: true }); });
+    await expect(body(page)).toHaveCount(3);
+    await body(page).nth(1).hover();
+    await td(page, 1, 0).locator('.row-delete-btn').click();
+    await expect(body(page)).toHaveCount(2);
+    await page.waitForTimeout(800);   // (the checks after the delete)
+    await expect(body(page)).toHaveCount(2);
+    await expect(body(page).locator('td.grid-row-num')).toHaveText(['1', '2']);
+    await expect(td(page, 0, 1)).toHaveText('00012345600012');
+    await expect(page.locator('#gridErrorFilterBtn')).toHaveText('Filter Errors (1)');
+});
+
+// An order and its lines: orderId once per order (level 1), sku and qty per line (level 2)
+const NESTED = JSON.stringify({ orderId: '{{orderId}}', customer: '{{customer}}', lines: [{ sku: '{{sku}}', qty: '{{qty:number}}' }] });
+
+test('nested data entry: Tab on the last cell adds a row; the next Tab copies the order\'s fields from the row above and goes to the line\'s', async ({ page }) => {
+    await page.setContent(gridPage(NESTED));
+    await expect(page.locator('#validateGrid thead .column-name')).toHaveText(['#', 'orderId', 'customer', 'sku', 'qty']);
+    await td(page, 0, 1).click();
+    for (const value of ['SO-1', 'Harbour Foods', 'A-1']) { await page.keyboard.type(value); await page.keyboard.press('Tab'); }
+    await page.keyboard.type('5');
+    await page.keyboard.press('Tab');   // the last cell: a new row
+    await expect(body(page)).toHaveCount(2);
+    await expect(page.locator('#progressiveCopyHint')).toHaveText('Tab to copy orderId and customer from row above');
+    await expect(td(page, 1, 1).locator('input.dbmn-cell-input')).toBeFocused();
+    await page.keyboard.press('Tab');   // copies the order, on to the line
+    expect((await rowsOf(page))[1]).toEqual(['SO-1', 'Harbour Foods', '', '']);
+    await expect(td(page, 1, 3).locator('input.dbmn-cell-input')).toBeFocused();
+    await page.keyboard.type('B-2');
+    await page.keyboard.press('Tab');
+    await page.keyboard.type('7');
+    await page.keyboard.press('Enter');
+    expect((await rowsOf(page))[1]).toEqual(['SO-1', 'Harbour Foods', 'B-2', '7']);
+    await expect(page.locator('#progressiveCopyHint')).toHaveCount(0);
 });

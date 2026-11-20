@@ -692,6 +692,7 @@
 
         csvState.gridUndoStack = [];
         csvState.gridDataModel = [blankRow()];
+        csvState.gridRowsLoaded = false;   // (typed: every row stays in view; see setIssueRows)
         csvState.gridValidationErrors = new Map();
         csvState.gridBlankCells = null;
         csvState.gridErrorRows = null;
@@ -1715,6 +1716,7 @@
     function startGridRows(rows) {
         csvState.gridUndoStack = [];
         csvState.gridDataModel = rows;
+        csvState.gridRowsLoaded = true;
         csvState.gridValidationErrors = new Map();
         csvState.gridBlankCells = null;
         csvState.gridLoadErrors = [];
@@ -1962,7 +1964,11 @@
         return !!table && table.contains(document.activeElement);
     }
 
-    /** The rows to fix become the errors filter's rows; the filter is on unless the user chose Show All. */
+    /**
+     * The rows to fix become the errors filter's rows. Rows loaded (a file, a paste, a run) open
+     * on the rows to fix, unless the user chose Show All; rows typed in stay in view, every one
+     * (a row being typed, or the one before it, never disappears), with Filter Errors a click away.
+     */
     function setIssueRows(rows) {
         if (rows.size === 0) {
             hideErrorFilter();
@@ -1971,7 +1977,7 @@
         csvState.gridErrorRows = rows;
         const btn = document.getElementById('gridErrorFilterBtn');
         if (btn) btn.disabled = false;
-        setErrorFilter(csvState.gridErrorFilterTouched ? !!csvState.gridErrorFilterActive : true);
+        setErrorFilter(csvState.gridErrorFilterTouched ? !!csvState.gridErrorFilterActive : !!csvState.gridRowsLoaded);
         refreshStepper();
     }
 
