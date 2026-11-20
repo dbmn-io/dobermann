@@ -1219,8 +1219,13 @@ test('selectable: a click picks a row and again unpicks it; Shift-click picks a 
     await page.locator('#t thead input.dbmn-pick-all').click();
     expect(await picked(page)).toEqual(['SO-10002', 'SO-10003', 'SO-10005', 'SO-10006']);
     expect(await page.evaluate(() => window.picks.length)).toBe(6);
-    // A double-click: the screen's Open
+    // A double-click: the screen's Open. (Picking changes the row in place: drawn again, the second
+    // click would land on a new row and the browser would never see a double-click)
     await page.locator('#t .search-input').fill('');
+    await page.evaluate(() => { window.firstRow = document.querySelectorAll('#t .dbmn-table-body tr')[2]; });
+    await rowsAt(2).click();
+    expect(await page.evaluate(() => document.querySelectorAll('#t .dbmn-table-body tr')[2] === window.firstRow)).toBe(true);
+    await rowsAt(2).click();
     await rowsAt(2).dblclick();
     expect(await page.evaluate(() => window.opens)).toEqual(['SO-10002']);
     // The table's own column is not the screen's

@@ -2182,8 +2182,21 @@
             this._rowEvent('dbmn-table-row', event);
             return true;
         },
+        /**
+         * The rows drawn show what is picked, changed in place: drawn again, a double-click's second
+         * click would land on a new row and never be a double-click (an Open).
+         */
         _pickedChanged() {
-            this._render(true);
+            const set = this._pickedSet();
+            Array.from(this._body.children).forEach(tr => {
+                if (tr._main || tr.classList.contains('dbmn-table-waiting')) return;
+                const row = this._rowAt(this._rendered.start + this._mainIndex(tr));
+                if (!row) return;
+                const on = set.has(row);
+                tr.classList.toggle('is-picked', on);
+                const box = tr.querySelector('input.dbmn-pick-box');
+                if (box) box.checked = on;
+            });
             this._heads();
             this.dispatchEvent(new CustomEvent('dbmn-table-select', { bubbles: true, detail: { selected: this.selected } }));
         }
