@@ -114,7 +114,8 @@ export function starterColumns(): LookupColumn[] {
 }
 
 export class LookupTablesStore implements LookupTablesReader {
-    constructor(private readonly state: IKeyValueStore, private readonly options: LookupTablesStoreOptions = {}) {}
+    /** `state`: the store the saved queries are kept in (only get and update are used). */
+    constructor(private readonly state: Pick<IKeyValueStore, 'get' | 'update'>, private readonly options: LookupTablesStoreOptions = {}) {}
 
     private now(): string {
         return this.options.now ? this.options.now() : new Date().toISOString();
