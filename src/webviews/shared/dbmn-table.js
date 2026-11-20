@@ -359,6 +359,7 @@
                 });
             }
             this._refresh();
+            this._recolour();
         }
 
         /** What the search box holds (the table's own, or the screen's); set it to search from script. */
@@ -383,6 +384,7 @@
                 types: (heading, path) => this._typeOf(heading, path),
                 // (every column searched, shown or not, and the screen's hidden fields: `@` suggests them all)
                 headings: () => this._searchColumns().map(c => c.name),
+                hidden: () => this._unseenNames(),
                 // `@column.` lists the keys inside that column's nested data (of the rows in hand)
                 keys: (heading, path) => matcher.nestedKeysFor(this._source ? this._inHand() : this._rows, this._all.map(c => ({ id: c.id, name: c.name || c.id })), heading, path, (row, id) => row[id])
             });
@@ -422,7 +424,7 @@
         /** The search in words, under the box: "Reading this as: placed (date) after 12 Nov 2026". */
         _reading(text) {
             const matcher = window.SearchMatcher;
-            return matcher && matcher.describeSearch ? matcher.describeSearch(text, this._all.map(c => c.name || c.id), (heading, path) => this._typeOf(heading, path)) : '';
+            return matcher && matcher.describeSearch ? matcher.describeSearch(text, this._searchColumns().map(c => c.name), (heading, path) => this._typeOf(heading, path), undefined, this._unseenNames()) : '';
         }
         _inHand() {
             const rows = [];
@@ -749,6 +751,7 @@
 
         /** Tell the screen what changed about the columns, with the layout as it now stands. */
         _tell(change, more) {
+            this._recolour();
             this.dispatchEvent(new CustomEvent('dbmn-table-layout', { bubbles: true, detail: Object.assign({ change, layout: this.layout }, more || {}) }));
         }
         /** Measured widths are measured again (the ones the user set stay). */
@@ -1132,6 +1135,11 @@
             const fields = (this._fields || []).filter(f => !columns.some(c => c.id === f.id)).map(f => ({ id: f.id, name: f.name || f.id }));
             return columns.concat(fields);
         }
+        /** The names of what is searched but not shown: columns removed from view, and the screen's hidden fields. */
+        _unseenNames() {
+            const shown = new Set(this._columns.map(c => c.id));
+            return this._searchColumns().filter(c => !shown.has(c.id)).map(c => c.name);
+        }
         /** A row's value for a column or a hidden field (a field may say how to read it). */
         _readField() {
             const byId = new Map((this._fields || []).filter(f => typeof f.get === 'function').map(f => [f.id, f.get]));
@@ -1197,12 +1205,20 @@
             slice();
         }
 
+        /** A column removed or shown again: the box's colours and the line under it follow (the rows were searched the same). */
+        _recolour() {
+            const input = this._box();
+            if (!input || !input.value.trim()) return;
+            const mirror = input === this._input ? this._mirror : this._outerMirror;
+            if (window.SearchMatcher && mirror) window.SearchMatcher.renderHighlight(mirror, input.value, this._searchColumns().map(c => c.name), this._unseenNames());
+            if (input === this._input) { const reads = this._reading(input.value); this._reads.textContent = reads; this._reads.hidden = !reads; }
+        }
         _searched() {
             const input = this._box();
             const mirror = input === this._input ? this._mirror : this._outerMirror;
             const text = input ? input.value : '';
             // (a column named that the table does not have shows red in the box)
-            if (window.SearchMatcher && mirror) window.SearchMatcher.renderHighlight(mirror, text, this._all.map(c => c.name || c.id));
+            if (window.SearchMatcher && mirror) window.SearchMatcher.renderHighlight(mirror, text, this._searchColumns().map(c => c.name), this._unseenNames());
             const reads = this._reading(text);
             if (input === this._input) { this._reads.textContent = reads; this._reads.hidden = !reads; }
             this.dispatchEvent(new CustomEvent('dbmn-table-search', { bubbles: true, detail: { text: text.trim(), reads } }));

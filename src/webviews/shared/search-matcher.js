@@ -717,25 +717,30 @@ function matchesWords(parsedTerms, row, columns, extractNestedValue) {
  * not qualify as an operator.
  *
  * A column term is 'col-name', 'col-op', 'col-value'; with `headings` given (the table's column
- * names), a name that is none of them is 'col-unknown'.
+ * names), a name that is none of them is 'col-unknown', and one of `hidden` (searched, but not
+ * shown in the table) is 'col-hidden'.
  *
  * @param {string} searchString
  * @param {string[]} [headings]
+ * @param {string[]} [hidden]   those of the headings not shown
  * @returns {Array<{text: string, kind: string}>}
  */
 var DISPLAY_TERM_AT = new RegExp('^@("[^"]*"?|[^\\s=!~<>",]*)(\\s*)(!=|!~|>=|<=|=|~|>|<)?(\\s*)' + COLUMN_VALUE_SRC + '?');
-function tokenizeForDisplay(searchString, headings) {
+function tokenizeForDisplay(searchString, headings, hidden) {
     if (!searchString) return [];
     // With the table's columns given: a name that is none of them (nor a key inside one) is
     // 'col-unknown', shown in red. Not while it is still being typed: a start of a column's
     // name, with no operator yet, is on its way to being one
     var known = (headings || []).filter(function (h) { return h; }).map(function (h) { return String(h).toLowerCase(); });
+    var unseen = (hidden || []).map(function (h) { return String(h).toLowerCase(); });
     var nameKind = function (raw, hasOp) {
         if (!headings) return 'col-name';
         var name = unquote(raw).toLowerCase();
         if (!name) return 'col-name';
-        var is = known.some(function (h) { return h === name || name.indexOf(h + '.') === 0; });
-        if (is) return 'col-name';
+        var is = known.filter(function (h) { return h === name || name.indexOf(h + '.') === 0; })
+            .sort(function (a, b) { return b.length - a.length; })[0];
+        // (a column searched but not shown in the table: told apart, so a match there is no surprise)
+        if (is) return unseen.indexOf(is) !== -1 ? 'col-hidden' : 'col-name';
         if (!hasOp && known.some(function (h) { return h.indexOf(name) !== -1; })) return 'col-name';
         return 'col-unknown';
     };
@@ -873,9 +878,9 @@ function tokenizeForDisplay(searchString, headings) {
  * GitHub Issue #261: paint the find box's highlight mirror (the coloured copy of what is typed,
  * behind the transparent input). Shared by the Console and Compare (#298).
  */
-function renderHighlight(mirrorEl, value, headings) {
+function renderHighlight(mirrorEl, value, headings, hidden) {
     if (!mirrorEl) return;
-    var segments = tokenizeForDisplay(value, headings);
+    var segments = tokenizeForDisplay(value, headings, hidden);
     if (segments.length === 0) {
         mirrorEl.textContent = '';
         return;
@@ -968,9 +973,12 @@ DATE_VALUES['>='] = [['today', 'today or later'], ['yesterday', 'yesterday or la
 DATE_VALUES['<='] = [['today', 'today or earlier'], ['yesterday', 'yesterday or earlier'], ['7d', '7 days ago or earlier']];
 
 var OP_WORDS = { '=': 'is (a|b either, 1..9 between)', '!=': 'is not', '~': 'contains', '!~': "doesn't contain", '>': 'more than', '<': 'less than', '>=': 'at least', '<=': 'at most' };
-function columnSuggestions(typed, headings, keysOf, typesOf) {
+function columnSuggestions(typed, headings, keysOf, typesOf, hidden) {
     var text = String(typed || '');
     var names = (headings || []).filter(function (h) { return h; });
+    // Columns searched but not shown in the table: offered after the shown ones, and marked
+    var unseen = (hidden || []).map(function (h) { return String(h).toLowerCase(); });
+    var isHidden = function (h) { return unseen.indexOf(String(h).toLowerCase()) !== -1; };
     var quote = function (h) { return /\s/.test(h) ? '"' + h + '"' : h; };
     var keys = function (heading, path) { return (keysOf && keysOf(heading, path)) || []; };
     // The kind of a column (or of a key inside it), when the box knows: '' leaves everything as it was
@@ -1008,9 +1016,14 @@ function columnSuggestions(typed, headings, keysOf, typesOf) {
         return names
             .map(function (h) { return { h: h, pos: h.toLowerCase().indexOf(partial) }; })
             .filter(function (x) { return x.pos !== -1; })
-            .sort(function (a, b) { return (a.pos === 0 ? 0 : 1) - (b.pos === 0 ? 0 : 1) || a.h.localeCompare(b.h); })
+            .sort(function (a, b) { return (isHidden(a.h) ? 1 : 0) - (isHidden(b.h) ? 1 : 0) || (a.pos === 0 ? 0 : 1) - (b.pos === 0 ? 0 : 1) || a.h.localeCompare(b.h); })
             .slice(0, 10)
-            .map(function (x) { return { text: '@' + quote(x.h), label: TYPE_WORDS[typeOf(x.h, [])] || (keys(x.h, []).length ? 'column, nested' : 'column'), start: start, end: text.length }; });
+            .map(function (x) {
+                var label = TYPE_WORDS[typeOf(x.h, [])] || (keys(x.h, []).length ? 'column, nested' : 'column');
+                var item = { text: '@' + quote(x.h), label: isHidden(x.h) ? label + ' · not shown' : label, start: start, end: text.length };
+                if (isHidden(x.h)) item.hidden = true;
+                return item;
+            });
     }
     // `@column ` picked: the operators
     var picked = /(^|[\s,])@("[^"]+"|[^\s=!~<>",]+)$/.exec(text);
@@ -1061,7 +1074,7 @@ function opSuggestions(text, end, nested, type) {
  * show anywhere else. Plain text; '' when the box asks nothing of a column.
  *   typesOf(heading, path): the kind of a column, as for the suggestions; headings: the columns there are
  */
-function describeSearch(text, headings, typesOf, now) {
+function describeSearch(text, headings, typesOf, now, hidden) {
     var terms = [];
     var rest = extractColumnTerms(String(text || ''), terms);
     if (!terms.length) return '';
@@ -1076,6 +1089,7 @@ function describeSearch(text, headings, typesOf, now) {
         var heading = names.filter(function (h) { return h.toLowerCase() === low; })[0] ||
             names.filter(function (h) { return low.indexOf(h.toLowerCase() + '.') === 0; }).sort(function (a, b) { return b.length - a.length; })[0];
         if (!heading) return 'no column called ' + term.column;
+        var unseen = (hidden || []).some(function (h) { return String(h).toLowerCase() === heading.toLowerCase(); });
         var path = term.column.length > heading.length ? term.column.slice(heading.length + 1).split('.').filter(Boolean) : [];
         var type = (typesOf && typesOf(heading, path)) || '';
         var word = ((TYPE_OPS[type] || []).filter(function (o) { return o[0] === term.op; })[0] || [term.op, OP_WORDS[term.op] || term.op])[1].split(/[,(]/)[0].trim();
@@ -1095,7 +1109,8 @@ function describeSearch(text, headings, typesOf, now) {
             return v;
         }).join(' or ');
         var ranged = term.values.some(function (v) { return typeof v === 'object'; });
-        return term.column + (type ? ' (' + TYPE_WORDS[type] + ')' : '') + ' ' + (ranged ? (term.op === '!=' ? 'is not' : 'is') : word) + ' ' + value;
+        var notes = [type ? TYPE_WORDS[type] : '', unseen ? 'not shown' : ''].filter(Boolean).join(', ');
+        return term.column + (notes ? ' (' + notes + ')' : '') + ' ' + (ranged ? (term.op === '!=' ? 'is not' : 'is') : word) + ' ' + value;
     });
     // The words: each found anywhere in the row (a phrase as one), or left out
     var parsedWords = parseWords(rest.replace(/,/g, ' '));
@@ -1115,7 +1130,9 @@ function describeSearch(text, headings, typesOf, now) {
  *   SearchMatcher.attachColumnSuggest({ input, headings: () => ['sku', 'status', …],
  *       keys: (heading, path) => ['key', 'value', …],       optional: the keys inside a column's nested
  *                                                           data, listed after `@column.` (nestedKeysFor)
- *       types: (heading, path) => 'date' })                 optional: the kind of a column or a key inside it
+ *       types: (heading, path) => 'date',                   optional: the kind of a column or a key inside it
+ *       hidden: () => ['customer', …] })                    optional: those of the headings searched but not
+ *                                                           shown in the table (listed last, marked "not shown")
  *                                                           ('text', 'number', 'yesno', 'date', 'nested';
  *                                                           typeOfValues works it out from values). With it
  *                                                           the list says each column's kind, offers the
@@ -1136,12 +1153,12 @@ function attachColumnSuggest(opts) {
     function close() { list.hidden = true; shown = []; }
     function render() {
         var caret = input.selectionEnd == null ? input.value.length : input.selectionEnd;
-        shown = caret === input.value.length ? columnSuggestions(input.value, opts.headings ? opts.headings() : [], opts.keys, opts.types) : [];
+        shown = caret === input.value.length ? columnSuggestions(input.value, opts.headings ? opts.headings() : [], opts.keys, opts.types, opts.hidden ? opts.hidden() : []) : [];
         if (!shown.length) { close(); return; }
         if (active >= shown.length) active = 0;
         list.innerHTML = shown.map(function (s, i) {
             var esc = function (t) { return String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); };
-            return '<div class="column-suggest-option' + (i === active ? ' is-active' : '') + '" role="option" data-index="' + i + '">' +
+            return '<div class="column-suggest-option' + (i === active ? ' is-active' : '') + (s.hidden ? ' is-hidden' : '') + '" role="option" data-index="' + i + '">' +
                 '<span class="column-suggest-text">' + esc(s.text) + '</span>' +
                 (s.label ? '<span class="column-suggest-label">' + esc(s.label) + '</span>' : '') + '</div>';
         }).join('');

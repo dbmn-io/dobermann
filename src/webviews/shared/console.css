@@ -422,6 +422,8 @@
 .search-tok-col-name  { color: var(--vscode-textLink-foreground, #3794ff); }
 /* A column the table does not have (the box is given the table's column names): red, and underlined so it is not told by colour alone */
 .search-tok-col-unknown { color: var(--vscode-errorForeground, #f14c4c); text-decoration: underline wavy; text-decoration-skip-ink: none; }
+/* A column searched but not shown in the table: its own colour, dotted underline (not told by colour alone) */
+.search-tok-col-hidden { color: var(--vscode-charts-purple, #b180d7); text-decoration: underline dotted; text-decoration-skip-ink: none; text-underline-offset: 2px; }
 .search-tok-col-op    { color: var(--vscode-charts-orange, #d18616); }
 .search-tok-col-value { color: var(--vscode-charts-yellow, #dcdcaa); }
 
@@ -460,6 +462,8 @@
 .column-suggest-label {
     color: var(--vscode-descriptionForeground);
 }
+/* A column searched but not shown: after the shown ones, quieter */
+.column-suggest-option.is-hidden .column-suggest-text { color: var(--vscode-charts-purple, #b180d7); opacity: 0.85; }
 
 /* Comma renders as an inverted chip so it punches the OR boundary visually
    without depending on a single hue. */

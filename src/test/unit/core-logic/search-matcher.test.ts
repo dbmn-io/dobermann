@@ -1082,3 +1082,30 @@ describe('one search: plain words', () => {
         expect(matchesRow(parseSearchExpression('@level=error|warn token'), line, logs, at)).to.equal(true);
     });
 });
+
+describe('SearchMatcher: a column searched but not shown is told apart (James, 2026-11-21)', () => {
+    const { describeSearch } = require('../../../webviews/shared/search-matcher.js');
+    const headings = ['order_no', 'status', 'customer', 'body'];
+    const hidden = ['customer', 'body'];
+
+    it('in the box: col-hidden, apart from a shown column and from no column at all', () => {
+        const kinds = (text: string) => tokenizeForDisplay(text, headings, hidden).map((s: { text: string; kind: string }) => `${s.text}:${s.kind}`);
+        expect(kinds('@customer=Kettle')[0]).to.equal('@customer:col-hidden');
+        expect(kinds('@status=open')[0]).to.equal('@status:col-name');
+        expect(kinds('@nothere=1')[0]).to.equal('@nothere:col-unknown');
+        expect(kinds('@body.sku~X')[0]).to.equal('@body.sku:col-hidden');
+    });
+
+    it('in the @ list: shown columns first, then those not shown, marked', () => {
+        const list = columnSuggestions('@', headings, undefined, undefined, hidden);
+        expect(list.map((s: { text: string }) => s.text)).to.deep.equal(['@order_no', '@status', '@body', '@customer']);
+        expect(list.map((s: { label: string }) => s.label)).to.deep.equal(['column', 'column', 'column · not shown', 'column · not shown']);
+        expect(list.filter((s: { hidden?: boolean }) => s.hidden).length).to.equal(2);
+        expect(columnSuggestions('@', headings).map((s: { text: string }) => s.text)).to.deep.equal(['@body', '@customer', '@order_no', '@status'], 'none given: as before');
+    });
+
+    it('on the line under the box: "(not shown)"', () => {
+        expect(describeSearch('@customer=Kettle', headings, undefined, undefined, hidden)).to.contain('customer (not shown) is Kettle');
+        expect(describeSearch('@status=open', headings, undefined, undefined, hidden)).to.contain('status is open');
+    });
+});

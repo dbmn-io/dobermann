@@ -1275,3 +1275,30 @@ test('the search reaches what is not shown: a removed column and the screen\'s h
     expect(offered.join(' ')).toContain('customer');
     expect(offered.join(' ')).toContain('body');
 });
+
+test('a column searched but not shown is told apart: its own colour in the box, last and marked in the @ list, "(not shown)" under the box', async ({ page }) => {
+    await page.setContent(tablePage());
+    await page.evaluate(() => { document.getElementById('t').searchFields = [{ id: 'body', name: 'body', get: row => String(row.order_no) }]; });
+    await page.locator('#t thead th').nth(1).hover();
+    await page.locator('#t thead th').nth(1).locator('.col-hide-btn').click();
+    const box = page.locator('#t .search-input');
+    await box.fill('@customer=Kettle*');
+    await expect(page.locator('#t .search-tok-col-hidden')).toHaveText('@customer');
+    await expect(page.locator('#t .dbmn-table-reads')).toContainText('customer (text, not shown) is Kettle*');
+    // shown again (from the heading menu's list of removed columns): the box follows at once
+    await page.evaluate(() => { const t = document.getElementById('t'); t.layout = Object.assign({}, t.layout, { hidden: [] }); });
+    await expect(page.locator('#t .search-tok-col-name')).toHaveText('@customer');
+    await expect(page.locator('#t .dbmn-table-reads')).not.toContainText('not shown');
+    await box.fill('@order_no=1');
+    await expect(page.locator('#t .search-tok-col-name')).toHaveText('@order_no');
+    await expect(page.locator('#t .search-tok-col-hidden')).toHaveCount(0);
+    await box.fill('@');
+    const options = page.locator('#t .column-suggest-option');
+    const texts = await options.locator('.column-suggest-text').allTextContents();
+    const hiddenTexts = await page.locator('#t .column-suggest-option.is-hidden .column-suggest-text').allTextContents();
+    // (customer is shown again by now: only the screen's hidden field is last, and marked)
+    expect(hiddenTexts).toEqual(['@body']);
+    expect(texts[texts.length - 1]).toBe('@body');
+    expect(texts).toContain('@customer');
+    await expect(page.locator('#t .column-suggest-option.is-hidden').first()).toContainText('not shown');
+});
