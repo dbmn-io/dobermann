@@ -105,7 +105,8 @@ export interface SavedQuery {
 /** How many views a query takes. */
 export const MAX_QUERY_VIEWS = 10;
 /** A view's name is short: it heads its slot, and the SQL writes it before every column. */
-export const VIEW_NAME_MAX = 12;
+/** A view's name at most: the slot shortens a long one with "…", the whole of it on hover. */
+export const VIEW_NAME_MAX = 32;
 
 /** A name as SQL takes it without quotes: letters, digits and _, a letter first, no longer than the slot shows. */
 export function cleanViewName(text: string): string {
@@ -128,21 +129,26 @@ const VERBS = /^(get|list|fetch|find|search|query|read|load|export|post|put)\s+(
  * A name for a new view, from what it reads ("Get Products" is Products, "Bins.csv" was already
  * Bins): cleaned, and numbered when another view has it (Products2).
  */
+/** The last word of a path that only says what to do: the word before it goes in front (inventory_search). */
+const ACTION_WORDS = new Set(['save', 'search', 'find', 'list', 'export', 'query', 'bulk', 'all']);
+
 /**
- * A view's name from its endpoint: its name (the part after a dash, without a verb) when it fits a
- * slot (VIEW_NAME_MAX), else its path's last word (GET /inventory/export: Export), else the name cut.
- * "Playground – List Inventory": Inventory.
+ * A new view's name, from what it reads: the last word of the request's path, a parameter
+ * ({{sku}}, {id}, :id, a number) skipped; an action word (ACTION_WORDS) takes the word before it
+ * in front; a View other than the default goes on the end. GET /inventory: inventory;
+ * POST /inventory/search: inventory_search; View "Stock lines": inventory_StockLines.
  */
-export function shortViewName(endpointName: string, path: string): string {
-    // "Playground – List Inventory": the part after the dash names it ("List Inventory": Inventory)
-    const named = String(endpointName ?? '').split(/\s[-\u2013\u2014|:]\s/).pop()?.trim() ?? '';
-    const bare = named.replace(VERBS, '');
-    const whole = bare.replace(/[^A-Za-z0-9_]/g, '').replace(/^[^A-Za-z]+/, '');
-    if (whole && whole.length <= VIEW_NAME_MAX) return bare;
-    const word = String(path ?? '').split(/[/?#]/).filter(w => w && !/^[{:]/.test(w)).pop() ?? '';
-    const fromPath = word.split(/[-_.]/).filter(Boolean).map(w => w[0].toUpperCase() + w.slice(1)).join('');
-    const clean = cleanViewName(fromPath);
-    return clean.length >= 3 && fromPath.replace(/[^A-Za-z0-9_]/g, '').length <= VIEW_NAME_MAX ? clean : bare || endpointName;
+export function viewNameFromPath(path: string, view?: string): string {
+    const words = String(path ?? '').split(/[?#]/)[0].split('/').map(w => w.trim())
+        .filter(w => w && !/[{}$]/.test(w) && !w.startsWith(':') && !/^\d+$/.test(w));
+    const word = (w: string | undefined): string => String(w ?? '').replace(/[^A-Za-z0-9_]+/g, '_').replace(/^_+|_+$/g, '');
+    let name = word(words.pop());
+    if (ACTION_WORDS.has(name.toLowerCase()) && words.length) name = `${word(words.pop())}_${name}`;
+    if (view && !/^(default|root|view)$/i.test(view.trim())) {
+        const v = view.split(/[^A-Za-z0-9]+/).filter(Boolean).map(w => w[0].toUpperCase() + w.slice(1)).join('');
+        if (v) name = name ? `${name}_${v}` : v;
+    }
+    return name;
 }
 
 export function guessViewName(from: string, others: string[]): string {

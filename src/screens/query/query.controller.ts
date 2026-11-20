@@ -28,7 +28,7 @@ import type { TooManyRows } from '../../services/query/query-engine';
 import { allColumns, columnSql, compareKeySql, defaultColumns, formulaColumns, fromSql, joinKeyColumns, lookupsUsed, quoteName, refNames, resultColumns as resultColumnRefs, tableNames, writeSql } from '../../services/query/query-sql';
 import { FORMULA_FUNCTIONS, formulaSql, fullRef, fullText, parseFormula, shortRef, shortText } from '../../services/query/formula';
 import { reportNameProblem } from '../../services/compare/report-name';
-import { cleanViewName, getQuery, guessViewName, shortViewName, VIEW_NAME_MAX, MAX_QUERY_VIEWS, moveView, moveViewFirst, nameViews, newSourceId, nextRunName, QuerySource, renameView, runName, saveQuery, SavedQuery, untickBlanks, untickClashes } from '../../services/query/query-store';
+import { cleanViewName, getQuery, guessViewName, viewNameFromPath, VIEW_NAME_MAX, MAX_QUERY_VIEWS, moveView, moveViewFirst, nameViews, newSourceId, nextRunName, QuerySource, renameView, runName, saveQuery, SavedQuery, untickBlanks, untickClashes } from '../../services/query/query-store';
 import { columnTypes, spread, TYPE_SAMPLE, type ColumnType } from '../../services/query/column-types';
 import { CALC_VIEW, QUERY_JOIN_KINDS } from '../../services/query/query-types';
 import { comparableRuns, type RequestTemplates, type RunHeaderValue } from '../../services/compare/compare-runs';
@@ -552,8 +552,8 @@ export class QueryController {
         const endpointName = endpoint?.name || run.endpointName || 'Endpoint';
         // Named after its View, or its endpoint when the View's name says nothing ("Default")
         const plain = !message.view || /^(default|root|view)$/i.test(message.view.trim());
-        const path = endpoint?.path || run.endpointPath || '';
-        const base = plain ? shortViewName(endpointName, path) : message.view;
+        // Named from its path's last word (and its View, when not the default): see viewNameFromPath
+        const base = viewNameFromPath(endpoint?.path || run.endpointPath || '', message.view) || (plain ? endpointName : message.view);
         const name = guessViewName(base, all.map(s => s.name));
         const source: QuerySource = {
             id: newSourceId(), name, endpointId: message.endpointId, endpointName, view: message.view,

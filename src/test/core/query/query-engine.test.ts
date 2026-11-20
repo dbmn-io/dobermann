@@ -360,8 +360,9 @@ describe('Query', () => {
             assert.strictEqual(writeSql(spec), 'SELECT LowStock.gtin, Products.name\nFROM LowStock\n  LEFT JOIN Products ON Products.gtin = LowStock.gtin');
         });
 
-        it('a name is cleaned to what SQL takes without quotes, and cut to fit its slot', () => {
-            assert.strictEqual(cleanViewName('Low stock-items!'), 'Lowstockitem');
+        it('a name is cleaned to what SQL takes without quotes, and cut at 32 (the slot shortens a long one)', () => {
+            assert.strictEqual(cleanViewName('Low stock-items!'), 'Lowstockitems');
+            assert.strictEqual(cleanViewName('a'.repeat(40)).length, 32);
             assert.strictEqual(cleanViewName('2024 orders'), 'orders');
             assert.strictEqual(cleanViewName('a_b'), 'a_b');
         });
@@ -373,7 +374,7 @@ describe('Query', () => {
             assert.strictEqual(guessViewName('Order', []), 'Order2');
             assert.strictEqual(guessViewName('Get', []), 'Get');
             assert.strictEqual(guessViewName('!!!', []), 'Data');
-            assert.strictEqual(guessViewName('Purchase order lines', []), 'Purchaseorde');
+            assert.strictEqual(guessViewName('Purchase order lines', []), 'Purchaseorderlines');
         });
 
         it('why a name is refused', () => {
