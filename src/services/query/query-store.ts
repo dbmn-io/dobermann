@@ -128,6 +128,23 @@ const VERBS = /^(get|list|fetch|find|search|query|read|load|export|post|put)\s+(
  * A name for a new view, from what it reads ("Get Products" is Products, "Bins.csv" was already
  * Bins): cleaned, and numbered when another view has it (Products2).
  */
+/**
+ * A view's name from its endpoint: its name (the part after a dash, without a verb) when it fits a
+ * slot (VIEW_NAME_MAX), else its path's last word (GET /inventory/export: Export), else the name cut.
+ * "Playground – List Inventory": Inventory.
+ */
+export function shortViewName(endpointName: string, path: string): string {
+    // "Playground – List Inventory": the part after the dash names it ("List Inventory": Inventory)
+    const named = String(endpointName ?? '').split(/\s[-\u2013\u2014|:]\s/).pop()?.trim() ?? '';
+    const bare = named.replace(VERBS, '');
+    const whole = bare.replace(/[^A-Za-z0-9_]/g, '').replace(/^[^A-Za-z]+/, '');
+    if (whole && whole.length <= VIEW_NAME_MAX) return bare;
+    const word = String(path ?? '').split(/[/?#]/).filter(w => w && !/^[{:]/.test(w)).pop() ?? '';
+    const fromPath = word.split(/[-_.]/).filter(Boolean).map(w => w[0].toUpperCase() + w.slice(1)).join('');
+    const clean = cleanViewName(fromPath);
+    return clean.length >= 3 && fromPath.replace(/[^A-Za-z0-9_]/g, '').length <= VIEW_NAME_MAX ? clean : bare || endpointName;
+}
+
 export function guessViewName(from: string, others: string[]): string {
     const base = cleanViewName(String(from ?? '').trim().replace(VERBS, '')) || 'Data';
     const free = (name: string): boolean => !viewNameProblem(name, others);

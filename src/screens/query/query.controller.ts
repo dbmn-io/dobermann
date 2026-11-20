@@ -28,7 +28,7 @@ import type { TooManyRows } from '../../services/query/query-engine';
 import { allColumns, columnSql, compareKeySql, defaultColumns, formulaColumns, fromSql, joinKeyColumns, lookupsUsed, quoteName, refNames, resultColumns as resultColumnRefs, tableNames, writeSql } from '../../services/query/query-sql';
 import { FORMULA_FUNCTIONS, formulaSql, fullRef, fullText, parseFormula, shortRef, shortText } from '../../services/query/formula';
 import { reportNameProblem } from '../../services/compare/report-name';
-import { cleanViewName, getQuery, guessViewName, VIEW_NAME_MAX, MAX_QUERY_VIEWS, moveView, moveViewFirst, nameViews, newSourceId, nextRunName, QuerySource, renameView, runName, saveQuery, SavedQuery, untickBlanks, untickClashes } from '../../services/query/query-store';
+import { cleanViewName, getQuery, guessViewName, shortViewName, VIEW_NAME_MAX, MAX_QUERY_VIEWS, moveView, moveViewFirst, nameViews, newSourceId, nextRunName, QuerySource, renameView, runName, saveQuery, SavedQuery, untickBlanks, untickClashes } from '../../services/query/query-store';
 import { columnTypes, spread, TYPE_SAMPLE, type ColumnType } from '../../services/query/column-types';
 import { CALC_VIEW, QUERY_JOIN_KINDS } from '../../services/query/query-types';
 import { comparableRuns, type RequestTemplates, type RunHeaderValue } from '../../services/compare/compare-runs';
@@ -36,7 +36,7 @@ import { alignCompareJoins, groupCompare, MAX_COMPARE_VIEWS, queryCompare, runJo
 import { passes, rowStatus, statusCounts, type RowStatus, type StatusFilter } from '../../services/query/query-status';
 import { lookupsIn } from '../../services/column-functions/column-functions';
 import type { LookupTablesReader, LookupTableSummary } from '../../services/lookup-tables/lookup-tables';
-import type { ColumnRef, QueryFn, QueryJoin, QueryJoinKind, QueryJoinStats, QuerySpec } from '../../services/query/query-types';
+import type { ColumnRef, QueryFn, QueryJoin, QueryJoinKind, QueryJoinStats, QueryKey, QuerySpec } from '../../services/query/query-types';
 import { ConsoleExportService } from '../../services/console/export.service';
 import type { ColumnDefinition } from '../../types/console-messages';
 import { ConsoleChainHandler } from '../console/console-chain-handler';
@@ -310,12 +310,32 @@ export class QueryController {
                     // Views read the same way compare as one: made a Compare, they come in; the key is picked once
                     groupCompare(q.joins, this.shapes(q), madeCompare);
                     // (a pair said twice, as quick picks can send it, once)
-                    q.joins.forEach(j => { const seen = new Set<string>(); j.on = j.on.filter(p => { const k = JSON.stringify([p.left, p.right]); return !seen.has(k) && !!seen.add(k); }); });
+                    // (in a compare, a key column said twice is one: the copy with its own column picked stays)
+                    const said = (k: QueryKey): string => JSON.stringify(k.parts.map(x => [x.view, x.column, x.fns?.length ? x.fns : []]));
+                    q.joins.forEach(j => {
+                        const seen = new Map<string, number>();
+                        const kept: typeof j.on = [];
+                        for (const p of j.on) {
+                            const k = j.kind === 'compare' ? said(p.left) : said(p.left) + said(p.right);
+                            const at = seen.get(k);
+                            if (at === undefined) { seen.set(k, kept.length); kept.push(p); continue; }
+                            if (!kept[at].right.parts.some(x => x.column) && p.right.parts.some(x => x.column)) kept[at] = p;
+                        }
+                        j.on = kept;
+                    });
                 });
                 // Delete join (the join-type menu): the views go back to not joined, out of the report until joined again
                 case 'query.deleteJoin': return await this.change(q => {
                     const gone = new Set((Array.isArray(message.views) ? message.views : [message.view]).map(String));
                     q.joins.forEach(j => { if (gone.has(j.view)) { j.kind = 'left'; j.on = []; } });
+                    // A run is only ever compared with its first run: out of the compare, it is a view of its own
+                    q.sources.forEach(x => {
+                        if (!gone.has(x.id) || !x.runOf) return;
+                        const head = q.sources.find(h => h.id === x.runOf);
+                        delete x.runOf;
+                        delete x.run;
+                        x.name = guessViewName(head?.name ?? x.name, q.sources.filter(o => o !== x).map(o => o.name));
+                    });
                     alignCompareJoins(q.joins, runsOf(q));
                 });
                 // The report's columns, in Results' order: each a view's column with its functions, a compared column's cells sharing a group
@@ -461,8 +481,7 @@ export class QueryController {
     }
 
     private async addView(message: { endpointId: string; executionId: string; view: string }): Promise<void> {
-        const source = await this.sourceFor(message, []);
-        if (source) await this.attach(source);
+        await this.addViews([message]);
     }
 
     /**
@@ -478,6 +497,16 @@ export class QueryController {
             if (source) sources.push(source);
         }
         if (!sources.length) return;
+        // Results of one endpoint through one View are runs of one view (BL, C1...), as in the mock: compared on its key, picked once
+        const inCompare = (): number => (queryCompare(query.joins, query.sources[0]?.id)?.views.length ?? 1) + sources.filter(x => x.runOf && !query.joins.some(j => j.view === x.id)).length;
+        sources.forEach(source => {
+            const head = [...query.sources, ...sources].find(x => x !== source && !x.runOf && !x.file && x.endpointId === source.endpointId && (x.view ?? '') === (source.view ?? ''));
+            if (!head || sources.indexOf(head) > sources.indexOf(source) || inCompare() >= MAX_COMPARE_VIEWS) return;
+            const label = nextRunName({ sources: [...query.sources, ...sources] }, head.id);
+            source.runOf = head.id;
+            source.run = label;
+            source.name = guessViewName(`${head.name.slice(0, VIEW_NAME_MAX - label.length - 1)}_${label}`, [...query.sources, ...sources].filter(x => x !== source).map(x => x.name));
+        });
         const firstEver = query.sources.length === 0;
         await this.change(q => { q.sources.push(...sources); }, false);
         this.postState({ reading: true });
@@ -491,6 +520,12 @@ export class QueryController {
         await this.change(q => {
             sources.forEach((source, i) => {
                 if (!q.sources.includes(source) || (firstEver && i === 0)) return;
+                if (source.runOf) {
+                    // A run: matched with its first run on the compare's key ("sku, the same"); its columns sit in the view's compared ones
+                    q.joins.push(runJoin(q.joins, source.id, source.runOf));
+                    alignCompareJoins(q.joins, runsOf(q));
+                    return;
+                }
                 q.joins.push({ view: source.id, kind: 'left', on: [] });
                 const mine = this.loaded.get(source.id)?.columns ?? [];
                 const taken = new Set(q.sources.filter(s => s !== source).flatMap(s => this.loaded.get(s.id)?.columns ?? []));
@@ -517,7 +552,8 @@ export class QueryController {
         const endpointName = endpoint?.name || run.endpointName || 'Endpoint';
         // Named after its View, or its endpoint when the View's name says nothing ("Default")
         const plain = !message.view || /^(default|root|view)$/i.test(message.view.trim());
-        const base = plain ? endpointName : message.view;
+        const path = endpoint?.path || run.endpointPath || '';
+        const base = plain ? shortViewName(endpointName, path) : message.view;
         const name = guessViewName(base, all.map(s => s.name));
         const source: QuerySource = {
             id: newSourceId(), name, endpointId: message.endpointId, endpointName, view: message.view,

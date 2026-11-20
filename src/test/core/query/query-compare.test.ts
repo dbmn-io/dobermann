@@ -11,7 +11,7 @@ import initSqlJs from 'sql.js';
 import type { SqlJsStatic } from 'sql.js';
 import { QuerySession } from '../../../services/query/query-engine';
 import { alignCompareJoins, groupCompare, isCompare, queryCompare, runJoin } from '../../../services/query/query-compare';
-import { nextRunName, runName } from '../../../services/query/query-store';
+import { nextRunName, runName, shortViewName } from '../../../services/query/query-store';
 import type { QuerySource } from '../../../services/query/query-store';
 import { compareKeySql, defaultColumns, formulaColumns, lookupsUsed, resultColumns, writeSql } from '../../../services/query/query-sql';
 import { passes, rowStatus, statusCounts } from '../../../services/query/query-status';
@@ -85,6 +85,12 @@ describe('A compare inside Query', () => {
         assert.strictEqual(s.joinStats(1).rowsAfter, 4);
         assert.strictEqual(s.count(), 4);
         s.close();
+    });
+
+    it('names a view from its endpoint so it fits a slot: the part after a dash, no verb; else its path', () => {
+        assert.strictEqual(shortViewName('Playground \u2013 List Inventory', '/inventory'), 'Inventory');
+        assert.strictEqual(shortViewName('Compare Stock', '/inventory/export'), 'Compare Stock');
+        assert.strictEqual(shortViewName('Warehouse stock positions by location', '/stock-levels/{site}'), 'StockLevels');
     });
 
     it('groups views read the same way: making a join a Compare brings them in, and the key is picked once', () => {

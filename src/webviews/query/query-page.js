@@ -1731,7 +1731,11 @@
         showKind(m.compare);
         if (!m.statusPlaces) { ui.filter = { kinds: null, columns: [], relations: null, hidden: [] }; ui.diffsOnly = false; }
         compareResults.renderTools();
-        m.joins.forEach(j => (drafts[j.view] || []).forEach(p => { if (m.views.some(v => v.id === p.left.view)) j.on.push(p); }));
+        // (a draft the host has made whole, as it does a run's side, is not added again)
+        m.joins.forEach(j => (drafts[j.view] || []).forEach(p => {
+            const had = p.left.column && j.on.some(x => x.left && x.left.view === p.left.view && x.left.column === p.left.column);
+            if (!had && m.views.some(v => v.id === p.left.view)) j.on.push(p);
+        }));
         if (!m.reading) { ui.busy = ''; ui.settled = true; }
         $('queryDistinct').checked = !!m.distinct;
         $('queryDistinct').disabled = !!m.ownSql;
