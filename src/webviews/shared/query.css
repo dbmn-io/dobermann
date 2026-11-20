@@ -339,3 +339,6 @@
 .query-compare-repeat { display: inline-flex; align-items: center; gap: 3px; font-size: 11.5px; margin-right: auto; }
 .query-compare-verdict .query-lead { flex: 1 1 auto; max-width: none; }
 .query-compare-repeat-note { margin: 4px 0 0; font-size: 12px; white-space: normal; text-align: left; }
+/* (Compare's toggles in Query's toolbar: side by side, as on Compare) */
+.query-status-tools .toggle-group { display: inline-flex; flex-direction: row; flex-wrap: nowrap; }
+.query-status-tools .toggle-btn { white-space: nowrap; }

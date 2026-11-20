@@ -14,7 +14,7 @@ import { alignCompareJoins, isCompare, queryCompare, runJoin } from '../../../se
 import { nextRunName, runName } from '../../../services/query/query-store';
 import type { QuerySource } from '../../../services/query/query-store';
 import { compareKeySql, defaultColumns, formulaColumns, lookupsUsed, resultColumns, writeSql } from '../../../services/query/query-sql';
-import { rowStatus } from '../../../services/query/query-status';
+import { passes, rowStatus, statusCounts } from '../../../services/query/query-status';
 import { resolvePath, shortRef } from '../../../services/query/formula';
 import type { QueryJoin, QueryKey, QuerySpec } from '../../../services/query/query-types';
 import { SQL_WASM_PATH } from '../fixtures/temp-storage';
@@ -122,16 +122,29 @@ describe('A compare inside Query', () => {
             assert.deepStrictEqual(keys.map(k => k.view), ['stk', 'itm', 'cnt']);
             const out = s.rows({ extra: keys.map(k => k.sql) });
             const rows = out.rows.map(r => r.slice(0, columns.length));
-            const present = out.rows.map(r => r.slice(columns.length).map(Number));
+            const keyValues = out.rows.map(r => r.slice(columns.length));
             const names: Record<string, string> = { stk: 'Stock', itm: 'Items', cnt: 'Counts' };
-            const status = rowStatus(columns, rows, keys.map(k => names[k.view]), present, v => names[v])!;
+            const places = keys.map(k => names[k.view]);
+            const status = rowStatus(columns, rows, places, keyValues, v => names[v])!;
             const bySku = new Map(rows.map((r, i) => [r[0] ?? '-', status.rows[i]]));
-            assert.deepStrictEqual(bySku.get('A'), { diff: [], missing: [] });
+            assert.deepStrictEqual(bySku.get('A'), { diff: [], missing: [], groups: [], relation: 'oneToOne' });
             // B: Items has another qty; the count has no B
-            assert.deepStrictEqual(bySku.get('B'), { diff: ['Items'], missing: ['Counts'] });
+            assert.deepStrictEqual(bySku.get('B'), { diff: ['Items'], missing: ['Counts'], groups: ['qty'], relation: 'onlyBase' });
             // C: only the count has it
-            assert.deepStrictEqual(bySku.get('-'), { diff: [], missing: ['Stock', 'Items'] });
+            assert.deepStrictEqual(bySku.get('-'), { diff: [], missing: ['Stock', 'Items'], groups: [], relation: 'onlyOther' });
             assert.deepStrictEqual(status.places, ['Stock', 'Items', 'Counts']);
+            // Filters as Compare's: DIFF ticked alone, Missing in Counts alone, the qty column's DIFFs
+            const kept = (f: Parameters<typeof passes>[1]) => rows.filter((_, i) => passes(status.rows[i], f)).map(r => r[0] ?? '-').sort();
+            assert.deepStrictEqual(kept({ kinds: ['diff'] }), ['B']);
+            assert.deepStrictEqual(kept({ kinds: ['missing:Counts'] }), ['B']);
+            assert.deepStrictEqual(kept({ kinds: ['same'] }), ['A']);
+            assert.deepStrictEqual(kept({ columns: ['qty'] }), ['B']);
+            assert.deepStrictEqual(kept({ relations: ['onlyOther'] }), ['-']);
+            const counts = statusCounts(status.rows, rows.map((_, i) => i));
+            assert.deepStrictEqual([counts.diff, counts.same, counts.missing.Counts, counts.columns.qty], [1, 1, 1, 1]);
+            // Items hidden: B's qty differs only in Items, so it is no longer DIFF
+            const hid = rowStatus(columns, rows, places, keyValues, v => names[v], ['Items'])!;
+            assert.deepStrictEqual(hid.rows[rows.findIndex(r => r[0] === 'B')].diff, []);
             s.close();
         });
         it('a COMPARE calculation is a column per side in Results, under its name', () => {
@@ -143,7 +156,13 @@ describe('A compare inside Query', () => {
             };
             assert.deepStrictEqual(resultColumns(spec), [{ view: 'stk', column: 'sku' }, { view: '', column: 'qty 1', group: 'qty' }, { view: '', column: 'qty 2', group: 'qty' }]);
             const st = rowStatus(resultColumns(spec), [['A', 5, 5], ['B', 5, 3]], [], [], v => v)!;
-            assert.deepStrictEqual(st.rows, [{ diff: [], missing: [] }, { diff: ['2'], missing: [] }]);
+            assert.deepStrictEqual(st.rows, [{ diff: [], missing: [], groups: [] }, { diff: ['2'], missing: [], groups: ['qty'] }]);
+        });
+        it('a key on more than one row: one to many, and where it repeats', () => {
+            const cols = [{ view: 'a', column: 'k' }, { view: 'a', column: 'q', group: 'q' }, { view: 'b', column: 'q', group: 'q' }];
+            const st = rowStatus(cols, [['X', 1, 1], ['X', 1, 2], ['Y', 3, 3]], ['A', 'B'], [['X', 'X'], ['X', 'X'], ['Y', 'Y']], v => v.toUpperCase())!;
+            assert.deepStrictEqual(st.rows.map(r => r.relation), ['oneToMany', 'oneToMany', 'oneToOne']);
+            assert.deepStrictEqual(st.rows[0].repeated, ['A', 'B']);
         });
         it('nothing compared: no status', () => {
             assert.strictEqual(rowStatus([{ view: 'stk', column: 'sku' }], [['A']], [], [], v => v), undefined);

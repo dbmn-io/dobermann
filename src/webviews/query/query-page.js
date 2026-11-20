@@ -58,6 +58,10 @@
         search: '',
         sort: null,         // { column, dir }
         totals: false,      // a total under each column of numbers
+        // A compare's Results (query-compare-results.js): Compare's filters, its view, Diffs
+        filter: { kinds: null, columns: [], relations: null, hidden: [] },
+        resultsView: 'side',
+        diffsOnly: false,
         rows: [],           // Results' rows loaded so far
         shown: 0,
         total: 0,
@@ -301,7 +305,15 @@
             // Columns and Results a slot is the heading its lane hangs under, and nothing more
             const edit = ui.step <= 2;
             box.dataset.view = v.id;
-            const inner = el(edit ? 'button' : 'div', 'compare-result-btn');
+            // On Results, in a compare: a result's menu (Hide, Make Baseline, Open in the Console)
+            const onResults = !edit && ui.step === 4 && hasStatus();
+            const inner = el(edit || onResults ? 'button' : 'div', 'compare-result-btn');
+            if (onResults) {
+                inner.type = 'button';
+                inner.setAttribute('aria-haspopup', 'menu');
+                inner.addEventListener('click', event => compareResults.slotMenu(event, v));
+                if (ui.filter.hidden.includes(v.run || v.name)) box.classList.add('is-off');
+            }
             if (edit) {
                 inner.type = 'button';
                 inner.setAttribute('aria-haspopup', 'menu');
@@ -1394,46 +1406,49 @@
     };
 
     function colId(c) { return `${c.view}:${c.column}`; }
-    function columnsKey() { return resultCols().map(c => `${colId(c)}#${c.type || ''}#${c.group || ''}`).join('\u0001') + (ui.state && ui.state.ownSql ? '\u0002own' : '') + (hasStatus() ? '\u0002status' : '') + (ui.diffsOnly ? `\u0002diffs:${(ui.diffGroups || []).join(',')}` : ''); }
+    function columnsKey() {
+        // (a compare's headings carry its filters and counts: they are drawn again when either changes)
+        const compare = hasStatus() ? `\u0002status:${JSON.stringify([ui.filter, ui.resultsView, ui.diffsOnly, ui.counts && ui.counts.columns, ui.counts && ui.counts.relations])}` : '';
+        return resultCols().map(c => `${colId(c)}#${c.type || ''}#${c.group || ''}`).join('\u0001') + (ui.state && ui.state.ownSql ? '\u0002own' : '') + compare;
+    }
 
     /** The table's columns: each in its view's colour, the same name in two views saying whose it is. */
+    const compareResults = window.QueryCompareResults.create({
+        el, ui, post, view, views, colour, count, hasStatus: () => hasStatus(),
+        reload: () => loadRows(),
+        redraw: () => { grid.key = ''; drawTable(); loadRows(true); },
+        renderSlots: () => renderTop()
+    });
+
     /** Where a column of Results is, for its status: its run (BL, C1…), its view, or a COMPARE side's number. */
     function placeOf(c) {
         if (!c.view) { const m = / (\d+)$/.exec(c.column); return m ? m[1] : c.column; }
         const v = view(c.view);
         return v ? (v.run || v.name) : c.view;
     }
-    /** A row's status as Compare shows it: DIFF and the places that differ, Missing and the places without the record, or Same. */
-    function statusNode(st) {
-        const box = el('span', 'compare-status');
-        if (!st) return box;
-        const many = ((ui.state && ui.state.statusPlaces) || []).length > 2;
-        const tag = p => el('span', 'compare-tag query-status-tag', p);
-        if (st.diff.length) {
-            const g = el('span', 'compare-status-group');
-            g.appendChild(el('span', 'status-pill-generic compare-diff', 'DIFF'));
-            if (many) st.diff.forEach(p => g.appendChild(tag(p)));
-            box.appendChild(g);
-        }
-        if (st.missing.length) {
-            const g = el('span', 'compare-status-group');
-            g.appendChild(el('span', 'status-pill-generic compare-missing', 'Missing'));
-            st.missing.forEach(p => g.appendChild(tag(p)));
-            box.appendChild(g);
-        }
-        if (!st.diff.length && !st.missing.length) box.appendChild(el('span', 'status-pill-generic compare-same', 'Same'));
-        return box;
-    }
     function hasStatus() { return !!(ui.state && ui.state.statusPlaces && !ui.state.ownSql); }
     function tableColumns() {
         const all = resultCols();
         const groupSize = new Map();
         all.forEach(c => { if (c.group) groupSize.set(c.group, (groupSize.get(c.group) || 0) + 1); });
-        // Diffs: a compared column no row differs in is hidden, from view only
-        const columns = ui.diffsOnly && ui.diffGroups ? all.filter(c => !(c.group && groupSize.get(c.group) > 1) || ui.diffGroups.includes(c.group)) : all;
+        const compared = c => !!(c.group && groupSize.get(c.group) > 1);
+        const status = hasStatus();
+        // Diffs: a compared column no row differs in is hidden; a hidden result's cells too (from view only)
+        const differs = ((ui.counts || {}).columns) || {};
+        let columns = all.filter(c => !(status && ui.diffsOnly && compared(c) && !differs[c.group]) && !(status && compared(c) && ui.filter.hidden.includes(placeOf(c))));
+        // Compact: each compared column in one cell
+        if (status && ui.resultsView === 'compact') {
+            const seen = new Set();
+            columns = columns.filter(c => { if (!compared(c)) return true; if (seen.has(c.group)) return false; seen.add(c.group); return true; })
+                .map(c => (compared(c) ? Object.assign({ compact: true }, c) : c));
+        }
         const names = columns.map(c => c.column);
-        const status = hasStatus() ? [{ id: '__status', name: 'Status', pinned: true, sortable: false, className: 'compare-status-cell', render: (_v, row) => statusNode(row.__status) }] : [];
-        return status.concat(columns.map(c => {
+        const lead = status ? compareResults.leadColumns() : [];
+        return lead.concat(columns.map(c => {
+            if (c.compact) {
+                const cells = all.filter(x => x.group === c.group);
+                return { id: `compact:${c.group}`, name: c.group, className: 'compare-first', head: th => compareResults.groupHead(th, c.group), render: () => '', cell: (td, _v, row) => compareResults.compactCell(td, row, cells, placeOf, colId) };
+            }
             // A compared column: its name over its cells, each headed by its place; a cell that differs in its place's tint
             if (c.group && groupSize.get(c.group) > 1) {
                 // Its value differs from the first cell of its own column (a place without the record is Missing, not different)
@@ -1444,7 +1459,7 @@
                 const tint = c.view ? colour(c.view) : `compare-r${Math.max(0, (Number(placeOf(c)) || 1) - 1) % 4}`;
                 return {
                     id: colId(c), name: placeOf(c), className: `compare-sub ${tint}`, numbers: c.type === 'number',
-                    group: { id: `group:${c.group}`, name: c.group },
+                    group: { id: `group:${c.group}`, name: c.group, head: th => compareResults.groupHead(th, c.group) },
                     cell: (td, v, row) => {
                         const missing = row.__status && (row.__status.missing.includes(placeOf(c)) || row.__status.missing.includes(placeOf(first)));
                         td.classList.toggle('compare-differs', colId(c) !== firstId && !missing && text(v) !== text(row[firstId]));
@@ -1485,7 +1500,7 @@
     /** One page of rows, asked of the host: the answer comes back as query.rowsData. */
     function page(start, limit) {
         const id = ++grid.asked;
-        post({ type: 'query.rows', seq: id, offset: start, limit, search: ui.search, sort: ui.sort, totals: ui.totals, status: hasStatus() ? ui.statusFilter || '' : '' });
+        post({ type: 'query.rows', seq: id, offset: start, limit, search: ui.search, sort: ui.sort, totals: ui.totals, ...(hasStatus() ? { filter: ui.filter } : {}) });
         return new Promise(resolve => grid.waiting.set(id, { resolve, ids: resultCols().map(colId) }));
     }
 
@@ -1521,15 +1536,15 @@
         ui.shownExact = m.shown === m.total ? `${count(m.total)} rows` : `${count(m.shown)} of ${count(m.total)} rows`;
         ui.arrived = true;
         renderBar();
-        // With compared columns: which differ in any row found (for Diffs), and how many rows of each status (for the Status menu)
-        if (m.offset === 0 && m.statusCounts) {
-            ui.statusCounts = m.statusCounts;
-            const was = (ui.diffGroups || []).join(',');
-            ui.diffGroups = m.diffGroups || [];
-            renderStatusTools();
-            if (ui.diffsOnly && was !== ui.diffGroups.join(',')) setTimeout(() => { drawTable(); }, 0);
+        // A compare's counts (every control's): its headings are drawn again when they change
+        if (m.offset === 0 && m.counts) {
+            const was = columnsKey();
+            ui.counts = m.counts;
+            ui.countsAll = m.countsAll;
+            compareResults.renderTools();
+            if (columnsKey() !== was) setTimeout(() => { drawTable(); }, 0);
         }
-        asked.resolve({ rows: m.rows.map((r, n) => { const row = {}; asked.ids.forEach((id, i) => { row[id] = r[i]; }); if (m.status) row.__status = m.status[n]; return row; }), total: m.shown });
+        asked.resolve({ rows: m.rows.map((r, n) => { const row = {}; asked.ids.forEach((id, i) => { row[id] = r[i]; }); if (m.status) { row.__status = m.status[n]; row.__index = m.index[n]; } return row; }), total: m.shown });
     }
 
     function moved(list, from, to) { list.splice(to, 0, list.splice(from, 1)[0]); return list; }
@@ -1545,7 +1560,8 @@
             setBusy(`Sorting ${count(ui.shown)} rows…`);
         } else if (detail.change === 'moved' && (hasStatus() || resultCols().some(c => c.group))) {
             // Groups move as one: the report's columns in the table's new order (a COMPARE calculation's sides are one)
-            const order = (table.columns || []).map(c => c.id).filter(id => id !== '__status');
+            const order = (table.columns || []).map(c => c.id).filter(id => id !== '__status' && id !== '__relation')
+                .flatMap(id => (id.indexOf('compact:') === 0 ? resultCols().filter(c => c.group === id.slice(8)).map(colId) : [id]));
             const byId = new Map(resultCols().map(c => [colId(c), c]));
             const seen = new Set();
             const select = [];
@@ -1646,8 +1662,8 @@
         ui.state = m;
         showName(m.name);
         showKind(m.compare);
-        if (!m.statusPlaces) { ui.statusFilter = ''; ui.diffsOnly = false; }
-        renderStatusTools();
+        if (!m.statusPlaces) { ui.filter = { kinds: null, columns: [], relations: null, hidden: [] }; ui.diffsOnly = false; }
+        compareResults.renderTools();
         m.joins.forEach(j => (drafts[j.view] || []).forEach(p => { if (m.views.some(v => v.id === p.left.view)) j.on.push(p); }));
         if (!m.reading) { ui.busy = ''; ui.settled = true; }
         $('queryDistinct').checked = !!m.distinct;
@@ -1722,24 +1738,6 @@
         $('queryAddFile').value = '';
         if (file) sendFile(file, { type: 'query.addFile' });
     });
-    /** Results' Status menu (all, DIFF, Same, Missing in each place, with their counts) and Diffs, shown when something is compared. */
-    function renderStatusTools() {
-        const box = $('queryStatusTools');
-        if (!box) return;
-        box.hidden = !hasStatus();
-        if (box.hidden) return;
-        const counts = ui.statusCounts || {};
-        const sel = $('queryStatus');
-        const places = (ui.state && ui.state.statusPlaces) || [];
-        const options = [['', 'All rows', counts.all], ['diff', 'DIFF', counts.diff], ['same', 'Same', counts.same]]
-            .concat(places.filter(p => counts[`missing:${p}`]).map(p => [`missing:${p}`, `Missing in ${p}`, counts[`missing:${p}`]]));
-        sel.replaceChildren(...options.map(([value, label, n]) => { const o = el('option', '', n === undefined ? label : `${label} (${count(n)})`); o.value = value; return o; }));
-        sel.value = options.some(o => o[0] === (ui.statusFilter || '')) ? (ui.statusFilter || '') : '';
-        $('queryDiffs').setAttribute('aria-pressed', String(!!ui.diffsOnly));
-    }
-    $('queryStatus').addEventListener('change', () => { ui.statusFilter = $('queryStatus').value; loadRows(); });
-    $('queryDiffs').addEventListener('click', () => { ui.diffsOnly = !ui.diffsOnly; renderStatusTools(); loadRows(true); });
-
     $('queryTotals').addEventListener('change', () => {
         ui.totals = $('queryTotals').checked;
         post({ type: 'query.totals', on: ui.totals });
@@ -1796,6 +1794,10 @@
     }
     $('queryName').addEventListener('dbmn-name-change', event => post({ type: 'query.rename', name: event.detail.name }));
 
+    // A compare's record: a row's click, or a right-click anywhere on it
+    table.addEventListener('dbmn-table-row', event => { if (hasStatus()) compareResults.openRecord(event.detail.row); });
+    table.addEventListener('dbmn-table-row-menu', event => { if (hasStatus()) compareResults.openRecord(event.detail.row); });
+
     // The table says what was done to its headings (sorted, moved, removed, resized)
     table.addEventListener('dbmn-table-layout', event => tableChanged(event.detail));
 
@@ -1836,6 +1838,7 @@
             case 'query.idle': setBusy(''); break;
             case 'query.fnSample': if (ui.fnSample) ui.fnSample(m); break;
             case 'query.calcCheck': if (ui.calcCheck) ui.calcCheck(m); break;
+            case 'query.recordDetail': compareResults.recordDetail(m); break;
             case 'query.viewRowsData': if (ui.viewRows) ui.viewRows(m); break;
             case 'query.error':
                 // A sort that failed leaves the table as it was

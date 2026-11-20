@@ -244,8 +244,9 @@ export function resultColumns(spec: QuerySpec): ColumnRef[] {
 }
 
 /**
- * What a row's status needs that Results may not show: for each view in the compare, whether the
- * row has its record (its key, not blank). In the compare's order, the Baseline first.
+ * What a row's status needs that Results may not show: each view of the compare's key in the row
+ * (blank: it hasn't the record), the Baseline first. `sql` reads it in the query; `own` reads it
+ * from the view's table alone (the record window's).
  */
 export function compareKeySql(spec: QuerySpec): { view: string; sql: string }[] {
     const joins = spec.joins.filter(j => j.kind === 'compare');
@@ -254,8 +255,8 @@ export function compareKeySql(spec: QuerySpec): { view: string; sql: string }[] 
     const names = refNames(spec.views);
     const baseline = first.on[0].left;
     return [
-        { view: baseline.parts[0]?.view ?? '', sql: `CASE WHEN ${keySql(baseline, names)} IS NULL THEN 0 ELSE 1 END` },
-        ...joins.filter(j => j.on[0]).map(j => ({ view: j.view, sql: `CASE WHEN ${keySql(j.on[0].right, names)} IS NULL THEN 0 ELSE 1 END` }))
+        { view: baseline.parts[0]?.view ?? '', sql: keySql(baseline, names) },
+        ...joins.filter(j => j.on[0]).map(j => ({ view: j.view, sql: keySql(j.on[0].right, names) }))
     ];
 }
 

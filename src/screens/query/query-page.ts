@@ -57,11 +57,20 @@ export function buildQueryPage(asset: AssetUrl, config: { queryId: string; name:
                 </div>
                 <!-- Offered only when rows repeat: it says how many -->
                 <label class="query-row font-size-12 hidden" id="queryDistinctLabel" title="SELECT DISTINCT: rows alike in every column shown fold into one"><input type="checkbox" id="queryDistinct"> <span id="queryDistinctText">Distinct</span></label>
-                <!-- With compared columns, Compare's: which rows (Status), and Diffs, hiding the compared columns no row differs in -->
-                <span id="queryStatusTools" class="query-status-tools" hidden>
-                    <select id="queryStatus" aria-label="Rows by status" title="Show rows by status: DIFF, Same, or Missing in a view"></select>
-                    <button type="button" class="toggle-btn" id="queryDiffs" aria-pressed="false" title="Hide the compared columns no row differs in">Diffs</button>
+                <!-- A compare's Results, as Compare's (query-compare-results.js): the view, the columns shown, clear filters -->
+                <span id="queryStatusTools" class="query-status-tools compare-results-controls" hidden>
+                    <div class="toggle-group compare-view-toggle" role="group" aria-label="View">
+                        <button type="button" class="toggle-btn active" id="queryViewSide" aria-pressed="true" title="A column per result under each compared column">Side by side</button>
+                        <button type="button" class="toggle-btn" id="queryViewCompact" aria-pressed="false" title="One column each; values that differ in a pill">Compact</button>
+                    </div>
+                    <div class="toggle-group compare-view-toggle" role="group" aria-label="Columns shown">
+                        <button type="button" class="toggle-btn active" id="queryColsAll" aria-pressed="true" title="Every column">All columns</button>
+                        <button type="button" class="toggle-btn" id="queryColsChanged" aria-pressed="false" title="Hide the compared columns no row differs in">Diffs</button>
+                    </div>
+                    <button type="button" class="compare-tool-btn icon" id="queryClearFilters" title="No filters on" aria-label="Clear all filters" data-icon="funnel" disabled></button>
                 </span>
+                <div id="queryStatusMenu" class="export-dropdown compare-status-menu" role="dialog" aria-label="Filter Status"></div>
+                <div id="queryRelationMenu" class="export-dropdown compare-status-menu" role="dialog" aria-label="Filter relationship"></div>
                 <label class="query-row font-size-12" title="A total under each column of numbers, for the rows shown"><input type="checkbox" id="queryTotals"> Totals</label>
                 <button type="button" class="compare-tool-btn icon" id="querySqlBtn" data-click="query:toggleSql" aria-expanded="false" title="The SQL: read it, or write your own" aria-label="The SQL" data-icon="braces"></button>
                 <button type="button" id="queryChainBtn" class="export-button" data-click="query:chain" title="Send these rows to another API as its Run Batch input">Chain <span class="inline-icon" data-icon="chevron-right"></span></button>
@@ -145,6 +154,7 @@ export function buildQueryPage(asset: AssetUrl, config: { queryId: string; name:
     ${script('console/modules/console-chain.js')}
     <script src="${asset('query/query-columns.js')}"></script>
     <script src="${asset('query/query-calc.js')}"></script>
+    <script src="${asset('query/query-compare-results.js')}"></script>
     <script src="${asset('query/query-page.js')}" data-query-id="${attr(config.queryId)}"></script>
 </body>
 </html>`;

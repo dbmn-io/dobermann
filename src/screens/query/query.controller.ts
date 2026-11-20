@@ -32,7 +32,7 @@ import { cleanViewName, getQuery, guessViewName, VIEW_NAME_MAX, MAX_QUERY_VIEWS,
 import { columnTypes, spread, TYPE_SAMPLE, type ColumnType } from '../../services/query/column-types';
 import { CALC_VIEW, QUERY_JOIN_KINDS } from '../../services/query/query-types';
 import { alignCompareJoins, MAX_COMPARE_VIEWS, queryCompare, runJoin } from '../../services/query/query-compare';
-import { rowStatus, type RowStatus } from '../../services/query/query-status';
+import { passes, rowStatus, statusCounts, type RowStatus, type StatusFilter } from '../../services/query/query-status';
 import { lookupsIn } from '../../services/column-functions/column-functions';
 import type { LookupTablesReader, LookupTableSummary } from '../../services/lookup-tables/lookup-tables';
 import type { ColumnRef, QueryFn, QueryJoin, QueryJoinKind, QueryJoinStats, QuerySpec } from '../../services/query/query-types';
@@ -117,12 +117,12 @@ export class QueryController {
     private sessionKey = '';
     /** Every row of the query as it stands, read once and windowed for the page. */
     private result: QueryResult | undefined;
-    private filtered: { key: string; indices: number[] } | undefined;
+    private filtered: { key: string; indices: number[]; searched?: number[] } | undefined;
     private searchSeq = 0;
     /** Counts each change: work for an older one is dropped. */
     private version = 0;
     /** Results as the page last asked for it: what Chain sends. */
-    private shown: Pick<RowsRequest, 'search' | 'sort'> = {};
+    private shown: Pick<RowsRequest, 'search' | 'sort' | 'filter'> = {};
     /**
      * Chain, the Console's own (its handler here, its dialog on the page): Results' rows become a
      * Run Batch's input. A link needs a run to come from, so it is the first view's.
@@ -309,6 +309,19 @@ export class QueryController {
                 case 'query.setSql': return await this.setSql(String(message.sql ?? ''));
                 case 'query.latest': return await this.useLatest(String(message.id));
                 case 'query.viewRows': return this.viewRows(String(message.id), String(message.search ?? ''), Number(message.seq));
+                // Make Baseline (Results' slot menu, a run of the Baseline's view): the two runs swap their results; what is built on BL stays as it is
+                case 'query.makeBaseline': return await this.change(q => {
+                    const run = q.sources.find(x => x.id === String(message.id));
+                    const head = run?.runOf ? q.sources.find(x => x.id === run.runOf) : undefined;
+                    if (!run || !head) return;
+                    const fields = ['executionId', 'isBatch', 'environment', 'executedAt'] as const;
+                    const keep = fields.map(f => head[f]);
+                    fields.forEach((f, i) => { (head as unknown as Record<string, unknown>)[f] = run[f]; (run as unknown as Record<string, unknown>)[f] = keep[i]; });
+                    this.loaded.delete(head.id);
+                    this.loaded.delete(run.id);
+                    this.result = undefined;
+                });
+                case 'query.record': return await this.record(Number(message.index), Array.isArray(message.hidden) ? (message.hidden as string[]).map(String) : []);
                 case 'query.openLookup': {
                     const id = String(message.id ?? '');
                     if (id && this.ports.openLookup) await this.ports.openLookup(id);
@@ -1061,7 +1074,7 @@ export class QueryController {
 
     /** One window of Results' rows, after the search and the sort. */
     private async rows(message: RowsRequest): Promise<void> {
-        this.shown = { search: message.search, sort: message.sort };
+        this.shown = { search: message.search, sort: message.sort, filter: message.filter };
         const found = await this.found(message);
         if (found === null) return;
         if (!found) {
@@ -1069,13 +1082,15 @@ export class QueryController {
             return;
         }
         const { result, indices } = found;
+        void result;
         const offset = Math.max(0, Math.floor(Number(message.offset) || 0));
         const limit = Math.min(1000, Math.max(1, Math.floor(Number(message.limit) || 200)));
         this.post({
             type: 'query.rowsData', seq: message.seq, offset,
             rows: indices.slice(offset, offset + limit).map(i => result.rows[i]),
-            ...(result.status ? { status: indices.slice(offset, offset + limit).map(i => result.status![i]) } : {}),
-            ...(result.status && offset === 0 ? statusSummary(result, indices) : {}),
+            ...(found.statuses ? { status: indices.slice(offset, offset + limit).map(i => found.statuses![i]), index: indices.slice(offset, offset + limit) } : {}),
+            // Every control's counts: among the rows the search finds, and among them all
+            ...(found.statuses && offset === 0 ? { counts: statusCounts(found.statuses, found.searched ?? indices), countsAll: statusCounts(found.statuses, found.statuses.map((_, i) => i)) } : {}),
             shown: indices.length, total: result.rows.length,
             ...(message.totals && offset === 0 ? this.totals(result, indices) : {})
         });
@@ -1184,7 +1199,7 @@ export class QueryController {
      * Results' rows after the search and the sort, as row numbers. Undefined: the query cannot
      * run yet. Null: a newer search took over.
      */
-    private async found(message: Pick<RowsRequest, 'search' | 'sort' | 'status'>): Promise<{ result: QueryResult; indices: number[] } | undefined | null> {
+    private async found(message: Pick<RowsRequest, 'search' | 'sort' | 'filter'>): Promise<{ result: QueryResult; indices: number[]; searched?: number[]; statuses?: RowStatus[] } | undefined | null> {
         const session = this.session;
         const { spec } = this.spec();
         if (!session || !spec.views.length) return undefined;
@@ -1208,19 +1223,13 @@ export class QueryController {
                 await saveQuery(this.ports.state, query);
             }
         }
-        // Status: DIFF, Same, or Missing in a view of the compare (Results' Status filter)
-        const status = result.status ? String(message.status ?? '') : '';
-        const key = JSON.stringify([search, sort, status]);
+        // Compare's filters: Status ticks, a compared column's DIFF pill, relations; a hidden result left out of every status
+        const filter: StatusFilter = result.statusOf ? (message.filter ?? {}) : {};
+        const statuses = result.statusOf ? result.statusOf(filter.hidden ?? []) : undefined;
+        const key = JSON.stringify([search, sort, filter]);
         if (!this.filtered || this.filtered.key !== key) {
             const seq = ++this.searchSeq;
             let indices = result.rows.map((_, i) => i);
-            if (status && result.status) {
-                const of = result.status;
-                const missingIn = status.startsWith('missing:') ? status.slice(8) : '';
-                indices = indices.filter(i => status === 'diff' ? of[i].diff.length > 0
-                    : status === 'same' ? !of[i].diff.length && !of[i].missing.length
-                        : missingIn ? of[i].missing.includes(missingIn) : true);
-            }
             if (search) {
                 const kept = await this.search(result, search, seq);
                 if (!kept) return null;
@@ -1231,9 +1240,47 @@ export class QueryController {
                 const c = sort.column;
                 indices.sort((a, b) => dir * compareValues(result.rows[a][c], result.rows[b][c]) || a - b);
             }
-            this.filtered = { key, indices };
+            // (the rows the search finds, before Compare's filters: what their counts say)
+            const searched = indices;
+            if (statuses) indices = indices.filter(i => passes(statuses[i], filter));
+            this.filtered = { key, indices, searched };
         }
-        return { result, indices: this.filtered.indices };
+        const kept = this.filtered!;
+        return { result, indices: kept.indices, searched: kept.searched, statuses };
+    }
+
+    /**
+     * The record window (Compare's): one row of Results, every column of each view of the compare
+     * for its key, side by side, and where they differ.
+     */
+    private async record(index: number, hidden: string[]): Promise<void> {
+        const result = this.result;
+        const session = this.session;
+        if (!result || !session || !result.keyViews || !result.keyValues || !Number.isInteger(index) || !result.rows[index]) return;
+        const { spec } = this.spec();
+        const tables = tableNames(spec.views);
+        const keys = compareKeySql(spec);
+        const places: string[] = [];
+        const records: Record<string, unknown>[][] = [];
+        result.keyViews.forEach((viewId, p) => {
+            const place = result.keyPlaces![p];
+            if (hidden.includes(place)) return;
+            places.push(place);
+            const value = result.keyValues![index][p];
+            const view = spec.views.find(v => v.id === viewId);
+            if (value === null || value === undefined || !view) { records.push([]); return; }
+            const out = session.run(`SELECT * FROM ${quoteName(tables.get(viewId) ?? '')} AS ${quoteName(refNames(spec.views).get(viewId) ?? '')} WHERE ${keys[p].sql} = ${typeof value === 'number' ? value : `'${String(value).replace(/'/g, "''")}'`} LIMIT 5`);
+            records.push(out.rows.map(r => Object.fromEntries(out.columns.map((c, i) => [c, r[i]]))));
+        });
+        const names = [...new Set(records.flatMap(rs => rs.flatMap(r => Object.keys(r))))];
+        const text = (v: unknown): string => (v === null || v === undefined ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v));
+        const fields = names.map(name => {
+            const values = records.map(rs => rs.map(r => r[name]));
+            const held = values.filter(v => v.length).map(v => JSON.stringify(v.map(text)));
+            return { name, values, differs: new Set(held).size > 1 };
+        });
+        const status = result.statusOf ? result.statusOf(hidden)[index] : undefined;
+        this.post({ type: 'query.recordDetail', index, places, fields, status });
     }
 
     /** The places Results' Status names (each view of the compare, each place a compared column has), or null when nothing is compared. */
@@ -1266,10 +1313,23 @@ export class QueryController {
                 const keys = compareKeySql(spec);
                 const out = session.rows(keys.length ? { extra: keys.map(k => k.sql) } : undefined);
                 const rows = keys.length ? out.rows.map(r => r.slice(0, columns.length)) : out.rows;
-                const present = keys.length ? out.rows.map(r => r.slice(columns.length).map(Number)) : [];
+                const keyValues = keys.length ? out.rows.map(r => r.slice(columns.length)) : [];
                 const label = (viewId: string): string => runName(this.query!, viewId) || spec.views.find(v => v.id === viewId)?.name || viewId;
-                const status = rowStatus(columns, rows, keys.map(k => label(k.view)), present, viewId => label(viewId));
-                this.result = { key, columns, rows, ...(status ? { status: status.rows, places: status.places } : {}) };
+                const keyPlaces = keys.map(k => label(k.view));
+                const first = rowStatus(columns, rows, keyPlaces, keyValues, label);
+                const cache = new Map<string, RowStatus[]>();
+                this.result = {
+                    key, columns, rows,
+                    ...(first ? {
+                        places: first.places, keyPlaces, keyValues, keyViews: keys.map(k => k.view),
+                        statusOf: (hidden: string[]) => {
+                            const at = hidden.slice().sort().join('\n');
+                            if (!at) return first.rows;
+                            if (!cache.has(at)) cache.set(at, rowStatus(columns, rows, keyPlaces, keyValues, label, hidden)!.rows);
+                            return cache.get(at)!;
+                        }
+                    } : {})
+                };
             }
             this.filtered = undefined;
         }
@@ -1340,8 +1400,8 @@ interface RowsRequest {
     offset: number;
     limit: number;
     search?: string;
-    /** Results' Status filter: 'diff', 'same', 'missing:<place>', or all. */
-    status?: string;
+    /** Results' filters, as Compare's (query-status.ts): Status ticks, compared columns, relations, hidden results. */
+    filter?: StatusFilter;
     sort?: { column: number; dir: 'asc' | 'desc' } | null;
     /** Send the columns' totals with the first window. */
     totals?: boolean;
@@ -1388,26 +1448,13 @@ interface QueryResult {
     key: string;
     columns: ColumnRef[];
     rows: unknown[][];
-    status?: RowStatus[];
     places?: string[];
+    /** A compare's views (their places, ids, and each row's key in each). */
+    keyPlaces?: string[];
+    keyViews?: string[];
+    keyValues?: unknown[][];
+    /** Each row's status, with the results hidden on Results left out. */
+    statusOf?: (hidden: string[]) => RowStatus[];
 }
 
-/** For Results' first window: how many rows of each status, and which compared columns differ in any of the rows found. */
-function statusSummary(result: QueryResult, indices: number[]): { statusCounts: Record<string, number>; diffGroups: string[] } {
-    const counts: Record<string, number> = { all: result.rows.length, diff: 0, same: 0 };
-    result.status!.forEach(st => {
-        if (st.diff.length) counts.diff++;
-        if (!st.diff.length && !st.missing.length) counts.same++;
-        st.missing.forEach(p => { counts[`missing:${p}`] = (counts[`missing:${p}`] ?? 0) + 1; });
-    });
-    const differs = new Set<string>();
-    const text = (v: unknown): string => (v === null || v === undefined ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v));
-    const groups = new Map<string, number[]>();
-    result.columns.forEach((c, i) => { if (c.group) groups.set(c.group, [...(groups.get(c.group) ?? []), i]); });
-    groups.forEach((cells, name) => {
-        if (cells.length < 2) return;
-        if (indices.some(r => cells.some(i => text(result.rows[r][i]) !== text(result.rows[r][cells[0]])))) differs.add(name);
-    });
-    return { statusCounts: counts, diffGroups: [...differs] };
-}
 
