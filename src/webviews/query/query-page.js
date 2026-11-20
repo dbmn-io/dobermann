@@ -331,7 +331,9 @@
             }
             // A run of a view (C1...) goes by the view's name and its run; the first run says BL once it has runs
             const runOf = v.runOf ? view(v.runOf) : null;
-            const name = el('span', `compare-result-name${v.error ? ' color-error' : ''}`, runOf ? runOf.name : v.name);
+            // The name shortens ("…", whole on hover); the run's chip always shows
+            const name = el('span', `compare-result-name query-slot-name${v.error ? ' color-error' : ''}`);
+            name.appendChild(el('span', 'query-slot-text', runOf ? runOf.name : v.name));
             if (v.run) name.appendChild(el('span', 'query-run-chip', v.run));
             // Data a week old, or a month: said on the slot, on every step
             const old = ageIcon(v);
@@ -1291,7 +1293,7 @@
                 const said = el('span', 'query-made query-compare-stat');
                 said.append(el('span', '', `${count(st.rightMatched)} matched`));
                 if (only) said.append(el('span', '', `${count(only)} only here`));
-                said.title = `${v.name}: ${count(st.rightMatched)} records match a record before it in the compare; ${count(only)} match none and are kept, as rows of their own`;
+                said.title = `${v.run || v.name}: ${count(st.rightMatched)} records match one of ${baseline.run || baseline.name}'s (the Baseline); ${count(only)} don't, and are kept, as rows of their own`;
                 cell.appendChild(said);
                 const n = (st.keys.oneToMany || 0) + (st.keys.manyToMany || 0);
                 if (n) cell.prepend(repeatSign(n, (st.records.oneToMany || 0) + (st.records.manyToMany || 0), v.run || v.name));

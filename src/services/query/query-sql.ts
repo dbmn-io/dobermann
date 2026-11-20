@@ -212,10 +212,27 @@ export function calcSql(calc: QueryCalc, spec: QuerySpec, names: Map<string, str
 
 /** One column of SELECT (or several, for a COMPARE): a view's column, or a calculated one as `its SQL AS its name`. */
 function selectSql(ref: ColumnRef, spec: QuerySpec, names: Map<string, string>): string[] {
-    if (ref.view !== CALC_VIEW) return [columnSql(ref, names)];
+    if (ref.view !== CALC_VIEW) return [compareKeyColumnSql(ref, spec, names) ?? columnSql(ref, names)];
     const calc = spec.calc?.find(c => c.name === ref.column);
     if (!calc) throw new Error(`Query: no calculated column "${ref.column}"`);
     return calcSql(calc, spec, names);
+}
+
+/**
+ * A compare's key column, as Compare shows it: one column, the key of whichever view in the
+ * compare has the record (COALESCE(BL.gtin, C1.gtin, ...)), so a record only C1 has still shows
+ * its key. Undefined for any other column, or a key column with functions of its own.
+ */
+function compareKeyColumnSql(ref: ColumnRef, spec: QuerySpec, names: Map<string, string>): string | undefined {
+    if (ref.fns?.length) return undefined;
+    const joins = spec.joins.filter(j => j.kind === 'compare');
+    const first = joins[0];
+    if (!first || joins.length < 1) return undefined;
+    const pair = first.on.findIndex(p => p.left.parts.length === 1 && !p.left.fns?.length && p.left.parts[0].view === ref.view && p.left.parts[0].column === ref.column && !p.left.parts[0].fns?.length);
+    if (pair < 0) return undefined;
+    const others = joins.map(j => j.on[pair]?.right).filter((k): k is QueryKey => !!k && k.parts.length > 0 && k.parts.every(x => !!x.column) && k.parts.every(x => names.has(x.view)));
+    if (!others.length) return undefined;
+    return `COALESCE(${[columnSql(ref, names), ...others.map(k => keySql(k, names))].join(', ')})`;
 }
 
 /** The lookup tables a query's functions read (Translate values), in its joins and its columns. */

@@ -78,11 +78,16 @@ describe('A compare inside Query', () => {
         assert.match(sql, /FULL OUTER JOIN Items\s+ON Items\.itemCode = Stock\.sku/);
         assert.match(sql, /FULL OUTER JOIN Counts\s+ON Counts\.SKU = COALESCE\(Stock\.sku, Items\.itemCode\)/);
         const rows = s.rows().rows.map(r => r.map(v => v ?? '-').join(' ')).sort();
-        // C: Items and the count have it, Stock hasn't; still one row
-        assert.deepStrictEqual(rows, ['- - D -', '- C C Whisker Supply', 'A A A Bark & Co', 'B - - -']);
+        // C: Items and the count have it, Stock hasn't; still one row. The key column is one column,
+        // as Compare shows it: the key of whichever view has the record (C and D, though Stock hasn't them)
+        assert.deepStrictEqual(rows, ['A A A Bark & Co', 'B - - -', 'C C C Whisker Supply', 'D - D -']);
+        assert.match(sql, /SELECT\s+COALESCE\(Stock\.sku, Items\.itemCode, Counts\.SKU\)/);
         assert.strictEqual(s.rowsAfterJoin(0), 3);
         assert.strictEqual(s.rowsAfterJoin(1), 4);
         assert.strictEqual(s.joinStats(1).rowsAfter, 4);
+        // The count's records are counted against the Baseline (Stock: A, B): A matches; C and D are only in the count
+        const cnt = s.joinStats(1);
+        assert.deepStrictEqual([cnt.leftRows, cnt.rightRows, cnt.rightMatched], [2, 3, 1]);
         assert.strictEqual(s.count(), 4);
         s.close();
     });
@@ -166,8 +171,8 @@ describe('A compare inside Query', () => {
             assert.deepStrictEqual(bySku.get('A'), { diff: [], missing: [], groups: [], relation: 'oneToOne' });
             // B: Items has another qty; the count has no B
             assert.deepStrictEqual(bySku.get('B'), { diff: ['Items'], missing: ['Counts'], groups: ['qty'], relation: 'onlyBase' });
-            // C: only the count has it
-            assert.deepStrictEqual(bySku.get('-'), { diff: [], missing: ['Stock', 'Items'], groups: [], relation: 'onlyOther' });
+            // C: only the count has it (its key still shows: the key column is whichever view has it)
+            assert.deepStrictEqual(bySku.get('C'), { diff: [], missing: ['Stock', 'Items'], groups: [], relation: 'onlyOther' });
             assert.deepStrictEqual(status.places, ['Stock', 'Items', 'Counts']);
             // Filters as Compare's: DIFF ticked alone, Missing in Counts alone, the qty column's DIFFs
             const kept = (f: Parameters<typeof passes>[1]) => rows.filter((_, i) => passes(status.rows[i], f)).map(r => r[0] ?? '-').sort();
@@ -175,7 +180,7 @@ describe('A compare inside Query', () => {
             assert.deepStrictEqual(kept({ kinds: ['missing:Counts'] }), ['B']);
             assert.deepStrictEqual(kept({ kinds: ['same'] }), ['A']);
             assert.deepStrictEqual(kept({ columns: ['qty'] }), ['B']);
-            assert.deepStrictEqual(kept({ relations: ['onlyOther'] }), ['-']);
+            assert.deepStrictEqual(kept({ relations: ['onlyOther'] }), ['C']);
             const counts = statusCounts(status.rows, rows.map((_, i) => i));
             assert.deepStrictEqual([counts.diff, counts.same, counts.missing.Counts, counts.columns.qty], [1, 1, 1, 1]);
             // Items hidden: B's qty differs only in Items, so it is no longer DIFF
@@ -193,6 +198,10 @@ describe('A compare inside Query', () => {
             assert.deepStrictEqual(resultColumns(spec), [{ view: 'stk', column: 'sku' }, { view: '', column: 'qty 1', group: 'qty' }, { view: '', column: 'qty 2', group: 'qty' }]);
             const st = rowStatus(resultColumns(spec), [['A', 5, 5], ['B', 5, 3]], [], [], v => v)!;
             assert.deepStrictEqual(st.rows, [{ diff: [], missing: [], groups: [] }, { diff: ['2'], missing: [], groups: ['qty'] }]);
+            // Named for the Status tags: each side by the column it reads
+            const named = rowStatus(resultColumns(spec), [['B', 5, 3]], [], [], v => v, [], c => ({ 'qty 1': 'onHand', 'qty 2': 'available' } as Record<string, string>)[c])!;
+            assert.deepStrictEqual(named.rows[0].diff, ['available']);
+            assert.deepStrictEqual(named.places, ['onHand', 'available']);
         });
         it('a key on more than one row: one to many, and where it repeats', () => {
             const cols = [{ view: 'a', column: 'k' }, { view: 'a', column: 'q', group: 'q' }, { view: 'b', column: 'q', group: 'q' }];

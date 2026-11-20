@@ -27,6 +27,7 @@ import { QueryRowData, QuerySession } from '../../services/query/query-engine';
 import type { TooManyRows } from '../../services/query/query-engine';
 import { allColumns, columnSql, compareKeySql, defaultColumns, formulaColumns, fromSql, joinKeyColumns, lookupsUsed, quoteName, refNames, resultColumns as resultColumnRefs, tableNames, writeSql } from '../../services/query/query-sql';
 import { FORMULA_FUNCTIONS, formulaSql, fullRef, fullText, parseFormula, shortRef, shortText } from '../../services/query/formula';
+import type { FormulaNode } from '../../services/query/formula';
 import { reportNameProblem } from '../../services/compare/report-name';
 import { cleanViewName, getQuery, guessViewName, viewNameFromPath, VIEW_NAME_MAX, MAX_QUERY_VIEWS, moveView, moveViewFirst, nameViews, newSourceId, nextRunName, QuerySource, renameView, runName, saveQuery, SavedQuery, untickBlanks, untickClashes } from '../../services/query/query-store';
 import { columnTypes, spread, TYPE_SAMPLE, type ColumnType } from '../../services/query/column-types';
@@ -1424,7 +1425,7 @@ export class QueryController {
         const { spec } = this.spec();
         if (!spec.views.length) return null;
         const label = (viewId: string): string => runName(query, viewId) || spec.views.find(v => v.id === viewId)?.name || viewId;
-        const status = rowStatus(resultColumnRefs(spec), [], compareKeySql(spec).map(k => label(k.view)), [], label);
+        const status = rowStatus(resultColumnRefs(spec), [], compareKeySql(spec).map(k => label(k.view)), [], label, [], compareSides(spec, label));
         return status ? status.places : null;
     }
 
@@ -1450,7 +1451,8 @@ export class QueryController {
                 const keyValues = keys.length ? out.rows.map(r => r.slice(columns.length)) : [];
                 const label = (viewId: string): string => runName(this.query!, viewId) || spec.views.find(v => v.id === viewId)?.name || viewId;
                 const keyPlaces = keys.map(k => label(k.view));
-                const first = rowStatus(columns, rows, keyPlaces, keyValues, label);
+                const sides = compareSides(spec, label);
+                const first = rowStatus(columns, rows, keyPlaces, keyValues, label, [], sides);
                 const cache = new Map<string, RowStatus[]>();
                 this.result = {
                     key, columns, rows,
@@ -1459,7 +1461,7 @@ export class QueryController {
                         statusOf: (hidden: string[]) => {
                             const at = hidden.slice().sort().join('\n');
                             if (!at) return first.rows;
-                            if (!cache.has(at)) cache.set(at, rowStatus(columns, rows, keyPlaces, keyValues, label, hidden)!.rows);
+                            if (!cache.has(at)) cache.set(at, rowStatus(columns, rows, keyPlaces, keyValues, label, hidden, sides)!.rows);
                             return cache.get(at)!;
                         }
                     } : {})
@@ -1571,6 +1573,25 @@ export function tooManyRowsText(tooMany: TooManyRows, spec: QuerySpec): string {
     const join = spec.joins[tooMany.join];
     const view = spec.views.find(v => v.id === join?.view)?.name ?? `join ${tooMany.join + 1}`;
     return `Joining ${view} would make ${tooMany.rows.toLocaleString('en')} rows, more than a query can hold (${tooMany.limit.toLocaleString('en')}), so it was not run. Join on a column that repeats less, or add another column to the join.`;
+}
+
+/**
+ * What the Status tags call each side of a COMPARE calculation ("price 1", "price 2"): the
+ * column it reads when the sides read different columns (quantityOnHand, quantityAvailable),
+ * else the view or run it comes from (BL, C1); a side that is a calculation keeps its number.
+ */
+function compareSides(spec: QuerySpec, label: (view: string) => string): (column: string) => string | undefined {
+    const names = new Map<string, string>();
+    for (const calc of spec.calc ?? []) {
+        if (!calc.formula) continue;
+        let sides: FormulaNode[] | undefined;
+        try { sides = parseFormula(calc.formula, formulaColumns(spec)).compare; } catch { continue; }
+        if (!sides) continue;
+        const refs = sides.map(n => (n.k === 'ref' ? { view: n.key.slice(0, n.key.indexOf('\n')), column: n.key.slice(n.key.indexOf('\n') + 1) } : undefined));
+        const columnsDiffer = new Set(refs.map(r => r?.column ?? '')).size === refs.length;
+        refs.forEach((r, i) => { if (r) names.set(`${calc.name} ${i + 1}`, columnsDiffer ? r.column : label(r.view)); });
+    }
+    return column => names.get(column);
 }
 
 /** Each run's first run, by id: what keeps a run's key its first run's. */

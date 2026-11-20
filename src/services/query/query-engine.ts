@@ -17,7 +17,7 @@ import type { Database, SqlJsStatic, SqlValue } from 'sql.js';
 import { fromSql, keySql, leftKeySql, quoteName, refNames, tableNames, tableSql, writeSql, WriteSqlOptions } from './query-sql';
 import { keepsUnmatched } from './query-types';
 import { lookupTableSql } from '../column-functions/column-functions';
-import type { QueryJoinStats, QueryRelationship, QueryRows, QueryValue, QuerySpec } from './query-types';
+import type { QueryJoinStats, QueryKey, QueryRelationship, QueryRows, QueryValue, QuerySpec } from './query-types';
 
 export type QueryRowData = Record<string, unknown>;
 
@@ -199,11 +199,17 @@ SELECT (SELECT COUNT(*) FROM _l), COALESCE(SUM(lg.n), 0), COALESCE(SUM(lg.n * rg
         const names = refNames(this.spec.views);
         const n = join.on.length;
         const ks = Array.from({ length: n }, (_, i) => `k${i}`);
-        const leftKeys = join.on.map((_, i) => `${leftKeySql(this.spec, index, i, names)} AS k${i}`).join(', ');
+        // A later view in a compare is counted against the Baseline, as Compare counts each run against BL
+        const compares = this.spec.joins.filter(j => j.kind === 'compare');
+        const baselineKey = (i: number): QueryKey | undefined => compares[0]?.on[i]?.left;
+        const baselineView = this.spec.views.find(v => v.id === baselineKey(0)?.parts[0]?.view);
+        const againstBaseline = join.kind === 'compare' && compares[0] !== join && !!baselineView && join.on.every((_, i) => !!baselineKey(i));
+        const leftKeys = join.on.map((_, i) => `${againstBaseline ? keySql(baselineKey(i)!, names) : leftKeySql(this.spec, index, i, names)} AS k${i}`).join(', ');
+        const leftFrom = againstBaseline ? `FROM ${tableSql(baselineView!, this.tables)}` : fromSql(this.spec, index);
         const rightKeys = join.on.map((p, i) => `${keySql(p.right, names)} AS k${i}`).join(', ');
         const notNull = ks.map(k => `${k} IS NOT NULL`).join(' AND ');
         const same = ks.map(k => `lg.${k} = rg.${k}`).join(' AND ');
-        const groups = `WITH _l AS (SELECT ${leftKeys} ${fromSql(this.spec, index)}),
+        const groups = `WITH _l AS (SELECT ${leftKeys} ${leftFrom}),
 _r AS (SELECT ${rightKeys} FROM ${right}),
 _lg AS (SELECT ${ks.join(', ')}, COUNT(*) AS n FROM _l WHERE ${notNull} GROUP BY ${ks.join(', ')}),
 _rg AS (SELECT ${ks.join(', ')}, COUNT(*) AS n FROM _r WHERE ${notNull} GROUP BY ${ks.join(', ')})`;
@@ -229,7 +235,7 @@ SELECT ${ks.join(', ')}, ln, rn, every FROM _n WHERE place <= ${cap} ORDER BY ki
         // Types on each side of each pair: no type in common means the pair can never match
         const types = (sql: string): Set<string> => new Set(this.run(sql).rows.map(r => (r[0] === 'integer' || r[0] === 'real' ? 'number' : String(r[0]))).filter(t => t !== 'null'));
         const typeMismatch = join.on.some((_, i) => {
-            const l = types(`SELECT DISTINCT typeof(k${i}) FROM (SELECT ${leftKeys} ${fromSql(this.spec, index)})`);
+            const l = types(`SELECT DISTINCT typeof(k${i}) FROM (SELECT ${leftKeys} ${leftFrom})`);
             const r = types(`SELECT DISTINCT typeof(k${i}) FROM (SELECT ${rightKeys} FROM ${right})`);
             return l.size > 0 && r.size > 0 && ![...l].some(t => r.has(t));
         });
@@ -240,7 +246,8 @@ SELECT ${ks.join(', ')}, ln, rn, every FROM _n WHERE place <= ${cap} ORDER BY ki
         else if (oneToOne) relationship = 'oneToOne';
         return {
             leftRows, leftMatched, rightRows, rightMatched,
-            rowsAfter: pairs + (keepsUnmatched(join.kind).left ? leftRows - leftMatched : 0) + (keepsUnmatched(join.kind).right ? rightRows - rightMatched : 0),
+            // (counted against the Baseline, the rows it leaves are still the whole compare's so far)
+            rowsAfter: againstBaseline ? this.rowsAfterJoin(index) : pairs + (keepsUnmatched(join.kind).left ? leftRows - leftMatched : 0) + (keepsUnmatched(join.kind).right ? rightRows - rightMatched : 0),
             relationship,
             typeMismatch,
             keys: { oneToOne, oneToMany, manyToOne, manyToMany },

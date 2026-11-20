@@ -60,14 +60,16 @@ export function comparedGroups(columns: ColumnRef[]): { name: string; cells: num
  * Each row's status. `keyPlaces` are the views of the compare, the Baseline first, and
  * `keys[row][place]` each one's key in the row (blank: it hasn't the record). A cell differs
  * from its column's first cell when their text differs; a place without the record is Missing,
- * not different. A COMPARE calculation's sides are places 1, 2... Undefined when nothing is compared.
+ * not different. A COMPARE calculation's sides are named by `calcPlace` (else 1, 2...). Undefined when nothing is compared.
  */
 export function rowStatus(
-    columns: ColumnRef[], rows: unknown[][], keyPlaces: string[], keys: unknown[][], placeOf: (view: string) => string, hidden: string[] = []
+    columns: ColumnRef[], rows: unknown[][], keyPlaces: string[], keys: unknown[][], placeOf: (view: string) => string, hidden: string[] = [],
+    calcPlace?: (column: string) => string | undefined
 ): { rows: RowStatus[]; places: string[] } | undefined {
     const compared = comparedGroups(columns);
     if (!compared.length && !keyPlaces.length) return undefined;
-    const placeOfCell = (i: number): string => (columns[i].view === CALC_VIEW ? (/ (\d+)$/.exec(columns[i].column)?.[1] ?? columns[i].column) : placeOf(columns[i].view));
+    // A COMPARE calculation's side: named by calcPlace (the column it reads), else its number
+    const placeOfCell = (i: number): string => (columns[i].view === CALC_VIEW ? (calcPlace?.(columns[i].column) ?? / (\d+)$/.exec(columns[i].column)?.[1] ?? columns[i].column) : placeOf(columns[i].view));
     const places = [...new Set([...keyPlaces, ...compared.flatMap(g => g.cells.map(placeOfCell))])];
     const shown = (p: string): boolean => !hidden.includes(p);
     // How many rows hold each key, in each place: more than one, and the key repeats there
