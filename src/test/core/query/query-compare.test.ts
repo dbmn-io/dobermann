@@ -14,7 +14,7 @@ import { alignCompareJoins, groupCompare, isCompare, queryCompare, runJoin } fro
 import { nextRunName, runName, viewNameFromPath } from '../../../services/query/query-store';
 import type { QuerySource } from '../../../services/query/query-store';
 import { compareKeySql, defaultColumns, formulaColumns, lookupsUsed, resultColumns, writeSql } from '../../../services/query/query-sql';
-import { passes, rowStatus, statusCounts } from '../../../services/query/query-status';
+import { columnCellDiffs, passes, rowStatus, statusCounts } from '../../../services/query/query-status';
 import { resolvePath, shortRef } from '../../../services/query/formula';
 import type { QueryJoin, QueryKey, QuerySpec } from '../../../services/query/query-types';
 import { SQL_WASM_PATH } from '../fixtures/temp-storage';
@@ -147,6 +147,19 @@ describe('A compare inside Query', () => {
         assert.deepStrictEqual(k[1].on.map(p => [p.left.parts[0].column, p.right.parts[0]?.column ?? '']), [['sku', 'itemCode'], ['bin', 'location']]);
         // The run: the same columns as the Baseline's, every key line
         assert.deepStrictEqual(k[0].on.map(p => p.right.parts[0].column), ['sku', 'bin']);
+    });
+
+    it('Columns lights a cell amber against the first cell in slot order, its value after its functions', () => {
+        const order = ['stk', 'c1', 'itm'];
+        const placeOf = (v: string) => order.indexOf(v);
+        // qty added C1 first, then the Baseline: C1's 5 differs from Stock's 4, Stock's does not
+        const cols = [{ view: 'c1', column: 'qty', group: 'qty' }, { view: 'stk', column: 'qty', group: 'qty' }, { view: 'itm', column: 'name' }];
+        assert.deepStrictEqual(columnCellDiffs(cols, ['5', '4', 'x'], placeOf), [true, false, false]);
+        // Values after their functions: a trimmed ' A' meets 'A', no amber
+        const trimmed = [{ view: 'stk', column: 'code', group: 'code' }, { view: 'itm', column: 'code', group: 'code', fns: [{ fn: 'trim' as const }] }];
+        assert.deepStrictEqual(columnCellDiffs(trimmed, ['A', 'A'], placeOf), [false, false]);
+        // A column on its own is never amber
+        assert.deepStrictEqual(columnCellDiffs([{ view: 'stk', column: 'qty' }], ['1'], placeOf), [false]);
     });
 
     it('a compare starts with its key only: what is compared is picked', () => {

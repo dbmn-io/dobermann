@@ -117,10 +117,12 @@
             cell.appendChild(add);
             return cell;
         }
-        /** A cell of a report row: its value (amber where it differs from the first), ƒ, and a right-click menu. */
-        function reportCell(entry, index, row, list, first) {
-            const value = sample(entry.view, entry.column);
-            const differs = row.entries.length > 1 && first !== null && String(value) !== String(first);
+        /** A cell of a report row: its value after its functions and amber where it differs from the
+         * first cell in slot order (both the host's, columnCells), ƒ, and a right-click menu. */
+        function reportCell(entry, index, row, list) {
+            const said = (ctx.state().columnCells || [])[index];
+            const value = said ? said.value : sample(entry.view, entry.column);
+            const differs = row.entries.length > 1 && !!(said && said.differs);
             const cell = at(entry.view, 'query-rep-cell' + (differs ? ' is-diff' : ''));
             cell.dataset.entry = String(index);
             const v = view(entry.view);
@@ -213,10 +215,9 @@
                         cells[first.id] = c;
                     }
                 } else {
-                    const firstValue = sample(list[row.entries[0]].view, list[row.entries[0]].column);
                     liveViews().forEach(v => {
                         const index = row.entries.find(i => list[i].view === v.id);
-                        cells[v.id] = index !== undefined ? reportCell(list[index], index, row, list, firstValue) : emptyPlace(v, row, rows, list);
+                        cells[v.id] = index !== undefined ? reportCell(list[index], index, row, list) : emptyPlace(v, row, rows, list);
                     });
                 }
                 const out = el('button', 'compare-tool-btn icon');

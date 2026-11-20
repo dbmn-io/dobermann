@@ -34,7 +34,7 @@ import { columnTypes, spread, TYPE_SAMPLE, type ColumnType } from '../../service
 import { CALC_VIEW, QUERY_JOIN_KINDS } from '../../services/query/query-types';
 import { comparableRuns, type RequestTemplates, type RunHeaderValue } from '../../services/compare/compare-runs';
 import { alignCompareJoins, groupCompare, MAX_COMPARE_VIEWS, queryCompare, runJoin } from '../../services/query/query-compare';
-import { passes, rowStatus, statusCounts, type RowStatus, type StatusFilter } from '../../services/query/query-status';
+import { columnCellDiffs, passes, rowStatus, statusCounts, type RowStatus, type StatusFilter } from '../../services/query/query-status';
 import { lookupsIn } from '../../services/column-functions/column-functions';
 import type { LookupTablesReader, LookupTableSummary } from '../../services/lookup-tables/lookup-tables';
 import type { ColumnRef, QueryFn, QueryJoin, QueryJoinKind, QueryJoinStats, QueryKey, QuerySpec } from '../../services/query/query-types';
@@ -1039,6 +1039,8 @@ export class QueryController {
         // What kind of values each of Results' columns holds, going by its first rows
         let resultTypes: ColumnType[] = [];
         let sampleRow: { view: string; column: string; value: string }[] = [];
+        // Each report column on that record, after its functions, and whether it differs (Columns)
+        let columnCells: { value: string; differs: boolean }[] = [];
         let duplicates = 0;
         if (spec.views.length) {
             try {
@@ -1064,7 +1066,9 @@ export class QueryController {
                 preview = session.rows({ limit: PREVIEW_ROWS }).rows;
                 // (from rows across the whole result, so a column that changes further down is not mislabelled)
                 resultTypes = columnTypes(session.sample(TYPE_SAMPLE).rows, resultColumns.length);
-                sampleRow = this.sampleRow(session, spec);
+                const sampled = this.sampleRow(session, spec, columns);
+                sampleRow = sampled.row;
+                columnCells = sampled.cells;
                 if (query.sql) {
                     // The user's own SQL: Results shows what it makes
                     try {
@@ -1084,7 +1088,7 @@ export class QueryController {
             query.rows = total;
             await saveQuery(this.ports.state, query);
         }
-        this.postState({ waiting, stats: new Map(spec.joins.map((j, i) => [j.view, stats[i]])), columns, resultColumns, resultTypes, sampleRow, duplicates, sql, total, preview, error: failure, sqlError });
+        this.postState({ waiting, stats: new Map(spec.joins.map((j, i) => [j.view, stats[i]])), columns, resultColumns, resultTypes, sampleRow, columnCells, duplicates, sql, total, preview, error: failure, sqlError });
     }
 
     /** How many of a view's rows have a value in each column (counted once for the rows as loaded). */
@@ -1116,19 +1120,30 @@ export class QueryController {
      * One row as the report will have it, every view's columns: the first where every join found
      * its match, so each view has a value to show (or the first row there is, when none does).
      */
-    private sampleRow(session: QuerySession, spec: QuerySpec): { view: string; column: string; value: string }[] {
-        const select = allColumns(spec).filter(c => c.view !== CALC_VIEW);
+    /**
+     * One record of the query, every view's columns as they are, and each report column (`columns`)
+     * after its functions, with whether it differs from its compared column's first cell in slot
+     * order (columnCellDiffs): what Join and Columns show under each name.
+     */
+    private sampleRow(session: QuerySession, spec: QuerySpec, columns: ColumnRef[]): { row: { view: string; column: string; value: string }[]; cells: { value: string; differs: boolean }[] } {
+        const raw = allColumns(spec).filter(c => c.view !== CALC_VIEW);
+        const shown = columns.map((c, i) => ({ c, i })).filter(x => x.c.view !== CALC_VIEW && spec.views.some(v => v.id === x.c.view));
+        const select = [...raw, ...shown.map(x => ({ view: x.c.view, column: x.c.column, ...(x.c.fns?.length ? { fns: x.c.fns } : {}) }))];
         const one = (inner: boolean): unknown[] | undefined => session.run(writeSql({
-            views: spec.views, joins: inner ? spec.joins.map(j => ({ ...j, kind: 'inner' as const })) : spec.joins, select
+            views: spec.views, joins: inner ? spec.joins.map(j => ({ ...j, kind: 'inner' as const })) : spec.joins, select, calc: spec.calc
         }, { limit: 1 })).rows[0];
-        const row = one(true) ?? one(false);
-        if (!row) return [];
+        const got = one(true) ?? one(false);
+        if (!got) return { row: [], cells: columns.map(() => ({ value: '', differs: false })) };
         const text = (v: unknown): string => (v === null || v === undefined ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v)).slice(0, 60);
-        return select.map((c, i) => ({ view: c.view, column: c.column, value: text(row[i]) }));
+        const values = columns.map(() => '');
+        shown.forEach((x, k) => { values[x.i] = text(got[raw.length + k]); });
+        const order = this.query?.sources.map(src => src.id) ?? [];
+        const differs = columnCellDiffs(columns, values, view => { const at = order.indexOf(view); return at < 0 ? order.length : at; });
+        return { row: raw.map((c, i) => ({ view: c.view, column: c.column, value: text(got[i]) })), cells: values.map((value, i) => ({ value, differs: differs[i] })) };
     }
 
     /** Everything the steps show. `reading`: a view was just added and its rows are still being read. */
-    private postState(now: { reading?: boolean; waiting?: string[]; stats?: Map<string, QueryJoinStats | null>; columns?: ColumnRef[]; resultColumns?: ColumnRef[]; resultTypes?: ColumnType[]; sampleRow?: { view: string; column: string; value: string }[]; duplicates?: number; sql?: string; total?: number; preview?: unknown[][]; error?: string; sqlError?: string }): void {
+    private postState(now: { reading?: boolean; waiting?: string[]; stats?: Map<string, QueryJoinStats | null>; columns?: ColumnRef[]; resultColumns?: ColumnRef[]; resultTypes?: ColumnType[]; sampleRow?: { view: string; column: string; value: string }[]; columnCells?: { value: string; differs: boolean }[]; duplicates?: number; sql?: string; total?: number; preview?: unknown[][]; error?: string; sqlError?: string }): void {
         const query = this.query;
         if (!query) return;
         const tables = tableNames(query.sources.map(s => ({ id: s.id, name: s.name, columns: [] })));
@@ -1158,6 +1173,8 @@ export class QueryController {
             columns: (now.columns ?? []).map(c => ({ view: c.view, column: c.column, ...(c.fns?.length ? { fns: c.fns } : {}), ...(c.group ? { group: c.group } : {}) })),
             // One row of the report, every view's columns: what Columns shows under each name
             sampleRow: now.sampleRow ?? [],
+            // Columns' cells, by report column: the value after its functions, and amber or not
+            columnCells: now.columnCells ?? [],
             // A joining view's key, and the column it is matched to: not shown twice
             keyColumns: joinKeyColumns(this.spec().spec).map(k => ({ view: k.key.view, column: k.key.column, sameView: k.same.view, sameColumn: k.same.column })),
             allSelected: !(query.select?.length),

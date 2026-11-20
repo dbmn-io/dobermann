@@ -141,3 +141,21 @@ export function statusCounts(statuses: RowStatus[], indices: number[]): StatusCo
     }
     return out;
 }
+
+/**
+ * Columns' cells, as the step shows them: each report column's value on the sample record (after
+ * its functions), and whether it differs, in amber, from its compared column's first cell in slot
+ * order (the Baseline's when it is in the column), not the first one added. `values[i]` is
+ * column i's value after its functions; `placeOf` a view's place in the slots.
+ */
+export function columnCellDiffs(columns: ColumnRef[], values: string[], placeOf: (view: string) => number): boolean[] {
+    const out = columns.map(() => false);
+    const groups = new Map<string, number[]>();
+    columns.forEach((c, i) => { if (c.group) groups.set(c.group, [...(groups.get(c.group) ?? []), i]); });
+    for (const cells of groups.values()) {
+        if (cells.length < 2) continue;
+        const base = cells.slice().sort((a, b) => placeOf(columns[a].view) - placeOf(columns[b].view) || a - b)[0];
+        for (const i of cells) out[i] = i !== base && values[i] !== values[base];
+    }
+    return out;
+}
