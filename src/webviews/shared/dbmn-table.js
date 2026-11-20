@@ -137,6 +137,9 @@
  *       A sort's icon is a clock until the new rows land. Both events are told for `rows` too.
  *   orders.layout = saved;            // after `columns`: the order, widths, hidden columns and sort kept
  *   orders.searchWith(input, mirror); // the screen's own search box, with the @column suggestions
+ *   orders.searchFields = [{ id: 'body', name: 'body', get: row => row.request.body }];
+ *                                     // fields the search reaches that are not columns: plain words find
+ *                                     // them, @body names them, @ suggests them (with every column, shown or not)
  *   orders.totals = { qty: '12,410' } // a row under the rows, from the screen; null takes it away
  *   orders.busy = true;               // something is looking: the search box's glass is the spinner
  *                                     // (with `source` it turns by itself while rows are asked for)
@@ -378,7 +381,8 @@
             matcher.attachColumnSuggest({
                 input,
                 types: (heading, path) => this._typeOf(heading, path),
-                headings: () => this._columns.map(c => c.name || c.id),
+                // (every column searched, shown or not, and the screen's hidden fields: `@` suggests them all)
+                headings: () => this._searchColumns().map(c => c.name),
                 // `@column.` lists the keys inside that column's nested data (of the rows in hand)
                 keys: (heading, path) => matcher.nestedKeysFor(this._source ? this._inHand() : this._rows, this._all.map(c => ({ id: c.id, name: c.name || c.id })), heading, path, (row, id) => row[id])
             });
@@ -387,7 +391,8 @@
         _typeOf(heading, path) {
             const matcher = window.SearchMatcher;
             const low = String(heading).toLowerCase();
-            const column = this._all.find(c => String(c.name || c.id).toLowerCase() === low);
+            const column = this._all.find(c => !own(c.id) && String(c.name || c.id).toLowerCase() === low)
+                || (this._fields || []).find(f => String(f.name || f.id).toLowerCase() === low);
             if (!column || !matcher || !matcher.typeOfValues) return '';
             const inside = path && path.length;
             if (!inside && column.type) return column.type;
@@ -396,7 +401,8 @@
             if (!this._types) this._types = {};
             if (this._types[key] === undefined) {
                 const rows = (this._source ? this._inHand() : this._rows).slice(0, 200);
-                let values = rows.map(row => (row ? row[column.id] : null));
+                const read = this._readField();
+                let values = rows.map(row => (row ? read(row, column.id) : null));
                 // (a key inside nested data: the values under it, whichever record they are in)
                 (path || []).forEach(part => {
                     const want = part.toLowerCase();
@@ -1116,9 +1122,31 @@
             const text = this.search.trim();
             if (!text || !matcher) return null;
             const terms = matcher.parseSearchExpression(text);
-            const columns = this._all.map(c => ({ id: c.id, name: c.name || c.id }));
-            return { matches: row => matcher.matchesRow(terms, row, columns, (r, id) => r[id]) };
+            const columns = this._searchColumns();
+            const read = this._readField();
+            return { matches: row => matcher.matchesRow(terms, row, columns, read) };
         }
+        /** What a search reaches: every column (shown or not, the table's own left out) and the screen's hidden fields. */
+        _searchColumns() {
+            const columns = this._all.filter(c => !own(c.id)).map(c => ({ id: c.id, name: c.name || c.id }));
+            const fields = (this._fields || []).filter(f => !columns.some(c => c.id === f.id)).map(f => ({ id: f.id, name: f.name || f.id }));
+            return columns.concat(fields);
+        }
+        /** A row's value for a column or a hidden field (a field may say how to read it). */
+        _readField() {
+            const byId = new Map((this._fields || []).filter(f => typeof f.get === 'function').map(f => [f.id, f.get]));
+            return (row, id) => (byId.has(id) ? byId.get(id)(row) : row ? row[id] : undefined);
+        }
+        /**
+         * Fields the search reaches that are not columns (an endpoint's body, a run's headers):
+         * [{ id, name, get?(row) }]. Plain words find them, `@name` names them, `@` suggests them.
+         */
+        set searchFields(list) {
+            this._fields = Array.isArray(list) ? list.filter(f => f && f.id) : [];
+            this._types = null;
+            if (this._built && this.search.trim()) this._searched();
+        }
+        get searchFields() { return (this._fields || []).slice(); }
         /** The rows the search found, put in the sort's order and counted. */
         _show(view) {
             if (this._sort) {
