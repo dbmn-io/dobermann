@@ -1611,6 +1611,10 @@
         if (window.CompareList) {
             window.CompareList.update(hubState);   // #298
         }
+        // (a query's tab wears Compare's icon once it is a compare, as its row in the list does)
+        if (window.HubTabs?.setQueries) {
+            window.HubTabs.setQueries(hubState.queries);
+        }
         if (window.HubActivity?.update) {
             window.HubActivity.update();
         }

@@ -40,6 +40,16 @@
         page:         'settings'
     };
 
+    /** The saved queries that are compares (a join set to Compare): their tabs wear Compare's icon, as the Reporting list does. */
+    let compareQueries = new Set();
+    /** The Hub's saved queries came (again): a tab whose query became a compare, or stopped being one, changes its icon. */
+    function setQueries(queries) {
+        const next = new Set((queries || []).filter(q => (q.joins || []).some(j => j && j.kind === 'compare')).map(q => q.id));
+        const same = next.size === compareQueries.size && [...next].every(id => compareQueries.has(id));
+        compareQueries = next;
+        if (!same && state.tabs.some(t => t.type === 'compare')) renderStrip();
+    }
+
     /** Page tabs (GitHub Issue #292) — hub-native tabs whose body is one of
      *  the page-style sections from hub.html (Settings / Account / Import /
      *  Export). The glyph mirrors the rail icon for the same section. */
@@ -496,8 +506,9 @@ const state = {
         glyph.className = 'hub-tab-glyph icon';
         const glyphName = tab.type === 'page'
             ? (PAGE_GLYPH[tab.refId] || TYPE_GLYPH.page)
-            // A query's tab is a compare tab by type (one kind of report tab); its icon is the Reporting list's for a query
-            : tab.type === 'compare' && String(tab.refId || '').indexOf('qry-') === 0 ? 'blend' : TYPE_GLYPH[tab.type];
+            // A query's tab is a compare tab by type (one kind of report tab); its icon is the Reporting list's:
+            // a query's, or Compare's once a join is set to Compare
+            : tab.type === 'compare' && String(tab.refId || '').indexOf('qry-') === 0 ? (compareQueries.has(tab.refId) ? 'scale' : 'blend') : TYPE_GLYPH[tab.type];
         glyph.setAttribute('data-icon', glyphName || 'notebook-tabs');
         el.appendChild(glyph);
 
@@ -1356,6 +1367,7 @@ const state = {
         mountEmbeddedTab,
         unmountEmbeddedTab,
         openPageTab: mountPageTab,
+        setQueries,
         // Exposed for unit tests in pure JSDOM contexts.
         _makeTabId: makeTabId
     };
