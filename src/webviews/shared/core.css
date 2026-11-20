@@ -2348,6 +2348,13 @@ body.editor-slide-out {
 .dbmn-context-menu-item.is-danger { color: var(--vscode-errorForeground); }
 .dbmn-context-menu-item[aria-disabled="true"] { opacity: 0.5; cursor: default; }
 .dbmn-context-menu-icon { display: inline-flex; }
+/* An item with a picture (a join's circles) and a quiet second line under a bold name */
+.dbmn-context-menu-glyph { display: inline-flex; flex: none; }
+.dbmn-context-menu-item.has-detail { align-items: center; gap: 10px; max-width: 340px; }
+.dbmn-context-menu-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.dbmn-context-menu-item.has-detail .dbmn-context-menu-label { font-weight: 600; }
+.dbmn-context-menu-detail { font-size: 0.92em; opacity: 0.75; white-space: normal; }
+.dbmn-context-menu-item[aria-checked="true"] { box-shadow: inset 2px 0 0 var(--vscode-focusBorder); }
 .dbmn-context-menu-icon svg { width: 14px; height: 14px; }
 .dbmn-context-menu-separator {
     height: 1px;

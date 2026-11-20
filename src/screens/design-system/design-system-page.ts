@@ -297,6 +297,15 @@ const { actionId, fields } = await DbmnModal.show({ title, fields: [{ id: 'name'
 DbmnToast.success('Saved');   DbmnToast.warn('…');   DbmnToast.error('…', { persistent: true });
 DbmnContextMenu.show(event, [{ id: 'rename', label: 'Rename', icon: 'pencil' }], id =&gt; …);</code></pre>
 
+        <h3>Which rows a join keeps</h3>
+        <p>A picture for each kind of join, for someone who does not know SQL: the rows kept are filled. A menu opened from a button sits under it; its items can carry a picture and a quiet second line.</p>
+        <div class="ds-demo ds-row">
+            <span class="ds-joins" id="dsJoins"></span>
+            <button type="button" class="btn btn-secondary ds-join-btn" id="dsJoinBtn" data-click="ds:joinMenu" aria-haspopup="menu" aria-label="How Counts joins Stock: Left join"></button>
+        </div>
+        <pre class="ds-code"><code>RelationGlyph.join('left', { left: 'var(--compare-c)', right: '…' })   // 'inner' | 'left' | 'right' | 'outer' | 'compare'
+DbmnContextMenu.show(button, [{ id: 'left', label: 'Left join', detail: 'All of Stock; Counts where it matches', glyph: RelationGlyph.join('left'), checked: true }], id =&gt; …);</code></pre>
+
         <h3>Functions on a column</h3>
         <p>One dialog wherever a column is changed on its way in: Query's Join and Columns, Compare's Map, Run Batch's Map. Tick any; they apply in the order ticked, each written around the column's name with its values typed in place. Beside them: what they make, and a few values before and after. With a column to compare against (Compare's BL), its values on the same rows too, and how many agree. Try it: tick Trim spaces, then Drop leading zeros.</p>
         <div class="ds-demo ds-row">
@@ -454,6 +463,7 @@ log.addEventListener('dbmn-log-open', e =&gt; …e.detail.open…);   // a line'
     ${script('shared/dbmn-functions.js')}
     ${script('shared/dbmn-map.js')}
     ${script('shared/dbmn-context-menu.js')}
+    ${script('shared/relation-glyph.js')}
     ${script('shared/dbmn-toast.js')}
     ${script('shared/dbmn-clipboard.js')}
     ${script('shared/search-matcher.js')}

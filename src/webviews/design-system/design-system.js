@@ -197,7 +197,8 @@
         ['<dbmn-map>', 'Which column in each source is which, a line at a time: key, functions, how many agree', C, 'Design system; Compare and Run Batch next', 'shared/dbmn-map.js'],
         ['DbmnFunctions', 'Functions on a column, ticked in order, tried on its values before and after', M, 'Design system; Query, Compare and Run Batch next', 'shared/dbmn-functions.js'],
         ['DbmnToast', 'Messages in the corner', M, 'Every screen', 'shared/dbmn-toast.js'],
-        ['DbmnContextMenu', 'A right-click menu', M, 'Hub lists, tables', 'shared/dbmn-context-menu.js'],
+        ['DbmnContextMenu', 'A right-click menu, or a menu under a button; an item may carry a picture and a quiet second line', M, 'Hub lists, tables; Query\'s join kind next', 'shared/dbmn-context-menu.js'],
+        ['Join picture', 'Which rows a join keeps: two circles, the kept parts filled; Compare is the scale', M, 'Design system; Query\'s Join next', 'shared/relation-glyph.js (RelationGlyph.join)'],
         ['Icons', 'The one list of icons, and icons by job', M, 'Every screen', 'shared/icons.js'],
         ['DbmnActions', 'Named actions for markup (data-click)', M, 'Every screen', 'shared/dbmn-actions.js'],
         ['HelpMode', 'Help mode: click a control to read about it', M, 'Every screen', 'shared/help-mode.js'],
@@ -485,6 +486,37 @@
         $('dsFunctionsSaid').textContent = applied ? `Applied: ${applied.map(a => a.id).join(', ') || 'none'}` : 'Cancelled';
     }
 
+    /* ── Which rows a join keeps: the five pictures, and the menu Query's Join opens from its button ── */
+    const JOIN_KINDS = [
+        ['compare', 'Compare', 'Match the views on the key and compare their values'],
+        ['inner', 'Join', 'Only rows Stock and Counts both have'],
+        ['left', 'Left join', 'All of Stock; Counts where it matches'],
+        ['right', 'Right join', 'All of Counts; Stock where it matches'],
+        ['outer', 'Outer join', 'Every row of both, matched where they can be']
+    ];
+    let joinKind = 'left';
+    function drawJoinButton() {
+        const kind = JOIN_KINDS.find(k => k[0] === joinKind);
+        const caret = el('span', 'ds-join-caret', '\u25BE');
+        $('dsJoinBtn').replaceChildren(window.RelationGlyph.join(joinKind), caret);
+        $('dsJoinBtn').setAttribute('aria-label', `How Counts joins Stock: ${kind[1]}`);
+        $('dsJoinBtn').title = `${kind[1]}: ${kind[2]}`;
+    }
+    /** The kinds, from the button: the menu under it, each kind's picture, name and what it keeps. */
+    function openJoinMenu() {
+        const items = JOIN_KINDS.map(([id, label, detail]) => ({ id, label, detail, glyph: window.RelationGlyph.join(id), checked: id === joinKind }));
+        window.DbmnContextMenu.show($('dsJoinBtn'), items, id => { joinKind = id; drawJoinButton(); });
+    }
+    function drawJoins() {
+        if (!window.RelationGlyph || !window.RelationGlyph.join) return;
+        $('dsJoins').replaceChildren(...JOIN_KINDS.map(([id, label]) => {
+            const item = el('span', 'ds-join');
+            item.append(window.RelationGlyph.join(id), el('span', 'ds-join-name', label));
+            return item;
+        }));
+        drawJoinButton();
+    }
+
     window.DbmnActions.register({
         'ds:log': () => $('dsLog').append(logLines(5, Date.now())),
         'ds:back': () => go(current - 1),
@@ -520,6 +552,7 @@
             const says = { info: 'Copied 12 rows', success: 'Saved', warn: 'Some rows were skipped', error: 'Could not reach the server' };
             window.DbmnToast.show(level, says[level] || 'Hello');
         },
+        'ds:joinMenu': openJoinMenu,
         'ds:menu': (arg, event) => {
             window.DbmnContextMenu.show(event, [
                 { id: 'rename', label: 'Rename', icon: 'pencil' },
@@ -530,6 +563,7 @@
         }
     });
 
+    drawJoins();
     $('dsSteps').steps = STEPS.map(step => ({ label: step.label }));
     $('dsSteps').addEventListener('dbmn-step', event => go(event.detail.step));
     drawWizard();

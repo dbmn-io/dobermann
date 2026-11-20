@@ -494,6 +494,16 @@ body:has(#compareStepper) {
 }
 .compare-glyph .g-b { fill: var(--vscode-charts-blue, #4fa3ff); }
 .compare-glyph .g-c { fill: var(--vscode-charts-orange, #e8a33d); }
+/* Which rows a join keeps (RelationGlyph.join): the kept circles filled, the overlap always */
+.join-glyph { display: block; flex: none; width: 36px; height: 20px; }
+.join-glyph .j-l,
+.join-glyph .j-r { fill-opacity: 0; stroke-width: 1.5; }
+.join-glyph .j-l { fill: var(--join-l, var(--vscode-charts-blue, #4fa3ff)); stroke: var(--join-l, var(--vscode-charts-blue, #4fa3ff)); }
+.join-glyph .j-r { fill: var(--join-r, var(--vscode-charts-orange, #e8a33d)); stroke: var(--join-r, var(--vscode-charts-orange, #e8a33d)); }
+.join-glyph .is-kept { fill-opacity: 0.55; }
+.join-glyph .j-both { fill: var(--vscode-foreground); fill-opacity: 0.75; }
+/* (Compare: the Hub's scale icon, in the warning colour, as wide as the circles) */
+.join-glyph.is-compare { padding: 0 8px; box-sizing: border-box; color: var(--vscode-editorWarning-foreground, #e0b45a); }
 .compare-glyph .g-line {
     stroke: var(--vscode-descriptionForeground);
     stroke-width: 1.5;

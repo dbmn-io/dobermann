@@ -233,3 +233,9 @@
 .ds-nested { max-height: none; }
 .ds-nested .ds-nested-child > td { padding: 6px 6px 10px 28px; }
 .ds-nested .icon svg { width: 14px; height: 14px; }
+
+/* Which rows a join keeps: the five pictures with their names, and the button Query's Join opens its menu from */
+.ds-joins { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; }
+.ds-join { display: inline-flex; flex-direction: column; align-items: center; gap: 2px; font-size: 11px; color: var(--dbmn-descriptionForeground); }
+.ds-join-btn { display: inline-flex; align-items: center; gap: 3px; padding: 2px 6px; }
+.ds-join-caret { font-size: 10px; color: var(--dbmn-descriptionForeground); }
