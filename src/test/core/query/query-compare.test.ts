@@ -128,6 +128,27 @@ describe('A compare inside Query', () => {
         assert.strictEqual(mine[1].kind, 'left');
     });
 
+    it('+ AND and × on a key line reach every view in the compare, each keeping its own column for each key line', () => {
+        // Stock (the Baseline), its run C1, and Items (its own columns), on three key columns
+        const keyed = (lefts: string[], rights: [string, string][]): QueryJoin[] => [
+            { view: 'c1', kind: 'compare', on: lefts.map(c => ({ left: col('stk', c), right: col('c1', c) })) },
+            { view: 'itm', kind: 'compare', on: lefts.map((c, i) => ({ left: col('stk', c), right: col('itm', rights[i]?.[1] ?? '') })) }
+        ];
+        const runs = new Map([['c1', 'stk']]);
+        // + AND: a fourth key column on the first join reaches Items, its own column still to pick
+        const j = keyed(['sku', 'lot', 'bin'], [['sku', 'itemCode'], ['lot', 'batch'], ['bin', 'location']]);
+        j[0].on.push({ left: col('stk', 'site'), right: col('c1', 'site') });
+        alignCompareJoins(j, runs);
+        assert.deepStrictEqual(j[1].on.map(p => [p.left.parts[0].column, p.right.parts[0]?.column ?? '']), [['sku', 'itemCode'], ['lot', 'batch'], ['bin', 'location'], ['site', '']]);
+        // × on the middle key line (lot): Items keeps itemCode for sku and location for bin, not batch for bin
+        const k = keyed(['sku', 'lot', 'bin'], [['sku', 'itemCode'], ['lot', 'batch'], ['bin', 'location']]);
+        k[0].on.splice(1, 1);
+        alignCompareJoins(k, runs);
+        assert.deepStrictEqual(k[1].on.map(p => [p.left.parts[0].column, p.right.parts[0]?.column ?? '']), [['sku', 'itemCode'], ['bin', 'location']]);
+        // The run: the same columns as the Baseline's, every key line
+        assert.deepStrictEqual(k[0].on.map(p => p.right.parts[0].column), ['sku', 'bin']);
+    });
+
     it('a compare starts with its key only: what is compared is picked', () => {
         const spec: QuerySpec = {
             views: [{ id: 'stk', name: 'Stock', columns: ['sku', 'qty'] }, { id: 'itm', name: 'Items', columns: ['itemCode', 'qty'] }],

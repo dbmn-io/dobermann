@@ -53,10 +53,17 @@ export function alignCompareJoins(joins: QueryJoin[], runsOf: Map<string, string
     const compares = joins.filter(j => j.kind === 'compare');
     const first = compares[0];
     if (!first) return;
+    // Each view keeps its own column for each key line, found by the Baseline's column on that line
+    // (a line taken out, or added, never shifts another's column onto the wrong line); by place only
+    // when every line is still there (the Baseline's column on a line was changed)
+    const same = (a: QueryKey, b: QueryKey): boolean => JSON.stringify(a) === JSON.stringify(b);
     for (const join of compares.slice(1)) {
+        const had = join.on;
         join.on = first.on.map((pair, i) => ({
             left: sameKey(pair.left),
-            right: join.on[i]?.right ?? { parts: [{ view: join.view, column: '' }] }
+            right: had.find(p => same(p.left, pair.left))?.right
+                ?? (had.length === first.on.length ? had[i]?.right : undefined)
+                ?? { parts: [{ view: join.view, column: '' }] }
         }));
     }
     // A run's key is its first run's: the same columns of the same View ("sku, the same")
