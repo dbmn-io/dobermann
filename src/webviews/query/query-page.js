@@ -1273,9 +1273,44 @@
         });
         // The rows it leaves, at the end of the line: every record of every view in it, once
         const total = last && last.stats ? el('span', 'query-made query-compare-rows', `${count(last.stats.rowsAfter)} rows`) : null;
-        const made = line('query-made-line', after, [total], [el('span', 'query-lead-text', 'Rows after this compare')]);
+        // Its chevron opens how the records meet, a line per kind (closed to begin with), as a join's does
+        const open = !!ui.statsOpen.__compare;
+        const more = el('button', 'compare-tool-btn icon');
+        more.type = 'button';
+        more.dataset.stats = '';
+        more.dataset.icon = open ? 'chevron-down' : 'chevron-right';
+        more.disabled = !first.stats;
+        more.setAttribute('aria-expanded', String(open && !!first.stats));
+        more.setAttribute('aria-label', 'How the records meet in the compare');
+        more.title = open ? 'Hide how the records meet' : 'Show how the records meet';
+        more.addEventListener('click', () => { ui.statsOpen.__compare = !open; renderJoins(); });
+        const made = line('query-made-line', after, [total], [el('span', 'query-lead-text', 'Rows after this compare'), more]);
         made.dataset.kind = 'made';
+        made.classList.toggle('is-openable', !!first.stats);
+        Object.values(after).forEach(cell => cell.addEventListener('click', () => { ui.statsOpen.__compare = !open; renderJoins(); }));
         band.appendChild(made);
+        if (open) {
+            // One to one, Repeated (its key on more than one row: each compared), Only in (no record in the others before it)
+            const kindLine = (kind, label, of) => {
+                const cells = {};
+                let any = false;
+                views().forEach(v => {
+                    if (!members.includes(v.id)) return;
+                    const n = of(v);
+                    if (n === null) return;
+                    any = any || n > 0;
+                    cells[v.id] = counted(v.id, n, kind === 'manyToMany');
+                });
+                if (!any) return;
+                const row = line('query-kind-line', cells, [], [window.RelationGlyph.svg(kind), el('span', `query-kind query-lead-text${kind === 'manyToMany' ? ' query-warn' : ''}`, label)]);
+                row.dataset.kind = kind;
+                band.appendChild(row);
+            };
+            const statsOf = v => (v.id === baseline.id ? first.stats : (joinOf(v.id) || {}).stats);
+            kindLine('oneToOne', 'One to one', v => { const st = statsOf(v); return st ? (v.id === baseline.id ? st.rows.oneToOne : st.records.oneToOne) : null; });
+            kindLine('manyToMany', 'Repeated', v => { const st = statsOf(v); return st ? (v.id === baseline.id ? (st.rows.manyToOne || 0) + (st.rows.manyToMany || 0) : (st.records.oneToMany || 0) + (st.records.manyToMany || 0)) : null; });
+            kindLine('onlyOther', 'Only in', v => { const st = statsOf(v); return st ? (v.id === baseline.id ? st.leftRows - st.leftMatched : st.rightRows - st.rightMatched) : null; });
+        }
         // Said once, in words, under it: what a repeated key does, and the remedy
         if (repeats.length) {
             const note = el('p', 'query-warn query-compare-repeat-note',
