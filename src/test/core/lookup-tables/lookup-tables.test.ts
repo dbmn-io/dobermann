@@ -99,3 +99,72 @@ describe('Lookup tables', () => {
         assert.deepStrictEqual(quiet, []);
     });
 });
+
+describe('Lookup tables: one JSON file each (James, 2026-11-21)', () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const fs = require('fs') as typeof import('fs');
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const os = require('os') as typeof import('os');
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const path = require('path') as typeof import('path');
+    const folderFor = () => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dbmn-lookups-'));
+        return { dir, folder: { dataDir: async () => dir } };
+    };
+    const files = (dir: string) => (fs.existsSync(path.join(dir, 'lookup-tables')) ? fs.readdirSync(path.join(dir, 'lookup-tables')).sort() : []);
+
+    it('each table its own file; an edit rewrites only that table\'s; delete takes its file away', async () => {
+        const { dir, folder } = folderFor();
+        const store = new LookupTablesStore(folder, { now: () => NOW });
+        const units = await store.create('Units');
+        const sites = await store.create('Sites');
+        expect2(files(dir), [`${units.id}.json`, `${sites.id}.json`].sort());
+        const sitesFile = path.join(dir, 'lookup-tables', `${sites.id}.json`);
+        const before = fs.readFileSync(sitesFile, 'utf8');
+        await store.save({ ...units, rows: [{ c1: 'EA', c2: 'each' }] });
+        assert.strictEqual(fs.readFileSync(sitesFile, 'utf8'), before, 'the other table is not rewritten');
+        assert.deepStrictEqual((await new LookupTablesStore(folder).get(units.id))?.rows, [{ c1: 'EA', c2: 'each' }]);
+        assert.deepStrictEqual((await store.list()).map(t => t.name), ['Sites', 'Units']);
+        await store.remove(units.id);
+        expect2(files(dir), [`${sites.id}.json`]);
+        assert.strictEqual(await store.get(units.id), undefined);
+        fs.rmSync(dir, { recursive: true, force: true });
+    });
+
+    it('up to 1,000 rows: it is a translation table', async () => {
+        const { dir, folder } = folderFor();
+        const store = new LookupTablesStore(folder);
+        const table = await store.create('Big');
+        const rows = Array.from({ length: 1001 }, (_, i) => ({ c1: `K${i}`, c2: `V${i}` }));
+        await assert.rejects(store.save({ ...table, rows }), /up to 1,000 rows/);
+        await store.save({ ...table, rows: rows.slice(0, 1000) });
+        assert.strictEqual((await store.list())[0].rows, 1000);
+        fs.rmSync(dir, { recursive: true, force: true });
+    });
+
+    it('tables kept in the state store before move into files once, and leave the state', async () => {
+        const { dir, folder } = folderFor();
+        const state = new MemoryKeyValueStore();
+        const old = new LookupTablesStore(state);
+        const a = await old.create('Units');
+        await old.save({ ...a, rows: [{ c1: 'EA', c2: 'each' }] });
+        await old.create('Sites');
+        const store = new LookupTablesStore(folder);
+        assert.strictEqual(await store.migrateFrom(state), 2);
+        assert.strictEqual(state.get(LOOKUP_TABLES_KEY), undefined);
+        assert.deepStrictEqual((await store.get(a.id))?.rows, [{ c1: 'EA', c2: 'each' }]);
+        assert.strictEqual(await store.migrateFrom(state), 0, 'once');
+        fs.rmSync(dir, { recursive: true, force: true });
+    });
+
+    it('a change is heard by every store on the same folder object', async () => {
+        const { dir, folder } = folderFor();
+        const heard: string[] = [];
+        new LookupTablesStore(folder).onChange(c => heard.push(c.kind));
+        await new LookupTablesStore(folder).create('Units');
+        assert.deepStrictEqual(heard, ['saved']);
+        fs.rmSync(dir, { recursive: true, force: true });
+    });
+});
+
+function expect2(actual: string[], wanted: string[]) { assert.deepStrictEqual(actual, wanted); }

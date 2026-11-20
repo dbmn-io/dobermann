@@ -429,7 +429,7 @@ export class HubController {
             compares: this.ports.compares ? savedCompares(this.ports.compares.state()) : [],
             queries: this.ports.compares ? listQueries(this.ports.compares.state()) : [],
             // Lookup tables, kept with the queries: their names, columns and how many rows (Reporting's list)
-            lookupTables: (await this.lookups()?.list()) ?? [],
+            lookupTables: (await (await this.lookups())?.list()) ?? [],
             dbmnSettings: {
                 autoOpenConsoleOnCompletion: settings.get('dbmn', 'execution.autoOpenConsoleOnCompletion', true),
                 treatNetworkErrorsAsCritical: settings.get('dbmn', 'execution.treatNetworkErrorsAsCritical', true),
@@ -1192,14 +1192,21 @@ export class HubController {
 
     // ─── Lookup tables (src/services/lookup-tables): kept with the saved queries ───
 
-    private lookups(): LookupTablesStore | undefined {
-        const state = this.ports.compares?.state();
-        return state ? new LookupTablesStore(state) : undefined;
+    /** Lookup tables: one file each in the data folder (tables kept in the state store before move across, once). */
+    private async lookups(): Promise<LookupTablesStore | undefined> {
+        const compares = this.ports.compares;
+        if (!compares) return undefined;
+        if (!compares.lookups) return new LookupTablesStore(compares.state());
+        const store = new LookupTablesStore(compares.lookups);
+        if (!this.lookupsMoved) this.lookupsMoved = store.migrateFrom(compares.state()).catch(() => 0);
+        await this.lookupsMoved;
+        return store;
     }
+    private lookupsMoved: Promise<number> | null = null;
 
     /** A lookup table's tab: one per table, its name its title. Gone since: said so. */
     async openLookupTab(id: string): Promise<void> {
-        const table = await this.lookups()?.get(id);
+        const table = await (await this.lookups())?.get(id);
         if (!table) {
             this.ports.toast.warn('This lookup table has been deleted.');
             return;
@@ -1221,7 +1228,7 @@ export class HubController {
 
     /** Reporting's New lookup table: a key and a value column, opened to be filled. */
     private async newLookup(): Promise<void> {
-        const store = this.lookups();
+        const store = await this.lookups();
         if (!store) return;
         const table = await store.create('Lookup table');
         await this.broadcastState();
@@ -1236,14 +1243,14 @@ export class HubController {
             await (open.tab as LookupTab).rename?.(name);
             return;
         }
-        try { await this.lookups()?.rename(id, name); }
+        try { await (await this.lookups())?.rename(id, name); }
         catch (error) { this.ports.toast.warn(message(error)); return; }
         await this.broadcastState();
     }
 
     private async duplicateLookup(id: string): Promise<void> {
         try {
-            const copy = await this.lookups()?.duplicate(id);
+            const copy = await (await this.lookups())?.duplicate(id);
             if (!copy) return;
             await this.broadcastState();
             await this.openLookupTab(copy.id);
@@ -1252,7 +1259,7 @@ export class HubController {
 
     /** Deleted (the list asked first): a query that uses it says it is missing and doesn't run. */
     private async deleteLookup(id: string): Promise<void> {
-        await this.lookups()?.remove(id);
+        await (await this.lookups())?.remove(id);
         if (this.tabs.has(`lookup:${id}`)) this.closeTabFromHost(`lookup:${id}`);
         await this.broadcastState();
     }

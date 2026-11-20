@@ -23,6 +23,7 @@ import type { RecentEndpointsService } from '../../services/recent-endpoints/rec
 import type { CatalogueStorageInfo } from '../../services/catalogue/catalogue-location';
 import type { DbmnModalSpec, DbmnModalResult } from '../modal.types';
 import type { QueryFileStore } from '../../services/query/query-file-store';
+import type { LookupFolder } from '../../services/lookup-tables/lookup-tables';
 
 /** The Hub's side of an embedded tab: posts into the tab's page, or closes the tab. */
 export interface TabChannel {
@@ -164,6 +165,8 @@ export interface HubPorts {
         state(): CompareState;
         /** A query's file views keep their rows on this computer: a deleted query drops them, a copy takes its own. */
         queryFiles?: Pick<QueryFileStore, 'remove' | 'copy'>;
+        /** Where lookup tables are kept: one JSON file each, in DBMN's data folder (the host's one folder object). */
+        lookups?: LookupFolder;
     };
     /** Issue #275: export the selected endpoints to a file; the file's path, or an error. */
     exportEndpoints?(ids: string[]): Promise<{ filePath?: string; error?: string }>;

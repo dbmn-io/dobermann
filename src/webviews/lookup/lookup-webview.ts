@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Flexion Tech Pty Ltd
 /**
  * A lookup table's screen in VS Code: a Hub tab running the shared LookupController
- * (src/screens/lookup) over the lookup tables kept with the saved queries.
+ * (src/screens/lookup) over the lookup tables, one JSON file each in DBMN's data folder.
  */
 import * as vscode from 'vscode';
 import { WebviewBase } from '../shared/webview-base';
@@ -10,7 +10,7 @@ import { WebviewMessage } from '../shared/types';
 import { LookupController, type LookupMessage } from '../../screens/lookup/lookup.controller';
 import { buildLookupPage } from '../../screens/lookup/lookup-page';
 import { LookupTablesStore } from '../../services/lookup-tables/lookup-tables';
-import type { IKeyValueStore } from '../../platform/interfaces/key-value-store.interface';
+import type { LookupFolder } from '../../services/lookup-tables/lookup-tables';
 
 export interface LookupWebviewConfig {
     id: string;
@@ -22,10 +22,10 @@ export interface LookupWebviewConfig {
 export class LookupWebview extends WebviewBase {
     private readonly controller: LookupController;
 
-    constructor(context: vscode.ExtensionContext, state: Pick<IKeyValueStore, 'get' | 'update'>, private readonly config: LookupWebviewConfig) {
+    constructor(context: vscode.ExtensionContext, folder: LookupFolder, private readonly config: LookupWebviewConfig) {
         super(context);
         this.controller = new LookupController(this.session, {
-            store: new LookupTablesStore(state),
+            store: new LookupTablesStore(folder),
             toast: {
                 info: m => this.toast?.info(m),
                 warn: m => this.toast?.warn(m),

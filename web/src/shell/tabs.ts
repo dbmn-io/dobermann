@@ -45,7 +45,7 @@ import { DataTypeDetectionService } from '../../../src/services/data-type-detect
 import { DataTransformationService } from '../../../src/services/data-transformation/data-transformation.service';
 import type { BulkLoadRequest } from '../../../src/services/execution/run-orchestrator';
 import type { BulkLoadResult } from '../../../src/webviews/run-batch/bulk-load-result';
-import { queryFiles, WebExecution, webLogger, WORKSPACE_ROOT } from './execution';
+import { lookupFolder, queryFiles, WebExecution, webLogger, WORKSPACE_ROOT } from './execution';
 import { lookupTab } from './lookup-tab';
 import { buildEndpointPage, buildEnvironmentPage } from '../../../src/screens/pages';
 import { desktopBridge } from './desktop';
@@ -178,7 +178,7 @@ export function webTabs(deps: WebTabDeps): HubTabFactory {
             };
             if (isQueryId(compareId)) {
                 // A query: Compare's ports and SQLite, started from the app's own wasm file
-                const query = new QueryController(session, { ...ports, sql: () => (sqlEngine ??= initSqlJs({ locateFile: () => sqlWasmUrl })), systemName: async id => (await deps.systems.getSystem(id))?.name, openRunBatch: (endpoint, chain) => deps.openBatch(endpoint.id, chain), queryFiles, lookups: new LookupTablesStore(deps.state.globalState), openLookup: async id => { deps.openLookup(id); } }, { queryId: compareId, start });
+                const query = new QueryController(session, { ...ports, sql: () => (sqlEngine ??= initSqlJs({ locateFile: () => sqlWasmUrl })), systemName: async id => (await deps.systems.getSystem(id))?.name, openRunBatch: (endpoint, chain) => deps.openBatch(endpoint.id, chain), queryFiles, lookups: new LookupTablesStore(lookupFolder), openLookup: async id => { deps.openLookup(id); } }, { queryId: compareId, start });
                 const queryScreen = { handle: (m: Record<string, unknown>) => query.handleMessage(m as never), dispose: () => query.dispose() };
                 return { ...tab(buildQueryPage(asset, { queryId: compareId, name: endpointName }), session, queryScreen), name: `Query: ${endpointName}` };
             }
@@ -187,7 +187,7 @@ export function webTabs(deps: WebTabDeps): HubTabFactory {
             return { ...tab(buildComparePage(asset, { compareId, endpointName }), session, screen), name: `Compare: ${endpointName}` };
         },
         // A lookup table: kept with the saved queries, in this browser's state
-        lookup: lookupTab({ state: deps.state.globalState, toast: deps.toast }),
+        lookup: lookupTab({ folder: lookupFolder, toast: deps.toast }),
         // The design system's page: components on show, nothing to run
         design: async channel => tab(buildDesignSystemPage(asset), sessionFor(channel), { handle: async () => undefined, dispose: () => undefined }),
         // Dobermann issue 7: the app's log; Save is a download, as exports are

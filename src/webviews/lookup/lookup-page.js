@@ -20,7 +20,7 @@
     const plural = (n, word) => `${count(n)} ${word}${n === 1 ? '' : 's'}`;
 
     /** What the controller said: the limits, whether the table is gone, the save asked for last. */
-    const ui = { limits: { columns: 50, rows: 100000 }, gone: false, seq: 0, timer: null };
+    const ui = { limits: { columns: 50, rows: 1000 }, gone: false, seq: 0, timer: null };
 
     function say(text, tone) {
         status.textContent = text;

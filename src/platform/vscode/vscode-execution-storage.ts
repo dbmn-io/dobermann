@@ -12,12 +12,25 @@ import { SqlJsExecutionStorage } from '../../services/storage/sqljs-execution-st
 import { ensureDobermannWorkspaceFolder } from '../../utils/workspace-helper';
 import { LoggerRegistry } from '../../utils/logger-registry';
 import { QueryFileStore } from '../../services/query/query-file-store';
+import type { LookupFolder } from '../../services/lookup-tables/lookup-tables';
 
 /** A query's file views keep their rows beside the history database, in the workspace's DBMN folder. */
 export function createVsCodeQueryFiles(): QueryFileStore {
     return new QueryFileStore({
         dataDir: async () => vscode.Uri.joinPath(await ensureDobermannWorkspaceFolder(), DATA_DIR).fsPath
     });
+}
+
+/**
+ * Lookup tables, one JSON file each, beside the history database. One object for the whole
+ * extension: every lookup store built on it hears the others' changes (the Hub saves, an open query reruns).
+ */
+let lookupFolder: LookupFolder | undefined;
+export function vsCodeLookupFolder(): LookupFolder {
+    if (!lookupFolder) {
+        lookupFolder = { dataDir: async () => vscode.Uri.joinPath(await ensureDobermannWorkspaceFolder(), DATA_DIR).fsPath };
+    }
+    return lookupFolder;
 }
 
 export function createVsCodeExecutionStorage(context: vscode.ExtensionContext): SqlJsExecutionStorage {

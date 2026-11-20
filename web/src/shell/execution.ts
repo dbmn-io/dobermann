@@ -10,6 +10,7 @@
 import { appLog } from './app-log';
 import { DATA_DIR, LEGACY_DATA_DIR } from '../../../src/services/workspace/workspace-layout';
 import { QueryFileStore } from '../../../src/services/query/query-file-store';
+import type { LookupFolder } from '../../../src/services/lookup-tables/lookup-tables';
 import { listRunFiles, readRunFile, RUN_ARCHIVE_NAME, runFileExists, writeRunFile } from '../../../src/services/run-content/run-content-store';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import * as fs from 'fs';
@@ -69,6 +70,15 @@ export const queryFiles = new QueryFileStore({
     dataDir: async () => `${WORKSPACE_ROOT}/${DATA_DIR}`,
     preload: folder => loadFromFolder([], [folder])
 });
+
+/**
+ * Lookup tables, one JSON file each, beside the history database: in the browser, or the
+ * workspace folder. One object for the whole app: every lookup store built on it hears the others.
+ */
+export const lookupFolder: LookupFolder = {
+    dataDir: async () => `${WORKSPACE_ROOT}/${DATA_DIR}`,
+    preload: folder => loadFromFolder([], [folder])
+};
 
 export function useWorkspaceRoot(root: string): void {
     WORKSPACE_ROOT = root;

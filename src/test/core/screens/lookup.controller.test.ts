@@ -38,7 +38,7 @@ describe('Lookup table screen (controller)', () => {
         const load = last('lookup.load') as { table: { id: string; columns: unknown[] }; limits: { columns: number; rows: number } };
         expect(load.table.id).to.equal(table.id);
         expect(load.table.columns).to.have.length(2);
-        expect(load.limits).to.deep.equal({ columns: 50, rows: 100000 });
+        expect(load.limits).to.deep.equal({ columns: 50, rows: 1000 });
     });
 
     it('the page\'s columns and rows are kept under the table\'s own name; the page hears it', async () => {

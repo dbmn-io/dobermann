@@ -47,7 +47,7 @@ const td = (p, row, col) => p.locator('#lookupTable .dbmn-table-body tr').nth(ro
 async function open(p) {
     await p.setContent(page());
     await expect.poll(() => p.evaluate(() => window.posted.map(m => m.type))).toEqual(['lookup.ready']);
-    await send(p, { type: 'lookup.load', table: TABLE, limits: { columns: 50, rows: 100000 } });
+    await send(p, { type: 'lookup.load', table: TABLE, limits: { columns: 50, rows: 1000 } });
     await expect(p.locator('#lookupTable .dbmn-table-body tr')).toHaveCount(2);
 }
 

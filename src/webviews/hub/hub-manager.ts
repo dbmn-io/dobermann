@@ -30,7 +30,7 @@ import { LookupWebview } from '../lookup/lookup-webview';
 import type { IExecutionLoggingService } from '../../services/logging/execution-logging.interface';
 import { CoreServiceTokens } from '../../container/core-services-registry';
 import { LoggerRegistry as AppLogRegistry } from '../../utils/logger-registry';
-import { createVsCodeQueryFiles } from '../../platform/vscode/vscode-execution-storage';
+import { createVsCodeQueryFiles, vsCodeLookupFolder } from '../../platform/vscode/vscode-execution-storage';
 import { RunBatchWebview } from '../run-batch/run-batch-webview';
 import { ConsoleWebviewManager } from '../console/console-webview-manager';
 import { ConsoleController } from '../../screens/console/console.controller';
@@ -384,7 +384,8 @@ export class HubWebviewManager extends WebviewBase {
                     const container = this.dobermannInstance?.serviceContainer;
                     return container ? compareStateStore(container, this.context) : this.context.globalState;
                 },
-                queryFiles: createVsCodeQueryFiles()
+                queryFiles: createVsCodeQueryFiles(),
+                lookups: vsCodeLookupFolder()
             },
             confirmDestructive,
             toast: {
@@ -552,8 +553,7 @@ export class HubWebviewManager extends WebviewBase {
             lookup: async ({ id, name, renamed }, channel) => {
                 const bridge = bridgeFor(channel);
                 const container = this.dobermannInstance?.serviceContainer;
-                const state = container ? compareStateStore(container, this.context) : this.context.globalState;
-                const manager = new LookupWebview(this.context, state, { id, name, onRenamed: renamed });
+                const manager = new LookupWebview(this.context, vsCodeLookupFolder(), { id, name, onRenamed: renamed });
                 const { html } = await manager.createWebviewEmbedded({ context: 'general' }, bridge);
                 return { ...embed(manager, bridge, html), rename: (newName: string) => manager.rename(newName) };
             },

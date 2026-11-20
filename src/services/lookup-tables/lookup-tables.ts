@@ -7,14 +7,19 @@
  * query that uses a table reads it as it is now, and a table that has been deleted is missing
  * (the query says so and does not run).
  *
- * Kept with the saved queries, in the same small state store (key `lookupTables`), so a query
- * and the tables it uses are always kept together: on this computer today, and on the account
- * together when reports move there (James, 2026-11-20). Read and written whole: lookup tables
- * are small.
+ * A lookup table is a saved table of its own (a query only names it), kept as one JSON file per
+ * table in DBMN's data folder, beside the run history and query files: `lookup-tables/<id>.json`
+ * (James, 2026-11-21: "Each lookup table becomes one JSON"). An edit rewrites that table's file
+ * only. Small: up to 1,000 rows ("it's just a translation table").
+ *
+ * (Tables made before that were kept in the app's small state store, key `lookupTables`:
+ * migrateFrom(state) moves them into files once. Tests may still give the store a state.)
  *
  * A column has an id that never changes (a rename keeps it), so a saved query's
  * { table, from, to } keeps working when a column is renamed.
  */
+import * as fs from 'fs';
+import * as path from 'path';
 import type { IKeyValueStore } from '../../platform/interfaces/key-value-store.interface';
 
 export const LOOKUP_TABLES_KEY = 'lookupTables';
@@ -22,7 +27,7 @@ export const LOOKUP_TABLES_KEY = 'lookupTables';
 /** The most columns a lookup table can have. */
 export const LOOKUP_MAX_COLUMNS = 50;
 /** The most rows a lookup table can have. */
-export const LOOKUP_MAX_ROWS = 100000;
+export const LOOKUP_MAX_ROWS = 1000;
 /** A lookup table's name: as long as a report's. */
 export const LOOKUP_NAME_MAX = 30;
 
@@ -69,6 +74,18 @@ export interface LookupTablesStoreOptions {
 }
 
 const ID_PREFIX = 'lkp-';
+const FOLDER = 'lookup-tables';
+
+/** Where lookup tables are kept: DBMN's data folder (each host's own, as the query files'). */
+export interface LookupFolder {
+    dataDir(): Promise<string>;
+    /** Make a folder's files readable first (the web app on a workspace folder reads them when asked). */
+    preload?(folder: string): Promise<void>;
+}
+type Backing = Pick<IKeyValueStore, 'get' | 'update'> | LookupFolder;
+const isFolder = (b: Backing): b is LookupFolder => typeof (b as LookupFolder).dataDir === 'function';
+/** Ids are DBMN's own (lkp-...); anything else never becomes a path. */
+const safe = (id: string): string => id.replace(/[^A-Za-z0-9_-]/g, '_');
 
 /** Whether an id is a lookup table's (the Hub's Reporting list holds reports and lookup tables). */
 export function isLookupId(id: string): boolean {
@@ -119,20 +136,83 @@ export function starterColumns(): LookupColumn[] {
 }
 
 export class LookupTablesStore implements LookupTablesReader {
-    /** `state`: the store the saved queries are kept in (only get and update are used). */
-    constructor(private readonly state: Pick<IKeyValueStore, 'get' | 'update'>, private readonly options: LookupTablesStoreOptions = {}) {}
+    /**
+     * `backing`: the host's data folder (one file per table), the one object for the whole host so
+     * every store on it hears the others' changes. A state store also works (tests; the old keeping).
+     */
+    constructor(private readonly backing: Backing, private readonly options: LookupTablesStoreOptions = {}) {}
+
+    private get state(): object { return this.backing; }
 
     private now(): string {
         return this.options.now ? this.options.now() : new Date().toISOString();
     }
 
-    private async readAll(): Promise<LookupTable[]> {
-        const kept = this.state.get<unknown>(LOOKUP_TABLES_KEY);
-        return Array.isArray(kept) ? kept.map(clean).filter((t): t is LookupTable => !!t) : [];
+    private async folder(): Promise<string> {
+        const folder = path.join(await (this.backing as LookupFolder).dataDir(), FOLDER);
+        await (this.backing as LookupFolder).preload?.(folder);
+        return folder;
     }
 
-    private async writeAll(tables: LookupTable[]): Promise<void> {
-        await this.state.update(LOOKUP_TABLES_KEY, tables);
+    private async readAll(): Promise<LookupTable[]> {
+        if (!isFolder(this.backing)) {
+            const kept = this.backing.get<unknown>(LOOKUP_TABLES_KEY);
+            return Array.isArray(kept) ? kept.map(clean).filter((t): t is LookupTable => !!t) : [];
+        }
+        const folder = await this.folder();
+        if (!fs.existsSync(folder)) return [];
+        const tables: LookupTable[] = [];
+        for (const name of fs.readdirSync(folder)) {
+            if (!name.endsWith('.json')) continue;
+            try {
+                const table = clean(JSON.parse(String(fs.readFileSync(path.join(folder, name), 'utf8'))));
+                if (table) tables.push(table);
+            } catch { /* a file that can't be read is left alone, not shown */ }
+        }
+        return tables;
+    }
+
+    /** Keep one table: its own file (written beside, then put in place, so a failed write leaves the old one). */
+    private async writeOne(table: LookupTable): Promise<void> {
+        if (!isFolder(this.backing)) {
+            const all = (await this.readAll()).filter(t => t.id !== table.id);
+            await this.backing.update(LOOKUP_TABLES_KEY, [...all, table]);
+            return;
+        }
+        const folder = await this.folder();
+        fs.mkdirSync(folder, { recursive: true });
+        const file = path.join(folder, `${safe(table.id)}.json`);
+        fs.writeFileSync(`${file}.tmp`, JSON.stringify(table));
+        fs.renameSync(`${file}.tmp`, file);
+    }
+
+    private async removeOne(id: string): Promise<void> {
+        if (!isFolder(this.backing)) {
+            await this.backing.update(LOOKUP_TABLES_KEY, (await this.readAll()).filter(t => t.id !== id));
+            return;
+        }
+        const file = path.join(await this.folder(), `${safe(id)}.json`);
+        if (fs.existsSync(file)) fs.unlinkSync(file);
+    }
+
+    /**
+     * Tables kept in the state store before they had files of their own: written to files (one
+     * not already there), then gone from the state. Returns how many were moved.
+     */
+    async migrateFrom(state: Pick<IKeyValueStore, 'get' | 'update'>): Promise<number> {
+        if (!isFolder(this.backing)) return 0;
+        const kept = state.get<unknown>(LOOKUP_TABLES_KEY);
+        if (!Array.isArray(kept) || !kept.length) return 0;
+        const have = new Set((await this.readAll()).map(t => t.id));
+        let moved = 0;
+        for (const raw of kept) {
+            const table = clean(raw);
+            if (!table || have.has(table.id)) continue;
+            await this.writeOne(table);
+            moved++;
+        }
+        await state.update(LOOKUP_TABLES_KEY, undefined);
+        return moved;
     }
 
     private tell(change: LookupChange): void {
@@ -156,8 +236,7 @@ export class LookupTablesStore implements LookupTablesReader {
     async create(name: string): Promise<LookupTable> {
         const tables = await this.readAll();
         const table: LookupTable = { id: newId(tables), name: freeName(tables, name || 'Lookup'), columns: starterColumns(), rows: [], updatedAt: this.now() };
-        tables.push(table);
-        await this.writeAll(tables);
+        await this.writeOne(table);
         this.tell({ kind: 'saved', id: table.id });
         return table;
     }
@@ -174,8 +253,7 @@ export class LookupTablesStore implements LookupTablesReader {
         if (tables.some(t => t.id !== kept.id && t.name.toLowerCase() === kept.name.toLowerCase())) {
             throw new Error(`Another lookup table is already called ${kept.name}.`);
         }
-        tables[at] = kept;
-        await this.writeAll(tables);
+        await this.writeOne(kept);
         this.tell({ kind: 'saved', id: kept.id });
         return kept;
     }
@@ -195,17 +273,14 @@ export class LookupTablesStore implements LookupTablesReader {
             id: newId(tables), name: freeName(tables, `${from.name} copy`),
             columns: from.columns.map(c => ({ ...c })), rows: from.rows.map(r => ({ ...r })), updatedAt: this.now()
         };
-        tables.push(copy);
-        await this.writeAll(tables);
+        await this.writeOne(copy);
         this.tell({ kind: 'saved', id: copy.id });
         return copy;
     }
 
     async remove(id: string): Promise<void> {
-        const tables = await this.readAll();
-        const left = tables.filter(t => t.id !== id);
-        if (left.length === tables.length) return;
-        await this.writeAll(left);
+        if (!(await this.readAll()).some(t => t.id === id)) return;
+        await this.removeOne(id);
         this.tell({ kind: 'deleted', id });
     }
 

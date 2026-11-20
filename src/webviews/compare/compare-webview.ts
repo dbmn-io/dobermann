@@ -20,7 +20,7 @@ import { QueryController } from '../../screens/query/query.controller';
 import { buildQueryPage } from '../../screens/query/query-page';
 import { isQueryId } from '../../services/query/query-store';
 import { LookupTablesStore } from '../../services/lookup-tables/lookup-tables';
-import { createVsCodeQueryFiles } from '../../platform/vscode/vscode-execution-storage';
+import { createVsCodeQueryFiles, vsCodeLookupFolder } from '../../platform/vscode/vscode-execution-storage';
 import initSqlJs from 'sql.js';
 import * as path from 'path';
 
@@ -78,7 +78,7 @@ export class CompareWebview extends WebviewBase {
         };
         const wasm = path.join(context.extensionPath, 'dist', 'sql-wasm.wasm');
         this.controller = isQueryId(config.compareId)
-            ? new QueryController(this.session, { ...ports, sql: () => (sqlEngine ??= initSqlJs({ locateFile: () => wasm })), systemName: async id => (await container.resolve<{ getSystem(id: string): Promise<{ name: string } | undefined> }>(ServiceTokens.SystemManager).getSystem(id))?.name, openRunBatch: async (endpoint, chain) => { await vscode.commands.executeCommand('dbmn.runBatch', { endpoint, chain }); }, queryFiles: createVsCodeQueryFiles(), lookups: new LookupTablesStore(compareStateStore(container, context)), openLookup: async id => { await vscode.commands.executeCommand('dbmn.openLookupTable', id); } }, { queryId: config.compareId, start: config.start })
+            ? new QueryController(this.session, { ...ports, sql: () => (sqlEngine ??= initSqlJs({ locateFile: () => wasm })), systemName: async id => (await container.resolve<{ getSystem(id: string): Promise<{ name: string } | undefined> }>(ServiceTokens.SystemManager).getSystem(id))?.name, openRunBatch: async (endpoint, chain) => { await vscode.commands.executeCommand('dbmn.runBatch', { endpoint, chain }); }, queryFiles: createVsCodeQueryFiles(), lookups: new LookupTablesStore(vsCodeLookupFolder()), openLookup: async id => { await vscode.commands.executeCommand('dbmn.openLookupTable', id); } }, { queryId: config.compareId, start: config.start })
             : new CompareController(this.session, ports, config);
     }
 
