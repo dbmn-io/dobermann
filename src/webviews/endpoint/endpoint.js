@@ -3341,20 +3341,6 @@
             case 'apiCallResults':
                 handleAPICallResults(message.success, message.data, message.error);
                 break;
-            case 'csvParseResults':
-                try {
-                    if (window.CSVHandler && window.CSVHandler.displayCSVPreview) {
-                        window.CSVHandler.displayCSVPreview(message.preview);
-                    } else {
-                        console.warn('CSVHandler or displayCSVPreview not available');
-                    }
-                } catch (error) {
-                    console.error('Error displaying CSV preview:', error);
-                    if (window.CSVHandler && window.CSVHandler.showCSVError) {
-                        window.CSVHandler.showCSVError(`Failed to display data preview: ${error.message}`);
-                    }
-                }
-                break;
             case 'csvParseError':
                 handleCSVParseError(message.error);
                 break;

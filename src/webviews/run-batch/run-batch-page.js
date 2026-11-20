@@ -104,8 +104,6 @@
             case 'currentEnvironmentData':
             case 'workspaceValidated':
             case 'endpointTemplate':
-            case 'columnTypesDetected':
-            case 'columnTypesError':
             case 'typeTransformationCompleted':
             case 'typeTransformationsError':
             case 'endpointSaved':

@@ -296,11 +296,6 @@
     width: 100%;
 }
 
-#csvModalPreview {
-    position: relative;
-    width: 100%;
-}
-
 /* File Info */
 .file-upload-help {
     margin-top: 5px;

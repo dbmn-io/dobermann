@@ -31,9 +31,7 @@
     }
 
     function findContainer() {
-        return document.getElementById('csvMismatchRepairContainer')
-            || document.getElementById('csvModalPreview')
-            || null;
+        return document.getElementById('csvMismatchRepairContainer');
     }
 
     function countColumns(line, delimiter) {

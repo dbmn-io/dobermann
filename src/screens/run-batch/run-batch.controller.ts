@@ -57,9 +57,9 @@ export interface RunBatchMessage extends WebviewMessage {
     type: 'processCSVFile' | 'validateColumnMappings' | 'executeBatch' | 'closeWebview' |
     'showSuccessMessage' | 'showErrorMessage' | 'requestEndpointConfig' | 'executeBulkLoadCommand' |
     'getEndpointTemplate' | 'generateJsonPreview' | 'generateBulkJson' | 'verifyCSV' |
-    'verifyCSVWithTypeInfo' | 'getCurrentEnvironment' |
+    'getCurrentEnvironment' |
     'validateWorkspaceForBatch' | 'openFileDialog' | 'detectFileFormat' | 'convertFileFormat' |
-    'parseCSVForModal' | 'detectColumnTypes' | 'verifyCSVCompatibility' | 'applyTypeTransformations' |
+    'parseCSVForModal' | 'verifyCSVCompatibility' | 'applyTypeTransformations' |
     'saveEndpoint' | 'generateExecutionJson' |
     // GitHub Issue #135: Coercion validation
     'validateSampleCoercion' | 'validateFullCoercion' |
@@ -217,10 +217,6 @@ export class RunBatchController {
                 await this.handleGenerateBulkJson(message);
                 break;
 
-            case 'verifyCSVWithTypeInfo':
-                await this.handleVerifyCSV(message);
-                break;
-
             case 'getCurrentEnvironment':
                 await this.handleGetCurrentEnvironment();
                 break;
@@ -242,10 +238,6 @@ export class RunBatchController {
 
             case 'parseCSVForModal':
                 await this.handleParseCSVForModal(message);
-                break;
-
-            case 'detectColumnTypes':
-                await this.handleDetectColumnTypes(message);
                 break;
 
             case 'verifyCSVCompatibility':
@@ -991,16 +983,6 @@ export class RunBatchController {
         return csvDetectColumnMismatches(csvData);
     }
 
-    private async handleVerifyCSV(message: RunBatchMessage): Promise<void> {
-        // For now, auto-approve CSV
-        this.session.post({
-            type: 'csvVerified',
-            isValid: true,
-            templateVariables: this.extractTemplateVariables(this.endpointConfig)
-        });
-    }
-
-
     private async handleGetCurrentEnvironment(): Promise<void> {
         try {
             const environmentManager = this.ports.environments;
@@ -1167,50 +1149,6 @@ export class RunBatchController {
         }
     }
 
-    /**
-     * Handle column type detection
-     */
-    private async handleDetectColumnTypes(message: RunBatchMessage): Promise<void> {
-
-        try {
-            // Ensure csvData is a string
-            const csvDataString = typeof message.csvData === 'string' ? message.csvData : '';
-            if (!csvDataString) {
-                throw new Error('CSV data is not a string');
-            }
-
-            const formatConverterService = this.ports.formatConverter;
-
-            // Use FormatConverterService.detectColumnTypes which accepts CSV string directly
-            const result = await formatConverterService.detectColumnTypes(csvDataString, {
-                sampleSize: 100,
-                confidenceThreshold: 0.7
-            });
-
-            // Convert Map to array format like endpoint-manager does
-            const columnTypesArray = Array.from((result.columnTypes as Map<string, any>).entries()).map(([name, detection]) => ({
-                name,
-                ...detection
-            }));
-
-            this.session.post({
-                type: 'columnTypesDetected',
-                result: {
-                    columnTypes: columnTypesArray,
-                    overallConfidence: result.overallConfidence,
-                    rowsAnalyzed: result.rowsAnalyzed,
-                    warnings: result.warnings
-                }
-            });
-
-        } catch (error) {
-            console.error('[RunBatchWebview] Type detection failed:', error);
-            this.session.post({
-                type: 'columnTypesError',
-                error: `Failed to detect column types: ${error instanceof Error ? error.message : String(error)}`
-            });
-        }
-    }
 
     /**
      * Handle type transformations for CSV data

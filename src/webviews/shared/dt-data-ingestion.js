@@ -841,11 +841,6 @@
                 window.CSVHandler.showCSVStep(2);
             }
 
-            // Show CSV preview with type detection
-            if (window.CSVHandler && window.CSVHandler.displayCSVModalPreview) {
-                window.CSVHandler.displayCSVModalPreview(enhancedPreview);
-            }
-
             // Trigger compatibility verification to populate template variables and mapping table
             if (window.CSVHandler && window.CSVHandler.triggerCSVCompatibilityVerification) {
                 window.CSVHandler.triggerCSVCompatibilityVerification();
@@ -980,11 +975,6 @@
 
         // Store enhanced preview with totalRows for accurate row count display (GitHub Issue fix)
         csvState.currentParsedData = enhancedPreview;
-
-        // Show CSV preview
-        if (window.CSVHandler && window.CSVHandler.displayCSVModalPreview) {
-            window.CSVHandler.displayCSVModalPreview(enhancedPreview);
-        }
 
         // GitHub Issue #226: Inline-editable repair panel for column-count mismatches.
         // Replaces the opaque banner from #135 — the user can now fix bad rows
@@ -1140,30 +1130,10 @@
         // GitHub Issue #148: Ensure navigationInProgress is cleared on errors
         csvState.navigationInProgress = false;
 
-        // Store error details and statistics for cell highlighting
-        if (message.errorDetails) {
-            csvState.errorDetails = message.errorDetails;
-        }
-        if (message.statistics) {
-            csvState.validationStatistics = message.statistics;
-        }
-
         // Show enhanced error summary with statistics
         // Cross-module call: showEnhancedCSVError is in the orchestrator
         if (window.CSVHandler && window.CSVHandler.showEnhancedCSVError) {
             window.CSVHandler.showEnhancedCSVError(message.error, message.errorDetails, message.statistics);
-        }
-
-        // Update preview to show error rows by default when errors are found
-        // Cross-module call: updatePreviewToShowErrors is in the orchestrator (type coercion area)
-        if (window.CSVHandler && window.CSVHandler.updatePreviewToShowErrors) {
-            window.CSVHandler.updatePreviewToShowErrors();
-        }
-
-        // Highlight error cells in the preview table
-        // Cross-module call: highlightErrorCells is in the orchestrator
-        if (window.CSVHandler && window.CSVHandler.highlightErrorCells) {
-            window.CSVHandler.highlightErrorCells();
         }
 
         // Update buttons after clearing navigation state

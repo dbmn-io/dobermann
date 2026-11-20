@@ -293,103 +293,6 @@
         return window.DTDataIngestion.handleCSVDragLeave(...args);
     }
 
-    // CSV Preview and Display
-    function displayCSVPreview(...args) {
-        return window.DTDataPreview.displayCSVPreview(...args);
-    }
-
-    function displayCSVModalPreview(...args) {
-        return window.DTDataPreview.displayCSVModalPreview(...args);
-    }
-
-    // Type Detection and Selection Functions
-    async function detectAndDisplayColumnTypes(...args) {
-        return window.DTTypeCoercion.detectAndDisplayColumnTypes(...args);
-    }
-
-    function handleTypeDetectionResult(...args) {
-        return window.DTTypeCoercion.handleTypeDetectionResult(...args);
-    }
-
-    function populateTypeSelectors(...args) {
-        return window.DTTypeCoercion.populateTypeSelectors(...args);
-    }
-
-    function populateTypeSelectorsWithDefaults(...args) {
-        return window.DTTypeCoercion.populateTypeSelectorsWithDefaults(...args);
-    }
-
-    /**
-     * Restore previously saved type selections when navigating back to Step 2
-     * This preserves user's manual type selections (GitHub Issue #106)
-     */
-    function restoreSavedTypeSelections(...args) {
-        return window.DTTypeCoercion.restoreSavedTypeSelections(...args);
-    }
-
-    function handleTypeSelection(...args) {
-        return window.DTTypeCoercion.handleTypeSelection(...args);
-    }
-
-    function updateColumnAlignment(columnIndex, dataType) {
-        // Find all cells in this column and apply appropriate alignment
-        const cells = document.querySelectorAll(`td[data-column-index="${columnIndex}"]`);
-        cells.forEach(cell => {
-            // Remove existing alignment classes
-            cell.classList.remove('numeric-cell', 'text-cell');
-
-            // Apply new alignment based on data type
-            if (dataType === 'number' || dataType === 'integer' || dataType === 'decimal' || dataType === 'currency') {
-                cell.classList.add('numeric-cell');
-            } else {
-                cell.classList.add('text-cell');
-            }
-        });
-    }
-
-    function requestTransformationPreview(columnName, selectedType, columnIndex) {
-        // Get sample values from the column for preview
-        const sampleValues = getSampleValuesForColumn(columnIndex, 3); // Get first 3 values
-
-        if (sampleValues.length === 0) {
-            console.warn('⚠️ [CSV Handler] No sample values available for transformation preview');
-            return;
-        }
-
-        // Request transformation of sample values to show preview
-        const columnTypes = new Map();
-        columnTypes.set(columnName, selectedType);
-
-        // LEADING ZERO FIX: Use raw CSV content instead of parsed data
-        // Parsed data loses leading zeros (e.g., "000123" becomes 123)
-        // Raw CSV preserves original values for transformation
-        const csvDataForTransformation = csvState.rawCSVContent || createCSVStringFromCurrentData();
-
-        getVscode().postMessage({
-            type: 'applyTypeTransformations',
-            csvData: csvDataForTransformation,
-            columnTypes: Object.fromEntries([[columnName, selectedType]]) // Convert to object for JSON serialization
-        });
-    }
-
-    function getSampleValuesForColumn(columnIndex, maxSamples = 3) {
-        if (!csvState.currentParsedData || !csvState.currentParsedData.rows) {
-            return [];
-        }
-
-        const sampleValues = [];
-        const maxRows = Math.min(csvState.currentParsedData.rows.length, maxSamples);
-
-        for (let i = 0; i < maxRows; i++) {
-            const row = csvState.currentParsedData.rows[i];
-            if (row && row[columnIndex] !== undefined && row[columnIndex] !== null) {
-                sampleValues.push(row[columnIndex].toString());
-            }
-        }
-
-        return sampleValues;
-    }
-
     function createCSVStringFromCurrentData(...args) {
         return window.DTTypeCoercion.createCSVStringFromCurrentData(...args);
     }
@@ -398,132 +301,12 @@
         return window.DTTypeCoercion.createCSVStringFromData(...args);
     }
 
-    function applyTransformationsToPreview(...args) {
-        return window.DTTypeCoercion.applyTransformationsToPreview(...args);
-    }
-
-    function transformValueForDisplay(...args) {
-        return window.DTTypeCoercion.transformValueForDisplay(...args);
-    }
-
-    function handleTypeConversionValidation(...args) {
-        return window.DTTypeCoercion.handleTypeConversionValidation(...args);
-    }
-
     function handleTypeTransformationResult(...args) {
         return window.DTTypeCoercion.handleTypeTransformationResult(...args);
     }
 
     function parseCSVLine(...args) {
         return window.DTTypeCoercion.parseCSVLine(...args);
-    }
-
-    function updateTableWithTransformations(transformedHeaders, transformedRows) {
-        const tbody = document.getElementById('csvPreviewTableBody');
-        if (!tbody || !csvState.currentParsedData || !csvState.currentParsedData.rows) {
-            console.warn('⚠️ [CSV Handler] Cannot update table - missing elements or data');
-            return;
-        }
-
-        const originalRows = csvState.currentParsedData.rows;
-        const minRows = Math.min(transformedRows.length, originalRows.length);
-
-        // Update each row in the table
-        const tableRows = tbody.querySelectorAll('tr');
-
-        for (let rowIndex = 0; rowIndex < Math.min(minRows, tableRows.length); rowIndex++) {
-            const tableRow = tableRows[rowIndex];
-            const transformedRow = transformedRows[rowIndex];
-            const originalRow = originalRows[rowIndex];
-            const tableCells = tableRow.querySelectorAll('td');
-
-            for (let colIndex = 0; colIndex < tableCells.length && colIndex < transformedRow.length; colIndex++) {
-                const cell = tableCells[colIndex];
-                const transformedValue = transformedRow[colIndex];
-                const originalValue = originalRow[colIndex];
-
-                // Update cell with transformed value
-                cell.textContent = transformedValue;
-
-                // Add tooltip showing original value if different
-                if (transformedValue !== originalValue) {
-                    cell.title = `Original: ${originalValue}`;
-                    cell.classList.add('transformed-cell'); // Highlight transformed cells
-                }
-            }
-        }
-    }
-
-    function showTypeValidationError(columnName, errorMessage) {
-        // Find the type selector for this column and add error styling
-        const selector = document.querySelector(`.type-selector[data-column-name="${columnName}"]`);
-        if (selector) {
-            selector.className = 'type-selector type-selector-error';
-            selector.title = `Validation Error: ${errorMessage}`;
-
-            // Add error message below selector
-            let errorDiv = selector.parentElement.querySelector('.type-error');
-            if (!errorDiv) {
-                errorDiv = document.createElement('div');
-                errorDiv.className = 'type-error inline-error-message';
-                selector.parentElement.appendChild(errorDiv);
-            }
-            errorDiv.textContent = errorMessage;
-        }
-    }
-
-    function showTypeValidationWarning(columnName, warningMessage) {
-        // Find the type selector for this column and add warning styling
-        const selector = document.querySelector(`.type-selector[data-column-name="${columnName}"]`);
-        if (selector) {
-            selector.className = 'type-selector type-selector-warning';
-            selector.title = `Validation Warning: ${warningMessage}`;
-        }
-    }
-
-    function updateCellPreview(columnName, originalValue, convertedValue) {
-        // Find cells in this column and update their previews
-        const columnIndex = csvState.currentHeaders ? csvState.currentHeaders.indexOf(columnName) : -1;
-        if (columnIndex >= 0) {
-            const cells = document.querySelectorAll(`td[data-column-index="${columnIndex}"]`);
-            cells.forEach((cell, rowIndex) => {
-                if (rowIndex < 3) { // Only update first few rows for preview
-                    const originalCellValue = cell.getAttribute('data-original-value');
-                    if (originalCellValue === originalValue) {
-                        // Update cell content with converted value but keep original in tooltip
-                        cell.textContent = convertedValue;
-                        cell.title = `Original: ${originalValue} → Converted: ${convertedValue}`;
-                        cell.classList.add('highlight-cell');
-                    }
-                }
-            });
-        }
-    }
-
-    function updatePreviewToShowErrors(...args) {
-        return window.DTTypeCoercion.updatePreviewToShowErrors(...args);
-    }
-
-    function showNormalPreview() {
-        if (csvState.originalPreview) {
-            displayCSVModalPreview(csvState.originalPreview);
-        }
-    }
-
-    function toggleErrorView() {
-        const checkbox = document.getElementById('errorToggle');
-        const showErrorsOnly = checkbox && checkbox.checked;
-
-        if (showErrorsOnly) {
-            updatePreviewToShowErrors();
-        } else {
-            showNormalPreview();
-        }
-
-        // Always re-highlight error cells after toggling views
-        setTimeout(() => {
-            highlightErrorCells();
-        }, 50); // Small delay to ensure DOM is updated
     }
 
     function resetCSVModal() {
@@ -573,13 +356,6 @@
         // Reset paste area
         const pasteArea = document.getElementById('csvPasteArea');
         if (pasteArea) pasteArea.value = '';
-
-        // Clear previews
-        const previewContainers = ['csvModalPreview', 'csvPreview'];
-        previewContainers.forEach(id => {
-            const container = document.getElementById(id);
-            if (container) container.innerHTML = '';
-        });
 
         // GitHub Issue #135: Clear unified notification
         clearModalNotification();
@@ -1453,61 +1229,10 @@
             return;
         }
 
-        // Check if we have type information available for dual-stage validation
-        const typeSelectors = document.querySelectorAll('.type-selector');
-
-        if (typeSelectors.length > 0) {
-            // Use dual-stage validation with type information
-            verifyCSVWithTypeInfo();
-        } else {
-            // Fall back to legacy single-stage validation
-            getVscode().postMessage({
-                type: 'verifyCSVCompatibility',
-                csvData: csvState.rawCSVContent, // Send full CSV string instead of preview rows
-                endpointId: currentEndpointId
-            });
-        }
-    }
-
-    /**
-     * New dual-stage CSV validation with type information
-     */
-    function verifyCSVWithTypeInfo() {
-        const currentEndpointId = window.currentEndpointId || document.body.getAttribute('data-endpoint-id');
-        if (!currentEndpointId || currentEndpointId === 'NEW') {
-            showCSVVerificationError('Please save the endpoint before verifying CSV compatibility');
-            return;
-        }
-
-        if (!csvState.rawCSVContent) {
-            showCSVVerificationError('No CSV data available for verification');
-            return;
-        }
-
-        // Collect column type information from UI
-        const columnTypes = [];
-        const typeSelectors = document.querySelectorAll('.type-selector');
-
-        typeSelectors.forEach(selector => {
-            const columnName = selector.getAttribute('data-column-name');
-            const selectedType = selector.value;
-            const detectedType = selector.getAttribute('data-detected-type') || undefined;
-
-            if (columnName) {
-                columnTypes.push({
-                    columnName: columnName,
-                    selectedType: selectedType,
-                    detectedType: detectedType
-                });
-            }
-        });
-
-        // GitHub Issue #106: Send sampled data for preview validation
         getVscode().postMessage({
-            type: 'verifyCSVWithTypeInfo',
-            csvData: getSampledCSVData(csvState.rawCSVContent),
-            endpointId: currentEndpointId,
-            columnTypes: columnTypes
+            type: 'verifyCSVCompatibility',
+            csvData: csvState.rawCSVContent, // Send full CSV string instead of preview rows
+            endpointId: currentEndpointId
         });
     }
 
@@ -3078,12 +2803,6 @@
         onErrorToleranceToggle,
         onToleranceModeChange,
 
-        // Display
-        displayCSVPreview,
-        displayCSVModalPreview,
-        showNormalPreview,
-        toggleErrorView,
-
         // Modal management (resetCSVModal and showCSVStep still used by Run Batch webview)
         resetCSVModal,
         showCSVStep,
@@ -3097,7 +2816,6 @@
 
         // Verification
         verifyCSVCompatibility,
-        verifyCSVWithTypeInfo,
         triggerCSVCompatibilityVerification,
 
         // State checks
@@ -3464,7 +3182,6 @@
 
         // Error handling UI (exposed for split modules)
         showEnhancedCSVError,
-        highlightErrorCells,
         initializeErrorHandlingUI,
 
         // Data ingestion utilities (exposed for split modules)
@@ -5227,16 +4944,6 @@ ${formattedJson}`;
             }
         }
 
-        // Handle type detection results
-        if (message.type === 'columnTypesDetected') {
-            handleTypeDetectionResult(message);
-        }
-
-        // Handle type conversion validation results
-        if (message.type === 'typeConversionValidated') {
-            handleTypeConversionValidation(message);
-        }
-
         // Handle type transformation results
         if (message.type === 'typeTransformationCompleted') {
             handleTypeTransformationResult(message);
@@ -5280,88 +4987,17 @@ ${formattedJson}`;
             return `Column "${column}" (${firstError.expectedType} expected): ${errorCount} error${errorCount > 1 ? 's' : ''}`;
         });
 
-        // Create enhanced message with integrated toggle
-        const isErrorMode = true; // Default to error mode when errors are found
+        // The columns with errors, by name (the file itself is not shown on Source to highlight them in)
+        const escapeText = text => String(text).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
         let enhancedMessage = `Data Validation Issues Found
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━
 📊 ${stats.errorCount} errors found in ${stats.affectedRows.length} rows
-
-<label class="checkbox-label">
-    <input type="checkbox" id="errorToggle" ${isErrorMode ? 'checked' : ''} 
-           data-change="csv:toggleErrorView">
-    <span>Show errors only</span>
-</label>
-
+${columnSummaries.map(line => `• ${escapeText(line)}`).join('\n')}
 <div class="validation-help">
-    💡 <strong>To fix these issues:</strong> Update your source file to correct the highlighted data type errors, then upload the corrected file or select a different file.
+    💡 <strong>To fix these issues:</strong> Update your source file to correct these data type errors, then upload the corrected file or select a different file.
 </div>`;
 
         showCSVVerificationError(enhancedMessage);
-    }
-
-    function highlightErrorCells() {
-        if (!csvState.errorDetails || csvState.errorDetails.length === 0) {
-            return;
-        }
-
-        const previewTable = document.querySelector('#csvModalPreview table');
-        if (!previewTable) {
-            return;
-        }
-
-        // Get headers to map column names to indices
-        const headerCells = previewTable.querySelectorAll('thead th');
-        const headerMap = {};
-        headerCells.forEach((cell, index) => {
-            headerMap[cell.textContent.trim()] = index;
-        });
-
-        // Clear any existing error highlighting
-        previewTable.querySelectorAll('.csv-error-cell').forEach(cell => {
-            cell.classList.remove('csv-error-cell');
-        });
-
-        // Check if we're in error preview mode
-        const checkbox = document.getElementById('errorToggle');
-        const isErrorMode = checkbox && checkbox.checked;
-
-        // Apply error highlighting
-        const dataRows = previewTable.querySelectorAll('tbody tr');
-
-        if (isErrorMode) {
-            // In error mode: each displayed row corresponds to an error row
-            // The preview contains errorRowNumbers in order
-            const errorRowNumbers = [...new Set(csvState.errorDetails.map(e => e.row))].sort((a, b) => a - b);
-
-            csvState.errorDetails.forEach(error => {
-                // Find which preview row this error belongs to
-                const errorRowIndex = errorRowNumbers.indexOf(error.row);
-                const columnIndex = headerMap[error.column];
-
-                if (errorRowIndex >= 0 && errorRowIndex < dataRows.length && columnIndex !== undefined) {
-                    const cell = dataRows[errorRowIndex].children[columnIndex];
-                    if (cell) {
-                        cell.classList.add('csv-error-cell');
-                        cell.title = `Error: ${error.error}`;
-                    }
-                }
-            });
-        } else {
-            // In normal mode: only highlight if error rows happen to be in first 10 rows
-            csvState.errorDetails.forEach(error => {
-                // Convert error row number to 0-based index (error.row is 1-based including header)
-                const previewRowIndex = error.row - 2; // -1 for header, -1 for 0-based
-                const columnIndex = headerMap[error.column];
-
-                if (previewRowIndex >= 0 && previewRowIndex < dataRows.length && columnIndex !== undefined) {
-                    const cell = dataRows[previewRowIndex].children[columnIndex];
-                    if (cell) {
-                        cell.classList.add('csv-error-cell');
-                        cell.title = `Error: ${error.error}`;
-                    }
-                }
-            });
-        }
     }
 
     /**
@@ -5484,7 +5120,6 @@ ${formattedJson}`;
         'csv:goToNextStep': () => csv('goToNextStep')(),
         'csv:startDataLoading': () => csv('startDataLoading')(),
         'csv:updateSelectedSheet': () => csv('updateSelectedSheet')(),
-        'csv:toggleErrorView': () => csv('toggleErrorView')(),
         'grid:toggleErrorFilter': () => window.DTDataEntryGrid?.toggleErrorFilter(),
         'grid:clearFileAndShowGrid': () => window.DTDataEntryGrid?.clearFileAndShowGrid(),
         'ingestion:setFilterChoice': choice => window.DTDataIngestion?.setFilterChoice(choice),

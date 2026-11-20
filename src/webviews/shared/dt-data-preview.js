@@ -23,186 +23,6 @@
     const PREVIEW_SAMPLE_SIZE = 50; // Number of rows to process for preview/validation
 
     // =========================================================================
-    // CSV Preview and Display
-    // =========================================================================
-
-    function displayCSVPreview(preview) {
-
-        const previewContainer = document.getElementById('csvPreview');
-        if (!previewContainer) {
-            return;
-        }
-
-        // Clear previous preview
-        previewContainer.innerHTML = '';
-        if (!preview) {
-            previewContainer.innerHTML = '<p class="no-data">No data provided for preview</p>';
-            return;
-        }
-        if (!preview.headers || !Array.isArray(preview.headers) || preview.headers.length === 0) {
-            previewContainer.innerHTML = '<p class="no-data">No column headers found in data</p>';
-            return;
-        }
-
-        if (!preview.rows || !Array.isArray(preview.rows)) {
-            previewContainer.innerHTML = '<p class="no-data">No data rows found to preview</p>';
-            return;
-        }
-
-        // Create table
-        const table = document.createElement('table');
-        table.className = 'csv-preview-table';
-
-        // Create header
-        const thead = document.createElement('thead');
-        const headerRow = document.createElement('tr');
-        preview.headers.forEach(header => {
-            const th = document.createElement('th');
-            th.textContent = header;
-            headerRow.appendChild(th);
-        });
-        thead.appendChild(headerRow);
-        table.appendChild(thead);
-
-        // Create body
-        const tbody = document.createElement('tbody');
-        if (preview.rows && Array.isArray(preview.rows)) {
-            preview.rows.forEach(row => {
-                const tr = document.createElement('tr');
-                if (Array.isArray(row)) {
-                    row.forEach(cell => {
-                        const td = document.createElement('td');
-                        td.textContent = cell;
-                        td.title = cell; // Tooltip for long values
-                        tr.appendChild(td);
-                    });
-                }
-                tbody.appendChild(tr);
-            });
-        }
-        table.appendChild(tbody);
-
-        previewContainer.appendChild(table);
-
-        // Add row count message
-        if (preview.totalRows > preview.rows.length) {
-            const message = document.createElement('p');
-            message.className = 'preview-message';
-            message.textContent = `Showing ${preview.rows.length} of ${preview.totalRows} rows`;
-            previewContainer.appendChild(message);
-        }
-    }
-
-    function displayCSVModalPreview(preview) {
-
-        const previewContainer = document.getElementById('csvModalPreview');
-        if (!previewContainer) return;
-
-        // IMPORTANT: Hide the simple CSV preview to avoid showing two tables
-        const simplePreview = document.getElementById('csvPreview');
-        if (simplePreview) {
-            simplePreview.classList.add('hidden');
-        }
-
-        // Create compact file info at the very top first
-        const fileInfo = document.createElement('div');
-        fileInfo.className = 'csv-file-info file-info-box';
-        fileInfo.innerHTML = `
-            <span class="file-label">File:</span> <strong>${window.currentCSVFileName || 'Uploaded CSV'}</strong>
-            <span class="file-label">Columns:</span> <strong>${preview.headers.length}</strong>
-            <span class="file-label">Rows:</span> <strong>${preview.totalRows}</strong>
-        `;
-
-        // Clear container and add file info first
-        previewContainer.innerHTML = '';
-        previewContainer.appendChild(fileInfo);
-
-        if (!preview || !preview.headers || preview.headers.length === 0) {
-            previewContainer.innerHTML += '<p class="no-data">No CSV data to preview</p>';
-            return;
-        }
-
-        // Create table for preview
-        const table = document.createElement('table');
-        table.className = 'csv-preview-table';
-
-        // Header
-        const thead = document.createElement('thead');
-
-        // Original header row
-        const headerRow = document.createElement('tr');
-        preview.headers.forEach((header, index) => {
-            const th = document.createElement('th');
-            th.textContent = header;
-            headerRow.appendChild(th);
-        });
-        thead.appendChild(headerRow);
-
-        // Add type selector row to thead
-        const typeRow = document.createElement('tr');
-        typeRow.className = 'type-selector-row';
-        typeRow.id = 'typeSelectorsRow';
-        preview.headers.forEach((header, index) => {
-            const th = document.createElement('th');
-
-            // Create type selector dropdown
-            const select = document.createElement('select');
-            select.className = 'type-selector';
-            select.setAttribute('data-column-index', index);
-            select.setAttribute('data-column-name', header);
-
-            // Add default options - will be populated by type detection
-            select.innerHTML = `
-                <option value="string">Detecting...</option>
-            `;
-
-            // Add event listener for type changes
-            select.addEventListener('change', function () {
-                window.DTTypeCoercion.handleTypeSelection(header, this.value, index);
-            });
-
-            th.appendChild(select);
-            typeRow.appendChild(th);
-        });
-        thead.appendChild(typeRow);
-
-        table.appendChild(thead);
-
-        // Body (limited rows) - will show transformed values
-        const tbody = document.createElement('tbody');
-        tbody.id = 'csvPreviewTableBody';
-        preview.rows.forEach(row => {
-            const tr = document.createElement('tr');
-            row.forEach((cell, cellIndex) => {
-                const td = document.createElement('td');
-                td.textContent = cell;
-                td.title = `Original: ${cell}`;
-                td.setAttribute('data-original-value', cell);
-                td.setAttribute('data-column-index', cellIndex);
-                tr.appendChild(td);
-            });
-            tbody.appendChild(tr);
-        });
-        table.appendChild(tbody);
-
-        previewContainer.appendChild(table);
-
-
-        // Add preview info message
-        if (preview.totalRows > preview.rows.length && !preview.isErrorPreview) {
-            const message = document.createElement('p');
-            message.className = 'preview-message';
-            message.textContent = `Preview showing first ${preview.rows.length} rows`;
-            previewContainer.appendChild(message);
-        }
-
-        // Trigger automatic type detection (only if not already completed)
-        setTimeout(() => {
-            window.DTTypeCoercion.detectAndDisplayColumnTypes();
-        }, 100);
-    }
-
-    // =========================================================================
     // JSON Preview Functions
     // =========================================================================
 
@@ -1123,76 +943,6 @@
         return result;
     }
 
-    /**
-     * Toggle input data visibility via checkbox
-     */
-    function togglePreviewInput(checked) {
-        csvState.previewShowInput = checked;
-        const section = document.getElementById('previewInputSection');
-        if (!section) return;
-
-        if (checked) {
-            buildPreviewInputTable();
-        } else {
-            section.classList.add('hidden');
-        }
-    }
-
-    /**
-     * Build input columns table showing CSV data used in this batch.
-     * Only shows when the Input checkbox is checked.
-     */
-    function buildPreviewInputTable() {
-        const section = document.getElementById('previewInputSection');
-        if (!section) return;
-
-        // Only render if the user has toggled input on
-        if (!csvState.previewShowInput) {
-            section.classList.add('hidden');
-            return;
-        }
-
-        const headers = csvState.currentHeaders;
-        const rows = csvState.transformedRows;
-
-        if (!headers || !rows || rows.length === 0) {
-            section.classList.add('hidden');
-            return;
-        }
-
-        const maxRows = 5;
-        const displayRows = rows.slice(0, maxRows);
-
-        let html = '<div class="preview-input-table-wrapper"><table class="preview-input-table">';
-
-        // Header row
-        html += '<thead><tr>';
-        for (const h of headers) {
-            html += `<th>${escapeHtml(h)}</th>`;
-        }
-        html += '</tr></thead>';
-
-        // Data rows
-        html += '<tbody>';
-        for (const row of displayRows) {
-            html += '<tr>';
-            for (let i = 0; i < headers.length; i++) {
-                const val = row[i] != null ? String(row[i]) : '';
-                html += `<td title="${escapeHtml(val)}">${escapeHtml(val)}</td>`;
-            }
-            html += '</tr>';
-        }
-        html += '</tbody></table></div>';
-
-        // Footer
-        if (rows.length > maxRows) {
-            html += `<div class="preview-input-footer">Showing ${maxRows} of ${rows.length} rows</div>`;
-        }
-
-        section.innerHTML = html;
-        section.classList.remove('hidden');
-    }
-
     // =========================================================================
     // Module Public API
     // =========================================================================
@@ -1204,10 +954,6 @@
 
     window.DTDataPreview = {
         init: init,
-
-        // CSV preview
-        displayCSVPreview: displayCSVPreview,
-        displayCSVModalPreview: displayCSVModalPreview,
 
         // JSON preview
         prepareMappedCSVData: prepareMappedCSVData,
@@ -1231,10 +977,8 @@
         refreshTransformedDataForStep4: refreshTransformedDataForStep4,
         refreshTransformedDataForStep3: refreshTransformedDataForStep3,
 
-        // GitHub Issue #204: Body/Details toggle + Input columns
+        // GitHub Issue #204: Body/Details toggle
         setPreviewViewMode: setPreviewViewMode,
-        buildPreviewDetailsContent: buildPreviewDetailsContent,
-        buildPreviewInputTable: buildPreviewInputTable,
-        togglePreviewInput: togglePreviewInput
+        buildPreviewDetailsContent: buildPreviewDetailsContent
     };
 })();
