@@ -31,6 +31,7 @@ const SCRIPTS: Record<string, string> = {
     ICONS_SCRIPT: 'shared/icons.js',
     DBMN_FOOTER_URI: 'shared/dbmn-footer.js',
     DBMN_TABLE_URI: 'shared/dbmn-table.js',
+    REQUEST_PREVIEW_URI: 'shared/request-preview.js', // the request card's INPUT section, shared with Run Batch's Review
     EDITOR_WINDOW_CONTROLS_SCRIPT: 'shared/editor-window-controls.js',
     DBMN_TOAST_URI: 'shared/dbmn-toast.js',
     DBMN_CLIPBOARD_URI: 'shared/dbmn-clipboard.js',

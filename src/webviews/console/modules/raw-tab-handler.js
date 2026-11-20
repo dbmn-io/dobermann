@@ -786,6 +786,7 @@ class RawTabHandler {
         if (!bodyInner) return;
 
         bodyInner.innerHTML = this.buildCardBody(tx, index);
+        this.fillInputTable(bodyInner, tx, index);
         this.renderedBodies.add(index);
 
         // Observe Monaco containers and card for editor creation + content fetching
@@ -940,6 +941,7 @@ class RawTabHandler {
         if (!bodyInner || !tx) return;
         this.disposeEditorsInCard(card);
         bodyInner.innerHTML = this.buildCardBody(tx, key);
+        this.fillInputTable(bodyInner, tx, key);
         if (key === RawTabHandler.MODAL_KEY) {
             this.createEditorsIn(card);
         } else {
@@ -1889,35 +1891,25 @@ class RawTabHandler {
             return '';
         }
 
-        // Build compact table
-        let html = `
-            <div class="raw-csv-data-section">
-                <div class="raw-csv-header">
-                    <span>INPUT (${csvRows.length} row${csvRows.length > 1 ? 's' : ''})</span>
-                    <button type="button" class="raw-pane-copy-btn" data-click="raw:copyContent" data-arg="${this.escapeHtml(String(index))}" data-mode="data" title="Copy CSV Data">
+        // The INPUT section every request card shares (shared/request-preview.js): the rows go in
+        // its table once the card is on the page (fillInputTable)
+        const copy = `<button type="button" class="raw-pane-copy-btn" data-click="raw:copyContent" data-arg="${this.escapeHtml(String(index))}" data-mode="data" title="Copy CSV Data">
                         <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z"/><path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z"/></svg>
-                    </button>
-                </div>
-                <div class="raw-csv-table-wrapper">
-                    <table class="raw-csv-table">
-                        <thead>
-                            <tr>
-                                ${columns.map(col => `<th>${this.escapeHtml(col)}</th>`).join('')}
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${csvRows.map(row => `
-                                <tr>
-                                    ${columns.map(col => `<td>${this.escapeHtml(String(row[col] ?? ''))}</td>`).join('')}
-                                </tr>
-                            `).join('')}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        `;
+                    </button>`;
+        return window.RequestPreview
+            ? window.RequestPreview.inputSection(csvRows.length, String(index), copy)
+            : '';
+    }
 
-        return html;
+    /** The card's INPUT rows into its table (after the card's HTML is on the page). */
+    fillInputTable(root, tx, index) {
+        if (!window.RequestPreview || !root) return;
+        window.RequestPreview.fillInputTables(root, () => {
+            const csvRows = this.getCsvRowData(tx, index);
+            if (!csvRows || csvRows.length === 0) return null;
+            const columns = Object.keys(csvRows[0]).filter(col => !col.startsWith('__'));
+            return { columns, rows: csvRows.map(row => columns.map(col => row[col])) };
+        });
     }
 
     /**
@@ -3273,6 +3265,7 @@ class RawTabHandler {
 
         el.innerHTML = this.buildCardHtml(tx, key, { solo: true });
         el.querySelector('.raw-card-body-inner').innerHTML = this.buildCardBody(tx, key);
+        this.fillInputTable(el.querySelector('.raw-card-body-inner'), tx, key);
         this._appliedShow = this._appliedShow || {};
         this._appliedShow.modal = JSON.stringify(this.showFor(key));
 

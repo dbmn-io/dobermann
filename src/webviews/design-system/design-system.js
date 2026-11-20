@@ -216,7 +216,8 @@
         ['Rename dialog', 'Right-click → Rename in the Hub\'s lists: reports, endpoints, environments, runs', M, 'Hub lists', 'hub/hub-tabs.js (askRename)'],
         ['Tabs in a screen', 'A screen\'s own tabs (Environment, Console)', S, 'Environment, Console', 'shared/tabs.css'],
 
-        ['<dbmn-table>', 'A table of rows: search, sort, move, resize, only the rows in view drawn; rows the page holds, or asked for as they scroll', C, 'Query, Compare, Console, Run Batch (Validate), Design system, <dbmn-log>', 'shared/dbmn-table.js'],
+        ['<dbmn-table>', 'A table of rows: search, sort, move, resize, only the rows in view drawn; rows the page holds, or asked for as they scroll', C, 'Query, Compare, Console, Run Batch (Validate), the request card\'s INPUT rows, Design system, <dbmn-log>', 'shared/dbmn-table.js'],
+        ['Request card', 'One request: its header, the INPUT rows behind it, Body or Details, and the response. To become one component; built twice today (the Console, Run Batch\'s Review), the INPUT rows already shared', P, 'Console (Raw tab, Raw window), Run Batch (Review)', 'console/modules/raw-tab-handler.js, shared/request-preview.js'],
         ['<dbmn-log>', 'Log lines as a table: the newest in view, followed until you scroll up', C, 'Logs', 'shared/dbmn-log.js'],
         ['<dbmn-level>', 'How serious a log line is: an icon and a word', C, 'Logs, <dbmn-log>', 'shared/dbmn-level.js'],
         ['Rows inside a row', 'A list of records in a cell, opened inside it, with the screen\'s own buttons beside it (part of <dbmn-table>)', C, 'Console, Design system', 'shared/dbmn-table.js'],

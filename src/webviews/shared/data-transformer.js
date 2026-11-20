@@ -2083,7 +2083,13 @@
         if (list) {
             disposeRequestEditors();
             list.classList.remove('is-rebuilding');
-            list.innerHTML = window.RequestPreview.renderCards(plan, csvState.currentHeaders || csvState.transformedHeaders || []);
+            const inputColumns = csvState.currentHeaders || csvState.transformedHeaders || [];
+            list.innerHTML = window.RequestPreview.renderCards(plan, inputColumns);
+            // Each card's INPUT rows, in the design system's table
+            window.RequestPreview.fillInputTables(list, key => {
+                const request = plan.requests[Number(key)];
+                return request ? { columns: inputColumns, rows: request.inputRows || [] } : null;
+            });
             if (!list.dataset.wired) {
                 list.addEventListener('click', onRequestPreviewClick);
                 list.dataset.wired = '1';

@@ -10,6 +10,12 @@
  *
  * Pure: plan in, HTML / text out, everything from the plan or the data escaped. The page
  * wires the clicks (shared/data-transformer.js) and fills the editors.
+ *
+ * The INPUT section (the rows behind a request) is one piece for every request card: Review's
+ * here, and the Console's Raw tab and Raw window (console/modules/raw-tab-handler.js) call it too.
+ * inputSection() draws its heading and an empty <dbmn-table>; once the card is on the page,
+ * fillInputTables() gives each table its columns and rows (the table draws only those in view).
+ * The whole card is to become one component (design-system-handoff.md).
  * Browser: window.RequestPreview. Node: module.exports (tests, standalone renders).
  */
 (function (root, factory) {
@@ -20,7 +26,6 @@
     'use strict';
 
     const esc = (text) => String(text ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
-    const MAX_INPUT_ROWS = 25;
 
     function formatSize(bytes) {
         if (!bytes && bytes !== 0) return '-';
@@ -51,17 +56,34 @@
         return (request.key || []).map(k => `${k.variable} ${k.value}`).join(' · ');
     }
 
-    function inputTable(request, columns) {
+    /**
+     * A request card's INPUT section: "INPUT (n rows)", whatever the screen puts beside it (a
+     * copy button, already escaped), and an empty table that fillInputTables() fills by `key`.
+     */
+    function inputSection(count, key, aside) {
+        return `<div class="raw-csv-data-section">
+            <div class="raw-csv-header"><span>INPUT (${Number(count).toLocaleString()} row${count === 1 ? '' : 's'})</span>${aside || ''}</div>
+            <div class="raw-input-wrapper"><dbmn-table class="raw-input-table" label="Input rows" data-input="${esc(key)}"></dbmn-table></div>
+        </div>`;
+    }
+
+    /**
+     * Each INPUT table under `root` given its rows: rowsFor(key) → { columns: [name, …],
+     * rows: [[value, …], …] } (a value per column, in the columns' order).
+     */
+    function fillInputTables(root, rowsFor) {
+        if (!root || !root.querySelectorAll) return;
+        root.querySelectorAll('dbmn-table.raw-input-table[data-input]').forEach(table => {
+            const got = rowsFor(table.dataset.input);
+            if (!got) return;
+            table.columns = (got.columns || []).map((name, i) => ({ id: String(i), name: String(name) }));
+            table.rows = (got.rows || []).map(row => (got.columns || []).map((c, i) => String(row[i] ?? '')));
+        });
+    }
+
+    function inputTable(request, columns, index) {
         if (!request.inputRows || request.inputRows.length === 0 || !columns || columns.length === 0) return '';
-        const shown = request.inputRows.slice(0, MAX_INPUT_ROWS);
-        const more = request.inputRows.length - shown.length;
-        return `<div class="raw-csv-data-wrapper"><div class="raw-csv-data-section">
-            <div class="raw-csv-header"><span>INPUT (${request.inputRows.length.toLocaleString()} row${request.inputRows.length === 1 ? '' : 's'}${more > 0 ? `, first ${MAX_INPUT_ROWS} shown` : ''})</span></div>
-            <div class="raw-csv-table-wrapper"><table class="raw-csv-table">
-                <thead><tr>${columns.map(c => `<th>${esc(c)}</th>`).join('')}</tr></thead>
-                <tbody>${shown.map(row => `<tr>${columns.map((c, i) => `<td>${esc(row[i] ?? '')}</td>`).join('')}</tr>`).join('')}</tbody>
-            </table></div>
-        </div></div>`;
+        return `<div class="raw-csv-data-wrapper">${inputSection(request.inputRows.length, String(index))}</div>`;
     }
 
     /**
@@ -91,7 +113,7 @@
                     <span class="raw-response-time">${request.rowCount.toLocaleString()} row${request.rowCount === 1 ? '' : 's'} · ${formatSize(request.size)}</span>
                 </div>
                 <div class="raw-card-body"><div class="raw-card-body-inner">
-                    ${inputTable(request, columns)}
+                    ${inputTable(request, columns, i)}
                     <div class="raw-panes-section"><div class="raw-panes-wrapper"><div class="raw-panes-container response-hidden">
                         <div class="raw-pane raw-request-pane">
                             <div class="raw-pane-header">
@@ -126,5 +148,5 @@
         return { text, language: 'json' };
     }
 
-    return { renderCards, contentFor, detailsText, formatSize };
+    return { renderCards, contentFor, detailsText, formatSize, inputSection, fillInputTables };
 }));

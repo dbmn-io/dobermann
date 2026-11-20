@@ -1031,6 +1031,15 @@
     border-bottom: none;
 }
 
+/* The INPUT rows: the design system's table (shared/request-preview.js inputSection), in the
+   card's small monospace; it scrolls inside its own height */
+.raw-input-wrapper { background: var(--vscode-editor-background); }
+.raw-input-wrapper > .raw-input-table {
+    --table-height: 200px;
+    font-size: 12px;
+    font-family: var(--vscode-editor-font-family, monospace);
+}
+
 /* Response Headers Table */
 .raw-headers-container {
     overflow: auto;

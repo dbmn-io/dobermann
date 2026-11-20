@@ -188,7 +188,8 @@ test('right-click an Error row: view the transaction, reprocess it with its real
     await send(page, summaries(3));
     await send(page, content([{ executionId: 'exec_3', requestContent: '{\n  "sku": "C",\n  "uom": "XX"\n}', responseContent: null }]));
     await expect(card.locator('.raw-csv-data-wrapper'), 'input row shown for a single transaction').not.toHaveClass(/raw-section-hidden/);
-    await expect(card.locator('.raw-csv-table td').nth(1)).toHaveText('XX');
+    // (the INPUT rows: the design system's table, shared with Run Batch's Review)
+    await expect(card.locator('.raw-input-table .dbmn-table-body td').nth(1)).toHaveText('XX');
     await expect(card.locator('.raw-request-pane .raw-view-mode-btn[data-mode="body"]')).toBeVisible();
 
     // The modal's Show chips work though the Raw tab was never opened.

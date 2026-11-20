@@ -62,6 +62,10 @@ describe('Run Batch Step 4 — drawn from the batch plan (#308)', () => {
         expect(cards[0].querySelector('.raw-card-title')?.textContent).to.equal('Request #1');
         expect(cards[0].querySelector('.raw-timestamp')?.textContent).to.equal('location.gln 0614 · supplier A');
         expect(cards[0].querySelector('.raw-csv-header')?.textContent).to.include('INPUT (3 rows)');
+        // The INPUT rows go to the design system's table (shared with the Console's Raw tab)
+        const input = cards[0].querySelector('dbmn-table.raw-input-table') as unknown as { columns: Array<{ name: string }>; rows: string[][] };
+        expect(input.columns.map(c => c.name)).to.deep.equal(['location.gln', 'supplier', 'gtin']);
+        expect(input.rows).to.have.length(3);
     });
 
     it('the heading: "Requests" when all are shown, "Request samples" when there are more', async () => {
