@@ -342,3 +342,10 @@
 /* (Compare's toggles in Query's toolbar: side by side, as on Compare) */
 .query-status-tools .toggle-group { display: inline-flex; flex-direction: row; flex-wrap: nowrap; }
 .query-status-tools .toggle-btn { white-space: nowrap; }
+
+/* Add a view: the saved results on the shared table, ticked to add */
+.query-add-results { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.query-add-table { display: block; height: min(420px, 55vh); min-width: 0; }
+.query-add-views { display: flex; flex-wrap: wrap; gap: 8px 16px; }
+.query-add-view-pick { display: inline-flex; align-items: center; gap: 6px; }
+.query-add-note { margin: 0; }

@@ -24,11 +24,14 @@ export interface QueryCompare {
     views: string[];
 }
 
-/** The compare a query's joins make, or undefined when no join is a Compare: then it is a query. */
-export function queryCompare(joins: QueryJoin[]): QueryCompare | undefined {
+/**
+ * The compare a query's joins make, or undefined when no join is a Compare: then it is a query.
+ * Before its key is picked, its Baseline is `firstView` (the query's first view).
+ */
+export function queryCompare(joins: QueryJoin[], firstView?: string): QueryCompare | undefined {
     const compares = joins.filter(j => j.kind === 'compare');
     const first = compares[0];
-    const baseline = first?.on[0]?.left.parts[0]?.view;
+    const baseline = first?.on[0]?.left.parts[0]?.view || (first ? firstView : undefined);
     if (!first || !baseline) return undefined;
     return { baseline, views: [baseline, ...compares.map(j => j.view)] };
 }

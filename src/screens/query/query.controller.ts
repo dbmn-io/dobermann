@@ -31,6 +31,7 @@ import { reportNameProblem } from '../../services/compare/report-name';
 import { cleanViewName, getQuery, guessViewName, VIEW_NAME_MAX, MAX_QUERY_VIEWS, moveView, moveViewFirst, nameViews, newSourceId, nextRunName, QuerySource, renameView, runName, saveQuery, SavedQuery, untickBlanks, untickClashes } from '../../services/query/query-store';
 import { columnTypes, spread, TYPE_SAMPLE, type ColumnType } from '../../services/query/column-types';
 import { CALC_VIEW, QUERY_JOIN_KINDS } from '../../services/query/query-types';
+import { comparableRuns, type RequestTemplates, type RunHeaderValue } from '../../services/compare/compare-runs';
 import { alignCompareJoins, MAX_COMPARE_VIEWS, queryCompare, runJoin } from '../../services/query/query-compare';
 import { passes, rowStatus, statusCounts, type RowStatus, type StatusFilter } from '../../services/query/query-status';
 import { lookupsIn } from '../../services/column-functions/column-functions';
@@ -227,7 +228,26 @@ export class QueryController {
                 case 'query.start': return this.post({ type: 'query.goTo', start: message.start === 'results' ? 'results' : 'edit' });
                 case 'query.sources': return await this.postSources();
                 case 'query.addView': return await this.addView(message as unknown as { endpointId: string; executionId: string; view: string });
+                // Change view (a slot's menu): the run, and its other runs, read again through another of its endpoint's Views
+                case 'query.changeView': return await this.change(q => {
+                    const head = q.sources.find(x => x.id === String(message.id));
+                    if (!head) return;
+                    const view = String(message.view ?? '');
+                    [head, ...q.sources.filter(x => x.runOf === head.id)].forEach(x => { x.view = view; this.loaded.delete(x.id); });
+                    this.result = undefined;
+                });
                 case 'query.addRun': return await this.addRun(String(message.of ?? ''), String(message.executionId ?? ''));
+                // Several ticked in Add a view: each in turn (a query's and a compare's limits are checked one by one)
+                case 'query.addViews': {
+                    for (const item of Array.isArray(message.items) ? message.items as { endpointId: string; executionId: string; view: string }[] : []) {
+                        await this.addView({ endpointId: String(item.endpointId), executionId: String(item.executionId), view: String(item.view ?? '') });
+                    }
+                    return;
+                }
+                case 'query.addRuns': {
+                    for (const id of Array.isArray(message.executionIds) ? (message.executionIds as unknown[]).map(String) : []) await this.addRun(String(message.of ?? ''), id);
+                    return;
+                }
                 case 'query.addFile': return await this.addFile(message as unknown as FileMessage);
                 case 'query.addSheets': return await this.pickSheets(Array.isArray(message.sheets) ? message.sheets.map(String) : []);
                 case 'query.fileData': return await this.fileAgain(message as unknown as FileMessage & { id: string });
@@ -272,7 +292,7 @@ export class QueryController {
                     if (QUERY_JOIN_KINDS.includes(message.kind as QueryJoinKind)) {
                         const kind = message.kind as QueryJoinKind;
                         // A compare takes up to four views, the Baseline included
-                        const inCompare = queryCompare(q.joins)?.views.length ?? 1;
+                        const inCompare = queryCompare(q.joins, q.sources[0]?.id)?.views.length ?? 1;
                         if (kind === 'compare' && join.kind !== 'compare' && inCompare >= MAX_COMPARE_VIEWS) {
                             this.ports.toast.warn(`A compare takes ${MAX_COMPARE_VIEWS} views. Take one out of it to put ${q.sources.find(s => s.id === join.view)?.name ?? 'this one'} in.`);
                             return;
@@ -387,9 +407,14 @@ export class QueryController {
         const ids = [...new Set(history.map(e => e.endpointId).filter((id): id is string => !!id))];
         const current = new Map<string, Known | undefined>();
         const views: Record<string, string[]> = {};
+        // Each result's header values (ORG and the like): what tells apart runs of one request on one environment
+        const headers = new Map<string, RunHeaderValue[]>();
+        const incomplete = new Set<string>();
         await Promise.all(ids.map(async id => {
             current.set(id, await this.ports.endpoints.getEndpoint(id).catch(() => undefined));
             views[id] = (await this.successViews(id)).map(v => v.name);
+            const runs = await comparableRuns(this.ports.metadata, this.ports.environments, id, current.get(id) as RequestTemplates | undefined).catch(() => []);
+            runs.forEach(r => { if (r.header?.length) headers.set(r.id, r.header); if (r.incomplete) incomplete.add(r.id); });
         }));
         const systems = new Map<string, string>();
         const systemName = async (id: string | undefined): Promise<string> => {
@@ -412,7 +437,11 @@ export class QueryController {
                 isBatch: e.executionType === 'batch',
                 environment: e.environment || 'Unknown',
                 executedAt: iso(e.startedAt || e.createdAt),
-                rows: String(e.rows ?? '')
+                rows: String(e.rows ?? ''),
+                status: String(e.status ?? '').toLowerCase(),
+                // A paginated batch that has not fetched every page yet, as the batch list says
+                ...(incomplete.has(e.id) ? { incomplete: true } : {}),
+                header: (headers.get(e.id) ?? []).map(h => ({ name: h.name, value: h.label ? `${h.value} · ${h.label}` : h.value }))
             });
         }
         this.post({ type: 'query.sourceList', results, views });
@@ -427,6 +456,11 @@ export class QueryController {
         const query = this.query;
         if (!query) return;
         if (query.sources.length >= MAX_QUERY_VIEWS) throw new Error(`A query takes up to ${MAX_QUERY_VIEWS} views.`);
+        // Four of one endpoint at most: as many as a compare takes
+        if (query.sources.filter(s => s.endpointId === message.endpointId).length >= MAX_COMPARE_VIEWS) {
+            this.ports.toast.warn(`A query takes up to ${MAX_COMPARE_VIEWS} results of one endpoint.`);
+            return;
+        }
         const run = await this.ports.metadata.getExecution(message.executionId) ?? await this.ports.metadata.getBatchExecution(message.executionId);
         if (!run) throw new Error('That result is no longer in History.');
         const endpoint = await this.ports.endpoints.getEndpoint(message.endpointId).catch(() => undefined);
@@ -456,7 +490,7 @@ export class QueryController {
         if (!first || first.file) return;
         const head = first.runOf ? query.sources.find(s => s.id === first.runOf) ?? first : first;
         if (query.sources.length >= MAX_QUERY_VIEWS) throw new Error(`A query takes up to ${MAX_QUERY_VIEWS} views.`);
-        const inCompare = queryCompare(query.joins)?.views.length ?? 1;
+        const inCompare = queryCompare(query.joins, query.sources[0]?.id)?.views.length ?? 1;
         if (inCompare >= MAX_COMPARE_VIEWS) {
             this.ports.toast.warn(`A compare takes ${MAX_COMPARE_VIEWS} runs and views. Take one out of it to add another run.`);
             return;
@@ -1030,8 +1064,9 @@ export class QueryController {
             distinct: !!query.distinct,
             duplicates: now.duplicates ?? 0,
             maxViews: MAX_QUERY_VIEWS,
+            maxPerEndpoint: MAX_COMPARE_VIEWS,
             // A Compare join makes the query a compare: its Baseline and the views in it
-            compare: queryCompare(query.joins) ?? null,
+            compare: queryCompare(query.joins, query.sources[0]?.id) ?? null,
             // Results' Status: the places a row can differ or be missing in (none: no compared column)
             statusPlaces: this.statusPlaces(),
             // Translate values: the lookup tables to pick from, each with its columns

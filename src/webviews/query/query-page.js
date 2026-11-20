@@ -268,6 +268,8 @@
             ...(v.file
                 ? [{ id: 'pick', label: 'Pick the file again', icon: 'upload' }]
                 : [{ id: 'run', label: `Add another run of ${v.runOf ? (view(v.runOf) || v).name : v.name}`, icon: 'plus' },
+                    // Its endpoint's other Views (a run reads through its view's)
+                    ...((ui.sourceViews[v.endpointId] || []).length > 1 ? [{ id: 'view', label: `Change view (${v.view || 'Top-level fields'})`, icon: 'table' }] : []),
                     { id: 'latest', label: 'Read the newest result', icon: 'refresh-cw' }, { id: 'console', label: 'Open in the Console', icon: 'external-link' }]),
             { separator: true },
             { id: 'remove', label: 'Remove from the query', icon: 'x', danger: true }
@@ -284,6 +286,13 @@
             else if (id === 'console') post({ type: 'query.openConsole', id: v.id });
             else if (id === 'remove') post({ type: 'query.removeView', id: v.id });
             else if (id === 'run') addView(view(v.runOf) || v);
+            else if (id === 'view') {
+                const head = view(v.runOf) || v;
+                const names = ui.sourceViews[head.endpointId] || [];
+                window.DbmnContextMenu.show(event, names.map(n => ({ id: n, label: n, checked: n === head.view })), picked => {
+                    if (picked && picked !== head.view) { setBusy('Reading the result…'); post({ type: 'query.changeView', id: head.id, view: picked }); }
+                });
+            }
         });
     }
     function pickAgain(v) {
@@ -496,83 +505,89 @@
      * Add a view: find a saved result (type to search: its request, endpoint, System, environment),
      * pick it, and pick its View when it has more than one.
      */
+    /**
+     * Add a view: the saved results on the shared table (dbmn-table), searched with its own box,
+     * as many ticked as the query takes. Each with what tells runs of one request apart: its
+     * header values (ORG...), its rows, whether a batch is complete, when it ran. Every result
+     * ticked comes in, through its endpoint's standard View (Change view on its slot picks another); a query takes up to ten,
+     * and four of one endpoint (a compare's four). Another run of a view: only that endpoint's
+     * results it hasn't already, read through its View.
+     */
     async function addView(of) {
-        const SHOWN = 100;
-        // Another run of a view: only its endpoint's results, read through its View, and not one it has already
         const runOf = of && of.id ? of : null;
         const used = new Set(views().map(v => v.executionId).filter(Boolean));
-        const body = el('div', 'query-add-form compare-drill-body');
-        const searchBox = el('div', 'dbmn-modal-field');
-        const search = el('input', 'dbmn-modal-input');
-        search.type = 'text';
-        search.placeholder = 'Search results: get carriers, a path, an environment';
-        search.spellcheck = false;
-        search.autocomplete = 'off';
-        search.setAttribute('aria-label', 'Search results');
-        searchBox.appendChild(search);
-        const box = el('div', 'table-container query-preview');
-        const table = el('table', 'data-table');
-        const head = el('thead');
-        const headRow = el('tr');
-        ['', 'Request', 'Endpoint', 'System', 'Environment', 'Run at'].forEach(h => headRow.appendChild(el('th', '', h)));
-        head.appendChild(headRow);
-        const rows = el('tbody');
-        table.append(head, rows);
-        box.appendChild(table);
-        const more = el('p', 'form-hint');
-        const viewField = el('p');
-        const viewLabel = el('label', 'form-hint', 'View');
-        const viewSel = el('select');
-        viewSel.id = 'queryAddView';
-        viewLabel.htmlFor = viewSel.id;
-        viewField.append(viewLabel, el('br'), viewSel);
-        body.append(searchBox, box, more, viewField);
-
-        let picked = '';
-        const haystack = r => [r.request, r.endpoint, r.system, r.environment, day(r.executedAt), r.isBatch ? 'batch' : ''].join('\n').toLowerCase();
-        const viewsOf = r => (r && ui.sourceViews[r.endpointId]) || [];
-        const fillViews = () => {
-            const names = viewsOf(ui.sources.find(r => r.id === picked));
-            viewSel.replaceChildren(...(names.length ? names : ['']).map(n => { const o = el('option', '', n || 'Top-level fields'); o.value = n; return o; }));
-            // One View, or none: nothing to choose (a run is read through its view's)
-            viewField.hidden = names.length < 2 || !!runOf;
+        const list = ui.sources.filter(r => !runOf || (r.endpointId === runOf.endpointId && !used.has(r.id)));
+        const headerNames = [...new Set(list.flatMap(r => (r.header || []).map(h => h.name)))];
+        const body = el('div', 'query-add-form query-add-results');
+        const tableEl = document.createElement('dbmn-table');
+        tableEl.className = 'query-add-table';
+        tableEl.setAttribute('label', 'Results');
+        tableEl.setAttribute('searchable', '');
+        tableEl.setAttribute('selectable', '');
+        tableEl.setAttribute('placeholder', 'Search results: get inventory, an environment, a header value…');
+        body.appendChild(tableEl);
+        const note = el('p', 'form-hint query-add-note');
+        body.append(note);
+        if (!list.length) note.textContent = runOf ? `No other result of ${runOf.name}'s endpoint. Run it again, and the result can be added here.` : 'No results yet. Run a request, and its result can be added here.';
+        tableEl.columns = [
+            { id: 'request', name: 'Request' }, { id: 'endpoint', name: 'Endpoint' }, { id: 'system', name: 'System' }, { id: 'environment', name: 'Environment' },
+            ...headerNames.map(n => ({ id: `h:${n}`, name: n })),
+            { id: 'rows', name: 'Rows', numbers: true }, { id: 'complete', name: 'Complete' }, { id: 'runAt', name: 'Run at' }, { id: 'type', name: 'Type' }
+        ];
+        tableEl.rows = list.map(r => Object.assign({
+            _id: r.id, _result: r,
+            request: r.request, endpoint: r.endpoint, system: r.system, environment: r.environment,
+            rows: r.rows === '' ? '' : Number(r.rows),
+            complete: r.isBatch ? (r.incomplete ? 'Incomplete' : 'Complete') : '',
+            runAt: day(r.executedAt), type: r.isBatch ? 'Batch' : 'Single'
+        }, Object.fromEntries(headerNames.map(n => [`h:${n}`, ((r.header || []).find(h => h.name === n) || {}).value || '']))));
+        // Each comes in through its endpoint's standard View (the first the Console has): Change view on its slot picks another
+        const standardView = r => ((r && ui.sourceViews[r.endpointId]) || [])[0] || '';
+        // A query takes up to ten; four of one endpoint
+        const maxViews = (ui.state && ui.state.maxViews) || 10;
+        const maxEach = (ui.state && ui.state.maxPerEndpoint) || 4;
+        const problem = picked => {
+            if (!picked.length) return 'Tick the results to add.';
+            if (runOf) {
+                const compare = ui.state && ui.state.compare;
+                const room = Math.min(maxViews - views().length, maxEach - views().filter(v => v.endpointId === runOf.endpointId).length, compare ? (ui.state.maxCompare || 4) - compare.views.length : maxEach);
+                return picked.length > room ? `${room <= 0 ? 'No room for another run' : `Room for ${room} more run${room === 1 ? '' : 's'}`}: a compare takes ${ui.state.maxCompare || 4}, and a query ${maxEach} of one endpoint.` : '';
+            }
+            if (views().length + picked.length > maxViews) return `A query takes up to ${maxViews} views: there is room for ${Math.max(0, maxViews - views().length)} more.`;
+            const byEndpoint = new Map();
+            picked.forEach(r => byEndpoint.set(r._result.endpointId, (byEndpoint.get(r._result.endpointId) || 0) + 1));
+            for (const [id, n] of byEndpoint) {
+                const have = views().filter(v => v.endpointId === id).length;
+                if (have + n > maxEach) { const name = (picked.find(r => r._result.endpointId === id) || {}).endpoint; return `Up to ${maxEach} results of one endpoint (${name}): untick ${have + n - maxEach}.`; }
+            }
+            return '';
         };
-        const draw = () => {
-            const words = window.SearchWords.parseWords(search.value);
-            const found = ui.sources.filter(r => window.SearchWords.matches(words, haystack(r)) && (!runOf || (r.endpointId === runOf.endpointId && !used.has(r.id))));
-            if (!found.some(r => r.id === picked)) picked = found.length ? found[0].id : '';
-            rows.replaceChildren(...found.slice(0, SHOWN).map(r => {
-                const tr = el('tr');
-                const pick = el('td');
-                const radio = el('input');
-                radio.type = 'radio';
-                radio.name = 'queryAddResult';
-                radio.value = r.id;
-                radio.checked = r.id === picked;
-                radio.setAttribute('aria-label', `${r.request || r.endpoint}, ${r.environment}, ${day(r.executedAt)}`);
-                pick.appendChild(radio);
-                tr.append(pick, el('td', '', r.request), el('td', '', r.endpoint), el('td', '', r.system), el('td', '', r.environment),
-                    el('td', '', day(r.executedAt) + (r.isBatch ? ' · batch' : '')));
-                tr.addEventListener('click', () => { radio.checked = true; picked = r.id; fillViews(); });
-                tr.addEventListener('dblclick', () => { const add = document.querySelector('.dbmn-modal .btn-primary'); if (add) add.click(); });
-                return tr;
-            }));
-            more.textContent = !ui.sources.length ? 'No results yet. Run a request, and its result can be added here.' : !found.length ? 'No result matches.' : found.length > SHOWN ? `The newest ${SHOWN} of ${count(found.length)}. Search to narrow them.` : '';
-            more.hidden = !more.textContent;
-            fillViews();
+        const refresh = () => {
+            const picked = tableEl.selected || [];
+            const said = problem(picked);
+            note.textContent = said || `${count(picked.length)} ticked.`;
+            note.classList.toggle('query-warn', !!said && picked.length > 0);
+            const add = document.querySelector('.dbmn-modal [data-action-id="add"]');
+            if (add) add.disabled = !!said;
         };
-        search.addEventListener('input', draw);
-        draw();
-        setTimeout(() => search.focus(), 0);
+        tableEl.addEventListener('dbmn-table-select', refresh);
+        // A double-click adds the one result at once
+        tableEl.addEventListener('dbmn-table-row-open', event => {
+            tableEl.selected = [event.detail.row];
+            refresh();
+            const add = document.querySelector('.dbmn-modal [data-action-id="add"]');
+            if (add && !add.disabled) add.click();
+        });
+        setTimeout(() => { refresh(); const box = tableEl.querySelector('input[type="search"], input'); if (box) box.focus(); }, 0);
         const answer = await window.DbmnModal.show({
-            title: runOf ? `Another run of ${runOf.name}` : 'Add a view', body, size: 'lg',
+            title: runOf ? `Another run of ${runOf.name}` : 'Add a view', body, size: 'lg', maximisable: true,
             actions: [{ id: 'cancel', label: 'Cancel', variant: 'secondary' }, { id: 'add', label: 'Add', variant: 'primary' }]
         });
-        const result = ui.sources.find(r => r.id === picked);
-        if (answer.actionId !== 'add' || !result) return;
-        setBusy('Reading the result…');
-        if (runOf) post({ type: 'query.addRun', of: runOf.id, executionId: result.id });
-        else post({ type: 'query.addView', endpointId: result.endpointId, executionId: result.id, view: viewSel.value });
+        const picked = (tableEl.selected || []).map(r => r._result);
+        if (answer.actionId !== 'add' || !picked.length || problem(tableEl.selected || [])) return;
+        setBusy(picked.length > 1 ? `Reading ${picked.length} results…` : 'Reading the result…');
+        if (runOf) post({ type: 'query.addRuns', of: runOf.id, executionIds: picked.map(r => r.id) });
+        else post({ type: 'query.addViews', items: picked.map(r => ({ endpointId: r.endpointId, executionId: r.id, view: standardView(r) })) });
     }
 
     /** A workbook of several sheets was read: which become views? Each sheet ticked is one. */
@@ -1140,6 +1155,8 @@
         // (just picked here, before the host says so: the compare from the joins as they stand)
         const compare = s.compare || { baseline: (first.on[0] && first.on[0].left.view) || (views()[0] || {}).id, views: [] };
         if (!s.compare) compare.views = [compare.baseline, ...joins.map(j => j.view)];
+        // Compare picked before the key: its key's line, with every box still to pick (as a join's first pair)
+        if (!first.on.length) first.on.push({ left: { view: compare.baseline, column: '' }, right: { column: '' } });
         const baseline = view(compare.baseline) || views()[0];
         const members = compare.views;
         const max = s.maxCompare || 4;
