@@ -77,6 +77,20 @@
  *   A listener may change a change's `value`, or refuse them all with preventDefault(); otherwise
  *   the table writes them into the rows and draws them. A number stays a number when it reads as one.
  *
+ * ── A table people keep (a lookup table): with `editable` ──
+ *   `add-row`       a line under the rows adds an empty row, its first cell open for typing
+ *                   (dbmn-table-add-row { row } first: cancelable, and detail.row may be filled)
+ *   `row-delete`    the row's number first; on hover a bin deletes the row
+ *                   (dbmn-table-delete-row { row, index } first: cancelable)
+ *                   Ctrl+Z puts a deleted row back and takes an added one away. After any of
+ *                   these: dbmn-table-rows { kind: 'add' | 'delete', row, index, rows }
+ *   `edit-columns`  a column's heading menu: Rename column…, Add a column after, Delete column
+ *                   (dbmn-table-columns { kind: 'rename' | 'add' | 'delete', id, name, old?, after? }
+ *                   first: cancelable; on add the screen may set detail.id). Delete takes the
+ *                   column's values from every row. Needs DbmnModal (the name, the confirm).
+ *   { id, key: true }   a key: a key on its heading; a value in two rows, or none, is amber with
+ *                   the reason on hover. orders.keyProblems: [{ row, id, value, kind: 'duplicate' | 'missing' }]
+ *
  * ── A live list: following the newest rows ──
  *   <dbmn-table follow="top">        the newest rows are at the top (follow="bottom": at the bottom)
  *   While the newest row is in view, rows given later keep it in view. Scrolled away from it, the
@@ -139,6 +153,7 @@
     const LONG = 60;
     /** Rows asked for at a time, and how many pages are kept before the furthest are let go. */
     const PAGE = 200;
+    const ROW_GUTTER = '__row';   // (`row-delete`: the row number column the table draws itself)
     const KEEP_PAGES = 60;
     /** Typing is never held up: over this many rows a search waits for a pause in the typing, then runs a little at a time and stops at the next key. */
     const SEARCH_AT_ONCE = 3000;
@@ -216,7 +231,10 @@
         }
 
         set columns(list) {
-            this._all = Array.isArray(list) ? list.slice() : [];
+            this._all = Array.isArray(list) ? list.filter(c => c && c.id !== ROW_GUTTER) : [];
+            // (`row-delete`: the row's number first, a bin on it to delete the row)
+            if (this.hasAttribute('row-delete')) this._all.unshift(this._gutterColumn());
+            this._keyCounts = null;
             this._columns = this._all.slice();
             this._sort = null;
             this._widths = {};
@@ -224,11 +242,12 @@
             this._sized = false;
             this._refresh();
         }
-        get columns() { return this._columns.slice(); }
+        get columns() { return this._columns.filter(c => c.id !== ROW_GUTTER); }
 
         set rows(list) {
             this._before(Array.isArray(list) ? list.length - this._rows.length : 0);
             this._rows = Array.isArray(list) ? list : [];
+            this._keyCounts = null;
             this._source = null;
             this._kinds = null;
             this._types = null;
@@ -291,13 +310,13 @@
 
         /** What a screen saves of the table: the order, the hidden columns, the widths the user set, the sort. */
         get layout() {
-            const shown = this._columns.map(c => c.id);
+            const shown = this._columns.map(c => c.id).filter(id => id !== ROW_GUTTER);
             const widths = {};
             Object.keys(this._set).forEach(id => { if (this._widths[id]) widths[id] = this._widths[id]; });
             // (the columns removed from a column's records, as `<column>.<key>`)
             const recordHidden = [];
             Object.keys(this._subHidden).forEach(id => Object.keys(this._subHidden[id]).forEach(key => recordHidden.push(`${id}.${key}`)));
-            return { order: shown, hidden: this._all.map(c => c.id).filter(id => !shown.includes(id)), widths, sort: this._sort ? { id: this._sort.id, dir: this._sort.dir } : null, recordHidden, recordsWide: [...this._wide] };
+            return { order: shown, hidden: this._all.map(c => c.id).filter(id => id !== ROW_GUTTER && !shown.includes(id)), widths, sort: this._sort ? { id: this._sort.id, dir: this._sort.dir } : null, recordHidden, recordsWide: [...this._wide] };
         }
         set layout(saved) {
             const l = saved || {};
@@ -430,7 +449,14 @@
             this._foot = make('tfoot', 'dbmn-table-foot');
             this._table.append(this._cols, this._head, this._above, this._body, this._below, this._foot);
             this._scroll.append(this._table);
-            this.replaceChildren(this._tools, this._reads, this._scroll);
+            // (`add-row`: a line under the rows that adds one, ready to type in)
+            this._addLine = make('button', 'dbmn-table-add-row');
+            this._addLine.type = 'button';
+            this._addLine.hidden = true;
+            this._addLine.append(make('span', 'dbmn-table-add-icon'), make('span', '', 'Add row'));
+            if (window.Icons) window.Icons.setIcon(this._addLine.firstChild, 'plus');
+            this._addLine.addEventListener('click', () => this._addRow());
+            this.replaceChildren(this._tools, this._reads, this._scroll, this._addLine);
             if (window.Icons) window.Icons.injectIcons(this._tools);
 
             const matcher = window.SearchMatcher;
@@ -530,6 +556,7 @@
         _refresh() {
             if (!this._built || !this.isConnected) return;
             this._tools.hidden = !this.hasAttribute('searchable');
+            if (this._addLine) this._addLine.hidden = !(this.hasAttribute('add-row') && this._editable());
             this._heads();
             // Many rows given while the box holds a search (a live list): searched a little at a
             // time, as when typing. The rows on screen stay, where they are, until it is done
@@ -854,6 +881,14 @@
                 const moves = own && movable && !column.pinned;
                 const label = make('span', 'column-name' + (moves ? ' is-movable' : ''), name);
                 label.title = (moves ? 'Hold and drag to move this column. ' : '') + `@${name}= searches it`;
+                // The key: its values one per row
+                if (column.key) {
+                    th.classList.add('is-key');
+                    const key = make('span', 'dbmn-key-mark');
+                    if (window.Icons) window.Icons.setIcon(key, 'key-round');
+                    label.prepend(key);
+                    label.title += '. The key: each value in one row only';
+                }
                 content.append(label, actions);
                 th.append(content);
                 if (head) th.append(head.edge());
@@ -1025,6 +1060,7 @@
                     }
                 }
                 if (typeof column.cell === 'function') column.cell(td, value, row);
+                if (column.key) this._markKey(td, column, value);
                 if (td.classList.contains('cell-expandable')) expandIcon(td);
                 tr.append(td);
             });
@@ -1074,6 +1110,7 @@
                 });
             }
             this._view = view;
+            this._places = null;
             this._openAt = null;
             this._rendered = { start: -1, end: -1 };
             const total = this._rows.length;
@@ -1232,6 +1269,7 @@
                         this._tell('moved', { id, to: this._columns.findIndex(c => c.id === id) });
                     },
                     fit: () => this._fit(i),
+                    extra: this._columnEdits(column),
                     remove: last === 0 || !this.hasAttribute('removable') || locked || column.removable === false ? null : () => this._remove(i)
                 });
                 return;
@@ -1247,6 +1285,7 @@
                 sort: column.sortable === false ? null : dir => this._sortBy(column, dir),
                 move: !own || !movable ? null : where => (grouped ? this._movedUnit(unitAt, where === 'start' ? firstFree : units.length - 1) : this._moveTo(i, where === 'start' ? 0 : last)),
                 fit: () => this._fit(i),
+                extra: this._columnEdits(column),
                 remove: !own || last === 0 || !this.hasAttribute('removable') || locked || column.removable === false ? null : () => this._remove(i)
             });
         }
@@ -2024,6 +2063,7 @@
             const event = new CustomEvent('dbmn-table-edit', { bubbles: true, cancelable: true, detail: { kind, changes: told, left: left || 0 } });
             if (!this.dispatchEvent(event)) { this._render(true); this._markActive(); return; }
             told.forEach(ch => { ch.row[ch.id] = ch.value; });
+            this._keyCounts = null;
             if (kind !== 'undo' && kind !== 'redo') { this._undo.push(told); this._redo = []; }
             this._kinds = null;
             this._render(true);
@@ -2033,13 +2073,223 @@
             const last = this._undo.pop();
             if (!last) return;
             this._redo.push(last);
+            if (last.rows) { this._rowsAgain(last, true); return; }
             this._writeCells(last.map(ch => ({ row: ch.row, index: ch.index, id: ch.id, value: ch.old })), 'undo');
         },
         _redoLast() {
             const last = this._redo.pop();
             if (!last) return;
             this._undo.push(last);
+            if (last.rows) { this._rowsAgain(last, false); return; }
             this._writeCells(last.map(ch => ({ row: ch.row, index: ch.index, id: ch.id, value: ch.value })), 'redo');
+        }
+    });
+
+    /* ── A table people keep (a lookup table): rows added and deleted, columns added, renamed and
+          deleted, a key whose values are one per row ── */
+    Object.assign(DbmnTable.prototype, {
+        /** The row number column (`row-delete`): the row's place, and on hover a bin that deletes it. */
+        _gutterColumn() {
+            return {
+                id: ROW_GUTTER, name: '#', pinned: true, sortable: false, removable: false, editable: false,
+                className: 'dbmn-row-gutter',
+                render: (value, row) => {
+                    const place = this._placeOf(row);
+                    const wrap = make('span', 'dbmn-row-cell');
+                    const bin = make('button', 'dbmn-row-delete');
+                    bin.type = 'button';
+                    bin.title = 'Delete row (Ctrl+Z to undo)';
+                    bin.setAttribute('aria-label', `Delete row ${place + 1}`);
+                    if (window.Icons) window.Icons.setIcon(bin, 'trash-2');
+                    // On the press, not the click: a cell open for typing closes on the press and the
+                    // rows are drawn again, so the click would land on a bin no longer there
+                    bin.addEventListener('mousedown', event => {
+                        if (event.button !== 0) return;
+                        event.preventDefault();
+                        event.stopPropagation();
+                        this._deleteRow(row);
+                    });
+                    // (the keyboard's Enter or Space on the bin: a click with no press before it)
+                    bin.addEventListener('click', event => { event.stopPropagation(); if (event.detail === 0) this._deleteRow(row); });
+                    wrap.append(make('span', 'dbmn-row-num', String(place + 1)), bin);
+                    return wrap;
+                }
+            };
+        },
+        /** A row's place among the rows shown (-1: not shown). */
+        _placeOf(row) {
+            if (!this._places) {
+                this._places = new Map();
+                this._view.forEach((i, at) => this._places.set(this._rows[i], at));
+            }
+            const at = this._places.get(row);
+            return at === undefined ? -1 : at;
+        },
+        /** Rows added or deleted (and put back): the screen hears dbmn-table-rows { kind, row, index, rows }. */
+        _rowsChanged(kind, row, index) {
+            this._keyCounts = null;
+            this._refresh();
+            this.dispatchEvent(new CustomEvent('dbmn-table-rows', { bubbles: true, detail: { kind, row, index, rows: this._rows } }));
+        },
+        /** `add-row`: an empty row at the end, its first cell open for typing. dbmn-table-add-row first (cancelable; detail.row may be filled). */
+        _addRow() {
+            if (!this._editable()) return;
+            this._editInit();
+            const row = {};
+            this._columns.forEach(c => { if (c.id !== ROW_GUTTER) row[c.id] = ''; });
+            const asked = new CustomEvent('dbmn-table-add-row', { bubbles: true, cancelable: true, detail: { row } });
+            if (!this.dispatchEvent(asked)) return;
+            const added = asked.detail.row || row;
+            this._rows.push(added);
+            this._undo.push({ rows: 'add', row: added, at: this._rows.length - 1 });
+            this._redo = [];
+            this._rowsChanged('add', added, this._rows.length - 1);
+            const first = this._columns.find(c => this._canEdit(c, added));
+            const at = this._placeOf(added);
+            if (first && at >= 0) this._select(at, first.id);
+        },
+        /** `row-delete`: the row goes (Ctrl+Z puts it back). dbmn-table-delete-row first (cancelable). */
+        _deleteRow(row) {
+            const index = this._rows.indexOf(row);
+            if (index < 0) return;
+            this._editInit();
+            if (this._editing) this._editing.finish(true, null, true);
+            const asked = new CustomEvent('dbmn-table-delete-row', { bubbles: true, cancelable: true, detail: { row, index } });
+            if (!this.dispatchEvent(asked)) return;
+            this._rows.splice(index, 1);
+            this._undo.push({ rows: 'delete', row, at: index });
+            this._redo = [];
+            this._rowsChanged('delete', row, index);
+        },
+        /** Undo (back) or redo of a row added or deleted. */
+        _rowsAgain(entry, back) {
+            const remove = (entry.rows === 'add') === back;
+            if (remove) {
+                const at = this._rows.indexOf(entry.row);
+                if (at >= 0) this._rows.splice(at, 1);
+                this._rowsChanged('delete', entry.row, at);
+            } else {
+                this._rows.splice(Math.min(entry.at, this._rows.length), 0, entry.row);
+                this._rowsChanged('add', entry.row, entry.at);
+            }
+        },
+
+        /** `edit-columns`: a column's heading menu renames it, adds one after it, or deletes it. */
+        _columnEdits(column) {
+            if (!this._editable() || !this.hasAttribute('edit-columns') || column.id === ROW_GUTTER || column.editable === false || !window.DbmnModal) return [];
+            const data = this._all.filter(c => c.id !== ROW_GUTTER);
+            const items = [
+                { id: 'rename', label: 'Rename column…', icon: 'pencil', run: () => this._renameColumn(column) },
+                { id: 'add', label: 'Add a column after', icon: 'plus', run: () => this._addColumn(column) }
+            ];
+            if (data.length > 1) items.push({ id: 'delete', label: 'Delete column', icon: 'trash-2', danger: true, run: () => this._deleteColumn(column) });
+            return items;
+        },
+        /** A column's name, asked for: one no other column has. Resolves to the name, or null. */
+        async _askName(title, value, action, own) {
+            const result = await window.DbmnModal.show({
+                title,
+                fields: [{ id: 'name', type: 'text', label: 'Name', value: value || '', required: true }],
+                actions: [{ id: 'cancel', label: 'Cancel', variant: 'secondary' }, { id: 'ok', label: action, variant: 'primary' }]
+            });
+            if (!result || result.actionId !== 'ok') return null;
+            const name = String((result.fields && result.fields.name) || '').trim();
+            if (!name) return null;
+            if (this._all.some(c => c !== own && c.id !== ROW_GUTTER && String(c.name || c.id).toLowerCase() === name.toLowerCase())) {
+                await window.DbmnModal.alert({ title: 'That name is taken', body: `There is already a column named ${name}.` });
+                return null;
+            }
+            return name;
+        },
+        /** Columns changed: dbmn-table-columns { kind, id, name, … } first (cancelable; the screen may change detail.id). */
+        _columnsAsk(detail) {
+            const asked = new CustomEvent('dbmn-table-columns', { bubbles: true, cancelable: true, detail });
+            return this.dispatchEvent(asked) ? asked.detail : null;
+        },
+        async _renameColumn(column) {
+            const name = await this._askName(`Rename ${column.name || column.id}`, column.name || column.id, 'Rename', column);
+            if (!name || name === column.name) return;
+            if (!this._columnsAsk({ kind: 'rename', id: column.id, name, old: column.name })) return;
+            column.name = name;
+            this._refresh();
+        },
+        async _addColumn(after) {
+            const name = await this._askName('Add a column', '', 'Add', null);
+            if (!name) return;
+            // Its id: the name, made unique (the screen may give its own)
+            let id = name;
+            for (let n = 2; this._all.some(c => c.id === id); n++) id = `${name} ${n}`;
+            const told = this._columnsAsk({ kind: 'add', id, name, after: after.id });
+            if (!told) return;
+            const column = { id: told.id, name };
+            this._all.splice(this._all.indexOf(after) + 1, 0, column);
+            this._columns.splice(this._columns.indexOf(after) + 1, 0, column);
+            this._rows.forEach(row => { if (!(column.id in row)) row[column.id] = ''; });
+            this._sized = false;
+            this._refresh();
+            const first = this._view.length ? 0 : -1;
+            if (first >= 0) this._select(first, column.id);
+        },
+        async _deleteColumn(column) {
+            const name = column.name || column.id;
+            const yes = await window.DbmnModal.confirm({ title: `Delete the column ${name}?`, body: 'Its values go from every row.', confirmLabel: 'Delete', confirmVariant: 'danger' });
+            if (!yes || !this._columnsAsk({ kind: 'delete', id: column.id, name })) return;
+            if (this._editing) this._editing.finish(false, null, true);
+            this._all = this._all.filter(c => c !== column);
+            this._columns = this._columns.filter(c => c !== column);
+            this._rows.forEach(row => { delete row[column.id]; });
+            if (this._active && this._active.id === column.id) this._active = null;
+            // (its edits can no longer be undone)
+            this._undo = (this._undo || []).filter(entry => entry.rows || !entry.some(ch => ch.id === column.id));
+            this._redo = [];
+            this._sized = false;
+            this._keyCounts = null;
+            this._refresh();
+        },
+
+        /** How many rows hold a key column's value (over every row, not only those shown). */
+        _keyCount(id, value) {
+            if (!this._keyCounts) this._keyCounts = new Map();
+            let counts = this._keyCounts.get(id);
+            if (!counts) {
+                counts = new Map();
+                this._rows.forEach(row => {
+                    const v = textOf(row[id]).trim();
+                    if (v) counts.set(v, (counts.get(v) || 0) + 1);
+                });
+                this._keyCounts.set(id, counts);
+            }
+            return counts.get(textOf(value).trim()) || 0;
+        },
+        /** A key column's cell: amber when its value is in another row too, or when it has none. */
+        _markKey(td, column, value) {
+            const text = textOf(value).trim();
+            const name = column.name || column.id;
+            if (!text) {
+                td.classList.add('dbmn-cell-key-missing');
+                td.title = `${name} is the key: it needs a value`;
+                return;
+            }
+            const n = this._keyCount(column.id, value);
+            if (n > 1) {
+                td.classList.add('dbmn-cell-key-duplicate');
+                td.title = `${name} ${text} is in ${n} rows: a key is in one row only`;
+            }
+        }
+    });
+
+    /** What stops a table with a key from being kept: [{ row, id, value, kind: 'duplicate' | 'missing' }]. */
+    Object.defineProperty(DbmnTable.prototype, 'keyProblems', {
+        get() {
+            const out = [];
+            this._columns.filter(c => c.key).forEach(column => {
+                this._rows.forEach(row => {
+                    const text = textOf(row[column.id]).trim();
+                    if (!text) out.push({ row, id: column.id, value: '', kind: 'missing' });
+                    else if (this._keyCount(column.id, text) > 1) out.push({ row, id: column.id, value: text, kind: 'duplicate' });
+                });
+            });
+            return out;
         }
     });
 

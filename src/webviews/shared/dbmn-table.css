@@ -136,3 +136,57 @@ dbmn-table[editable] .dbmn-table-body td.dbmn-cell-box { cursor: pointer; }
     font: inherit;
 }
 .dbmn-cell-input:focus { outline: none; }
+
+/* A table people keep (a lookup table). `row-delete`: the row's number, a bin on it on hover */
+.dbmn-table-grid th.dbmn-row-gutter,
+.dbmn-table-grid td.dbmn-row-gutter { text-align: center; color: var(--dbmn-descriptionForeground); }
+.dbmn-row-cell { position: relative; display: block; min-width: 2ch; font-size: 12px; user-select: none; }
+.dbmn-row-delete {
+    display: none;
+    position: absolute;
+    inset: 0;
+    width: 20px;
+    height: 20px;
+    margin: auto;
+    padding: 0;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: none;
+    border-radius: 3px;
+    color: var(--dbmn-errorForeground);
+    cursor: pointer;
+}
+.dbmn-row-delete svg { width: 14px; height: 14px; }
+.dbmn-table-body tr:hover .dbmn-row-num,
+.dbmn-row-cell:focus-within .dbmn-row-num { visibility: hidden; }
+.dbmn-table-body tr:hover .dbmn-row-delete,
+.dbmn-row-cell:focus-within .dbmn-row-delete { display: inline-flex; }
+.dbmn-row-delete:hover { background: var(--dbmn-list-hoverBackground); }
+.dbmn-row-delete:focus-visible { outline: 1px solid var(--dbmn-focusBorder); }
+/* `add-row`: the line under the rows */
+.dbmn-table-add-row {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    align-self: flex-start;
+    padding: 4px 8px;
+    border: 1px dashed var(--dbmn-panel-border, rgba(128, 128, 128, 0.35));
+    border-radius: 4px;
+    background: none;
+    color: var(--dbmn-descriptionForeground);
+    font: inherit;
+    cursor: pointer;
+}
+.dbmn-table-add-row:hover,
+.dbmn-table-add-row:focus-visible { color: var(--dbmn-foreground); border-color: var(--dbmn-focusBorder); outline: none; }
+.dbmn-table-add-icon { display: inline-flex; }
+.dbmn-table-add-icon svg { width: 13px; height: 13px; }
+/* A key column: a key on its heading; a value in two rows, or none, amber with the reason on hover */
+.dbmn-key-mark { display: inline-flex; margin-right: 4px; vertical-align: -2px; color: var(--dbmn-editorWarning-foreground); }
+.dbmn-key-mark svg { width: 12px; height: 12px; }
+.dbmn-table-grid td.dbmn-cell-key-duplicate,
+.dbmn-table-grid td.dbmn-cell-key-missing {
+    background: var(--dbmn-inputValidation-warningBackground, rgba(255, 200, 0, 0.2));
+    box-shadow: inset 0 0 0 1px var(--dbmn-inputValidation-warningBorder, #cca700);
+}

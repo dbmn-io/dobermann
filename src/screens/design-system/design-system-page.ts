@@ -363,7 +363,7 @@ orders.addEventListener('dbmn-table-shown', e =&gt; …e.detail.total…);
 locked                                     attribute: columns can be neither moved nor removed</code></pre>
 
         <h3>Editing</h3>
-        <p>With <code>editable</code>, a table is a spreadsheet: click a cell to hold it, move with the arrow keys and Tab, type (or Enter, or double-click) to edit, Enter to keep it and go down, Esc to give it up. A block copied from a spreadsheet pastes from the held cell; Ctrl+Z undoes, Ctrl+Y does again. The screen hears every change and can refuse it. Try it: paste three rows from a spreadsheet onto <code>qty</code>.</p>
+        <p>With <code>editable</code>, a table is a data-entry grid: every cell a box, one click puts the caret in it, Enter keeps it and opens the cell below, Tab the next one, Esc gives it up and holds the cell. A block copied from a spreadsheet pastes from the cell; Ctrl+Z undoes, Ctrl+Y does again. The screen hears every change and can refuse it. Try it: paste three rows from a spreadsheet onto <code>qty</code>.</p>
         <div class="ds-demo">
             <dbmn-table id="dsEdit" label="Stock to load" editable></dbmn-table>
             <p class="form-hint" id="dsEditSaid"></p>
@@ -372,6 +372,18 @@ locked                                     attribute: columns can be neither mov
 { id: 'sku', name: 'sku', editable: false }   a column only read
 table.addEventListener('dbmn-table-edit', e =&gt; …e.detail.kind ('edit' | 'paste' | 'undo' | 'redo'), e.detail.changes [{ row, id, value, old }]…);
                                            // change a value, or e.preventDefault() to refuse them</code></pre>
+
+        <h3>A table people keep</h3>
+        <p>A lookup table: rows added from the line under them and deleted from their number, columns renamed, added and deleted from a heading's right-click menu, and a key whose values are one per row (two the same, or none, show amber with the reason). Try it: give the second <code>VIC</code> another code.</p>
+        <div class="ds-demo">
+            <dbmn-table id="dsLookup" label="Regions" editable add-row row-delete edit-columns></dbmn-table>
+            <p class="form-hint" id="dsLookupSaid"></p>
+        </div>
+        <pre class="ds-code"><code>&lt;dbmn-table editable add-row row-delete edit-columns&gt;
+{ id: 'code', name: 'code', key: true }      the key: one row per value
+table.keyProblems                           [{ row, id, value, kind: 'duplicate' | 'missing' }]: what stops it being kept
+dbmn-table-add-row { row }, dbmn-table-delete-row { row, index }, dbmn-table-columns { kind, id, name }   (cancelable)
+dbmn-table-rows { kind, row, index, rows }  after a row is added or deleted (Ctrl+Z too)</code></pre>
 
         <h3>A live list</h3>
         <p>A table fed as things happen (the log below) keeps its newest row in view. Scroll away and the rows you are reading stay exactly where they are while the new ones are counted; back at the newest, it follows again. Only a live list does this: a table without <code>follow</code> never moves by itself.</p>

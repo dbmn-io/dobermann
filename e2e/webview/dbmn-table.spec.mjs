@@ -1109,3 +1109,84 @@ test('editable: the screen can refuse a change or a column; a list of records is
     await page.keyboard.press('Enter');
     await expect(td(page, 0, 2)).toHaveText('');
 });
+
+/* ── A table people keep (a lookup table): rows added and deleted, columns edited, a key ── */
+
+const lookupPage = () => tablePage()
+    .replace('<dbmn-table id="t" label="Orders" searchable removable></dbmn-table>', '<dbmn-table id="t" label="Regions" editable add-row row-delete edit-columns></dbmn-table>')
+    .replace(/t\.columns = \[[^\n]*\n/, "window.told = []; ['dbmn-table-rows', 'dbmn-table-columns'].forEach(type => t.addEventListener(type, e => window.told.push([type.replace('dbmn-table-', ''), e.detail.kind, e.detail.name || null]))); t.columns = [{ id: 'code', name: 'code', key: true }, { id: 'name', name: 'name' }, { id: 'region', name: 'region' }];\n")
+    .replace(/  const who = [^\n]*\n  t\.rows = [^\n]*\n/, "  t.rows = [{ code: 'VIC', name: 'Victoria', region: 'South' }, { code: 'NSW', name: 'New South Wales', region: 'East' }, { code: 'VIC', name: 'Vic again', region: 'South' }, { code: '', name: 'No code', region: 'North' }];\n");
+const rowsNow = page => page.evaluate(() => document.getElementById('t').rows.map(r => ({ ...r })));
+
+test('a key column: a key on its heading; a value in two rows, or none, is amber with why; fixed, it clears', async ({ page }) => {
+    await page.setContent(lookupPage());
+    await expect(page.locator('#t thead th.is-key .dbmn-key-mark svg')).toHaveCount(1);
+    await expect(td(page, 0, 1)).toHaveClass(/dbmn-cell-key-duplicate/);
+    await expect(td(page, 0, 1)).toHaveAttribute('title', 'code VIC is in 2 rows: a key is in one row only');
+    await expect(td(page, 1, 1)).not.toHaveClass(/dbmn-cell-key/);
+    await expect(td(page, 3, 1)).toHaveClass(/dbmn-cell-key-missing/);
+    expect(await page.evaluate(() => document.getElementById('t').keyProblems.map(p => [p.value, p.kind]))).toEqual([['VIC', 'duplicate'], ['VIC', 'duplicate'], ['', 'missing']]);
+    await td(page, 2, 1).click();
+    await page.keyboard.press('Control+a');
+    await page.keyboard.type('TAS');
+    await page.keyboard.press('Enter');
+    await expect(td(page, 0, 1)).not.toHaveClass(/dbmn-cell-key/);
+    await expect(td(page, 2, 1)).not.toHaveClass(/dbmn-cell-key/);
+});
+
+test('add-row and row-delete: a row added opens for typing; a row\'s bin deletes it; Ctrl+Z undoes either', async ({ page }) => {
+    await page.setContent(lookupPage());
+    await expect(td(page, 0, 0)).toHaveText('1');
+    await page.locator('#t .dbmn-table-add-row').click();
+    expect(await rowsNow(page)).toHaveLength(5);
+    await expect(td(page, 4, 1).locator('input.dbmn-cell-input')).toBeFocused();
+    await page.keyboard.type('QLD');
+    await page.keyboard.press('Enter');
+    expect((await rowsNow(page))[4]).toEqual({ code: 'QLD', name: '', region: '' });
+    // The bin on row 2 (its number turns into it on hover)
+    await page.locator('#t .dbmn-table-body tr').nth(1).hover();
+    await td(page, 1, 0).locator('.dbmn-row-delete').click();
+    expect((await rowsNow(page)).map(r => r.code)).toEqual(['VIC', 'VIC', '', 'QLD']);
+    await expect(page.locator('#t .dbmn-table-body .dbmn-row-num')).toHaveText(['1', '2', '3', '4']);
+    // Back in the table, Ctrl+Z: the row comes back where it was; again: QLD unsaid; again: the added row goes
+    await td(page, 0, 2).click();
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Control+z');
+    expect((await rowsNow(page)).map(r => r.code)).toEqual(['VIC', 'NSW', 'VIC', '', 'QLD']);
+    await page.keyboard.press('Control+z');
+    await page.keyboard.press('Control+z');
+    expect((await rowsNow(page)).map(r => r.code)).toEqual(['VIC', 'NSW', 'VIC', '']);
+    expect(await page.evaluate(() => window.told.map(t => t.slice(0, 2)))).toEqual([['rows', 'add'], ['rows', 'delete'], ['rows', 'add'], ['rows', 'delete']]);
+});
+
+test('edit-columns: a heading\'s menu renames a column, adds one after it, and deletes one with its values', async ({ page }) => {
+    await page.setContent(lookupPage());
+    const head = name => page.locator('#t thead th', { has: page.locator('.column-name', { hasText: new RegExp(`^${name}$`) }) });
+    const answer = async (value, action) => {
+        if (value !== null) await page.locator('#dbmn-modal-field-name').fill(value);
+        await page.locator(`[data-action-id="${action}"]`).click();
+        await expect(page.locator('.dbmn-modal-title')).toHaveCount(0);
+    };
+    await head('region').click({ button: 'right' });
+    await expect(page.locator('.dbmn-context-menu-item .dbmn-context-menu-label')).toContainText(['Rename column…', 'Add a column after', 'Delete column']);
+    await page.locator('.dbmn-context-menu-item[data-action="extra:rename"]').click();
+    await answer('area', 'ok');
+    await expect(page.locator('#t thead .column-name')).toHaveText(['#', 'code', 'name', 'area']);
+
+    await head('name').click({ button: 'right' });
+    await page.locator('.dbmn-context-menu-item[data-action="extra:add"]').click();
+    await answer('notes', 'ok');
+    await expect(page.locator('#t thead .column-name')).toHaveText(['#', 'code', 'name', 'notes', 'area']);
+    // Typing into it straight away
+    await expect(td(page, 0, 3).locator('input.dbmn-cell-input')).toBeFocused();
+    await page.keyboard.type('Head office');
+    await page.keyboard.press('Enter');
+    expect((await rowsNow(page))[0].notes).toBe('Head office');
+
+    await head('notes').click({ button: 'right' });
+    await page.locator('.dbmn-context-menu-item[data-action="extra:delete"]').click();
+    await answer(null, 'confirm');
+    await expect(page.locator('#t thead .column-name')).toHaveText(['#', 'code', 'name', 'area']);
+    expect((await rowsNow(page))[0]).toEqual({ code: 'VIC', name: 'Victoria', region: 'South' });
+    expect(await page.evaluate(() => window.told.map(t => t.slice(0, 3)))).toEqual([['columns', 'rename', 'area'], ['columns', 'add', 'notes'], ['columns', 'delete', 'notes']]);
+});

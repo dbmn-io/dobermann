@@ -764,9 +764,20 @@
         bin.title = 'Delete row (Ctrl+Z to undo)';
         bin.setAttribute('aria-label', `Delete row ${place + 1}`);
         if (window.Icons && window.Icons.setIcon) window.Icons.setIcon(bin, 'trash-2');
+        // On the press, not the click: a cell open for typing closes on the press and the rows are
+        // drawn again, so the click would land on a bin no longer there
+        bin.addEventListener('mousedown', event => {
+            if (event.button !== 0) return;
+            event.preventDefault();
+            event.stopPropagation();
+            const table = gridTable();
+            if (table && table._editing) table._editing.finish(true, null, true);
+            deleteGridRow(placeOf(row));
+        });
+        // (the keyboard's Enter or Space on the bin)
         bin.addEventListener('click', event => {
             event.stopPropagation();
-            deleteGridRow(placeOf(row));
+            if (event.detail === 0) deleteGridRow(placeOf(row));
         });
         wrap.append(num, bin);
         return wrap;

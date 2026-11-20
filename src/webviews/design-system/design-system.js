@@ -407,6 +407,26 @@
         });
     }
 
+    /* ── A table people keep: a made-up lookup table of regions, with a key ── */
+    function drawLookup() {
+        const table = $('dsLookup');
+        if (!table) return;
+        table.style.setProperty('--table-height', '200px');
+        table.columns = [{ id: 'code', name: 'code', key: true }, { id: 'name', name: 'name' }, { id: 'region', name: 'region' }];
+        table.rows = [
+            { code: 'VIC', name: 'Victoria', region: 'South' }, { code: 'NSW', name: 'New South Wales', region: 'East' },
+            { code: 'VIC', name: 'Tasmania', region: 'South' }, { code: 'QLD', name: 'Queensland', region: 'North' }
+        ];
+        // (as a screen would: what stops it being kept, said under it)
+        const say = () => {
+            const problems = table.keyProblems;
+            const rows = new Set(problems.map(p => p.row)).size;
+            $('dsLookupSaid').textContent = problems.length ? `${rows} row${rows === 1 ? '' : 's'} to fix before it can be kept: a key is in one row only, and every row needs one.` : `${table.rows.length} rows, ready to keep.`;
+        };
+        ['dbmn-table-edit', 'dbmn-table-rows', 'dbmn-table-columns'].forEach(type => table.addEventListener(type, () => setTimeout(say, 0)));
+        say();
+    }
+
     /* ── Lining columns up (<dbmn-map>): three made-up results, kept here as the screen would keep them ── */
     function drawMap() {
         const map = $('dsMap');
@@ -586,6 +606,7 @@
     drawNested();
     drawMap();
     drawEdit();
+    drawLookup();
     drawPaged();
     drawLog();
     if (window.Icons) window.Icons.injectIcons(document.body);

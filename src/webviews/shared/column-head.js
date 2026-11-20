@@ -256,9 +256,14 @@
         if (opts.move) place.push({ id: 'start', label: 'Move to start', icon: 'chevrons-left', disabled: !!opts.first }, { id: 'end', label: 'Move to end', icon: 'chevrons-right', disabled: !!opts.last });
         if (opts.fit) place.push({ id: 'fit', label: 'Fit width', icon: 'move-horizontal' });
         part(place);
+        // The screen's own (an editable table's Rename, Add a column, Delete): { id, label, icon, danger, run }
+        const extra = Array.isArray(opts.extra) ? opts.extra : [];
+        part(extra.map(({ id, label, icon, danger }) => ({ id: `extra:${id}`, label, icon, danger })));
         if (opts.remove) part([{ id: 'remove', label: opts.removeLabel || 'Remove column', icon: 'x', danger: true }]);
         if (!items.length) return;
         window.DbmnContextMenu.show(event, items, id => {
+            const own = extra.find(item => `extra:${item.id}` === id);
+            if (own) { own.run(); return; }
             if (id === 'asc' || id === 'desc') opts.sort(id);
             else if (id === 'clear') opts.sort(null);
             else if (id === 'start' || id === 'end') opts.move(id);
