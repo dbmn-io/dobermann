@@ -1190,3 +1190,52 @@ test('edit-columns: a heading\'s menu renames a column, adds one after it, and d
     expect((await rowsNow(page))[0]).toEqual({ code: 'VIC', name: 'Victoria', region: 'South' });
     expect(await page.evaluate(() => window.told.map(t => t.slice(0, 3)))).toEqual([['columns', 'rename', 'area'], ['columns', 'add', 'notes'], ['columns', 'delete', 'notes']]);
 });
+
+/* ── Picking rows (`selectable`) ── */
+
+const pickPage = single => tablePage()
+    .replace('<dbmn-table id="t" label="Orders" searchable removable></dbmn-table>', `<dbmn-table id="t" label="Orders" searchable ${single ? 'selectable="single"' : 'selectable'}></dbmn-table>`)
+    .replace("t.rows = Array.from({ length: 3000 }", "window.picks = []; window.opens = []; t.addEventListener('dbmn-table-select', e => window.picks.push(e.detail.selected.map(r => r.order_no))); t.addEventListener('dbmn-table-row-open', e => window.opens.push(e.detail.row.order_no)); t.rows = Array.from({ length: 3000 }");
+const picked = page => page.evaluate(() => document.getElementById('t').selected.map(r => r.order_no));
+
+test('selectable: a click picks a row and again unpicks it; Shift-click picks a run; the heading\'s box picks every row shown', async ({ page }) => {
+    await page.setContent(pickPage(false));
+    const rowsAt = n => page.locator('#t .dbmn-table-body tr').nth(n);
+    await rowsAt(1).click();
+    await rowsAt(3).locator('input.dbmn-pick-box').click();
+    expect(await picked(page)).toEqual(['SO-10001', 'SO-10003']);
+    await expect(rowsAt(1)).toHaveClass(/is-picked/);
+    await expect(rowsAt(1).locator('input.dbmn-pick-box')).toBeChecked();
+    await rowsAt(1).click();
+    expect(await picked(page)).toEqual(['SO-10003']);
+    // Shift-click: every row from the last one clicked (row 1) to this one
+    await rowsAt(6).click({ modifiers: ['Shift'] });
+    expect(await picked(page)).toEqual(['SO-10001', 'SO-10002', 'SO-10003', 'SO-10004', 'SO-10005', 'SO-10006']);
+    // The heading's box: every row the search shows (Kettle and Co: 1,000 of them), then none of them
+    await page.locator('#t .search-input').fill('Kettle');
+    await expect(page.locator('#t .dbmn-table-count')).toHaveText('1,000 of 3,000 rows');
+    await page.locator('#t thead input.dbmn-pick-all').click();
+    expect((await picked(page)).length).toBe(1000 + 4);   // (the four picked that aren't Kettle's stay)
+    await page.locator('#t thead input.dbmn-pick-all').click();
+    expect(await picked(page)).toEqual(['SO-10002', 'SO-10003', 'SO-10005', 'SO-10006']);
+    expect(await page.evaluate(() => window.picks.length)).toBe(6);
+    // A double-click: the screen's Open
+    await page.locator('#t .search-input').fill('');
+    await rowsAt(2).dblclick();
+    expect(await page.evaluate(() => window.opens)).toEqual(['SO-10002']);
+    // The table's own column is not the screen's
+    expect(await page.evaluate(() => document.getElementById('t').columns.map(c => c.id))).toEqual(['order_no', 'customer', 'qty', 'notes']);
+});
+
+test('selectable="single": one row at a time, round boxes, no box in the heading; selected can be set', async ({ page }) => {
+    await page.setContent(pickPage(true));
+    const rowsAt = n => page.locator('#t .dbmn-table-body tr').nth(n);
+    await expect(page.locator('#t thead input.dbmn-pick-all')).toHaveCount(0);
+    await expect(rowsAt(0).locator('input.dbmn-pick-box')).toHaveAttribute('type', 'radio');
+    await rowsAt(4).click();
+    await rowsAt(2).click();
+    expect(await picked(page)).toEqual(['SO-10002']);
+    await page.evaluate(() => { const t = document.getElementById('t'); t.selected = [t.rows[7]]; });
+    await expect(rowsAt(7)).toHaveClass(/is-picked/);
+    expect(await picked(page)).toEqual(['SO-10007']);
+});

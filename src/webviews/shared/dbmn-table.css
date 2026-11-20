@@ -190,3 +190,11 @@ dbmn-table[editable] .dbmn-table-body td.dbmn-cell-box { cursor: pointer; }
     background: var(--dbmn-inputValidation-warningBackground, rgba(255, 200, 0, 0.2));
     box-shadow: inset 0 0 0 1px var(--dbmn-inputValidation-warningBorder, #cca700);
 }
+
+/* `selectable`: a tick box first; a picked row lit; the whole row is the click */
+.dbmn-table-grid th.dbmn-pick-cell,
+.dbmn-table-grid td.dbmn-pick-cell { width: 32px; text-align: center; }
+.dbmn-pick-box,
+.dbmn-pick-all { margin: 0; vertical-align: middle; cursor: pointer; accent-color: var(--dbmn-focusBorder); }
+dbmn-table[selectable] .dbmn-table-body tr { cursor: pointer; }
+.dbmn-table-body tr.is-picked td { background: color-mix(in srgb, var(--dbmn-focusBorder) 18%, transparent); }

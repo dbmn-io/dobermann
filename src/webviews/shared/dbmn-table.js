@@ -77,6 +77,13 @@
  *   A listener may change a change's `value`, or refuse them all with preventDefault(); otherwise
  *   the table writes them into the rows and draws them. A number stays a number when it reads as one.
  *
+ * ── Picking rows: `selectable` (a tick box per row) or `selectable="single"` (one at a time) ──
+ *   A click on a row picks it (again: not, unless single); Shift-click picks every row from the last
+ *   one clicked; the heading's box picks every row shown (the search's), or none.
+ *   orders.selected: the rows picked (in the order given); orders.selected = [rows] picks them.
+ *   dbmn-table-select { selected } after each change. dbmn-table-row-open { row, index } on a
+ *   double-click (a picker's Add; any table that is not editable).
+ *
  * ── A table people keep (a lookup table): with `editable` ──
  *   `add-row`       a line under the rows adds an empty row, its first cell open for typing
  *                   (dbmn-table-add-row { row } first: cancelable, and detail.row may be filled)
@@ -154,6 +161,9 @@
     /** Rows asked for at a time, and how many pages are kept before the furthest are let go. */
     const PAGE = 200;
     const ROW_GUTTER = '__row';   // (`row-delete`: the row number column the table draws itself)
+    const ROW_PICK = '__pick';    // (`selectable`: the tick-box column the table draws itself)
+    /** The table's own columns, not the screen's: never in `columns`, a layout or a new row. */
+    const own = id => id === ROW_GUTTER || id === ROW_PICK;
     const KEEP_PAGES = 60;
     /** Typing is never held up: over this many rows a search waits for a pause in the typing, then runs a little at a time and stops at the next key. */
     const SEARCH_AT_ONCE = 3000;
@@ -231,9 +241,11 @@
         }
 
         set columns(list) {
-            this._all = Array.isArray(list) ? list.filter(c => c && c.id !== ROW_GUTTER) : [];
+            this._all = Array.isArray(list) ? list.filter(c => c && !own(c.id)) : [];
             // (`row-delete`: the row's number first, a bin on it to delete the row)
             if (this.hasAttribute('row-delete')) this._all.unshift(this._gutterColumn());
+            // (`selectable`: a tick box first of all, to pick rows)
+            if (this.hasAttribute('selectable')) this._all.unshift(this._pickColumn());
             this._keyCounts = null;
             this._columns = this._all.slice();
             this._sort = null;
@@ -242,12 +254,13 @@
             this._sized = false;
             this._refresh();
         }
-        get columns() { return this._columns.filter(c => c.id !== ROW_GUTTER); }
+        get columns() { return this._columns.filter(c => !own(c.id)); }
 
         set rows(list) {
             this._before(Array.isArray(list) ? list.length - this._rows.length : 0);
             this._rows = Array.isArray(list) ? list : [];
             this._keyCounts = null;
+            if (this._picked && this._picked.size) { const now = new Set(this._rows); this._picked.forEach(r => { if (!now.has(r)) this._picked.delete(r); }); }
             this._source = null;
             this._kinds = null;
             this._types = null;
@@ -310,13 +323,13 @@
 
         /** What a screen saves of the table: the order, the hidden columns, the widths the user set, the sort. */
         get layout() {
-            const shown = this._columns.map(c => c.id).filter(id => id !== ROW_GUTTER);
+            const shown = this._columns.map(c => c.id).filter(id => !own(id));
             const widths = {};
             Object.keys(this._set).forEach(id => { if (this._widths[id]) widths[id] = this._widths[id]; });
             // (the columns removed from a column's records, as `<column>.<key>`)
             const recordHidden = [];
             Object.keys(this._subHidden).forEach(id => Object.keys(this._subHidden[id]).forEach(key => recordHidden.push(`${id}.${key}`)));
-            return { order: shown, hidden: this._all.map(c => c.id).filter(id => id !== ROW_GUTTER && !shown.includes(id)), widths, sort: this._sort ? { id: this._sort.id, dir: this._sort.dir } : null, recordHidden, recordsWide: [...this._wide] };
+            return { order: shown, hidden: this._all.map(c => c.id).filter(id => !own(id) && !shown.includes(id)), widths, sort: this._sort ? { id: this._sort.id, dir: this._sort.dir } : null, recordHidden, recordsWide: [...this._wide] };
         }
         set layout(saved) {
             const l = saved || {};
@@ -486,6 +499,8 @@
             });
             this._body.addEventListener('click', event => {
                 if (this._nestClick(event)) return;
+                // `selectable`: a click on a row (or its box) picks it
+                if (this._pickClick(event)) return;
                 // Editable: the press on the cell (mousedown) has opened it for typing already
                 if (this._editClick(event)) return;
                 const td = event.target.closest('td.cell-expandable');
@@ -509,6 +524,13 @@
 
             // A right-click on a row is the screen's (its record, its menu), when it listens for it
             this._body.addEventListener('contextmenu', event => this._rowEvent('dbmn-table-row-menu', event));
+            // A double-click on a row: the screen's Open (a picker's Add)
+            this._body.addEventListener('dblclick', event => {
+                if (this._editable()) return;
+                // (a double-click also selects a word: it is an Open, not a selection)
+                if (window.getSelection) window.getSelection().removeAllRanges();
+                this._rowEvent('dbmn-table-row-open', event);
+            });
 
             const head = window.ColumnHead;
             if (head) {
@@ -1032,6 +1054,7 @@
                 const extra = this.rowClass(row);
                 if (extra) tr.className = String(extra);
             }
+            if (row && this._picked && this._picked.has(row)) tr.classList.add('is-picked');
             this._columns.forEach(column => {
                 const value = row ? row[column.id] : null;
                 const td = make('td', (column.numbers || typeof value === 'number' ? 'text-right' : '') + (column.className ? ` ${column.className}` : ''));
@@ -2085,6 +2108,102 @@
         }
     });
 
+    /* ── Picking rows (`selectable`): a tick box per row; `selectable="single"`, one row at a time ── */
+    Object.assign(DbmnTable.prototype, {
+        _single() { return this.getAttribute('selectable') === 'single'; },
+        _pickedSet() {
+            if (!this._picked) this._picked = new Set();
+            return this._picked;
+        },
+        /** The tick-box column: a box per row, and in its heading one for every row shown (not with `single`). */
+        _pickColumn() {
+            return {
+                id: ROW_PICK, name: '', pinned: true, sortable: false, removable: false, editable: false,
+                className: 'dbmn-pick-cell',
+                render: (value, row) => {
+                    const box = make('input', 'dbmn-pick-box');
+                    box.type = this._single() ? 'radio' : 'checkbox';
+                    box.tabIndex = -1;
+                    box.checked = this._pickedSet().has(row);
+                    const at = this._placeOf(row);
+                    box.setAttribute('aria-label', `Pick row ${at + 1}`);
+                    return box;
+                },
+                head: th => {
+                    th.classList.add('dbmn-pick-cell');
+                    // (the column has no name of its own to show)
+                    const name = th.querySelector('.column-name');
+                    if (name) name.textContent = '';
+                    if (this._single()) return;
+                    const all = make('input', 'dbmn-pick-all');
+                    all.type = 'checkbox';
+                    all.setAttribute('aria-label', 'Pick every row shown');
+                    const shown = this._view.map(i => this._rows[i]);
+                    const n = shown.filter(r => this._pickedSet().has(r)).length;
+                    all.checked = n > 0 && n === shown.length;
+                    all.indeterminate = n > 0 && n < shown.length;
+                    all.addEventListener('click', event => {
+                        event.stopPropagation();
+                        // (the rows shown now: a search still looking when the heading was drawn has since finished)
+                        const now = this._view.map(i => this._rows[i]);
+                        const picked = now.filter(r => this._pickedSet().has(r)).length;
+                        const on = !(picked > 0 && picked === now.length);
+                        now.forEach(r => { if (on) this._pickedSet().add(r); else this._pickedSet().delete(r); });
+                        this._pickedChanged();
+                    });
+                    if (name) name.after(all); else th.prepend(all);
+                }
+            };
+        },
+        /** A click on a row (or its box): picked; with `single`, only it. Shift: every row from the last one clicked. */
+        _pickClick(event) {
+            if (!this.hasAttribute('selectable')) return false;
+            if (event.target.closest('button, a, select, textarea, td.has-nested') || (event.target.closest('input') && !event.target.closest('.dbmn-pick-box'))) return false;
+            // (text being selected is not a pick; but Shift-click picks a run, whatever text it selected on the way)
+            if (event.shiftKey && window.getSelection) window.getSelection().removeAllRanges();
+            else if (String(window.getSelection()) && !event.target.closest('.dbmn-pick-box')) return false;
+            const tr = event.target.closest('tr');
+            if (!tr || !this._body.contains(tr) || tr._main) return false;
+            const index = this._rendered.start + this._mainIndex(tr);
+            const row = this._rowAt(index);
+            if (!row) return false;
+            const set = this._pickedSet();
+            if (this._single()) {
+                set.clear();
+                set.add(row);
+            } else if (event.shiftKey && this._pickFrom !== undefined) {
+                const [a, b] = [Math.min(this._pickFrom, index), Math.max(this._pickFrom, index)];
+                for (let i = a; i <= b; i++) { const r = this._rowAt(i); if (r) set.add(r); }
+            } else if (set.has(row)) set.delete(row);
+            else set.add(row);
+            this._pickFrom = index;
+            this._pickedChanged();
+            // (the row's own click still reaches the screen: dbmn-table-row)
+            this._rowEvent('dbmn-table-row', event);
+            return true;
+        },
+        _pickedChanged() {
+            this._render(true);
+            this._heads();
+            this.dispatchEvent(new CustomEvent('dbmn-table-select', { bubbles: true, detail: { selected: this.selected } }));
+        }
+    });
+
+    /** The rows picked (`selectable`), in the order the rows were given; set it to pick them. */
+    Object.defineProperty(DbmnTable.prototype, 'selected', {
+        get() {
+            const set = this._pickedSet();
+            return this._rows.filter(r => set.has(r));
+        },
+        set(rows) {
+            const set = this._pickedSet();
+            set.clear();
+            (Array.isArray(rows) ? rows : []).forEach(r => set.add(r));
+            if (this._single() && set.size > 1) { const first = set.values().next().value; set.clear(); set.add(first); }
+            if (this._built) { this._render(true); this._heads(); }
+        }
+    });
+
     /* ── A table people keep (a lookup table): rows added and deleted, columns added, renamed and
           deleted, a key whose values are one per row ── */
     Object.assign(DbmnTable.prototype, {
@@ -2136,7 +2255,7 @@
             if (!this._editable()) return;
             this._editInit();
             const row = {};
-            this._columns.forEach(c => { if (c.id !== ROW_GUTTER) row[c.id] = ''; });
+            this._columns.forEach(c => { if (!own(c.id)) row[c.id] = ''; });
             const asked = new CustomEvent('dbmn-table-add-row', { bubbles: true, cancelable: true, detail: { row } });
             if (!this.dispatchEvent(asked)) return;
             const added = asked.detail.row || row;
@@ -2176,8 +2295,8 @@
 
         /** `edit-columns`: a column's heading menu renames it, adds one after it, or deletes it. */
         _columnEdits(column) {
-            if (!this._editable() || !this.hasAttribute('edit-columns') || column.id === ROW_GUTTER || column.editable === false || !window.DbmnModal) return [];
-            const data = this._all.filter(c => c.id !== ROW_GUTTER);
+            if (!this._editable() || !this.hasAttribute('edit-columns') || own(column.id) || column.editable === false || !window.DbmnModal) return [];
+            const data = this._all.filter(c => !own(c.id));
             const items = [
                 { id: 'rename', label: 'Rename column…', icon: 'pencil', run: () => this._renameColumn(column) },
                 { id: 'add', label: 'Add a column after', icon: 'plus', run: () => this._addColumn(column) }
@@ -2186,7 +2305,7 @@
             return items;
         },
         /** A column's name, asked for: one no other column has. Resolves to the name, or null. */
-        async _askName(title, value, action, own) {
+        async _askName(title, value, action, mine) {
             const result = await window.DbmnModal.show({
                 title,
                 fields: [{ id: 'name', type: 'text', label: 'Name', value: value || '', required: true }],
@@ -2195,7 +2314,7 @@
             if (!result || result.actionId !== 'ok') return null;
             const name = String((result.fields && result.fields.name) || '').trim();
             if (!name) return null;
-            if (this._all.some(c => c !== own && c.id !== ROW_GUTTER && String(c.name || c.id).toLowerCase() === name.toLowerCase())) {
+            if (this._all.some(c => c !== mine && !own(c.id) && String(c.name || c.id).toLowerCase() === name.toLowerCase())) {
                 await window.DbmnModal.alert({ title: 'That name is taken', body: `There is already a column named ${name}.` });
                 return null;
             }
