@@ -10,7 +10,7 @@ import * as assert from 'assert';
 import initSqlJs from 'sql.js';
 import type { SqlJsStatic } from 'sql.js';
 import { QuerySession } from '../../../services/query/query-engine';
-import { alignCompareJoins, isCompare, queryCompare, runJoin } from '../../../services/query/query-compare';
+import { alignCompareJoins, groupCompare, isCompare, queryCompare, runJoin } from '../../../services/query/query-compare';
 import { nextRunName, runName } from '../../../services/query/query-store';
 import type { QuerySource } from '../../../services/query/query-store';
 import { compareKeySql, defaultColumns, formulaColumns, lookupsUsed, resultColumns, writeSql } from '../../../services/query/query-sql';
@@ -85,6 +85,30 @@ describe('A compare inside Query', () => {
         assert.strictEqual(s.joinStats(1).rowsAfter, 4);
         assert.strictEqual(s.count(), 4);
         s.close();
+    });
+
+    it('groups views read the same way: making a join a Compare brings them in, and the key is picked once', () => {
+        // Four results of one endpoint through one View, and a fifth view of another endpoint
+        const inv = (id: string) => ({ id, endpointId: 'inv', view: 'Default', columns: ['GTIN', 'onHand'] });
+        const views = [{ ...inv('a'), columns: ['gtin', 'onHand'] }, inv('b'), inv('c'), inv('d'), { id: 'p', endpointId: 'prd', view: 'Default', columns: ['gtin'] }];
+        const blank = (view: string): QueryJoin => ({ view, kind: 'left', on: [] });
+        const js: QueryJoin[] = [{ view: 'b', kind: 'compare', on: [] }, blank('c'), blank('d'), blank('p')];
+        groupCompare(js, views, true);
+        assert.deepStrictEqual(js.map(j => j.kind), ['compare', 'compare', 'compare', 'left'], 'the same-shaped views come in; the other endpoint does not');
+        // The Baseline's key picked once: each same-shaped view takes its own column of that name (any case)
+        js[0].on = [{ left: col('a', 'gtin'), right: { parts: [] } }];
+        alignCompareJoins(js);
+        groupCompare(js, views, false);
+        assert.deepStrictEqual(js.slice(0, 3).map(j => j.on[0].right.parts[0]?.column), ['GTIN', 'GTIN', 'GTIN']);
+        assert.deepStrictEqual(js.slice(0, 3).map(j => j.on[0].left.parts[0]?.column), ['gtin', 'gtin', 'gtin']);
+        // A column picked by hand stays
+        js[1].on[0].right = col('c', 'onHand');
+        groupCompare(js, views, false);
+        assert.strictEqual(js[1].on[0].right.parts[0].column, 'onHand');
+        // A view already joined by hand is never pulled in
+        const mine: QueryJoin[] = [{ view: 'b', kind: 'compare', on: [] }, { view: 'c', kind: 'left', on: [{ left: col('a', 'gtin'), right: col('c', 'GTIN') }] }];
+        groupCompare(mine, views, true);
+        assert.strictEqual(mine[1].kind, 'left');
     });
 
     it('a compare starts with its key only: what is compared is picked', () => {

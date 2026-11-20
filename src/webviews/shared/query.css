@@ -349,3 +349,7 @@
 .query-add-views { display: flex; flex-wrap: wrap; gap: 8px 16px; }
 .query-add-view-pick { display: inline-flex; align-items: center; gap: 6px; }
 .query-add-note { margin: 0; }
+/* A view still being read: its count a ghost, pulsing, until its rows are in */
+.query-ghost { display: inline-block; min-width: 70px; border-radius: 3px; color: var(--vscode-descriptionForeground); background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--vscode-focusBorder) 22%, transparent), transparent); background-size: 200% 100%; animation: query-ghost 1.2s ease-in-out infinite; padding: 0 6px; text-align: right; }
+@keyframes query-ghost { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+@media (prefers-reduced-motion: reduce) { .query-ghost { animation: none; } }

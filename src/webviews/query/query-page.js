@@ -308,7 +308,8 @@
         $('csvBatchContainer').classList.toggle('query-many', views().length > 5);
         $('queryViews').replaceChildren(...views().map(v => {
             // Sitting out: hidden by the user, or (past the first) not joined yet
-            const out = !!v.off || (!!v.waiting && !v.reading && !v.error);
+            // (not joined yet greys only from Join on: on Views nothing is joined yet, and a view is picked here in its colours)
+            const out = !!v.off || (ui.step >= 2 && !!v.waiting && !v.reading && !v.error);
             const box = el('div', `compare-result ${colour(v.id)}${out ? ' is-off' : ''}`);
             // The views are changed on Views and Join (a slot's menu, and a drag to another place). On
             // Columns and Results a slot is the heading its lane hangs under, and nothing more
@@ -462,7 +463,8 @@
         };
         const rows = v => {
             if (v.error) return el('span', 'query-warn', v.error);
-            return v.reading ? 'Reading…' : rowsButton(v);
+            // Still being read: a ghost, pulsing, where its count will be
+            return v.reading ? el('span', 'query-ghost', 'Reading…') : rowsButton(v);
         };
         box.replaceChildren(
             said('request', 'Request', v => v.file ? `File · ${v.file}` : [v.system, v.request || v.endpointName].filter(Boolean).join(' · ')),
@@ -978,8 +980,16 @@
                 detail: id === 'compare' && full ? `A compare takes ${ui.state.maxCompare || 4} views: take one out to put ${v.name} in` : detail,
                 disabled: id === 'compare' && full
             }));
+            // Delete join, at the bottom: the view (a compare: every view in it) goes back to not joined
+            items.push({ separator: true }, { id: 'delete', label: 'Delete join', icon: 'trash-2' });
             window.DbmnContextMenu.show(b, items, id => {
                 b.setAttribute('aria-expanded', 'false');
+                if (id === 'delete') {
+                    const gone = join.kind === 'compare' ? ui.state.joins.filter(j => j.kind === 'compare').map(j => j.view) : [join.view];
+                    setBusy('Joining…');
+                    post({ type: 'query.deleteJoin', views: gone });
+                    return;
+                }
                 if (!id || id === join.kind) return;
                 if (onPick) onPick(id);
                 else { join.kind = id; sendJoin(join); }
@@ -1409,9 +1419,14 @@
         if (s.views.length < 2) lines.push(el('p', 'compare-match-empty', 'Add another view to join.'));
         // The views in a compare join as one: one band, first; the joins that bring views in to show below it
         if (s.joins.some(j => j.kind === 'compare')) lines.push(compareBand());
+        // A join a view at a time, as SQL is written: every join made, and the first still to make; the views after it wait
+        let open = false;
         s.views.slice(1).forEach((v, i) => {
             const join = s.joins.find(j => j.view === v.id);
-            if (join && join.kind !== 'compare') lines.push(joinBand(v, join, s.views.slice(0, i + 1)));
+            if (!join || join.kind === 'compare') return;
+            const made = join.on.length > 0 && join.on.every(p => p.left.column && p.right.column);
+            if (!made) { if (open) return; open = true; }
+            lines.push(joinBand(v, join, s.views.slice(0, i + 1)));
         });
         box.replaceChildren(...lines);
         injectIcons(box);

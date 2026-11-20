@@ -32,7 +32,7 @@ import { cleanViewName, getQuery, guessViewName, VIEW_NAME_MAX, MAX_QUERY_VIEWS,
 import { columnTypes, spread, TYPE_SAMPLE, type ColumnType } from '../../services/query/column-types';
 import { CALC_VIEW, QUERY_JOIN_KINDS } from '../../services/query/query-types';
 import { comparableRuns, type RequestTemplates, type RunHeaderValue } from '../../services/compare/compare-runs';
-import { alignCompareJoins, MAX_COMPARE_VIEWS, queryCompare, runJoin } from '../../services/query/query-compare';
+import { alignCompareJoins, groupCompare, MAX_COMPARE_VIEWS, queryCompare, runJoin } from '../../services/query/query-compare';
 import { passes, rowStatus, statusCounts, type RowStatus, type StatusFilter } from '../../services/query/query-status';
 import { lookupsIn } from '../../services/column-functions/column-functions';
 import type { LookupTablesReader, LookupTableSummary } from '../../services/lookup-tables/lookup-tables';
@@ -238,12 +238,8 @@ export class QueryController {
                 });
                 case 'query.addRun': return await this.addRun(String(message.of ?? ''), String(message.executionId ?? ''));
                 // Several ticked in Add a view: each in turn (a query's and a compare's limits are checked one by one)
-                case 'query.addViews': {
-                    for (const item of Array.isArray(message.items) ? message.items as { endpointId: string; executionId: string; view: string }[] : []) {
-                        await this.addView({ endpointId: String(item.endpointId), executionId: String(item.executionId), view: String(item.view ?? '') });
-                    }
-                    return;
-                }
+                case 'query.addViews': return await this.addViews((Array.isArray(message.items) ? message.items as { endpointId: string; executionId: string; view: string }[] : [])
+                    .map(item => ({ endpointId: String(item.endpointId), executionId: String(item.executionId), view: String(item.view ?? '') })));
                 case 'query.addRuns': {
                     for (const id of Array.isArray(message.executionIds) ? (message.executionIds as unknown[]).map(String) : []) await this.addRun(String(message.of ?? ''), id);
                     return;
@@ -289,6 +285,7 @@ export class QueryController {
                 case 'query.setJoin': return await this.change(q => {
                     const join = q.joins.find(j => j.view === message.view);
                     if (!join) return;
+                    const madeCompare = message.kind === 'compare' && join.kind !== 'compare';
                     if (QUERY_JOIN_KINDS.includes(message.kind as QueryJoinKind)) {
                         const kind = message.kind as QueryJoinKind;
                         // A compare takes up to four views, the Baseline included
@@ -301,13 +298,24 @@ export class QueryController {
                     }
                     if (Array.isArray(message.on)) {
                         // A run's own column is its first run's, filled in below: its pairs need only their left side
-                        const isRun = runsOf(q).has(join.view);
+                        // (and in a compare, a view read the same way as the Baseline takes its key column: picked once, on the Baseline)
+                        const isRun = runsOf(q).has(join.view) || (join.kind === 'compare' && this.sameShapeAsBaseline(q, join.view));
                         join.on = (message.on as PagePair[]).filter(p => p?.left?.column && (p?.right?.column || isRun)).map(p => ({
                             left: { parts: [{ view: p.left.view, column: p.left.column, ...(p.left.fns?.length ? { fns: this.withLookupColumns(p.left.fns) } : {}) }] },
                             right: { parts: [{ view: join.view, column: p.right.column, ...(p.right.fns?.length ? { fns: this.withLookupColumns(p.right.fns) } : {}) }] }
                         }));
                     }
                     // One key across the compare: every Compare join after the first joins on the first one's key
+                    alignCompareJoins(q.joins, runsOf(q));
+                    // Views read the same way compare as one: made a Compare, they come in; the key is picked once
+                    groupCompare(q.joins, this.shapes(q), madeCompare);
+                    // (a pair said twice, as quick picks can send it, once)
+                    q.joins.forEach(j => { const seen = new Set<string>(); j.on = j.on.filter(p => { const k = JSON.stringify([p.left, p.right]); return !seen.has(k) && !!seen.add(k); }); });
+                });
+                // Delete join (the join-type menu): the views go back to not joined, out of the report until joined again
+                case 'query.deleteJoin': return await this.change(q => {
+                    const gone = new Set((Array.isArray(message.views) ? message.views : [message.view]).map(String));
+                    q.joins.forEach(j => { if (gone.has(j.view)) { j.kind = 'left'; j.on = []; } });
                     alignCompareJoins(q.joins, runsOf(q));
                 });
                 // The report's columns, in Results' order: each a view's column with its functions, a compared column's cells sharing a group
@@ -453,13 +461,55 @@ export class QueryController {
     }
 
     private async addView(message: { endpointId: string; executionId: string; view: string }): Promise<void> {
+        const source = await this.sourceFor(message, []);
+        if (source) await this.attach(source);
+    }
+
+    /**
+     * Several results ticked in Add a view: every slot shows at once (each still being read), then
+     * each is read in turn, the footer saying which, and the query is worked out once at the end.
+     */
+    private async addViews(items: { endpointId: string; executionId: string; view: string }[]): Promise<void> {
         const query = this.query;
         if (!query) return;
-        if (query.sources.length >= MAX_QUERY_VIEWS) throw new Error(`A query takes up to ${MAX_QUERY_VIEWS} views.`);
+        const sources: QuerySource[] = [];
+        for (const item of items) {
+            const source = await this.sourceFor(item, sources);
+            if (source) sources.push(source);
+        }
+        if (!sources.length) return;
+        const firstEver = query.sources.length === 0;
+        await this.change(q => { q.sources.push(...sources); }, false);
+        this.postState({ reading: true });
+        for (let i = 0; i < sources.length; i++) {
+            this.post({ type: 'query.progress', text: `Reading ${sources[i].name}`, done: i, total: sources.length });
+            await this.load(sources[i]);
+            if (this.closed) return;
+            // (each one's rows show on its slot as it is read)
+            this.postState({ reading: true });
+        }
+        await this.change(q => {
+            sources.forEach((source, i) => {
+                if (!q.sources.includes(source) || (firstEver && i === 0)) return;
+                q.joins.push({ view: source.id, kind: 'left', on: [] });
+                const mine = this.loaded.get(source.id)?.columns ?? [];
+                const taken = new Set(q.sources.filter(s => s !== source).flatMap(s => this.loaded.get(s.id)?.columns ?? []));
+                const blank = new Set(this.emptyColumns(source.id));
+                if (q.select?.length) q.select.push(...mine.filter(column => !taken.has(column) && !blank.has(column)).map(column => ({ view: source.id, column })));
+            });
+        });
+    }
+
+    /** A result as a view of the query, not yet added; undefined (said) past a limit. `pending`: views being added with it. */
+    private async sourceFor(message: { endpointId: string; executionId: string; view: string }, pending: QuerySource[]): Promise<QuerySource | undefined> {
+        const query = this.query;
+        if (!query) return undefined;
+        const all = [...query.sources, ...pending];
+        if (all.length >= MAX_QUERY_VIEWS) { this.ports.toast.warn(`A query takes up to ${MAX_QUERY_VIEWS} views.`); return undefined; }
         // Four of one endpoint at most: as many as a compare takes
-        if (query.sources.filter(s => s.endpointId === message.endpointId).length >= MAX_COMPARE_VIEWS) {
+        if (all.filter(s => s.endpointId === message.endpointId).length >= MAX_COMPARE_VIEWS) {
             this.ports.toast.warn(`A query takes up to ${MAX_COMPARE_VIEWS} results of one endpoint.`);
-            return;
+            return undefined;
         }
         const run = await this.ports.metadata.getExecution(message.executionId) ?? await this.ports.metadata.getBatchExecution(message.executionId);
         if (!run) throw new Error('That result is no longer in History.');
@@ -468,7 +518,7 @@ export class QueryController {
         // Named after its View, or its endpoint when the View's name says nothing ("Default")
         const plain = !message.view || /^(default|root|view)$/i.test(message.view.trim());
         const base = plain ? endpointName : message.view;
-        const name = guessViewName(base, query.sources.map(s => s.name));
+        const name = guessViewName(base, all.map(s => s.name));
         const source: QuerySource = {
             id: newSourceId(), name, endpointId: message.endpointId, endpointName, view: message.view,
             request: endpoint ? getEndpointViewScopeKey(endpoint.method, endpoint.path) : (run.endpointMethod && run.endpointPath ? getEndpointViewScopeKey(run.endpointMethod, run.endpointPath) : ''),
@@ -476,7 +526,7 @@ export class QueryController {
             executionId: message.executionId, isBatch: run.executionType === 'batch',
             environment: run.environment || 'Unknown', executedAt: iso(run.startedAt || run.createdAt)
         };
-        await this.attach(source);
+        return source;
     }
 
     /**
@@ -826,6 +876,19 @@ export class QueryController {
     }
 
     /** Change the saved query, save it, and show what it makes now. */
+    /** Is a view read the same way (endpoint and View) as the compare's Baseline? Its key column is then the Baseline's. */
+    private sameShapeAsBaseline(q: SavedQuery, id: string): boolean {
+        const baseline = queryCompare(q.joins, q.sources[0]?.id)?.baseline;
+        const a = q.sources.find(x => x.id === baseline);
+        const b = q.sources.find(x => x.id === id);
+        return !!a && !!b && a !== b && !a.file && !b.file && a.endpointId === b.endpointId && (a.view ?? '') === (b.view ?? '');
+    }
+
+    /** Each view as grouping a compare needs it: what it reads, and its columns. */
+    private shapes(q: SavedQuery): { id: string; endpointId?: string; view?: string; columns: string[] }[] {
+        return q.sources.map(x => ({ id: x.id, endpointId: x.file ? undefined : x.endpointId, view: x.view, columns: this.loaded.get(x.id)?.columns ?? [] }));
+    }
+
     private async change(apply: (query: SavedQuery) => void | Promise<void>, refresh = true): Promise<void> {
         const query = this.query;
         if (!query) return;

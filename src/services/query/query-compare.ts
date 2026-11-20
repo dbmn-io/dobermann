@@ -96,3 +96,53 @@ export function compareLeftKeys(joins: QueryJoin[], index: number, pair: number)
     if (!earlier.length) return [own];
     return [earlier[0].on[pair]?.left ?? own, ...earlier.map(j => j.on[pair]?.right).filter((k): k is QueryKey => !!k && k.parts.every(p => !!p.column))];
 }
+
+/** A view as grouping needs it: what it reads (endpoint and View), and its columns. */
+export interface CompareViewShape {
+    id: string;
+    endpointId?: string;
+    view?: string;
+    columns: string[];
+}
+
+/**
+ * Views read the same way (one endpoint, one View) compare as one group: the Baseline's key
+ * column is theirs too. `pullIn` (the join just made a Compare): every view of the Baseline's
+ * shape whose join has no column picked yet joins the compare, up to MAX_COMPARE_VIEWS. Then
+ * each Compare join of that shape with its own column blank takes the Baseline's (same name,
+ * any case), so the key is picked once. A view of another shape keeps its column to pick.
+ */
+export function groupCompare(joins: QueryJoin[], views: CompareViewShape[], pullIn: boolean): void {
+    const compare = queryCompare(joins, views[0]?.id);
+    if (!compare) return;
+    const base = views.find(v => v.id === compare.baseline);
+    if (!base) return;
+    const sameShape = (v: CompareViewShape | undefined): v is CompareViewShape => !!v && v.id !== base.id && !!v.endpointId && v.endpointId === base.endpointId && (v.view ?? '') === (base.view ?? '');
+    const picked = (j: QueryJoin): boolean => j.on.some(p => p.right.parts.some(x => !!x.column));
+    if (pullIn) {
+        let size = compare.views.length;
+        for (const join of joins) {
+            if (size >= MAX_COMPARE_VIEWS) break;
+            if (join.kind === 'compare' || picked(join) || !sameShape(views.find(v => v.id === join.view))) continue;
+            join.kind = 'compare';
+            size++;
+        }
+        alignCompareJoins(joins);
+    }
+    const first = joins.find(j => j.kind === 'compare');
+    if (!first) return;
+    for (const join of joins.filter(j => j.kind === 'compare')) {
+        const shape = views.find(v => v.id === join.view);
+        if (!sameShape(shape)) continue;
+        join.on = first.on.map((pair, i) => {
+            const own = join.on[i]?.right;
+            if (own && own.parts.some(x => !!x.column)) return { left: pair.left, right: own };
+            // The Baseline's key column, by name in this view (any case)
+            const parts = pair.left.parts.map(p => {
+                const column = shape.columns.find(c => c === p.column) ?? shape.columns.find(c => c.toLowerCase() === p.column.toLowerCase()) ?? '';
+                return { ...p, view: join.view, column };
+            });
+            return { left: pair.left, right: { ...sameKey(pair.left), parts } };
+        });
+    }
+}
