@@ -47,6 +47,20 @@ describe('Logs search over a big run history never freezes the page', function (
     });
     after(() => fs.rmSync(dir, { recursive: true, force: true }));
 
+    /**
+     * How long this machine may hold the page. Fixed limits flaked on slower CI runners (94 ms
+     * once, against 80), so the limit scales with the machine: half of what reading one batch
+     * whole (the old way, which froze it) takes here, and never under 80 ms. Here that is
+     * ~150 ms, so 80; on a runner twice as slow, about 150. The freeze was 1–2 s; either way it fails.
+     */
+    let limit = 80;
+    before(async () => {
+        const [batch] = await storage.getAllTransactions();
+        const t = Date.now();
+        await storage.getBatchMemberExecutions(batch.id);
+        limit = Math.max(80, Math.round((Date.now() - t) / 2));
+    });
+
     const metadata = () => ({
         getAllTransactions: () => storage.getAllTransactions(),
         getBatchMemberExecutions: (id: string) => storage.getBatchMemberExecutions(id),
@@ -82,7 +96,7 @@ describe('Logs search over a big run history never freezes the page', function (
         expect(answer.lines).to.deep.equal([]);
         expect(answer.done).to.equal(true);
         // (read whole, one batch of these held it 150 ms or more; read in slices, under 30)
-        expect(longest, 'the longest the page waited (ms)').to.be.lessThan(80);
+        expect(longest, `the longest the page waited (ms; limit ${limit})`).to.be.lessThan(limit);
     });
 
     it('a key while it is looking stops it at once', async () => {
@@ -92,7 +106,7 @@ describe('Logs search over a big run history never freezes the page', function (
         const pressed = Date.now();
         await controller.handleMessage({ type: 'logs.typing' });
         await looking;
-        expect(Date.now() - pressed, 'stopped within (ms)').to.be.lessThan(80);
+        expect(Date.now() - pressed, `stopped within (ms; limit ${limit})`).to.be.lessThan(limit);
         expect(posted.filter(m => m.type === 'logs.lines')).to.have.length(0);
     });
 });
