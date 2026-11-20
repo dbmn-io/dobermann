@@ -160,11 +160,17 @@ export function joinKeyColumns(spec: QuerySpec): { key: ColumnRef; same: ColumnR
 }
 
 /**
- * The columns shown when none are picked: every column, but for a joining view's key (the view
- * it joins has it already), a column whose name an earlier view has shown (two columns of one
+ * The columns shown when none are picked: in a compare, its key (what is compared is picked);
+ * else every column, but for a joining view's key (the view it joins has it already), a column whose name an earlier view has shown (two columns of one
  * name are picked by hand) and a column with no value in any row. The calculated ones come last.
  */
 export function defaultColumns(spec: QuerySpec): ColumnRef[] {
+    // A compare starts with its key only: what is compared is picked (Columns), nothing comes up on its own
+    const compare = spec.joins.find(j => j.kind === 'compare');
+    if (compare) {
+        const key = compare.on.flatMap(p => p.left.parts).filter(p => spec.views.some(v => v.id === p.view && v.columns.includes(p.column))).map(p => ({ view: p.view, column: p.column }));
+        if (key.length) return [...key, ...(spec.calc ?? []).map(c => ({ view: CALC_VIEW, column: c.name }))];
+    }
     const keys = new Set(joinKeyColumns(spec).map(k => `${k.key.view}\n${k.key.column}`));
     const seen = new Set<string>();
     const out: ColumnRef[] = [];

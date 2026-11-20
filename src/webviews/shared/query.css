@@ -245,3 +245,87 @@
 .query-run-chip { margin-left: 6px; font-size: 10.5px; font-weight: 600; padding: 0 5px; border-radius: 3px; border: 1px solid currentColor; opacity: .85; }
 .query-compare-same { font-size: 12px; color: var(--vscode-descriptionForeground); padding: 3px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .query-compare-stat { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.25; font-size: 11.5px; }
+
+/* ---------- Columns: the report's columns above the line, every column not used below ---------- */
+.query-rep-title { font-weight: 600; color: var(--vscode-foreground); }
+.query-rep-row .query-lead { gap: 6px; }
+.query-rep-grip { cursor: grab; color: var(--vscode-descriptionForeground); letter-spacing: -2px; user-select: none; }
+.query-rep-badge { font: 600 10px var(--vscode-font-family); color: var(--vscode-charts-yellow, #cca700); border: 1px solid currentColor; border-radius: 3px; padding: 0 4px; }
+.query-rep-name { flex: 1; min-width: 0; background: transparent; border: 1px solid transparent; border-radius: 3px; color: var(--vscode-foreground); text-align: right; padding: 2px 4px; font-size: 12.5px; }
+.query-rep-name:hover, .query-rep-name:focus { border-color: var(--vscode-input-border, var(--vscode-panel-border)); background: var(--vscode-input-background); outline: none; }
+.query-rep-cell { display: flex; align-items: center; gap: 4px; min-height: 30px; position: relative; }
+.query-rep-value { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12.5px; }
+.query-rep-cell.is-diff .query-rep-value { color: var(--vscode-charts-yellow, #cca700); }
+.query-rep-fx { font: italic 600 13px Georgia, serif; color: var(--vscode-descriptionForeground); background: none; border: 0; cursor: pointer; padding: 0 3px; opacity: 0; }
+.query-rep-row:hover .query-rep-fx, .query-rep-fx:focus-visible { opacity: 1; }
+.query-rep-fx.is-on { opacity: 1; font: 600 11px var(--vscode-editor-font-family, monospace); color: var(--vscode-textLink-foreground); }
+.query-rep-empty { justify-content: center; }
+.query-rep-add { width: 100%; height: 100%; min-height: 26px; background: none; border: 0; color: var(--vscode-descriptionForeground); cursor: pointer; opacity: 0; font-size: 14px; }
+.query-rep-row:hover .query-rep-add, .query-rep-add:focus-visible { opacity: 1; }
+.query-rep-add:hover { background: color-mix(in srgb, var(--vscode-focusBorder) 18%, transparent); color: var(--vscode-foreground); }
+.query-rep-span .query-rep-calc-cell { grid-column: span var(--query-span, 1); }
+.query-rep-span .query-at:not(.query-rep-calc-cell) { display: none; }
+.query-rep-calc { display: flex; justify-content: space-between; gap: 12px; width: 100%; text-align: left; background: color-mix(in srgb, var(--vscode-charts-yellow, #cca700) 10%, transparent); border: 0; border-radius: 3px; color: var(--vscode-foreground); padding: 4px 8px; cursor: pointer; font-size: 12.5px; }
+.query-rep-calc:hover { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--vscode-charts-yellow, #cca700) 60%, transparent); }
+.query-rep-formula { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.query-rep-row.is-dragging { opacity: .45; }
+.query-rep-row.is-drop-on .query-cells { box-shadow: inset 0 0 0 2px var(--vscode-focusBorder); border-radius: 3px; }
+.query-rep-row.is-drop-before { box-shadow: 0 -2px 0 var(--vscode-focusBorder); }
+.query-rep-row.is-new, .query-free-row.is-new { animation: query-rep-new 1.2s ease-out; }
+@keyframes query-rep-new { from { background: color-mix(in srgb, var(--vscode-focusBorder) 22%, transparent); } to { background: transparent; } }
+.query-rep-rule { border-top: 1px solid var(--vscode-panel-border); margin-top: 4px; padding-top: 4px; }
+.query-calc-add { font-size: 12px; padding: 2px 10px; }
+.query-free-title { font-size: 12px; color: var(--vscode-descriptionForeground); margin-right: auto; }
+.query-free-name { font-size: 12.5px; }
+.query-free-compare { background: none; border: 0; cursor: pointer; color: var(--vscode-charts-yellow, #cca700); padding: 0 2px; display: inline-flex; }
+.query-free-compare svg { width: 15px; height: 15px; }
+.query-free-compare-space { display: inline-block; width: 19px; }
+.query-free-cell { min-height: 30px; display: flex; }
+.query-free-cell.is-used { opacity: .35; }
+.query-free-btn { flex: 1; min-width: 0; text-align: left; background: none; border: 0; color: var(--vscode-foreground); cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12.5px; padding: 4px 8px; }
+.query-free-btn:hover { background: color-mix(in srgb, var(--vscode-focusBorder) 18%, transparent); }
+
+/* ---------- The calculation builder ---------- */
+.query-calc { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 16px; }
+@media (max-width: 760px) { .query-calc { grid-template-columns: 1fr; } }
+.query-calc-left, .query-calc-lib { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.query-calc-label { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--vscode-descriptionForeground); }
+.query-calc-name { max-width: 260px; }
+.query-calc-edwrap { position: relative; }
+.query-calc-ed, .query-calc-paint { width: 100%; box-sizing: border-box; border: 1px solid var(--vscode-input-border, var(--vscode-panel-border)); border-radius: 3px; font: 13px/1.6 var(--vscode-editor-font-family, monospace); padding: 8px; margin: 0; white-space: pre-wrap; word-break: break-word; min-height: 84px; }
+.query-calc-ed { position: relative; z-index: 1; display: block; background: transparent; color: transparent; caret-color: var(--vscode-foreground); resize: vertical; }
+.query-calc-ed:focus { outline: 1px solid var(--vscode-focusBorder); }
+.query-calc-paint { position: absolute; inset: 0; background: var(--vscode-input-background); color: var(--vscode-foreground); overflow: hidden; pointer-events: none; }
+.query-calc-ref { border-radius: 3px; background: color-mix(in srgb, var(--compare-c, var(--vscode-descriptionForeground)) 38%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--compare-c, var(--vscode-descriptionForeground)) 70%, transparent); }
+.query-calc-ref.is-unknown { --compare-c: var(--vscode-errorForeground); }
+.query-calc-tok-fn { color: var(--vscode-textLink-foreground); }
+.query-calc-tok-str { color: var(--vscode-charts-green, #6cc070); }
+.query-calc-tok-num { color: var(--vscode-charts-orange, #e8a33d); }
+.query-calc-tok-pair { background: color-mix(in srgb, var(--vscode-focusBorder) 45%, transparent); border-radius: 2px; }
+.query-calc-ac { position: absolute; left: 0; right: 0; top: 100%; z-index: 5; background: var(--vscode-editorWidget-background, var(--vscode-editor-background)); border: 1px solid var(--vscode-panel-border); border-radius: 4px; padding: 3px; max-height: 240px; overflow: auto; box-shadow: 0 8px 20px rgba(0, 0, 0, .35); }
+.query-calc-item { display: grid; grid-template-columns: minmax(0, auto) minmax(0, 1fr) auto; gap: 10px; align-items: baseline; width: 100%; background: none; border: 0; color: var(--vscode-foreground); text-align: left; padding: 4px 8px; border-radius: 3px; cursor: pointer; }
+.query-calc-item.is-sel, .query-calc-item:hover { background: var(--vscode-list-activeSelectionBackground, color-mix(in srgb, var(--vscode-focusBorder) 25%, transparent)); color: var(--vscode-list-activeSelectionForeground, var(--vscode-foreground)); }
+.query-calc-item code, .query-calc-fn code, .query-calc-hint code { color: var(--vscode-textLink-foreground); font-family: var(--vscode-editor-font-family, monospace); }
+.query-calc-path, .query-calc-val { color: var(--vscode-descriptionForeground); font-size: 11.5px; }
+.query-calc-hint { min-height: 18px; font-size: 12px; color: var(--vscode-descriptionForeground); }
+.query-calc-hint b { color: var(--vscode-foreground); text-decoration: underline; }
+.query-calc-quick { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.query-calc-chip { font-size: 11.5px; padding: 1px 8px; }
+.query-calc-uses { display: flex; flex-direction: column; gap: 3px; }
+.query-calc-use { display: grid; grid-template-columns: minmax(0, 200px) minmax(0, 1fr) auto; gap: 10px; align-items: baseline; font-size: 12px; }
+.query-calc-prev td, .query-calc-prev th { font-size: 12px; }
+.query-calc-said { font-size: 12.5px; }
+.query-calc-said.is-ok { color: var(--vscode-testing-iconPassed, var(--vscode-charts-green)); }
+.query-calc-said.is-bad { color: var(--vscode-errorForeground); }
+.query-calc-said.is-idle { color: var(--vscode-descriptionForeground); }
+.query-calc-sqlfold summary { cursor: pointer; font-size: 12px; color: var(--vscode-descriptionForeground); }
+.query-calc-sql { margin: 6px 0 0; font: 12px/1.5 var(--vscode-editor-font-family, monospace); color: var(--vscode-descriptionForeground); white-space: pre-wrap; word-break: break-word; }
+.query-calc-list { border: 1px solid var(--vscode-panel-border); border-radius: 4px; max-height: 440px; overflow: auto; padding: 3px; }
+.query-calc-group { font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--vscode-descriptionForeground); padding: 8px 6px 2px; }
+.query-calc-fn, .query-calc-col { display: flex; flex-direction: column; gap: 1px; width: 100%; text-align: left; background: none; border: 0; color: var(--vscode-foreground); padding: 4px 6px; border-radius: 3px; cursor: pointer; font-size: 12px; }
+.query-calc-col { flex-direction: row; justify-content: space-between; align-items: baseline; }
+.query-calc-fn:hover, .query-calc-col:hover { background: color-mix(in srgb, var(--vscode-focusBorder) 18%, transparent); }
+.query-calc-fn small, .query-calc-col small { color: var(--vscode-descriptionForeground); font-size: 11px; }
+/* The lines that only head or divide: no lane colours under them */
+.query-rep-head .query-at, .query-rep-rule .query-at { background: transparent; box-shadow: none; }
+.query-free-head { margin-top: 6px; }

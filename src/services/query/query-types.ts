@@ -31,11 +31,16 @@ export interface QueryView {
  */
 export type QueryFn = ColumnFn;
 
-/** One column of one view, tidied by `fns` if any. */
+/**
+ * One column of one view, tidied by `fns` if any. In a query's columns, entries side by side with
+ * the same `group` are one compared column of Results: its heading is the group, each entry one
+ * of its cells (Stock's quantityOnHand and the count's Qty Counted, compared).
+ */
 export interface ColumnRef {
     view: string;
     column: string;
     fns?: QueryFn[];
+    group?: string;
 }
 
 /**

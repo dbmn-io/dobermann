@@ -13,7 +13,7 @@ import { QuerySession } from '../../../services/query/query-engine';
 import { alignCompareJoins, isCompare, queryCompare, runJoin } from '../../../services/query/query-compare';
 import { nextRunName, runName } from '../../../services/query/query-store';
 import type { QuerySource } from '../../../services/query/query-store';
-import { formulaColumns } from '../../../services/query/query-sql';
+import { defaultColumns, formulaColumns } from '../../../services/query/query-sql';
 import { resolvePath, shortRef } from '../../../services/query/formula';
 import type { QueryJoin, QueryKey, QuerySpec } from '../../../services/query/query-types';
 import { SQL_WASM_PATH } from '../fixtures/temp-storage';
@@ -84,6 +84,17 @@ describe('A compare inside Query', () => {
         assert.strictEqual(s.joinStats(1).rowsAfter, 4);
         assert.strictEqual(s.count(), 4);
         s.close();
+    });
+
+    it('a compare starts with its key only: what is compared is picked', () => {
+        const spec: QuerySpec = {
+            views: [{ id: 'stk', name: 'Stock', columns: ['sku', 'qty'] }, { id: 'itm', name: 'Items', columns: ['itemCode', 'qty'] }],
+            joins: [{ view: 'itm', kind: 'compare', on: [{ left: col('stk', 'sku'), right: col('itm', 'itemCode') }] }],
+            select: []
+        };
+        assert.deepStrictEqual(defaultColumns(spec), [{ view: 'stk', column: 'sku' }]);
+        // A query: every column, as before
+        assert.ok(defaultColumns({ ...spec, joins: [{ ...spec.joins[0], kind: 'left' }] }).length > 1);
     });
 
     describe('runs of a view', () => {

@@ -25,7 +25,8 @@ import { buildCompareSide, CompareView } from '../../services/compare/compare-si
 import { isComparableRun } from '../../services/compare/compare-store';
 import { QueryRowData, QuerySession } from '../../services/query/query-engine';
 import type { TooManyRows } from '../../services/query/query-engine';
-import { allColumns, columnSql, defaultColumns, fromSql, joinKeyColumns, quoteName, tableNames, writeSql } from '../../services/query/query-sql';
+import { allColumns, columnSql, defaultColumns, formulaColumns, fromSql, joinKeyColumns, quoteName, refNames, tableNames, writeSql } from '../../services/query/query-sql';
+import { FORMULA_FUNCTIONS, formulaSql, fullRef, fullText, parseFormula, shortRef, shortText } from '../../services/query/formula';
 import { reportNameProblem } from '../../services/compare/report-name';
 import { cleanViewName, getQuery, guessViewName, MAX_QUERY_VIEWS, moveView, moveViewFirst, nameViews, newSourceId, nextRunName, QuerySource, renameView, runName, saveQuery, SavedQuery, untickBlanks, untickClashes } from '../../services/query/query-store';
 import { columnTypes, spread, TYPE_SAMPLE, type ColumnType } from '../../services/query/column-types';
@@ -240,12 +241,18 @@ export class QueryController {
                     // One key across the compare: every Compare join after the first joins on the first one's key
                     alignCompareJoins(q.joins, runsOf(q));
                 });
+                // The report's columns, in Results' order: each a view's column with its functions, a compared column's cells sharing a group
                 case 'query.setSelect': return await this.change(q => {
-                    q.select = Array.isArray(message.select) ? (message.select as ColumnRef[]).map(c => ({ view: c.view, column: c.column })) : undefined;
+                    q.select = Array.isArray(message.select) ? (message.select as ColumnRef[]).map(c => ({
+                        view: String(c.view), column: String(c.column),
+                        ...(Array.isArray(c.fns) && c.fns.length ? { fns: c.fns } : {}),
+                        ...(typeof c.group === 'string' && c.group.trim() ? { group: c.group.trim() } : {})
+                    })) : undefined;
                 });
                 case 'query.moveColumn': return await this.moveColumn(Number(message.from), Number(message.to));
                 case 'query.distinct': return await this.change(q => { q.distinct = !!message.on; });
-                case 'query.setCalc': return await this.setCalc(String(message.name ?? ''), String(message.expr ?? ''), typeof message.was === 'string' ? message.was : undefined);
+                case 'query.setCalc': return await this.setCalc(String(message.name ?? ''), String(message.expr ?? ''), typeof message.was === 'string' ? message.was : undefined, typeof message.formula === 'string' ? message.formula : undefined);
+                case 'query.calcCheck': return this.calcCheck(String(message.formula ?? ''), Number(message.seq));
                 case 'query.removeCalc': return await this.change(q => {
                     q.calc = q.calc?.filter(c => c.name !== message.name);
                     q.select = q.select?.filter(c => !(c.view === CALC_VIEW && c.column === message.name));
@@ -568,11 +575,74 @@ export class QueryController {
         this.post({ type: 'query.fnSample', seq: message.seq, rows, error });
     }
 
-    /** Add a calculated column, or change the one named `was`. Its expression is tried first: one SQLite refuses is not kept. */
-    private async setCalc(nameIn: string, exprIn: string, was?: string): Promise<void> {
+    /** Every column a formula can name: its key, its whole @ path, the shortest that is unique, and a value from it. */
+    private formulaColumnsFor(): { key: string; full: string; short: string; path: string[]; view: string; sample: string }[] {
+        const { spec } = this.spec();
+        const columns = formulaColumns(spec);
+        return columns.map(c => {
+            const at = c.key.indexOf('\n');
+            const view = c.key.slice(0, at);
+            const loaded = this.loaded.get(view);
+            const value = loaded?.rows.find(r => r[c.key.slice(at + 1)] !== null && r[c.key.slice(at + 1)] !== undefined && r[c.key.slice(at + 1)] !== '')?.[c.key.slice(at + 1)];
+            return { key: c.key, full: fullRef(c), short: shortRef(c, columns), path: c.path, view, sample: value === undefined ? '' : typeof value === 'object' ? JSON.stringify(value) : String(value) };
+        });
+    }
+
+    /**
+     * The calculation builder's check, as the user types: the formula read (formula.ts), its SQL,
+     * and its value on the first few rows; or what is wrong, where, and the columns to pick from.
+     */
+    private calcCheck(formula: string, seq: number): void {
+        const { spec } = this.spec();
+        const columns = formulaColumns(spec);
+        const names = refNames(spec.views);
+        try {
+            const parsed = parseFormula(formula, columns);
+            const colSql = (key: string): string => { const at = key.indexOf('\n'); return columnSql({ view: key.slice(0, at), column: key.slice(at + 1) }, names); };
+            const sides = parsed.compare ?? [parsed.tree];
+            const sql = sides.map(side => formulaSql(side, colSql));
+            const first = spec.views[0];
+            const label = first ? columnSql({ view: first.id, column: first.columns[0] }, names) : "''";
+            const rows = this.session && spec.views.length
+                ? this.session.run(`SELECT ${label}, ${sql.join(', ')} ${fromSql(spec)} LIMIT 4`).rows
+                : [];
+            this.post({ type: 'query.calcCheck', seq, ok: true, sql: sql.join(',\n'), compare: !!parsed.compare, label: first ? first.columns[0] : '', rows, used: parsed.columns });
+        } catch (error) {
+            const e = error as { message?: string; at?: number; choices?: string[] };
+            this.post({ type: 'query.calcCheck', seq, ok: false, error: e.message ?? String(error), at: e.at ?? -1, choices: e.choices ?? [] });
+        }
+    }
+
+    /**
+     * Add a calculated column, or change the one named `was`. A formula (the builder's) is read
+     * first, and kept with every column as its whole path; SQL typed before the builder is tried
+     * first: one SQLite refuses is not kept.
+     */
+    private async setCalc(nameIn: string, exprIn: string, was?: string, formulaIn?: string): Promise<void> {
         const query = this.query;
         if (!query) return;
         const name = nameIn.trim();
+        if (formulaIn !== undefined) {
+            if (!name || !formulaIn.trim()) throw new Error('A calculated column needs a name and a calculation.');
+            if ((query.calc ?? []).some(c => c.name.toLowerCase() === name.toLowerCase() && c.name !== was)) throw new Error(`There is already a calculated column called ${name}.`);
+            const columns = formulaColumns(this.spec().spec);
+            parseFormula(formulaIn, columns);
+            const formula = fullText(formulaIn.trim(), columns);
+            await this.change(q => {
+                const calc = q.calc ?? [];
+                const at = was ? calc.findIndex(c => c.name === was) : -1;
+                const made = { name, expr: shortText(formula, columns), formula };
+                if (at >= 0) {
+                    calc[at] = made;
+                    q.select?.forEach(c => { if (c.view === CALC_VIEW && c.column === was) c.column = name; });
+                } else {
+                    calc.push(made);
+                    if (q.select?.length) q.select.push({ view: CALC_VIEW, column: name });
+                }
+                q.calc = calc;
+            });
+            return;
+        }
         const expr = exprIn.trim();
         if (!name || !expr) throw new Error('A calculated column needs a name and a calculation.');
         if (/;|--|\/\*/.test(expr)) throw new Error('A calculation is one expression: no ; and no comments.');
@@ -868,7 +938,7 @@ export class QueryController {
                 on: j.on.map(p => ({ left: p.left.parts[0], right: p.right.parts[0] })),
                 stats: now.stats?.get(j.view) ?? null
             })),
-            columns: (now.columns ?? []).map(c => ({ view: c.view, column: c.column })),
+            columns: (now.columns ?? []).map(c => ({ view: c.view, column: c.column, ...(c.fns?.length ? { fns: c.fns } : {}), ...(c.group ? { group: c.group } : {}) })),
             // One row of the report, every view's columns: what Columns shows under each name
             sampleRow: now.sampleRow ?? [],
             // A joining view's key, and the column it is matched to: not shown twice
@@ -881,7 +951,10 @@ export class QueryController {
             compare: queryCompare(query.joins) ?? null,
             maxCompare: MAX_COMPARE_VIEWS,
             // Results' columns: the steps', or what the user's own SQL makes
-            resultColumns: (now.resultColumns ?? now.columns ?? []).map((c, i) => ({ view: c.view, column: c.column, type: now.resultTypes?.[i] ?? 'text' })),
+            resultColumns: (now.resultColumns ?? now.columns ?? []).map((c, i) => ({ view: c.view, column: c.column, type: now.resultTypes?.[i] ?? 'text', ...(c.group ? { group: c.group } : {}) })),
+            // What the calculation builder offers: every column by its @ path, and the functions
+            formulaColumns: this.formulaColumnsFor(),
+            formulaFunctions: FORMULA_FUNCTIONS.map(f => ({ ...f, max: Number.isFinite(f.max) ? f.max : null })),
             calc: query.calc ?? [],
             ownSql: query.sql ?? '', sqlError: now.sqlError ?? '',
             search: query.search ?? '', sort: query.sort ?? null, totals: !!query.totals,
@@ -939,7 +1012,8 @@ export class QueryController {
         const query = this.query;
         if (!query || query.sql) return;
         const { spec } = this.spec();
-        const columns = (spec.select.length ? spec.select : defaultColumns(spec)).map(c => ({ view: c.view, column: c.column }));
+        // (a column keeps its functions, and its place in a compared column)
+        const columns = (spec.select.length ? spec.select : defaultColumns(spec)).map(c => ({ ...c }));
         const inRange = (n: number): boolean => Number.isInteger(n) && n >= 0 && n < columns.length;
         if (!inRange(from) || !inRange(to) || from === to) return;
         const move = <T>(list: T[]): void => { list.splice(to, 0, list.splice(from, 1)[0]); };

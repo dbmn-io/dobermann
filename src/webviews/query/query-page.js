@@ -707,9 +707,9 @@
      * same one Compare and Run Batch use. They apply in the order they are ticked; a few of the
      * column's values, as they are and as the functions leave them, come from the host. Query keeps
      * a function as { fn, n, from, to }; the dialog speaks { id, params }. */
-    async function pickFns(join, ref) {
+    async function pickFns(join, ref, done) {
         if (!window.DbmnFunctions) return;
-        const viewId = ref.view || join.view;
+        const viewId = ref.view || (join && join.view);
         const v = view(viewId);
         const name = (v ? v.name + '.' : '') + (ref.column || 'column');
         const toQuery = applied => applied.filter(a => FNS.some(d => d.id === a.id)).map(a => Object.assign({ fn: a.id }, a.params || {}));
@@ -732,7 +732,7 @@
             functions: FNS.map(d => ({ id: d.id, label: d.label, sql: d.sql })),
             defaults: FN_DEFAULTS,
             applied: fromQuery(ref.fns),
-            asLabel: 'Joins as',
+            asLabel: join ? 'Joins as' : 'Shows as',
             sample: list => new Promise(resolve => {
                 const seq = ++asked;
                 waiting.set(seq, resolve);
@@ -742,7 +742,8 @@
         ui.fnSample = null;
         if (!applied) return;
         ref.fns = toQuery(applied).map(f => (f.n === undefined ? f : Object.assign(f, { n: Math.max(1, parseInt(f.n, 10) || 1) })));
-        sendJoin(join);
+        if (done) done();
+        else sendJoin(join);
     }
 
     function sendJoin(join) {
@@ -1328,206 +1329,24 @@
 
     /* ---------- Columns ---------- */
 
-    function allColumns() {
-        // A value of each column from one row of the report (the first where every view matched), not each view's own first row
-        const row = new Map(((ui.state && ui.state.sampleRow) || []).map(c => [`${c.view}\u0000${c.column}`, c.value]));
-        const sample = (v, c) => (row.has(`${v.id}\u0000${c.name}`) ? row.get(`${v.id}\u0000${c.name}`) : c.sample);
-        return views().filter(v => !v.waiting && !v.off && !v.error).flatMap(v => v.columns.map(c => ({ view: v.id, column: c.name, sample: sample(v, c), empty: !!c.empty, filled: c.filled || 0, rows: v.rows || 0 })))
-            .concat(((ui.state && ui.state.calc) || []).map(c => ({ view: '', column: c.name, sample: c.expr, calc: c })));
-    }
-
-    /** A calculated column: its name, and an SQL expression over the views' columns by letter. */
-    async function editCalc(calc) {
-        const body = el('div', 'dbmn-modal-fields');
-        const field = (label, input) => { const f = el('div', 'dbmn-modal-field'); const l = el('label', '', label); l.htmlFor = input.id; f.append(l, input); return f; };
-        const name = el('input', 'dbmn-modal-input');
-        name.type = 'text'; name.id = 'queryCalcName'; name.value = calc ? calc.name : ''; name.spellcheck = false; name.autocomplete = 'off';
-        const expr = el('input', 'dbmn-modal-input font-mono');
-        expr.type = 'text'; expr.id = 'queryCalcExpr'; expr.value = calc ? calc.expr : ''; expr.spellcheck = false; expr.autocomplete = 'off';
-        expr.placeholder = 'Stock.quantityOnHand - Products.reorderPoint';
-        const insert = el('select', 'dbmn-modal-input');
-        insert.id = 'queryCalcInsert';
-        const first = el('option', '', 'Pick a column to put it in the calculation'); first.value = '';
-        insert.appendChild(first);
-        views().filter(v => !v.waiting && !v.error).forEach(v => v.columns.forEach(c => {
-            const ref = `${v.name}.${/^[A-Za-z_][A-Za-z0-9_]*$/.test(c.name) ? c.name : '"' + c.name.replace(/"/g, '""') + '"'}`;
-            const o = el('option', '', `${ref}   ${c.sample}`); o.value = ref; insert.appendChild(o);
-        }));
-        insert.addEventListener('change', () => {
-            if (!insert.value) return;
-            const at = expr.selectionStart == null ? expr.value.length : expr.selectionStart;
-            expr.value = expr.value.slice(0, at) + insert.value + expr.value.slice(expr.selectionEnd == null ? at : expr.selectionEnd);
-            insert.value = '';
-            expr.focus();
+    /* The Columns step (query-columns.js) and the calculation builder (query-calc.js), drawn with this page's own pieces */
+    const columnsStep = window.QueryColumns.create({
+        el, at, line, views, view, viewAt, colour, post, setBusy, count, injectIcons, CALC_VIEW: '',
+        state: () => ui.state,
+        openCalc: calc => openCalc(calc),
+        pickFns: (ref, done) => pickFns(null, ref, done)
+    });
+    function renderColumns() { columnsStep.render(); }
+    /** A calculated column, in the builder: its name and formula; the host reads it and keeps it. */
+    function openCalc(calc) {
+        window.QueryCalc.open({
+            el, post, colour, state: () => ui.state,
+            onCheck: handler => { ui.calcCheck = handler; }
+        }, calc).then(made => {
+            if (!made) return;
+            setBusy('Updating…');
+            post({ type: 'query.setCalc', name: made.name, formula: made.formula, was: made.was });
         });
-        body.append(field('Name', name), field('Calculation', expr), field('Columns', insert),
-            el('p', 'form-hint', 'Any SQL expression: + - * /, ROUND(x, 2), COALESCE(x, 0), x || \' \' || y, CASE WHEN x > 0 THEN \'In stock\' ELSE \'Out\' END.'));
-        setTimeout(() => name.focus(), 0);
-        const answer = await window.DbmnModal.show({
-            title: calc ? 'Calculated column' : 'Add a calculated column', body,
-            actions: [{ id: 'cancel', label: 'Cancel', variant: 'secondary' }, { id: 'ok', label: calc ? 'Save' : 'Add', variant: 'primary' }]
-        });
-        if (answer.actionId !== 'ok') return;
-        setBusy('Updating…');
-        post({ type: 'query.setCalc', name: name.value, expr: expr.value, was: calc ? calc.name : undefined });
-    }
-    /** Columns in the order shown, the ticked first as picked, then the rest. */
-    function columnList() {
-        const s = ui.state;
-        const key = c => `${c.view}\u0000${c.column}`;
-        const all = allColumns();
-        const byKey = new Map(all.map(c => [key(c), c]));
-        const picked = s.columns.filter(c => byKey.has(key(c))).map(c => Object.assign({ on: true }, byKey.get(key(c))));
-        const on = new Set(picked.map(key));
-        return picked.concat(all.filter(c => !on.has(key(c))).map(c => Object.assign({ on: false }, c)));
-    }
-    function sendColumns(list) {
-        const on = list.filter(c => c.on);
-        if (!on.length) { window.DbmnToast && window.DbmnToast.info('Tick at least one column.'); renderColumns(); return; }
-        setBusy('Updating…');
-        post({ type: 'query.setSelect', select: on.map(c => ({ view: c.view, column: c.column })) });
-    }
-    /** Columns, on the slots' grid: each view's columns under its slot, ticked to show, a value of
-     * each under its name. Calculated columns stand after the views. The order is Results' to change. */
-    function renderColumns() {
-        const box = $('queryColumns');
-        if (!box) return;
-        const list = columnList();
-        // A joining view's key is matched to another view's column: the same value, so it is not shown twice
-        const keys = (ui.state && ui.state.keyColumns) || [];
-        const keyOf = c => keys.find(k => k.view === c.view && k.column === c.column);
-        // A name an earlier view has too: left unticked until it is wanted; ticked, its heading says whose it is
-        const alsoIn = c => views().slice(0, Math.max(0, viewAt(c.view))).find(v => v.columns.some(x => x.name === c.column));
-        const item = c => {
-            const key = c.calc ? null : keyOf(c);
-            const twin = c.calc || key ? null : alsoIn(c);
-            const row = el('label', 'query-col' + (key ? ' is-key' : twin ? ' is-clash' : ''));
-            const tick = el('input');
-            tick.type = 'checkbox';
-            tick.checked = c.on && !key;
-            tick.disabled = !!key;
-            tick.setAttribute('aria-label', `Show ${c.column}`);
-            tick.addEventListener('change', () => { c.on = tick.checked; sendColumns(list); });
-            const text = el('span', 'query-col-text');
-            const same = key && view(key.sameView) ? `${view(key.sameView).name}.${key.sameColumn}` : '';
-            const name = el('span', 'query-col-name', c.column);
-            // Sharing its name with an earlier view's column: a sign beside it says whether, in the
-            // row shown, the two hold the same value (a dashed triangle) or not (a warning)
-            const other = twin ? list.find(x => !x.calc && x.view === twin.id && x.column === c.column) : null;
-            const alike = !!other && String(other.sample || '') === String(c.sample || '');
-            if (twin) {
-                const sign = el('i', `query-sign ${alike ? 'query-same' : 'query-warn'}`);
-                sign.dataset.icon = alike ? 'triangle-dashed' : 'triangle-alert';
-                sign.dataset.twin = alike ? 'same' : 'differs';
-                name.append(' ', sign);
-            }
-            // A column with no value in any row says so where its value would be, a dotted circle by its name
-            const blank = !key && c.empty;
-            if (blank) {
-                const sign = el('i', 'query-sign query-empty');
-                sign.dataset.icon = 'circle-dot-dashed';
-                sign.dataset.empty = '';
-                name.append(' ', sign);
-            }
-            // How many of its view's rows have a value here
-            const of = (view(c.view) || {}).name;
-            const has = c.calc ? '' : `${count(c.filled)} of ${count(c.rows)} rows of ${of} have a value in ${c.column}.`;
-            text.append(name, el('span', `query-col-sample ${blank ? 'query-col-blank' : 'font-mono'}`, key ? `= ${same}` : blank ? 'no values' : c.sample || ''));
-            row.title = key ? `The join matches ${c.column} to ${same}, so it would say the same twice. ${same} is the one shown.`
-                : blank ? `${c.on ? '' : 'Left unticked: '}no row of ${of} has a value in ${c.column}.${twin ? ` ${twin.name} has a ${c.column} too.` : ''}`
-                    : twin ? `${c.on ? '' : 'Left unticked: '}${twin.name} has a ${c.column} too, ${alike ? (c.sample ? 'with the same value in this row' : 'and both are blank in this row') : `with a different value in this row (${(other && other.sample) || 'blank'})`}. ${has} With both ticked, each heading says whose it is: ${c.column} (${of})`
-                        : c.sample ? `${c.column}: ${c.sample}. ${has}` : c.calc ? c.column : `${c.column}: blank in the row shown. ${has}`;
-            row.append(tick, text);
-            return row;
-        };
-        // At the top of every lane, side by side: the columns each join matches, then the columns
-        // that share a name. A lane without one of them leaves its place empty, so the rest line up
-        const id = c => `${c.view}\u0000${c.column}`;
-        const items = new Map(list.filter(c => !c.calc).map(c => [id(c), c]));
-        let top = [];
-        const placed = new Set();
-        const place = (row, viewId, column) => {
-            const c = items.get(`${viewId}\u0000${column}`);
-            if (!c || placed.has(id(c)) || row.cells[viewId]) return;
-            row.cells[viewId] = c;
-            placed.add(id(c));
-        };
-        const rowFor = key => {
-            let row = top.find(r => r.key === key);
-            if (!row) { row = { key, cells: {} }; top.push(row); }
-            return row;
-        };
-        keys.forEach(k => {
-            const row = rowFor(`key\u0000${k.sameView}\u0000${k.sameColumn}`);
-            place(row, k.sameView, k.sameColumn);
-            place(row, k.view, k.column);
-        });
-        const shared = new Map();
-        views().forEach(v => v.columns.forEach(c => shared.set(c.name, (shared.get(c.name) || []).concat(v.id))));
-        shared.forEach((ids, name) => {
-            if (ids.length < 2) return;
-            // Beside a matched column of the same name when there is one
-            const row = top.find(r => Object.keys(r.cells).some(v => r.cells[v].column === name)) || rowFor(`name\u0000${name}`);
-            ids.forEach(viewId => place(row, viewId, name));
-        });
-        // A row left with one column is no pair: it goes back among its view's others
-        top = top.filter(row => {
-            const held = Object.keys(row.cells);
-            if (held.length > 1) return true;
-            held.forEach(v => placed.delete(id(row.cells[v])));
-            return false;
-        });
-        const cells = {};
-        views().forEach(v => {
-            const order = name => v.columns.findIndex(c => c.name === name);
-            const mine = list.filter(c => !c.calc && c.view === v.id).sort((x, y) => order(x.column) - order(y.column));
-            const free = mine.filter(c => !keyOf(c));
-            const cell = at(v.id, 'query-col-list');
-            cell.dataset.view = v.id;
-            if (mine.length) {
-                // All of a view's columns at once; half ticked says some are
-                const on = free.filter(c => c.on).length;
-                const all = el('label', 'query-col query-col-all');
-                const tick = el('input');
-                tick.type = 'checkbox';
-                tick.checked = free.length > 0 && on === free.length;
-                tick.indeterminate = on > 0 && on < free.length;
-                tick.setAttribute('aria-label', `Show every column of ${v.name}`);
-                tick.addEventListener('change', () => { free.forEach(c => { c.on = tick.checked; }); sendColumns(list); });
-                all.append(tick, el('span', 'query-col-name', `${count(on)} of ${count(free.length)}`));
-                cell.append(all, ...top.map(row => (row.cells[v.id] ? item(row.cells[v.id]) : el('div', 'query-col query-col-gap'))));
-                if (top.length) cell.appendChild(el('div', 'query-col-rule'));
-                cell.append(...mine.filter(c => !placed.has(id(c))).map(item));
-            }
-            cells[v.id] = cell;
-        });
-        // Calculated columns, after the views
-        const calc = el('div', 'query-col-list query-col-calc');
-        list.filter(c => c.calc).forEach(c => {
-            const row = el('div', 'query-col-row');
-            const button = (icon, title, label, click) => {
-                const b = el('button', 'compare-tool-btn icon');
-                b.type = 'button'; b.title = title; b.setAttribute('aria-label', label); b.dataset.icon = icon;
-                b.addEventListener('click', click);
-                return b;
-            };
-            row.append(item(c),
-                button('pencil', 'Change the calculation', `Change ${c.column}`, () => editCalc(c.calc)),
-                button('x', 'Remove this column', `Remove ${c.column}`, () => { setBusy('Updating…'); post({ type: 'query.removeCalc', name: c.column }); }));
-            calc.appendChild(row);
-        });
-        const add = el('button', 'compare-tool-btn text-link font-size-12', '+ Calculated column');
-        add.type = 'button';
-        add.id = 'queryCalcBtn';
-        add.title = 'A column worked out from others: Stock.quantityOnHand - Products.reorderPoint';
-        add.addEventListener('click', () => editCalc(null));
-        calc.appendChild(add);
-        const shown = list.filter(c => c.on && (c.calc || !keyOf(c))).length;
-        const free = list.filter(c => c.calc || !keyOf(c)).length;
-        box.replaceChildren(
-            line('query-cols-line', cells, [calc], [el('span', 'query-lead-text', `${count(shown)} of ${count(free)} columns shown`)]),
-            el('p', 'form-hint', 'The value under each name is from one row of the report: the first where every view matched. Filtering comes next: on Results, search the rows to keep only the ones you want (the SQL\'s WHERE), and drag a heading to change the order.'));
-        injectIcons(box);
     }
 
     /* ---------- Results ---------- */
@@ -1554,7 +1373,11 @@
         return columns.map(c => {
             const v = view(c.view);
             const name = v && v.name;
-            const text = names.indexOf(c.column) !== names.lastIndexOf(c.column) && v ? (name ? `${c.column} (${name})` : `${v.table}.${c.column}`) : c.column;
+            // A compared column's cells: its name and whose each is; a renamed column: its name
+            const grouped = c.group && columns.filter(x => x.group === c.group).length > 1;
+            const text = grouped ? `${c.group} (${name || ''})`
+                : c.group ? c.group
+                    : names.indexOf(c.column) !== names.lastIndexOf(c.column) && v ? (name ? `${c.column} (${name})` : `${v.table}.${c.column}`) : c.column;
             // (the host says what kind of values a column holds: a column of numbers sorts 0 to 1, not A to Z)
             return { id: colId(c), name: text, className: `compare-sub ${colour(c.view)}`, numbers: c.type === 'number' };
         });
@@ -1874,6 +1697,7 @@
             case 'query.exported': setBusy(''); break;
             case 'query.idle': setBusy(''); break;
             case 'query.fnSample': if (ui.fnSample) ui.fnSample(m); break;
+            case 'query.calcCheck': if (ui.calcCheck) ui.calcCheck(m); break;
             case 'query.viewRowsData': if (ui.viewRows) ui.viewRows(m); break;
             case 'query.error':
                 // A sort that failed leaves the table as it was
