@@ -25,7 +25,7 @@ import { buildCompareSide, CompareView } from '../../services/compare/compare-si
 import { isComparableRun } from '../../services/compare/compare-store';
 import { QueryRowData, QuerySession } from '../../services/query/query-engine';
 import type { TooManyRows } from '../../services/query/query-engine';
-import { allColumns, columnSql, compareKeySql, defaultColumns, formulaColumns, fromSql, joinKeyColumns, lookupsUsed, quoteName, refNames, resultColumns as resultColumnRefs, tableNames, writeSql } from '../../services/query/query-sql';
+import { allColumns, columnSql, compareKeyColumnSql, compareKeySql, defaultColumns, formulaColumns, fromSql, joinKeyColumns, lookupsUsed, quoteName, quoteText, refNames, resultColumns as resultColumnRefs, tableNames, writeSql } from '../../services/query/query-sql';
 import { FORMULA_FUNCTIONS, formulaSql, fullRef, fullText, parseFormula, shortRef, shortText } from '../../services/query/formula';
 import type { FormulaNode } from '../../services/query/formula';
 import { reportNameProblem } from '../../services/compare/report-name';
@@ -377,7 +377,7 @@ export class QueryController {
                     else if (id) this.ports.toast.info('Lookup tables open from Reporting.');
                     return;
                 }
-                case 'query.fnSample': return await this.fnSample(message as unknown as { view: string; column: string; fns?: QueryFn[]; seq: number });
+                case 'query.fnSample': return await this.fnSample(message as unknown as { view: string; column: string; fns?: QueryFn[]; seq: number; record?: string });
                 case 'query.setWidth': return await this.change(q => {
                     const key = String(message.key ?? '');
                     const width = Math.round(Number(message.width));
@@ -748,7 +748,7 @@ export class QueryController {
     }
 
     /** A few of a column's values, as they are and as `fns` leave them: the function dialog's sample. */
-    private async fnSample(message: { view: string; column: string; fns?: QueryFn[]; seq: number }): Promise<void> {
+    private async fnSample(message: { view: string; column: string; fns?: QueryFn[]; seq: number; record?: string }): Promise<void> {
         const tables = tableNames(this.spec().spec.views);
         // Translate values being tried: its table loaded, its columns filled in
         message.fns = this.withLookupColumns(message.fns ?? []);
@@ -763,7 +763,14 @@ export class QueryController {
             const ref = { view: message.view, column: message.column };
             const plain = columnSql(ref, tables);
             try {
-                rows = this.session.run(`SELECT DISTINCT ${plain}, ${columnSql({ ...ref, fns: message.fns ?? [] }, tables)} FROM ${quoteName(table)} WHERE ${plain} IS NOT NULL AND ${plain} <> '' LIMIT 6`).rows;
+                const made = columnSql({ ...ref, fns: message.fns ?? [] }, tables);
+                rows = this.session.run(`SELECT DISTINCT ${plain}, ${made} FROM ${quoteName(table)} WHERE ${plain} IS NOT NULL AND ${plain} <> '' LIMIT 6`).rows;
+                // This record (the cell whose ƒ was clicked) first: the row the dialog lights
+                const record = String(message.record ?? '');
+                if (record) {
+                    const own = this.session.run(`SELECT ${plain}, ${made} FROM ${quoteName(table)} WHERE CAST(${plain} AS TEXT) = ${quoteText(record)} LIMIT 1`).rows[0];
+                    if (own) rows = [own, ...rows.filter(r => String(r[0]) !== String(own[0]))].slice(0, 6);
+                }
             } catch (e) {
                 error = e instanceof Error ? e.message : String(e);
             }
@@ -801,12 +808,17 @@ export class QueryController {
             const colSql = (key: string): string => { const at = key.indexOf('\n'); return columnSql({ view: key.slice(0, at), column: key.slice(at + 1) }, names); };
             const sides = parsed.compare ?? [parsed.tree];
             const sql = sides.map(side => formulaSql(side, colSql));
+            // Beside each result, the record's key (the first join's, a compare's from whichever view has it), so you know which record each line is
             const first = spec.views[0];
-            const label = first ? columnSql({ view: first.id, column: first.columns[0] }, names) : "''";
+            const keyPart = spec.joins.find(j => j.on.length)?.on[0]?.left.parts[0];
+            const key = keyPart && spec.views.some(v => v.id === keyPart.view && v.columns.includes(keyPart.column))
+                ? { view: keyPart.view, column: keyPart.column }
+                : first ? { view: first.id, column: first.columns[0] } : undefined;
+            const label = key ? compareKeyColumnSql(key, spec, names) ?? columnSql(key, names) : "''";
             const rows = this.session && spec.views.length
                 ? this.session.run(`SELECT ${label}, ${sql.join(', ')} ${fromSql(spec)} LIMIT 4`).rows
                 : [];
-            this.post({ type: 'query.calcCheck', seq, ok: true, sql: sql.join(',\n'), compare: !!parsed.compare, label: first ? first.columns[0] : '', rows, used: parsed.columns });
+            this.post({ type: 'query.calcCheck', seq, ok: true, sql: sql.join(',\n'), compare: !!parsed.compare, label: key?.column ?? '', rows, used: parsed.columns });
         } catch (error) {
             const e = error as { message?: string; at?: number; choices?: string[] };
             this.post({ type: 'query.calcCheck', seq, ok: false, error: e.message ?? String(error), at: e.at ?? -1, choices: e.choices ?? [] });

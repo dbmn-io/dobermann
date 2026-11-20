@@ -22,8 +22,8 @@
     const FNS = [
         { id: 'trim', label: 'Trim spaces', sql: ['TRIM(', 'x', ')'] },
         { id: 'upper', label: 'Upper case', sql: ['UPPER(', 'x', ')'] },
-        { id: 'text', label: 'As text', sql: ['CAST(', 'x', ' AS TEXT)'] },
         { id: 'number', label: 'As a number', sql: ['CAST(', 'x', ' AS NUMERIC)'] },
+        { id: 'text', label: 'As text', sql: ['CAST(', 'x', ' AS TEXT)'] },
         { id: 'ltrimZeros', label: 'Drop leading zeros', sql: ['LTRIM(', 'x', ", '0')"] },
         { id: 'first', label: 'First characters', sql: ['SUBSTR(', 'x', ', 1, ', { key: 'n', number: true, label: 'How many characters' }, ')'] },
         { id: 'last', label: 'Last characters', sql: ['SUBSTR(', 'x', ', -', { key: 'n', number: true, label: 'How many characters' }, ')'] },
@@ -774,7 +774,8 @@
             sample: list => new Promise(resolve => {
                 const seq = ++asked;
                 waiting.set(seq, resolve);
-                post({ type: 'query.fnSample', view: viewId, column: ref.column, fns: toQuery(list), seq });
+                // (this record's value: the one shown in the cell whose ƒ was clicked, first among the samples)
+                post({ type: 'query.fnSample', view: viewId, column: ref.column, fns: toQuery(list), seq, record: sampleOf(viewId, ref.column) });
             })
         });
         ui.fnSample = null;

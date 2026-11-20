@@ -113,7 +113,7 @@
         const sqlFold = el('details', 'query-calc-sqlfold');
         sqlFold.append(el('summary', '', 'The SQL it runs as'), sqlBox);
         left.append(field('Name', name), field('Calculation', wrap), hint, quick,
-            field('Columns it uses', uses), field('On the first rows', preview), said, sqlFold);
+            field('Columns it uses', uses), field('On the first records', preview), said, sqlFold);
 
         // Quick starts, from the columns there are
         const numeric = columns.filter(c => /^-?\d+(\.\d+)?$/.test(c.sample));
@@ -292,7 +292,7 @@
                 preview.replaceChildren(head, ...(m.rows || []).map(r => { const tr = el('tr'); r.forEach(v => tr.appendChild(el('td', 'font-mono', v === null || v === undefined ? '(blank)' : String(v)))); return tr; }));
                 sqlBox.textContent = m.sql || '';
                 said.className = 'query-calc-said is-ok';
-                said.textContent = m.compare ? '✓ A compared column: its sides side by side, the differences marked' : '✓ Works on the rows shown';
+                said.textContent = m.compare ? '✓ A compared column: its sides side by side, the differences marked' : '✓ Works on every record shown';
             } else {
                 preview.replaceChildren();
                 sqlBox.textContent = '';

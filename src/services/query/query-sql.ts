@@ -223,7 +223,7 @@ function selectSql(ref: ColumnRef, spec: QuerySpec, names: Map<string, string>):
  * compare has the record (COALESCE(BL.gtin, C1.gtin, ...)), so a record only C1 has still shows
  * its key. Undefined for any other column, or a key column with functions of its own.
  */
-function compareKeyColumnSql(ref: ColumnRef, spec: QuerySpec, names: Map<string, string>): string | undefined {
+export function compareKeyColumnSql(ref: ColumnRef, spec: QuerySpec, names: Map<string, string>): string | undefined {
     if (ref.fns?.length) return undefined;
     const joins = spec.joins.filter(j => j.kind === 'compare');
     const first = joins[0];
