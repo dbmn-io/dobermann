@@ -11,7 +11,7 @@
  * function can become SQL.
  */
 import { CALC_VIEW } from './query-types';
-import type { ColumnRef, QueryCalc, QueryFn, QueryJoin, QueryKey, QuerySpec, QueryView } from './query-types';
+import type { ColumnRef, QueryCalc, QueryFn, QueryJoin, QueryJoinKind, QueryKey, QuerySpec, QueryView } from './query-types';
 import { columnFnSql } from '../column-functions/column-functions';
 import { formulaSql, parseFormula } from './formula';
 import type { FormulaColumn } from './formula';
@@ -99,6 +99,8 @@ function onSql(join: QueryJoin, tables: Map<string, string>, indent: string): st
     return join.on.map(pair => `${keySql(pair.right, tables)} = ${keySql(pair.left, tables)}`).join(`\n${indent}AND `);
 }
 
+const JOIN_SQL: Record<QueryJoinKind, string> = { inner: 'JOIN', left: 'LEFT JOIN', right: 'RIGHT JOIN', outer: 'FULL OUTER JOIN' };
+
 /** FROM and its joins, up to (not including) join number `upTo` (all of them when left out). */
 export function fromSql(spec: QuerySpec, upTo?: number): string {
     const tables = tableNames(spec.views);
@@ -109,7 +111,7 @@ export function fromSql(spec: QuerySpec, upTo?: number): string {
     const heads = joins.map(j => {
         const view = spec.views.find(v => v.id === j.view);
         if (!view) throw new Error(`Query: no view "${j.view}"`);
-        return `${j.kind === 'left' ? 'LEFT JOIN' : 'JOIN'} ${tableSql(view, tables)}`;
+        return `${JOIN_SQL[j.kind] ?? 'JOIN'} ${tableSql(view, tables)}`;
     });
     const width = Math.max(0, ...heads.map(h => h.length));
     const lines = [`FROM ${tableSql(first, tables)}`];
@@ -131,11 +133,13 @@ export function allColumns(spec: QuerySpec): ColumnRef[] {
 /**
  * The joining view's column in each pair of one column each side, with the column it is matched
  * to. The two are the same thing in every row the join matches (as they are, or once a function
- * has tidied one), so the joining view's is not shown: it would say the same thing twice.
+ * has tidied one), so the joining view's is not shown: it would say the same thing twice. Not
+ * for a RIGHT or outer join: the joining view's rows that match nothing have their key only there.
  */
 export function joinKeyColumns(spec: QuerySpec): { key: ColumnRef; same: ColumnRef }[] {
     const out: { key: ColumnRef; same: ColumnRef }[] = [];
     for (const join of spec.joins) {
+        if (join.kind === 'right' || join.kind === 'outer') continue;
         for (const pair of join.on) {
             const single = pair.left.parts.length === 1 && pair.right.parts.length === 1;
             if (single) out.push({ key: { view: pair.right.parts[0].view, column: pair.right.parts[0].column }, same: { view: pair.left.parts[0].view, column: pair.left.parts[0].column } });

@@ -221,3 +221,7 @@
 
 /* Said, not warned of: what a join does to the rows */
 .query-note { color: var(--vscode-descriptionForeground); }
+
+/* Which rows a join keeps: the picture and a caret, opening the kinds (shared menu) */
+.query-join-kind { display: inline-flex; align-items: center; gap: 3px; padding: 2px 6px; }
+.query-join-caret { font-size: 10px; color: var(--vscode-descriptionForeground); }

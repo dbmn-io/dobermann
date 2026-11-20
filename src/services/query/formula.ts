@@ -9,7 +9,7 @@
  * is `@` and a path, each dot one level in: the view, then the run when a view has several (BL,
  * C1), then the column, then a key inside it (`@Stock.BL.quantityOnHand`, `@address.city`). The
  * user types the shortest path that is still unique; a path that finds two columns is an error
- * that lists them. The full path is what is saved (`fullText`), so a formula keeps its meaning
+ * that lists them, even when they differ only in capitals. The full path is what is saved (`fullText`), so a formula keeps its meaning
  * when another view with the same column names is added.
  *
  * Each function is one SQLite expression, so a calculated column is a real column of the query:
@@ -162,22 +162,20 @@ function typedParts(parts: string[]): string[] {
 
 /**
  * The columns a typed path finds: its parts in order among the column's path, the last one the
- * column's own last part. Case does not matter, unless that is the only way to tell two apart.
+ * column's own last part. Case does not matter: `@sku` finds both Stock's sku and a file's SKU,
+ * and the user picks one (two systems often spell one field with different capitals, so a
+ * column is never chosen by its capitals alone).
  */
 export function resolvePath(parts: string[], columns: FormulaColumn[]): FormulaColumn[] {
-    const want = typedParts(parts);
+    const want = typedParts(parts).map(lower);
     if (!want.length || want[want.length - 1] === '') return [];
-    const finds = (col: FormulaColumn, same: (a: string, b: string) => boolean): boolean => {
-        const path = col.path;
-        if (!same(path[path.length - 1], want[want.length - 1])) return false;
+    return columns.filter(col => {
+        const path = col.path.map(lower);
+        if (path[path.length - 1] !== want[want.length - 1]) return false;
         let i = 0;
-        for (const part of path.slice(0, -1)) if (i < want.length - 1 && same(part, want[i])) i++;
+        for (const part of path.slice(0, -1)) if (i < want.length - 1 && part === want[i]) i++;
         return i === want.length - 1;
-    };
-    const found = columns.filter(c => finds(c, (a, b) => lower(a) === lower(b)));
-    if (found.length < 2) return found;
-    const exact = found.filter(c => finds(c, (a, b) => a === b));
-    return exact.length === 1 ? exact : found;
+    });
 }
 
 const PLAIN_PART = /^[A-Za-z_][A-Za-z0-9_]*$/;

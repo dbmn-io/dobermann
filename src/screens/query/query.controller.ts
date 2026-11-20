@@ -29,8 +29,8 @@ import { allColumns, columnSql, defaultColumns, fromSql, joinKeyColumns, quoteNa
 import { reportNameProblem } from '../../services/compare/report-name';
 import { cleanViewName, getQuery, guessViewName, MAX_QUERY_VIEWS, moveView, moveViewFirst, nameViews, newSourceId, QuerySource, renameView, saveQuery, SavedQuery, untickBlanks, untickClashes } from '../../services/query/query-store';
 import { columnTypes, spread, TYPE_SAMPLE, type ColumnType } from '../../services/query/column-types';
-import { CALC_VIEW } from '../../services/query/query-types';
-import type { ColumnRef, QueryFn, QueryJoin, QueryJoinStats, QuerySpec } from '../../services/query/query-types';
+import { CALC_VIEW, QUERY_JOIN_KINDS } from '../../services/query/query-types';
+import type { ColumnRef, QueryFn, QueryJoin, QueryJoinKind, QueryJoinStats, QuerySpec } from '../../services/query/query-types';
 import { ConsoleExportService } from '../../services/console/export.service';
 import type { ColumnDefinition } from '../../types/console-messages';
 import { ConsoleChainHandler } from '../console/console-chain-handler';
@@ -209,7 +209,7 @@ export class QueryController {
                 case 'query.setJoin': return await this.change(q => {
                     const join = q.joins.find(j => j.view === message.view);
                     if (!join) return;
-                    if (message.kind === 'left' || message.kind === 'inner') join.kind = message.kind;
+                    if (QUERY_JOIN_KINDS.includes(message.kind as QueryJoinKind)) join.kind = message.kind as QueryJoinKind;
                     if (Array.isArray(message.on)) {
                         join.on = (message.on as PagePair[]).filter(p => p?.left?.column && p?.right?.column).map(p => ({
                             left: { parts: [{ view: p.left.view, column: p.left.column, ...(p.left.fns?.length ? { fns: p.left.fns } : {}) }] },

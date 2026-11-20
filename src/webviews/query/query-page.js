@@ -823,6 +823,14 @@
         return [stats.rows[kind] || 0, stats.records[kind] || 0];
     }
     /** What a count means, on hover. */
+    /** What each kind of join is called in its SQL, and which unmatched rows it keeps. */
+    const JOIN_SQL = { inner: 'JOIN', left: 'LEFT JOIN', right: 'RIGHT JOIN', outer: 'OUTER JOIN' };
+    const keeps = kind => ({ left: kind === 'left' || kind === 'outer', right: kind === 'right' || kind === 'outer' });
+    /** What a join does with the rows so far that find no match: `blank` says what is left blank ("Bins blank"). */
+    const unmatchedSays = (join, blank, rowsWord) => (keeps(join.kind).left
+        ? `${JOIN_SQL[join.kind]} keeps ${rowsWord}, with ${blank}`
+        : `${JOIN_SQL[join.kind]} leaves ${rowsWord} out`);
+
     function kindTitle(kind, join, rows, records) {
         const name = (view(join.view) || {}).name || 'the view';
         switch (kind) {
@@ -830,8 +838,10 @@
             case 'manyToOne': return `${count(rows)} rows share ${count(records)} ${name} rows. No rows are added`;
             case 'oneToMany': return `${count(rows)} rows match ${count(records)} ${name} rows: a row comes out once for each. Add a column to the join (+ AND) to stop it`;
             case 'manyToMany': return `${count(rows)} rows match ${count(records)} ${name} rows, several each way: every pairing makes a row. Add a column to the join (+ AND) to stop it`;
-            case 'onlyBase': return join.kind === 'inner' ? `${count(rows)} rows have no match in ${name}: JOIN leaves them out` : `${count(rows)} rows have no match in ${name}: LEFT JOIN keeps them, with ${name}'s columns blank`;
-            default: return `${count(records)} ${name} rows match no row. They are not in the report`;
+            case 'onlyBase': return `${count(rows)} rows have no match in ${name}: ${unmatchedSays(join, `${name}'s columns blank`, 'them')}`;
+            default: return keeps(join.kind).right
+                ? `${count(records)} ${name} rows match no row: ${JOIN_SQL[join.kind]} keeps them, with the other views' columns blank`
+                : `${count(records)} ${name} rows match no row. They are not in the report`;
         }
     }
     function valueKind(v) {
@@ -860,6 +870,53 @@
             said.append(picker, pick);
         }
         return said;
+    }
+
+    /** A view's colour as a CSS value (its lane's), for pictures drawn in two views' colours. */
+    function colourValue(id) {
+        const probe = el('span', colour(id));
+        probe.hidden = true;
+        document.body.appendChild(probe);
+        const value = getComputedStyle(probe).getPropertyValue('--compare-c').trim();
+        probe.remove();
+        return value;
+    }
+    /** The kinds of join, said with the two views' names: [kind, name, what it keeps]. */
+    function joinKinds(left, right) {
+        return [
+            ['inner', 'Join', `Only rows ${left} and ${right} both have`],
+            ['left', 'Left join', `All of ${left}; ${right} where it matches`],
+            ['right', 'Right join', `All of ${right}; ${left} where it matches`],
+            ['outer', 'Outer join', 'Every row of both, matched where they can be']
+        ];
+    }
+    /**
+     * Which rows a join keeps: its picture (the shared RelationGlyph.join, in the two views'
+     * colours) and a caret; a click opens the kinds under it, each with its picture, name and
+     * what it keeps (the shared menu). No SQL words: the pictures say it.
+     */
+    function kindButton(join, v) {
+        const leftView = view(join.on[0] && join.on[0].left.view) || views()[0] || { name: 'the rows so far' };
+        const colours = { left: colourValue(leftView.id), right: colourValue(v.id) };
+        const kinds = joinKinds(leftView.name, v.name);
+        const current = kinds.find(k => k[0] === join.kind) || kinds[1];
+        const b = el('button', 'btn btn-secondary query-join-kind');
+        b.type = 'button';
+        b.setAttribute('aria-haspopup', 'menu');
+        b.setAttribute('aria-expanded', 'false');
+        b.setAttribute('aria-label', `How ${v.name} joins ${leftView.name}: ${current[1]}`);
+        b.title = `${current[1]}: ${current[2]}`;
+        b.dataset.kind = join.kind;
+        b.append(window.RelationGlyph.join(join.kind, colours), el('span', 'query-join-caret', '\u25BE'));
+        b.addEventListener('click', () => {
+            b.setAttribute('aria-expanded', 'true');
+            const items = kinds.map(([id, label, detail]) => ({ id, label, detail, glyph: window.RelationGlyph.join(id, colours), checked: id === join.kind }));
+            window.DbmnContextMenu.show(b, items, id => {
+                b.setAttribute('aria-expanded', 'false');
+                if (id && id !== join.kind) { join.kind = id; sendJoin(join); }
+            });
+        });
+        return b;
     }
 
     /**
@@ -892,16 +949,7 @@
             const lead = [];
             const says = [];
             if (p === 0) {
-                const kinds = el('span', 'toggle-group');
-                [['left', 'LEFT JOIN', 'Keeps every row, matched or not'], ['inner', 'JOIN', 'Keeps only rows that match']].forEach(([kind, label, title]) => {
-                    const b = el('button', 'toggle-btn font-mono' + (join.kind === kind ? ' active' : ''), label);
-                    b.type = 'button';
-                    b.title = title;
-                    b.setAttribute('aria-pressed', String(join.kind === kind));
-                    b.addEventListener('click', () => { if (join.kind !== kind) { join.kind = kind; sendJoin(join); } });
-                    kinds.appendChild(b);
-                });
-                lead.push(kinds);
+                lead.push(kindButton(join, v));
                 const and = el('button', 'compare-tool-btn text-link font-mono font-size-12', '+ AND');
                 and.dataset.and = '';
                 and.type = 'button';
@@ -943,7 +991,7 @@
                 const cell = after[join.on[0].left.view] || after[lanes[0].id];
                 const warn = el('span', 'query-after-warn query-made query-note', count(none));
                 warn.prepend(sign(false));
-                warn.title = `${count(none)} ${none === 1 ? 'row has' : 'rows have'} no match in ${v.name}: ${join.kind === 'inner' ? 'JOIN leaves them out' : `LEFT JOIN keeps them, with ${v.name} blank`}`;
+                warn.title = `${count(none)} ${none === 1 ? 'row has' : 'rows have'} no match in ${v.name}: ${unmatchedSays(join, `${v.name} blank`, 'them')}`;
                 cell.classList.add('is-count');
                 cell.appendChild(warn);
             }
@@ -1003,7 +1051,8 @@
             };
             if (kind !== 'onlyOther') put(leftId, rows, 'left');
             if (kind !== 'onlyBase') put(v.id, records, 'right');
-            const name = kind === 'onlyBase' ? (join.kind === 'inner' ? 'No match: left out' : 'No match: kept') : label;
+            const name = kind === 'onlyBase' ? (keeps(join.kind).left ? 'No match: kept' : 'No match: left out')
+                : kind === 'onlyOther' && keeps(join.kind).right ? 'No match: kept' : label;
             const row = line('query-kind-line', cells, [], [picture(kind, join), el('span', `query-kind query-lead-text${warn ? ' query-warn' : ''}`, name)]);
             row.dataset.kind = kind;
             row.title = kindTitle(kind, join, rows, records);
@@ -1035,7 +1084,7 @@
         if (kind === 'onlyBase') {
             const rows = stats.leftRows - stats.leftMatched;
             title = `${column} values in ${mine.name} with no match in ${theirs.name}`;
-            said = `${has} ${count(n)} of them ${some('has', 'have')} no record in ${theirs.name}. ${count(rows)} ${rows === 1 ? 'row holds' : 'rows hold'} ${some('it', 'them')}${stats.leftBlank ? ' or have no value at all' : ''}: ${join.kind === 'inner' ? 'JOIN leaves those rows out' : `LEFT JOIN keeps those rows, with ${theirs.name} blank`}.`;
+            said = `${has} ${count(n)} of them ${some('has', 'have')} no record in ${theirs.name}. ${count(rows)} ${rows === 1 ? 'row holds' : 'rows hold'} ${some('it', 'them')}${stats.leftBlank ? ' or have no value at all' : ''}: ${unmatchedSays(join, `${theirs.name} blank`, 'those rows')}.`;
         } else if (kind === 'onlyOther') {
             title = `${column} values in ${mine.name} that are not used`;
             said = `${has} ${count(n)} of them ${some('is', 'are')} not in ${theirs.name}, so nothing joins to ${some('it', 'them')}.`;

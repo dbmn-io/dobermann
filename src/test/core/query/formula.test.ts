@@ -72,9 +72,13 @@ describe('Calculations', () => {
         it('finds a column by its name alone when only one view has it', () => {
             assert.deepStrictEqual(resolvePath(['quantityOnHand'], COLUMNS).map(c => c.key), [key('stk', 'quantityOnHand')]);
         });
-        it('tells sku from SKU by case when case is the only difference', () => {
-            assert.deepStrictEqual(resolvePath(['sku'], COLUMNS).map(c => c.key), [key('stk', 'sku')]);
-            assert.deepStrictEqual(resolvePath(['SKU'], COLUMNS).map(c => c.key), [key('cnt', 'SKU')]);
+        it('never picks sku or SKU by its capitals: both are offered, and the view tells them apart', () => {
+            assert.deepStrictEqual(resolvePath(['sku'], COLUMNS).map(c => c.key), [key('stk', 'sku'), key('cnt', 'SKU')]);
+            assert.deepStrictEqual(resolvePath(['SKU'], COLUMNS).map(c => c.key), [key('stk', 'sku'), key('cnt', 'SKU')]);
+            assert.deepStrictEqual(resolvePath(['Counts', 'sku'], COLUMNS).map(c => c.key), [key('cnt', 'SKU')]);
+            const byKey = (k: string): FormulaColumn => COLUMNS.find(c => c.key === k) as FormulaColumn;
+            assert.strictEqual(shortRef(byKey(key('cnt', 'SKU')), COLUMNS), '@Counts.SKU');
+            assert.deepStrictEqual(problem('@sku').choices, ['@Stock.sku', '@Counts.SKU']);
         });
         it('finds two columns when two views share a name, and the view tells them apart', () => {
             assert.strictEqual(resolvePath(['description'], COLUMNS).length, 2);
@@ -137,13 +141,13 @@ describe('Calculations', () => {
             assert.deepStrictEqual(values('MAX(@quantityOnHand, @quantityAvailable, 10)'), [54, 10, 10]);
         });
         it('text: CONCAT counts a blank as nothing; LEFT, RIGHT, SUBSTR, REPLACE, LENGTH, UPPER, LOWER, TRIM', () => {
-            assert.deepStrictEqual(values('CONCAT(@sku, " · ", @Stock.description)'), ['WOOF-033 · Kibble 10 kg', 'WOOF-902 · ', 'MEOW-118 · Litter 5 kg']);
-            assert.deepStrictEqual(values('LEFT(@sku, 4)'), ['WOOF', 'WOOF', 'MEOW']);
-            assert.deepStrictEqual(values('RIGHT(@sku, 3)'), ['033', '902', '118']);
-            assert.deepStrictEqual(values('RIGHT(@sku, 0)'), ['', '', '']);
-            assert.deepStrictEqual(values('SUBSTR(@sku, 6, 2)'), ['03', '90', '11']);
-            assert.deepStrictEqual(values('REPLACE(@sku, "-", "")'), ['WOOF033', 'WOOF902', 'MEOW118']);
-            assert.deepStrictEqual(values('LENGTH(@sku)'), [8, 8, 8]);
+            assert.deepStrictEqual(values('CONCAT(@Stock.sku, " · ", @Stock.description)'), ['WOOF-033 · Kibble 10 kg', 'WOOF-902 · ', 'MEOW-118 · Litter 5 kg']);
+            assert.deepStrictEqual(values('LEFT(@Stock.sku, 4)'), ['WOOF', 'WOOF', 'MEOW']);
+            assert.deepStrictEqual(values('RIGHT(@Stock.sku, 3)'), ['033', '902', '118']);
+            assert.deepStrictEqual(values('RIGHT(@Stock.sku, 0)'), ['', '', '']);
+            assert.deepStrictEqual(values('SUBSTR(@Stock.sku, 6, 2)'), ['03', '90', '11']);
+            assert.deepStrictEqual(values('REPLACE(@Stock.sku, "-", "")'), ['WOOF033', 'WOOF902', 'MEOW118']);
+            assert.deepStrictEqual(values('LENGTH(@Stock.sku)'), [8, 8, 8]);
             assert.deepStrictEqual(values('LOWER(@status)'), ['active', 'hold', 'active']);
             assert.deepStrictEqual(values('UPPER(TRIM(@code))'), ['0042', 'ABC', '1.5']);
         });
@@ -184,17 +188,17 @@ describe('Calculations', () => {
             assert.match(problem('ROUND(@quantityOnHand, 1').message, /ROUND\( is not closed/);
             assert.match(problem('(@quantityOnHand + 1').message, /bracket is not closed/);
             assert.match(problem('SUMMIT(@quantityOnHand)').message, /no function called SUMMIT/);
-            assert.match(problem('LEFT(@sku)').message, /LEFT takes 2: LEFT\(text, count\)/);
+            assert.match(problem('LEFT(@Stock.sku)').message, /LEFT takes 2: LEFT\(text, count\)/);
             assert.match(problem('@nope').message, /no column @nope/);
             assert.match(problem('@').message, /Pick a column after @/);
             assert.match(problem('"open').message, /no closing quote/);
-            assert.match(problem('@sku @sku').message, /Didn’t expect/);
+            assert.match(problem('@Stock.sku @Stock.sku').message, /Didn’t expect/);
             assert.strictEqual(problem('@quantityOnHand + @nope').at, 18);
         });
         it('COMPARE goes only around the whole calculation', () => {
-            assert.match(problem('UPPER(COMPARE(@sku, @SKU))').message, /COMPARE goes on its own/);
-            assert.match(problem('COMPARE(@sku)').message, /COMPARE takes 2 to 4/);
-            assert.ok(parseFormula('COMPARE(UPPER(@sku), @SKU)', COLUMNS).compare);
+            assert.match(problem('UPPER(COMPARE(@Stock.sku, @Counts.SKU))').message, /COMPARE goes on its own/);
+            assert.match(problem('COMPARE(@Stock.sku)').message, /COMPARE takes 2 to 4/);
+            assert.ok(parseFormula('COMPARE(UPPER(@Stock.sku), @Counts.SKU)', COLUMNS).compare);
         });
     });
 });
@@ -230,6 +234,45 @@ describe('Too many rows', () => {
         assert.deepStrictEqual(s.tooManyRows(rows - 1), { join: 0, rows, limit: rows - 1 });
         assert.strictEqual(s.tooManyRows(rows), undefined);
         assert.strictEqual(s.tooManyRows(), undefined);
+        s.close();
+    });
+});
+
+describe('Right and outer joins', () => {
+    let SQL: SqlJsStatic;
+    before(async () => { SQL = await initSqlJs({ locateFile: () => SQL_WASM_PATH }); });
+
+    /** Stock and a count: one sku in both, one only in Stock, two only in the count. */
+    async function session(kind: 'inner' | 'left' | 'right' | 'outer'): Promise<QuerySession> {
+        const spec: QuerySpec = {
+            views: [{ id: 's', name: 'Stock', columns: ['sku', 'qty'] }, { id: 'c', name: 'Counts', columns: ['SKU', 'counted'] }],
+            joins: [{ view: 'c', kind, on: [{ left: col('s', 'sku'), right: col('c', 'SKU') }] }],
+            select: []
+        };
+        const out = new QuerySession(SQL, spec);
+        await out.load('s', [{ sku: 'A', qty: 1 }, { sku: 'B', qty: 2 }]);
+        await out.load('c', [{ SKU: 'A', counted: 1 }, { SKU: 'C', counted: 5 }, { SKU: null, counted: 9 }]);
+        return out;
+    }
+
+    it('writes RIGHT JOIN and FULL OUTER JOIN, and keeps the rows each should', async () => {
+        const rows: Record<string, number> = { inner: 1, left: 2, right: 3, outer: 4 };
+        for (const kind of ['inner', 'left', 'right', 'outer'] as const) {
+            const s = await session(kind);
+            const sql = s.sql();
+            if (kind === 'right') assert.match(sql, /RIGHT JOIN Counts/);
+            if (kind === 'outer') assert.match(sql, /FULL OUTER JOIN Counts/);
+            assert.strictEqual(s.count(), rows[kind], kind);
+            assert.strictEqual(s.rowsAfterJoin(0), rows[kind], `${kind}: worked out`);
+            assert.strictEqual(s.joinStats(0).rowsAfter, rows[kind], `${kind}: in the join's counts`);
+            s.close();
+        }
+    });
+    it('shows the joining view\'s key in a right or outer join: its unmatched rows have it only there', async () => {
+        const s = await session('outer');
+        const out = s.rows();
+        assert.deepStrictEqual(out.columns, ['sku', 'qty', 'SKU', 'counted']);
+        assert.ok(out.rows.some(r => r[0] === null && r[2] === 'C'));
         s.close();
     });
 });

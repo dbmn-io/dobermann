@@ -51,8 +51,18 @@ export interface QueryPair {
     right: QueryKey;
 }
 
-/** LEFT JOIN keeps every row so far, matched or not; an inner JOIN keeps only rows that match. */
-export type QueryJoinKind = 'left' | 'inner';
+/**
+ * How a join keeps rows: an inner JOIN only rows that match; LEFT JOIN every row so far, matched
+ * or not; RIGHT JOIN every row of the joining view; an outer join (FULL OUTER JOIN) every row of both.
+ */
+export type QueryJoinKind = 'left' | 'inner' | 'right' | 'outer';
+
+export const QUERY_JOIN_KINDS: readonly QueryJoinKind[] = ['inner', 'left', 'right', 'outer'];
+
+/** Does a join of this kind keep the rows so far that find no match (left), or the joining view's (right)? */
+export function keepsUnmatched(kind: QueryJoinKind): { left: boolean; right: boolean } {
+    return { left: kind === 'left' || kind === 'outer', right: kind === 'right' || kind === 'outer' };
+}
 
 export interface QueryJoin {
     view: string;

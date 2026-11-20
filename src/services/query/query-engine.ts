@@ -15,6 +15,7 @@
  */
 import type { Database, SqlJsStatic, SqlValue } from 'sql.js';
 import { fromSql, keySql, quoteName, refNames, tableNames, tableSql, writeSql, WriteSqlOptions } from './query-sql';
+import { keepsUnmatched } from './query-types';
 import type { QueryJoinStats, QueryRelationship, QueryRows, QueryValue, QuerySpec } from './query-types';
 
 export type QueryRowData = Record<string, unknown>;
@@ -130,7 +131,7 @@ export class QuerySession {
 
     /**
      * How many rows join number `index` makes, worked out from how many rows hold each key value
-     * on each side, without making them. Only the joins before it are made, and each of those is
+     * on each side, without making them (the unmatched rows a LEFT, RIGHT or outer join keeps added). Only the joins before it are made, and each of those is
      * under the limit (tooManyRows checks them in order).
      */
     rowsAfterJoin(index: number): number {
@@ -142,12 +143,13 @@ export class QuerySession {
         const ks = join.on.map((_, i) => `k${i}`);
         const notNull = ks.map(k => `${k} IS NOT NULL`).join(' AND ');
         const same = ks.map(k => `lg.${k} = rg.${k}`).join(' AND ');
-        const [leftRows, matchedRows, pairs] = this.run(`WITH _l AS (SELECT ${join.on.map((p, i) => `${keySql(p.left, names)} AS k${i}`).join(', ')} ${fromSql(this.spec, index)}),
+        const [leftRows, matchedRows, pairs, rightRows, rightMatched] = this.run(`WITH _l AS (SELECT ${join.on.map((p, i) => `${keySql(p.left, names)} AS k${i}`).join(', ')} ${fromSql(this.spec, index)}),
 _r AS (SELECT ${join.on.map((p, i) => `${keySql(p.right, names)} AS k${i}`).join(', ')} FROM ${tableSql(rightView, this.tables)}),
 _lg AS (SELECT ${ks.join(', ')}, COUNT(*) AS n FROM _l WHERE ${notNull} GROUP BY ${ks.join(', ')}),
 _rg AS (SELECT ${ks.join(', ')}, COUNT(*) AS n FROM _r WHERE ${notNull} GROUP BY ${ks.join(', ')})
-SELECT (SELECT COUNT(*) FROM _l), COALESCE(SUM(lg.n), 0), COALESCE(SUM(lg.n * rg.n), 0) FROM _lg AS lg JOIN _rg AS rg ON ${same}`).rows[0].map(Number);
-        return pairs + (join.kind === 'left' ? leftRows - matchedRows : 0);
+SELECT (SELECT COUNT(*) FROM _l), COALESCE(SUM(lg.n), 0), COALESCE(SUM(lg.n * rg.n), 0), (SELECT COUNT(*) FROM _r), COALESCE(SUM(rg.n), 0) FROM _lg AS lg JOIN _rg AS rg ON ${same}`).rows[0].map(Number);
+        const keeps = keepsUnmatched(join.kind);
+        return pairs + (keeps.left ? leftRows - matchedRows : 0) + (keeps.right ? rightRows - rightMatched : 0);
     }
 
     /** The first join that would make more than `limit` rows, or undefined when every join is under it. */
@@ -220,7 +222,7 @@ SELECT ${ks.join(', ')}, ln, rn, every FROM _n WHERE place <= ${cap} ORDER BY ki
         else if (oneToOne) relationship = 'oneToOne';
         return {
             leftRows, leftMatched, rightRows, rightMatched,
-            rowsAfter: pairs + (join.kind === 'left' ? leftRows - leftMatched : 0),
+            rowsAfter: pairs + (keepsUnmatched(join.kind).left ? leftRows - leftMatched : 0) + (keepsUnmatched(join.kind).right ? rightRows - rightMatched : 0),
             relationship,
             typeMismatch,
             keys: { oneToOne, oneToMany, manyToOne, manyToMany },
