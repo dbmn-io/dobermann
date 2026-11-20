@@ -57,6 +57,11 @@ export function buildQueryPage(asset: AssetUrl, config: { queryId: string; name:
                 </div>
                 <!-- Offered only when rows repeat: it says how many -->
                 <label class="query-row font-size-12 hidden" id="queryDistinctLabel" title="SELECT DISTINCT: rows alike in every column shown fold into one"><input type="checkbox" id="queryDistinct"> <span id="queryDistinctText">Distinct</span></label>
+                <!-- With compared columns, Compare's: which rows (Status), and Diffs, hiding the compared columns no row differs in -->
+                <span id="queryStatusTools" class="query-status-tools" hidden>
+                    <select id="queryStatus" aria-label="Rows by status" title="Show rows by status: DIFF, Same, or Missing in a view"></select>
+                    <button type="button" class="toggle-btn" id="queryDiffs" aria-pressed="false" title="Hide the compared columns no row differs in">Diffs</button>
+                </span>
                 <label class="query-row font-size-12" title="A total under each column of numbers, for the rows shown"><input type="checkbox" id="queryTotals"> Totals</label>
                 <button type="button" class="compare-tool-btn icon" id="querySqlBtn" data-click="query:toggleSql" aria-expanded="false" title="The SQL: read it, or write your own" aria-label="The SQL" data-icon="braces"></button>
                 <button type="button" id="queryChainBtn" class="export-button" data-click="query:chain" title="Send these rows to another API as its Run Batch input">Chain <span class="inline-icon" data-icon="chevron-right"></span></button>

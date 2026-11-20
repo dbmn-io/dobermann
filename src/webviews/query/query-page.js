@@ -1364,13 +1364,63 @@
     };
 
     function colId(c) { return `${c.view}:${c.column}`; }
-    function columnsKey() { return resultCols().map(c => `${colId(c)}#${c.type || ''}`).join('\u0001') + (ui.state && ui.state.ownSql ? '\u0002own' : ''); }
+    function columnsKey() { return resultCols().map(c => `${colId(c)}#${c.type || ''}#${c.group || ''}`).join('\u0001') + (ui.state && ui.state.ownSql ? '\u0002own' : '') + (hasStatus() ? '\u0002status' : '') + (ui.diffsOnly ? `\u0002diffs:${(ui.diffGroups || []).join(',')}` : ''); }
 
     /** The table's columns: each in its view's colour, the same name in two views saying whose it is. */
+    /** Where a column of Results is, for its status: its run (BL, C1…), its view, or a COMPARE side's number. */
+    function placeOf(c) {
+        if (!c.view) { const m = / (\d+)$/.exec(c.column); return m ? m[1] : c.column; }
+        const v = view(c.view);
+        return v ? (v.run || v.name) : c.view;
+    }
+    /** A row's status as Compare shows it: DIFF and the places that differ, Missing and the places without the record, or Same. */
+    function statusNode(st) {
+        const box = el('span', 'compare-status');
+        if (!st) return box;
+        const many = ((ui.state && ui.state.statusPlaces) || []).length > 2;
+        const tag = p => el('span', 'compare-tag query-status-tag', p);
+        if (st.diff.length) {
+            const g = el('span', 'compare-status-group');
+            g.appendChild(el('span', 'status-pill-generic compare-diff', 'DIFF'));
+            if (many) st.diff.forEach(p => g.appendChild(tag(p)));
+            box.appendChild(g);
+        }
+        if (st.missing.length) {
+            const g = el('span', 'compare-status-group');
+            g.appendChild(el('span', 'status-pill-generic compare-missing', 'Missing'));
+            st.missing.forEach(p => g.appendChild(tag(p)));
+            box.appendChild(g);
+        }
+        if (!st.diff.length && !st.missing.length) box.appendChild(el('span', 'status-pill-generic compare-same', 'Same'));
+        return box;
+    }
+    function hasStatus() { return !!(ui.state && ui.state.statusPlaces && !ui.state.ownSql); }
     function tableColumns() {
-        const columns = resultCols();
+        const all = resultCols();
+        const groupSize = new Map();
+        all.forEach(c => { if (c.group) groupSize.set(c.group, (groupSize.get(c.group) || 0) + 1); });
+        // Diffs: a compared column no row differs in is hidden, from view only
+        const columns = ui.diffsOnly && ui.diffGroups ? all.filter(c => !(c.group && groupSize.get(c.group) > 1) || ui.diffGroups.includes(c.group)) : all;
         const names = columns.map(c => c.column);
-        return columns.map(c => {
+        const status = hasStatus() ? [{ id: '__status', name: 'Status', pinned: true, sortable: false, className: 'compare-status-cell', render: (_v, row) => statusNode(row.__status) }] : [];
+        return status.concat(columns.map(c => {
+            // A compared column: its name over its cells, each headed by its place; a cell that differs in its place's tint
+            if (c.group && groupSize.get(c.group) > 1) {
+                // Its value differs from the first cell of its own column (a place without the record is Missing, not different)
+                const first = all.find(x => x.group === c.group);
+                const firstId = colId(first);
+                const text = v => (v === null || v === undefined ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v));
+                // (a COMPARE calculation's sides have no view: each side the colour of its place, 1 blue, 2 orange…)
+                const tint = c.view ? colour(c.view) : `compare-r${Math.max(0, (Number(placeOf(c)) || 1) - 1) % 4}`;
+                return {
+                    id: colId(c), name: placeOf(c), className: `compare-sub ${tint}`, numbers: c.type === 'number',
+                    group: { id: `group:${c.group}`, name: c.group },
+                    cell: (td, v, row) => {
+                        const missing = row.__status && (row.__status.missing.includes(placeOf(c)) || row.__status.missing.includes(placeOf(first)));
+                        td.classList.toggle('compare-differs', colId(c) !== firstId && !missing && text(v) !== text(row[firstId]));
+                    }
+                };
+            }
             const v = view(c.view);
             const name = v && v.name;
             // A compared column's cells: its name and whose each is; a renamed column: its name
@@ -1380,7 +1430,7 @@
                     : names.indexOf(c.column) !== names.lastIndexOf(c.column) && v ? (name ? `${c.column} (${name})` : `${v.table}.${c.column}`) : c.column;
             // (the host says what kind of values a column holds: a column of numbers sorts 0 to 1, not A to Z)
             return { id: colId(c), name: text, className: `compare-sub ${colour(c.view)}`, numbers: c.type === 'number' };
-        });
+        }));
     }
     function sortOf() {
         const c = ui.sort && resultCols()[ui.sort.column];
@@ -1405,7 +1455,7 @@
     /** One page of rows, asked of the host: the answer comes back as query.rowsData. */
     function page(start, limit) {
         const id = ++grid.asked;
-        post({ type: 'query.rows', seq: id, offset: start, limit, search: ui.search, sort: ui.sort, totals: ui.totals });
+        post({ type: 'query.rows', seq: id, offset: start, limit, search: ui.search, sort: ui.sort, totals: ui.totals, status: hasStatus() ? ui.statusFilter || '' : '' });
         return new Promise(resolve => grid.waiting.set(id, { resolve, ids: resultCols().map(colId) }));
     }
 
@@ -1441,7 +1491,15 @@
         ui.shownExact = m.shown === m.total ? `${count(m.total)} rows` : `${count(m.shown)} of ${count(m.total)} rows`;
         ui.arrived = true;
         renderBar();
-        asked.resolve({ rows: m.rows.map(r => { const row = {}; asked.ids.forEach((id, i) => { row[id] = r[i]; }); return row; }), total: m.shown });
+        // With compared columns: which differ in any row found (for Diffs), and how many rows of each status (for the Status menu)
+        if (m.offset === 0 && m.statusCounts) {
+            ui.statusCounts = m.statusCounts;
+            const was = (ui.diffGroups || []).join(',');
+            ui.diffGroups = m.diffGroups || [];
+            renderStatusTools();
+            if (ui.diffsOnly && was !== ui.diffGroups.join(',')) setTimeout(() => { drawTable(); }, 0);
+        }
+        asked.resolve({ rows: m.rows.map((r, n) => { const row = {}; asked.ids.forEach((id, i) => { row[id] = r[i]; }); if (m.status) row.__status = m.status[n]; return row; }), total: m.shown });
     }
 
     function moved(list, from, to) { list.splice(to, 0, list.splice(from, 1)[0]); return list; }
@@ -1455,6 +1513,26 @@
             ui.sort = sort && at(sort.id) >= 0 ? { column: at(sort.id), dir: sort.dir } : null;
             grid.sorting = true;
             setBusy(`Sorting ${count(ui.shown)} rows…`);
+        } else if (detail.change === 'moved' && (hasStatus() || resultCols().some(c => c.group))) {
+            // Groups move as one: the report's columns in the table's new order (a COMPARE calculation's sides are one)
+            const order = (table.columns || []).map(c => c.id).filter(id => id !== '__status');
+            const byId = new Map(resultCols().map(c => [colId(c), c]));
+            const seen = new Set();
+            const select = [];
+            const shownIds = new Set(order);
+            order.concat(resultCols().map(colId).filter(id => !shownIds.has(id))).forEach(id => {
+                const c = byId.get(id);
+                if (!c) return;
+                if (!c.view && c.group) {
+                    if (seen.has(`calc:${c.group}`)) return;
+                    seen.add(`calc:${c.group}`);
+                    select.push({ view: '', column: c.group });
+                    return;
+                }
+                select.push(Object.assign({ view: c.view, column: c.column }, c.fns && c.fns.length ? { fns: c.fns } : {}, c.group ? { group: c.group } : {}));
+            });
+            setBusy('Updating…');
+            post({ type: 'query.setSelect', select });
         } else if (detail.change === 'moved') {
             const from = at(detail.id);
             const to = detail.to;
@@ -1467,9 +1545,11 @@
             grid.key = columnsKey();
             post({ type: 'query.moveColumn', from, to });
         } else if (detail.change === 'removed') {
+            // (a compared column goes as one: every cell of it)
+            const gone = new Set(detail.ids && detail.ids.length ? detail.ids : [detail.id]);
             const i = at(detail.id);
-            const columns = resultCols().filter((_, n) => n !== i);
-            if (i < 0 || !columns.length) return;
+            const columns = resultCols().filter(c => !gone.has(colId(c)));
+            if (!columns.length || columns.length === resultCols().length) return;
             const sorted = sortOf();
             ui.state.resultColumns = columns;
             ui.sort = sorted && sorted.id !== detail.id ? { column: at(sorted.id), dir: sorted.dir } : null;
@@ -1478,7 +1558,15 @@
             // Said once: where a column taken out comes back from
             if (!grid.toldHide && window.DbmnToast) { grid.toldHide = true; window.DbmnToast.info('Column removed. Tick it on the Columns step to bring it back.'); }
             setBusy('Updating…');
-            post({ type: 'query.setSelect', select: columns.map(c => ({ view: c.view, column: c.column })) });
+            // (a COMPARE calculation's sides are one column of the report; the rest keep their functions and groups)
+            const select = [];
+            const calcs = new Set();
+            columns.forEach(c => {
+                if (!c.view && c.group) { if (!calcs.has(c.group)) { calcs.add(c.group); select.push({ view: '', column: c.group }); } return; }
+                select.push(Object.assign({ view: c.view, column: c.column }, c.fns && c.fns.length ? { fns: c.fns } : {}, c.group ? { group: c.group } : {}));
+            });
+            void i;
+            post({ type: 'query.setSelect', select });
         } else if (detail.change === 'resized' && detail.width) {
             // A width the user set is the query's: kept with it
             ui.state.widths = Object.assign({}, ui.state.widths, { [detail.id]: detail.width });
@@ -1528,6 +1616,8 @@
         ui.state = m;
         showName(m.name);
         showKind(m.compare);
+        if (!m.statusPlaces) { ui.statusFilter = ''; ui.diffsOnly = false; }
+        renderStatusTools();
         m.joins.forEach(j => (drafts[j.view] || []).forEach(p => { if (m.views.some(v => v.id === p.left.view)) j.on.push(p); }));
         if (!m.reading) { ui.busy = ''; ui.settled = true; }
         $('queryDistinct').checked = !!m.distinct;
@@ -1602,6 +1692,24 @@
         $('queryAddFile').value = '';
         if (file) sendFile(file, { type: 'query.addFile' });
     });
+    /** Results' Status menu (all, DIFF, Same, Missing in each place, with their counts) and Diffs, shown when something is compared. */
+    function renderStatusTools() {
+        const box = $('queryStatusTools');
+        if (!box) return;
+        box.hidden = !hasStatus();
+        if (box.hidden) return;
+        const counts = ui.statusCounts || {};
+        const sel = $('queryStatus');
+        const places = (ui.state && ui.state.statusPlaces) || [];
+        const options = [['', 'All rows', counts.all], ['diff', 'DIFF', counts.diff], ['same', 'Same', counts.same]]
+            .concat(places.filter(p => counts[`missing:${p}`]).map(p => [`missing:${p}`, `Missing in ${p}`, counts[`missing:${p}`]]));
+        sel.replaceChildren(...options.map(([value, label, n]) => { const o = el('option', '', n === undefined ? label : `${label} (${count(n)})`); o.value = value; return o; }));
+        sel.value = options.some(o => o[0] === (ui.statusFilter || '')) ? (ui.statusFilter || '') : '';
+        $('queryDiffs').setAttribute('aria-pressed', String(!!ui.diffsOnly));
+    }
+    $('queryStatus').addEventListener('change', () => { ui.statusFilter = $('queryStatus').value; loadRows(); });
+    $('queryDiffs').addEventListener('click', () => { ui.diffsOnly = !ui.diffsOnly; renderStatusTools(); loadRows(true); });
+
     $('queryTotals').addEventListener('change', () => {
         ui.totals = $('queryTotals').checked;
         post({ type: 'query.totals', on: ui.totals });

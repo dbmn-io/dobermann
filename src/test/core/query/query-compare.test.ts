@@ -13,7 +13,8 @@ import { QuerySession } from '../../../services/query/query-engine';
 import { alignCompareJoins, isCompare, queryCompare, runJoin } from '../../../services/query/query-compare';
 import { nextRunName, runName } from '../../../services/query/query-store';
 import type { QuerySource } from '../../../services/query/query-store';
-import { defaultColumns, formulaColumns } from '../../../services/query/query-sql';
+import { compareKeySql, defaultColumns, formulaColumns, resultColumns } from '../../../services/query/query-sql';
+import { rowStatus } from '../../../services/query/query-status';
 import { resolvePath, shortRef } from '../../../services/query/formula';
 import type { QueryJoin, QueryKey, QuerySpec } from '../../../services/query/query-types';
 import { SQL_WASM_PATH } from '../fixtures/temp-storage';
@@ -95,6 +96,58 @@ describe('A compare inside Query', () => {
         assert.deepStrictEqual(defaultColumns(spec), [{ view: 'stk', column: 'sku' }]);
         // A query: every column, as before
         assert.ok(defaultColumns({ ...spec, joins: [{ ...spec.joins[0], kind: 'left' }] }).length > 1);
+    });
+
+    describe('Results\' Status', () => {
+        it('a row is DIFF where a compared column\'s cells differ, Missing where a view has no record, else Same', async () => {
+            const j = joins();
+            alignCompareJoins(j);
+            const spec: QuerySpec = {
+                views: [
+                    { id: 'stk', name: 'Stock', columns: ['sku', 'qty'] },
+                    { id: 'itm', name: 'Items', columns: ['itemCode', 'qty', 'supplier'] },
+                    { id: 'cnt', name: 'Counts', columns: ['SKU', 'qty'] },
+                    { id: 'sup', name: 'Suppliers', columns: ['id', 'name'] }
+                ],
+                joins: j,
+                select: [{ view: 'stk', column: 'sku' }, { view: 'stk', column: 'qty', group: 'qty' }, { view: 'itm', column: 'qty', group: 'qty' }, { view: 'cnt', column: 'qty', group: 'qty' }]
+            };
+            const s = new QuerySession(SQL, spec);
+            await s.load('stk', [{ sku: 'A', qty: 1 }, { sku: 'B', qty: 2 }]);
+            await s.load('itm', [{ itemCode: 'A', qty: 1, supplier: 1 }, { itemCode: 'B', qty: 5, supplier: 1 }]);
+            await s.load('cnt', [{ SKU: 'A', qty: 1 }, { SKU: 'C', qty: 4 }]);
+            await s.load('sup', [{ id: 1, name: 'Bark & Co' }]);
+            const columns = resultColumns(spec);
+            const keys = compareKeySql(spec);
+            assert.deepStrictEqual(keys.map(k => k.view), ['stk', 'itm', 'cnt']);
+            const out = s.rows({ extra: keys.map(k => k.sql) });
+            const rows = out.rows.map(r => r.slice(0, columns.length));
+            const present = out.rows.map(r => r.slice(columns.length).map(Number));
+            const names: Record<string, string> = { stk: 'Stock', itm: 'Items', cnt: 'Counts' };
+            const status = rowStatus(columns, rows, keys.map(k => names[k.view]), present, v => names[v])!;
+            const bySku = new Map(rows.map((r, i) => [r[0] ?? '-', status.rows[i]]));
+            assert.deepStrictEqual(bySku.get('A'), { diff: [], missing: [] });
+            // B: Items has another qty; the count has no B
+            assert.deepStrictEqual(bySku.get('B'), { diff: ['Items'], missing: ['Counts'] });
+            // C: only the count has it
+            assert.deepStrictEqual(bySku.get('-'), { diff: [], missing: ['Stock', 'Items'] });
+            assert.deepStrictEqual(status.places, ['Stock', 'Items', 'Counts']);
+            s.close();
+        });
+        it('a COMPARE calculation is a column per side in Results, under its name', () => {
+            const spec: QuerySpec = {
+                views: [{ id: 'stk', name: 'Stock', columns: ['sku', 'onHand', 'available'] }],
+                joins: [],
+                select: [{ view: 'stk', column: 'sku' }, { view: '', column: 'qty' }],
+                calc: [{ name: 'qty', expr: '', formula: 'COMPARE(@Stock.onHand, @Stock.available)' }]
+            };
+            assert.deepStrictEqual(resultColumns(spec), [{ view: 'stk', column: 'sku' }, { view: '', column: 'qty 1', group: 'qty' }, { view: '', column: 'qty 2', group: 'qty' }]);
+            const st = rowStatus(resultColumns(spec), [['A', 5, 5], ['B', 5, 3]], [], [], v => v)!;
+            assert.deepStrictEqual(st.rows, [{ diff: [], missing: [] }, { diff: ['2'], missing: [] }]);
+        });
+        it('nothing compared: no status', () => {
+            assert.strictEqual(rowStatus([{ view: 'stk', column: 'sku' }], [['A']], [], [], v => v), undefined);
+        });
     });
 
     describe('runs of a view', () => {

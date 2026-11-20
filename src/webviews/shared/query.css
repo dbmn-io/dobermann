@@ -329,3 +329,9 @@
 /* The lines that only head or divide: no lane colours under them */
 .query-rep-head .query-at, .query-rep-rule .query-at { background: transparent; box-shadow: none; }
 .query-free-head { margin-top: 6px; }
+
+/* Results with compared columns: Compare's Status menu and Diffs */
+.query-status-tools { display: inline-flex; align-items: center; gap: 6px; }
+.query-status-tools[hidden] { display: none; }
+.query-status-tools select { font-size: 12px; }
+.query-status-tag { background: color-mix(in srgb, var(--vscode-descriptionForeground) 45%, transparent); }

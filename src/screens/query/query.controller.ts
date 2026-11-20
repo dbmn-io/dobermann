@@ -25,13 +25,14 @@ import { buildCompareSide, CompareView } from '../../services/compare/compare-si
 import { isComparableRun } from '../../services/compare/compare-store';
 import { QueryRowData, QuerySession } from '../../services/query/query-engine';
 import type { TooManyRows } from '../../services/query/query-engine';
-import { allColumns, columnSql, defaultColumns, formulaColumns, fromSql, joinKeyColumns, quoteName, refNames, tableNames, writeSql } from '../../services/query/query-sql';
+import { allColumns, columnSql, compareKeySql, defaultColumns, formulaColumns, fromSql, joinKeyColumns, quoteName, refNames, resultColumns as resultColumnRefs, tableNames, writeSql } from '../../services/query/query-sql';
 import { FORMULA_FUNCTIONS, formulaSql, fullRef, fullText, parseFormula, shortRef, shortText } from '../../services/query/formula';
 import { reportNameProblem } from '../../services/compare/report-name';
 import { cleanViewName, getQuery, guessViewName, MAX_QUERY_VIEWS, moveView, moveViewFirst, nameViews, newSourceId, nextRunName, QuerySource, renameView, runName, saveQuery, SavedQuery, untickBlanks, untickClashes } from '../../services/query/query-store';
 import { columnTypes, spread, TYPE_SAMPLE, type ColumnType } from '../../services/query/column-types';
 import { CALC_VIEW, QUERY_JOIN_KINDS } from '../../services/query/query-types';
 import { alignCompareJoins, MAX_COMPARE_VIEWS, queryCompare, runJoin } from '../../services/query/query-compare';
+import { rowStatus, type RowStatus } from '../../services/query/query-status';
 import type { ColumnRef, QueryFn, QueryJoin, QueryJoinKind, QueryJoinStats, QuerySpec } from '../../services/query/query-types';
 import { ConsoleExportService } from '../../services/console/export.service';
 import type { ColumnDefinition } from '../../types/console-messages';
@@ -109,7 +110,7 @@ export class QueryController {
     /** The views the session's tables were loaded for (ids and names): another set means loading again. */
     private sessionKey = '';
     /** Every row of the query as it stands, read once and windowed for the page. */
-    private result: { key: string; columns: ColumnRef[]; rows: unknown[][] } | undefined;
+    private result: QueryResult | undefined;
     private filtered: { key: string; indices: number[] } | undefined;
     private searchSeq = 0;
     /** Counts each change: work for an older one is dropped. */
@@ -831,7 +832,9 @@ export class QueryController {
             try {
                 const session = await this.sessionFor(spec, version);
                 if (!session) return;
+                // The report's columns (Columns' step); Results' own, a COMPARE calculation a column per side
                 columns = spec.select.length ? spec.select : defaultColumns(spec);
+                resultColumns = resultColumnRefs(spec);
                 sql = session.sql();
                 // A join that would make far too many rows is never made: it would fill the page's memory
                 const tooMany = session.tooManyRows();
@@ -846,7 +849,7 @@ export class QueryController {
                 stats = spec.joins.map((_, i) => session.joinStats(i));
                 preview = session.rows({ limit: PREVIEW_ROWS }).rows;
                 // (from rows across the whole result, so a column that changes further down is not mislabelled)
-                resultTypes = columnTypes(session.sample(TYPE_SAMPLE).rows, columns.length);
+                resultTypes = columnTypes(session.sample(TYPE_SAMPLE).rows, resultColumns.length);
                 sampleRow = this.sampleRow(session, spec);
                 if (query.sql) {
                     // The user's own SQL: Results shows what it makes
@@ -949,6 +952,8 @@ export class QueryController {
             maxViews: MAX_QUERY_VIEWS,
             // A Compare join makes the query a compare: its Baseline and the views in it
             compare: queryCompare(query.joins) ?? null,
+            // Results' Status: the places a row can differ or be missing in (none: no compared column)
+            statusPlaces: this.statusPlaces(),
             maxCompare: MAX_COMPARE_VIEWS,
             // Results' columns: the steps', or what the user's own SQL makes
             resultColumns: (now.resultColumns ?? now.columns ?? []).map((c, i) => ({ view: c.view, column: c.column, type: now.resultTypes?.[i] ?? 'text', ...(c.group ? { group: c.group } : {}) })),
@@ -999,6 +1004,8 @@ export class QueryController {
         this.post({
             type: 'query.rowsData', seq: message.seq, offset,
             rows: indices.slice(offset, offset + limit).map(i => result.rows[i]),
+            ...(result.status ? { status: indices.slice(offset, offset + limit).map(i => result.status![i]) } : {}),
+            ...(result.status && offset === 0 ? statusSummary(result, indices) : {}),
             shown: indices.length, total: result.rows.length,
             ...(message.totals && offset === 0 ? this.totals(result, indices) : {})
         });
@@ -1014,6 +1021,23 @@ export class QueryController {
         const { spec } = this.spec();
         // (a column keeps its functions, and its place in a compared column)
         const columns = (spec.select.length ? spec.select : defaultColumns(spec)).map(c => ({ ...c }));
+        // Results' columns may be more (a COMPARE calculation is a column per side): its places map back to the report's
+        const shown = resultColumnRefs(spec);
+        if (shown.length !== columns.length) {
+            const owner = shown.map(c => columns.findIndex(x => x.view === c.view && (x.column === c.column || (c.group !== undefined && x.view === CALC_VIEW && x.column === c.group))));
+            const a = owner[from];
+            const b = owner[to];
+            if (a === undefined || b === undefined || a < 0 || b < 0 || a === b) return;
+            const move2 = <T>(list: T[]): void => { list.splice(b, 0, list.splice(a, 1)[0]); };
+            move2(columns);
+            query.select = columns;
+            query.sort = null;
+            await saveQuery(this.ports.state, query);
+            this.result = undefined;
+            this.filtered = undefined;
+            await this.refresh();
+            return;
+        }
         const inRange = (n: number): boolean => Number.isInteger(n) && n >= 0 && n < columns.length;
         if (!inRange(from) || !inRange(to) || from === to) return;
         const move = <T>(list: T[]): void => { list.splice(to, 0, list.splice(from, 1)[0]); };
@@ -1090,11 +1114,11 @@ export class QueryController {
      * Results' rows after the search and the sort, as row numbers. Undefined: the query cannot
      * run yet. Null: a newer search took over.
      */
-    private async found(message: Pick<RowsRequest, 'search' | 'sort'>): Promise<{ result: { key: string; columns: ColumnRef[]; rows: unknown[][] }; indices: number[] } | undefined | null> {
+    private async found(message: Pick<RowsRequest, 'search' | 'sort' | 'status'>): Promise<{ result: QueryResult; indices: number[] } | undefined | null> {
         const session = this.session;
         const { spec } = this.spec();
         if (!session || !spec.views.length) return undefined;
-        let result: { key: string; columns: ColumnRef[]; rows: unknown[][] };
+        let result: QueryResult;
         try {
             result = this.read(session, spec);
         } catch (error) {
@@ -1113,10 +1137,19 @@ export class QueryController {
                 await saveQuery(this.ports.state, query);
             }
         }
-        const key = JSON.stringify([search, sort]);
+        // Status: DIFF, Same, or Missing in a view of the compare (Results' Status filter)
+        const status = result.status ? String(message.status ?? '') : '';
+        const key = JSON.stringify([search, sort, status]);
         if (!this.filtered || this.filtered.key !== key) {
             const seq = ++this.searchSeq;
             let indices = result.rows.map((_, i) => i);
+            if (status && result.status) {
+                const of = result.status;
+                const missingIn = status.startsWith('missing:') ? status.slice(8) : '';
+                indices = indices.filter(i => status === 'diff' ? of[i].diff.length > 0
+                    : status === 'same' ? !of[i].diff.length && !of[i].missing.length
+                        : missingIn ? of[i].missing.includes(missingIn) : true);
+            }
             if (search) {
                 const kept = await this.search(result, search, seq);
                 if (!kept) return null;
@@ -1132,16 +1165,41 @@ export class QueryController {
         return { result, indices: this.filtered.indices };
     }
 
-    /** Every row of Results, read once: the steps' SQL, or the user's own. */
-    private read(session: QuerySession, spec: QuerySpec): { key: string; columns: ColumnRef[]; rows: unknown[][] } {
+    /** The places Results' Status names (each view of the compare, each place a compared column has), or null when nothing is compared. */
+    private statusPlaces(): string[] | null {
+        const query = this.query;
+        if (!query || query.sql) return null;
+        const { spec } = this.spec();
+        if (!spec.views.length) return null;
+        const label = (viewId: string): string => runName(query, viewId) || spec.views.find(v => v.id === viewId)?.name || viewId;
+        const status = rowStatus(resultColumnRefs(spec), [], compareKeySql(spec).map(k => label(k.view)), [], label);
+        return status ? status.places : null;
+    }
+
+    /**
+     * Every row of Results, read once: the steps' SQL, or the user's own. With compared columns,
+     * each row's status too (rowStatus): which views' values differ, and which views of the compare
+     * have no record.
+     */
+    private read(session: QuerySession, spec: QuerySpec): QueryResult {
         const own = this.query?.sql;
         const key = own ?? session.sql();
         if (!this.result || this.result.key !== key) {
             const tooMany = own ? undefined : session.tooManyRows();
             if (tooMany) throw new Error(tooManyRowsText(tooMany, spec));
-            const out = own ? session.run(own) : session.rows();
-            const columns = own ? out.columns.map(column => ({ view: CALC_VIEW, column })) : spec.select.length ? spec.select : defaultColumns(spec);
-            this.result = { key, columns, rows: out.rows };
+            if (own) {
+                const out = session.run(own);
+                this.result = { key, columns: out.columns.map(column => ({ view: CALC_VIEW, column })), rows: out.rows };
+            } else {
+                const columns = resultColumnRefs(spec);
+                const keys = compareKeySql(spec);
+                const out = session.rows(keys.length ? { extra: keys.map(k => k.sql) } : undefined);
+                const rows = keys.length ? out.rows.map(r => r.slice(0, columns.length)) : out.rows;
+                const present = keys.length ? out.rows.map(r => r.slice(columns.length).map(Number)) : [];
+                const label = (viewId: string): string => runName(this.query!, viewId) || spec.views.find(v => v.id === viewId)?.name || viewId;
+                const status = rowStatus(columns, rows, keys.map(k => label(k.view)), present, viewId => label(viewId));
+                this.result = { key, columns, rows, ...(status ? { status: status.rows, places: status.places } : {}) };
+            }
             this.filtered = undefined;
         }
         return this.result;
@@ -1211,6 +1269,8 @@ interface RowsRequest {
     offset: number;
     limit: number;
     search?: string;
+    /** Results' Status filter: 'diff', 'same', 'missing:<place>', or all. */
+    status?: string;
     sort?: { column: number; dir: 'asc' | 'desc' } | null;
     /** Send the columns' totals with the first window. */
     totals?: boolean;
@@ -1252,3 +1312,31 @@ export function tooManyRowsText(tooMany: TooManyRows, spec: QuerySpec): string {
 function runsOf(query: SavedQuery): Map<string, string> {
     return new Map(query.sources.filter(s => s.runOf).map(s => [s.id, s.runOf as string]));
 }
+
+interface QueryResult {
+    key: string;
+    columns: ColumnRef[];
+    rows: unknown[][];
+    status?: RowStatus[];
+    places?: string[];
+}
+
+/** For Results' first window: how many rows of each status, and which compared columns differ in any of the rows found. */
+function statusSummary(result: QueryResult, indices: number[]): { statusCounts: Record<string, number>; diffGroups: string[] } {
+    const counts: Record<string, number> = { all: result.rows.length, diff: 0, same: 0 };
+    result.status!.forEach(st => {
+        if (st.diff.length) counts.diff++;
+        if (!st.diff.length && !st.missing.length) counts.same++;
+        st.missing.forEach(p => { counts[`missing:${p}`] = (counts[`missing:${p}`] ?? 0) + 1; });
+    });
+    const differs = new Set<string>();
+    const text = (v: unknown): string => (v === null || v === undefined ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v));
+    const groups = new Map<string, number[]>();
+    result.columns.forEach((c, i) => { if (c.group) groups.set(c.group, [...(groups.get(c.group) ?? []), i]); });
+    groups.forEach((cells, name) => {
+        if (cells.length < 2) return;
+        if (indices.some(r => cells.some(i => text(result.rows[r][i]) !== text(result.rows[r][cells[0]])))) differs.add(name);
+    });
+    return { statusCounts: counts, diffGroups: [...differs] };
+}
+

@@ -218,9 +218,45 @@ function selectSql(ref: ColumnRef, spec: QuerySpec, names: Map<string, string>):
     return calcSql(calc, spec, names);
 }
 
+/**
+ * Results' columns, one per column of the SQL: the report's columns (or the default ones), a
+ * COMPARE calculation as a column per side, `name 1`, `name 2`..., grouped under its name.
+ */
+export function resultColumns(spec: QuerySpec): ColumnRef[] {
+    const base = spec.select.length ? spec.select : defaultColumns(spec);
+    return base.flatMap(c => {
+        if (c.view !== CALC_VIEW) return [c];
+        const calc = spec.calc?.find(x => x.name === c.column);
+        if (!calc?.formula) return [c];
+        try {
+            const parsed = parseFormula(calc.formula, formulaColumns(spec));
+            if (parsed.compare) return parsed.compare.map((_, i) => ({ view: CALC_VIEW, column: `${calc.name} ${i + 1}`, group: calc.name }));
+        } catch { /* a formula that no longer reads: the column says so when the SQL is written */ }
+        return [c];
+    });
+}
+
+/**
+ * What a row's status needs that Results may not show: for each view in the compare, whether the
+ * row has its record (its key, not blank). In the compare's order, the Baseline first.
+ */
+export function compareKeySql(spec: QuerySpec): { view: string; sql: string }[] {
+    const joins = spec.joins.filter(j => j.kind === 'compare');
+    const first = joins[0];
+    if (!first?.on[0]) return [];
+    const names = refNames(spec.views);
+    const baseline = first.on[0].left;
+    return [
+        { view: baseline.parts[0]?.view ?? '', sql: `CASE WHEN ${keySql(baseline, names)} IS NULL THEN 0 ELSE 1 END` },
+        ...joins.filter(j => j.on[0]).map(j => ({ view: j.view, sql: `CASE WHEN ${keySql(j.on[0].right, names)} IS NULL THEN 0 ELSE 1 END` }))
+    ];
+}
+
 export interface WriteSqlOptions {
     /** A WHERE from outside the builder (a saved search), already SQL. */
     where?: string;
+    /** More expressions after the columns (what a row's status needs, not shown). */
+    extra?: string[];
     limit?: number;
     offset?: number;
 }
@@ -229,7 +265,7 @@ const SELECT_WIDTH = 100;
 
 export function writeSql(spec: QuerySpec, options: WriteSqlOptions = {}): string {
     const names = refNames(spec.views);
-    const select = (spec.select.length ? spec.select : defaultColumns(spec)).flatMap(c => selectSql(c, spec, names));
+    const select = [...(spec.select.length ? spec.select : defaultColumns(spec)).flatMap(c => selectSql(c, spec, names)), ...(options.extra ?? [])];
     if (!select.length) throw new Error('Query: no columns');
     // The columns wrap under the first one, a line of about a hundred characters each
     const head = `SELECT ${spec.distinct ? 'DISTINCT ' : ''}`;
