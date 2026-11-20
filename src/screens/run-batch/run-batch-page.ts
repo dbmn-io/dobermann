@@ -62,6 +62,11 @@ export function buildRunBatchPage(asset: AssetUrl, batchConfig: { endpointId: st
     <link rel="stylesheet" href="${asset('shared/toast.css')}">
     <link rel="stylesheet" href="${csvHandlerCssUri}">
     <link rel="stylesheet" href="${asset('shared/dbmn-footer.css')}">
+    <!-- Validate's grid is the design system's table (shared/dbmn-table.js) -->
+    <link rel="stylesheet" href="${asset('shared/console.css')}">
+    <link rel="stylesheet" href="${asset('shared/column-head.css')}">
+    <link rel="stylesheet" href="${asset('shared/column-drag.css')}">
+    <link rel="stylesheet" href="${asset('shared/dbmn-table.css')}">
 </head>
 <body class="editor-slide-in" data-endpoint-id="${batchConfig.endpointId}" data-endpoint-name="${escapeAttribute(batchConfig.endpointName || '')}">
     <!-- Readable buttons in every theme (shared/button-contrast.js): first in the body, so it applies before anything is painted -->
@@ -347,6 +352,14 @@ export function buildRunBatchPage(asset: AssetUrl, batchConfig: { endpointId: st
     <script src="${asset('shared/help-mode.js')}"></script>
     <script src="${asset('run-batch/run-batch-help.js')}"></script>
     <script src="${formManagerScriptUri}"></script>
+    <script src="${asset('shared/search-matcher.js')}"></script>
+    <script src="${asset('shared/value-formatter.js')}"></script>
+    <script src="${asset('shared/cell-detail.js')}"></script>
+    <script src="${asset('shared/virtual-window.js')}"></script>
+    <script src="${asset('shared/dbmn-context-menu.js')}"></script>
+    <script src="${asset('shared/column-drag.js')}"></script>
+    <script src="${asset('shared/column-head.js')}"></script>
+    <script src="${asset('shared/dbmn-table.js')}"></script>
     <script src="${dtDataEntryGridUri}"></script>
     <script src="${dtTypeCoercionUri}"></script>
     <script src="${dtDataIngestionUri}"></script>

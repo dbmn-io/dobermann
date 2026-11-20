@@ -9,11 +9,14 @@ import * as path from 'path';
  * Validate's grid: Ctrl+Z undoes every edit, delete and paste, in order, back to the data as
  * loaded. A delete's Ctrl+Z did nothing (the key listener was on the grid, and deleting the
  * row took the focus with it), and edits were never undoable.
+ *
+ * The grid is the design system's table (dbmn-table.js, tested in a browser by its own spec);
+ * here the grid's side of it: what it does with the table's events and with the rows.
  */
 const SHARED = path.resolve(__dirname, '../../../../../src/webviews/shared');
 const SCRIPTS = ['dbmn-toast.js', 'icons.js', 'json-comment-stripper.js', 'template-rename.js', 'dt-data-entry-grid.js', 'dt-type-coercion.js',
     'dt-data-ingestion.js', 'dt-data-preview.js', 'dt-mismatch-repair.js', 'dt-batch-config.js', 'data-transformer.js'];
-const BODY = JSON.stringify({ lines: [{ gtin: '{{gtin:string}}', uom: '{{uom:string}}' }] });
+const BODY = JSON.stringify({ lines: [{ gtin: '{{gtin:string}}', uom: '{{uom:string|upper}}', qty: '{{qty:number}}' }] });
 
 function load() {
     const dom = new JSDOM(`<!DOCTYPE html><body><button id="csvNextBtn">Next</button><button id="gridErrorFilterBtn">Filter Errors</button>
@@ -29,83 +32,99 @@ function load() {
 /** Load rows the way Run Batch does: each variable mapped to its column. */
 function loadRows(w: any, rows: string[][]) {
     const vars = w.CSVHandler.csvState.gridTemplateVariables.map((v: any) => ({ ...v, mappedTo: v.name }));
-    w.DTDataEntryGrid.populateGridFromMappedData({ headers: ['gtin', 'uom'], rows }, vars);
+    w.DTDataEntryGrid.populateGridFromMappedData({ headers: ['gtin', 'uom', 'qty'], rows }, vars);
 }
 const tick = (w: any, ms = 50) => new Promise(resolve => w.setTimeout(resolve, ms));
-const ctrlZ = (w: any) => w.document.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true }));
+const ctrlZ = (w: any) => w.document.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true, cancelable: true }));
+const model = (w: any) => w.CSVHandler.csvState.gridDataModel;
 
-/** Edit a cell the way a user does: focus it, type, leave it. */
-function editCell(w: any, td: HTMLElement, value: string) {
-    td.dispatchEvent(new w.FocusEvent('focusin', { bubbles: true }));
-    td.textContent = value;
-    td.dispatchEvent(new w.Event('input', { bubbles: true }));
-    td.dispatchEvent(new w.FocusEvent('focusout', { bubbles: true }));
+/** An edit as the table makes one: the grid is told first (and may change the value), then it is written. */
+function edit(w: any, place: number, col: number, value: string, kind = 'edit') {
+    const row = model(w)[place];
+    const changes = [{ row, id: String(col), index: place, value, old: row[col] }];
+    const table = w.document.getElementById('validateGrid');
+    const ok = table.dispatchEvent(new w.CustomEvent('dbmn-table-edit', { bubbles: true, cancelable: true, detail: { kind, changes, left: 0 } }));
+    if (ok) changes.forEach(ch => { ch.row[ch.id] = ch.value; });
 }
 
 describe('Run Batch Validate — Ctrl+Z undoes edits and deletes, back to the data as loaded', () => {
-    it('loaded rows (large-grid mode): edit, delete, then Ctrl+Z twice restores the original', async () => {
+    it('the grid is the shared table: a row number column, then a column per variable', () => {
         const w = load();
-        const rows = [['00012345600012', 'EA'], ['00012345600043', 'CS'], ['00012345600050', 'PL']];
-        loadRows(w, rows);
-        await tick(w, 100);
-        const s = w.CSVHandler.csvState;
-        const original = s.gridDataModel.map((r: string[]) => r.slice());
-        expect(original).to.deep.equal(rows);
-
-        const uomOfRow0 = w.document.querySelector('#vanillaGridBody tr[data-vs-row-index="0"]').querySelectorAll('.grid-cell')[1];
-        editCell(w, uomOfRow0, 'BOX');
-        expect(s.gridDataModel[0][1]).to.equal('BOX');
-        w.document.querySelector('#vanillaGridBody tr[data-vs-row-index="1"] .row-delete-btn').click();
-        expect(s.gridDataModel).to.have.length(2);
-
-        ctrlZ(w);   // the delete
-        expect(s.gridDataModel).to.have.length(3);
-        expect(s.gridDataModel[1]).to.deep.equal(original[1]);
-        ctrlZ(w);   // the edit
-        expect(s.gridDataModel).to.deep.equal(original);
-        ctrlZ(w);   // nothing left: no change
-        expect(s.gridDataModel).to.deep.equal(original);
+        const table = w.document.querySelector('#csvGridEntry dbmn-table#validateGrid');
+        expect(table.hasAttribute('editable')).to.equal(true);
+        expect(table.columns.map((c: any) => c.name)).to.deep.equal(['#', 'gtin', 'uom', 'qty']);
+        expect(model(w)).to.deep.equal([['', '', '']]);   // one empty row to type into
     });
 
-    it('typed rows (small-grid mode): the same, row positions included', () => {
+    it('loaded rows: edit, delete, then Ctrl+Z twice restores the original', async () => {
+        const w = load();
+        const rows = [['00012345600012', 'EA', '1'], ['00012345600043', 'CS', '2'], ['00012345600050', 'PL', '3']];
+        loadRows(w, rows);
+        await tick(w, 100);
+        const original = model(w).map((r: string[]) => r.slice());
+        expect(original).to.deep.equal(rows);
+
+        edit(w, 0, 1, 'BOX');
+        expect(model(w)[0][1]).to.equal('BOX');
+        w.DTDataEntryGrid.deleteGridRow(1);
+        expect(model(w)).to.have.length(2);
+
+        ctrlZ(w);   // the delete
+        expect(model(w)).to.have.length(3);
+        expect(model(w)[1]).to.deep.equal(original[1]);
+        ctrlZ(w);   // the edit
+        expect(model(w)).to.deep.equal(original);
+        ctrlZ(w);   // nothing left: no change
+        expect(model(w)).to.deep.equal(original);
+    });
+
+    it('typed rows: the same, row positions included', () => {
         const w = load();
         const addRow = () => w.DTDataEntryGrid.addGridRow({ skipFocus: true });
         addRow(); addRow();   // with the row an empty grid starts with: three
-        const cells = () => Array.from(w.document.querySelectorAll('#vanillaGridBody tr')).map((tr: any) =>
-            Array.from(tr.querySelectorAll('.grid-cell')).map((td: any) => td.textContent));
-        const trs = w.document.querySelectorAll('#vanillaGridBody tr');
-        trs.forEach((tr: any, i: number) => editCell(w, tr.querySelectorAll('.grid-cell')[0], `G${i + 1}`));
-        const typed = cells();
+        [0, 1, 2].forEach(i => edit(w, i, 0, `G${i + 1}`));
+        const typed = model(w).map((r: string[]) => r.slice());
 
-        w.document.querySelectorAll('#vanillaGridBody tr')[1].querySelector('.row-delete-btn').click();
-        expect(cells().map(r => r[0])).to.deep.equal(['G1', 'G3']);
+        w.DTDataEntryGrid.deleteGridRow(1);
+        expect(model(w).map((r: string[]) => r[0])).to.deep.equal(['G1', 'G3']);
         ctrlZ(w);
-        expect(cells()).to.deep.equal(typed);
-        expect(Array.from(w.document.querySelectorAll('#vanillaGridBody .row-num')).map((n: any) => n.textContent)).to.deep.equal(['1', '2', '3']);
+        expect(model(w)).to.deep.equal(typed);
         ctrlZ(w); ctrlZ(w); ctrlZ(w);   // the three edits
-        expect(cells().map(r => r[0])).to.deep.equal(['', '', '']);
+        expect(model(w).map((r: string[]) => r[0])).to.deep.equal(['', '', '']);
     });
 
-    it('Ctrl+Z while typing in a cell puts that cell back first', async () => {
+    it('Ctrl+Z in the table is the grid\'s history, not the table\'s own', () => {
         const w = load();
-        loadRows(w, [['00012345600012', 'EA']]);
-        await tick(w, 100);
-        const td = w.document.querySelector('#vanillaGridBody tr[data-vs-row-index="0"]').querySelectorAll('.grid-cell')[1];
-        td.dispatchEvent(new w.FocusEvent('focusin', { bubbles: true }));
-        td.textContent = 'BO';
-        td.dispatchEvent(new w.Event('input', { bubbles: true }));
+        edit(w, 0, 0, 'A');
+        const asked = new w.CustomEvent('dbmn-table-undo', { bubbles: true, cancelable: true, detail: { redo: false } });
+        w.document.getElementById('validateGrid').dispatchEvent(asked);
+        expect(asked.defaultPrevented).to.equal(true);
+        expect(model(w)[0][0]).to.equal('');
+    });
+
+    it('what is typed keeps its column\'s rules: upper case, and only digits in a number', () => {
+        const w = load();
+        edit(w, 0, 1, 'box');
+        edit(w, 0, 2, '1,2a0');
+        expect(model(w)[0]).to.deep.equal(['', 'BOX', '120']);
+    });
+
+    it('a paste from a spreadsheet fills across and down, adding rows; one Ctrl+Z puts it back', () => {
+        const w = load();
+        w.DTDataEntryGrid.pasteIntoGrid('A1\tea\t5\nA2\tcs\t6', 0, 0);
+        expect(model(w)).to.deep.equal([['A1', 'EA', '5'], ['A2', 'CS', '6']]);
         ctrlZ(w);
-        expect(w.CSVHandler.csvState.gridDataModel[0][1]).to.equal('EA');
+        expect(model(w)).to.deep.equal([['', '', '']]);
     });
 
     it('a new load starts a new history', async () => {
         const w = load();
-        loadRows(w, [['A', 'EA'], ['B', 'EA']]);
+        loadRows(w, [['A', 'EA', '1'], ['B', 'EA', '2']]);
         await tick(w, 100);
-        w.document.querySelector('#vanillaGridBody tr[data-vs-row-index="0"] .row-delete-btn').click();
-        loadRows(w, [['C', 'CS']]);
+        w.DTDataEntryGrid.deleteGridRow(0);
+        loadRows(w, [['C', 'CS', '3']]);
         await tick(w, 100);
         ctrlZ(w);
-        expect(w.CSVHandler.csvState.gridDataModel).to.deep.equal([['C', 'CS']]);
+        expect(model(w)).to.deep.equal([['C', 'CS', '3']]);
     });
 });

@@ -2082,114 +2082,6 @@
     }
 
     /**
-     * Handle keyboard navigation in grid cells
-     * Supports text cells (contenteditable), checkbox inputs, and number inputs
-     * Enhanced with progressive Tab copy for nested data entry
-     */
-    function handleGridCellKeydown(...args) {
-        return window.DTDataEntryGrid.handleGridCellKeydown(...args);
-    }
-
-    /**
-     * Check if cursor is in the expected position for progressive copy continuation
-     */
-    function isInProgressiveCopyPosition(...args) {
-        return window.DTDataEntryGrid.isInProgressiveCopyPosition(...args);
-    }
-
-    /**
-     * Execute progressive copy for the next nesting level
-     * GitHub Issue #146: Handle templates without L1 variables (all vars in arrays)
-     *
-     * Flow:
-     * - Level 0→1: Copy L1 (if any), then either:
-     *   - If L1 was copied: return L2 cell for focus
-     *   - If no L1: immediately copy L2, return L3 cell for focus
-     * - Level 1→2: Copy L2, return L3 cell for focus
-     * - Level 2→3: Copy L3, return null (stay on current cell)
-     *
-     * @returns {HTMLElement|null} The cell to focus, or null to stay on current cell
-     */
-    function progressiveCopyNextLevel(...args) {
-        return window.DTDataEntryGrid.progressiveCopyNextLevel(...args);
-    }
-
-    /**
-     * Copy field values from previous row to current row
-     */
-    function copyFieldsFromPreviousRow(...args) {
-        return window.DTDataEntryGrid.copyFieldsFromPreviousRow(...args);
-    }
-
-    /**
-     * Copy value from cell above (Ctrl+D)
-     * GitHub Issue #146: After copying, move to next cell like Tab
-     */
-    function copyFromCellAbove(...args) {
-        return window.DTDataEntryGrid.copyFromCellAbove(...args);
-    }
-
-    /**
-     * Clear the content of a grid cell (Escape key)
-     */
-    function clearGridCell(...args) {
-        return window.DTDataEntryGrid.clearGridCell(...args);
-    }
-
-    /**
-     * Show progressive copy hint to guide user
-     */
-    function showProgressiveHint(...args) {
-        return window.DTDataEntryGrid.showProgressiveHint(...args);
-    }
-
-    /**
-     * Hide the progressive copy hint
-     */
-    function hideProgressiveHint(...args) {
-        return window.DTDataEntryGrid.hideProgressiveHint(...args);
-    }
-
-    /**
-     * Cancel progressive copy mode
-     */
-    function cancelProgressiveCopy(...args) {
-        return window.DTDataEntryGrid.cancelProgressiveCopy(...args);
-    }
-
-    /**
-     * Handle input events to cancel progressive copy when user types
-     */
-    function handleGridCellInput(...args) {
-        return window.DTDataEntryGrid.handleGridCellInput(...args);
-    }
-
-    /**
-     * GitHub Issue #135, #163: Redirect data to paste area when columns don't match grid
-     * This is NOT an error - the CSV may have extra columns, which is fine.
-     * The paste area + mapping step will handle column selection.
-     */
-    function handleGridPasteColumnMismatch(...args) {
-        return window.DTDataEntryGrid.handleGridPasteColumnMismatch(...args);
-    }
-
-    /**
-     * GitHub Issue #162: Check if pasted data contains unparseable date/datetime/time values
-     * These are values that can't be converted to HTML5 input formats (e.g., Excel serial dates)
-     */
-    function checkForUnparseableDateTimeValues(...args) {
-        return window.DTDataEntryGrid.checkForUnparseableDateTimeValues(...args);
-    }
-
-    /**
-     * GitHub Issue #162: Redirect paste to text area when date/datetime/time values can't be parsed
-     * Shows a non-blocking warning so user can proceed with source format selection in Step 2
-     */
-    function handleGridPasteDateTimeIssue(...args) {
-        return window.DTDataEntryGrid.handleGridPasteDateTimeIssue(...args);
-    }
-
-    /**
      * GitHub Issue #162: Format value for HTML5 date input (expects YYYY-MM-DD)
      * Handles various input formats: YYYY-MM-DD, MM/DD/YYYY, DD-MM-YYYY, etc.
      * Returns null if value cannot be parsed (distinguishes from empty input)
@@ -2215,58 +2107,6 @@
     }
 
     /**
-     * Handle paste from Excel/spreadsheets into grid
-     */
-    function handleGridCellPaste(...args) {
-        return window.DTDataEntryGrid.handleGridCellPaste(...args);
-    }
-
-    /**
-     * GitHub Issue #162: Save current grid state for undo
-     * Stores the current grid data in the undo stack
-     */
-    function saveGridStateForUndo(...args) {
-        return window.DTDataEntryGrid.saveGridStateForUndo(...args);
-    }
-
-    /**
-     * GitHub Issue #162: Restore grid to previous state (undo)
-     * Pops the last state from the undo stack and restores it
-     */
-    function undoGridPaste(...args) {
-        return window.DTDataEntryGrid.undoGridPaste(...args);
-    }
-
-    /**
-     * GitHub Issue #162: Handle Ctrl+Z for grid undo
-     */
-    function handleGridUndo(...args) {
-        return window.DTDataEntryGrid.handleGridUndo(...args);
-    }
-
-    /**
-     * Renumber grid rows after deletion
-     */
-    function renumberGridRows(...args) {
-        return window.DTDataEntryGrid.renumberGridRows(...args);
-    }
-
-    /**
-     * Update data source tracking when grid content changes
-     */
-    function updateDataSourceFromGrid(...args) {
-        return window.DTDataEntryGrid.updateDataSourceFromGrid(...args);
-    }
-
-    /**
-     * Get data from vanilla grid as array of arrays
-     * Handles different cell types (checkbox, number input, text)
-     */
-    function getVanillaGridData(...args) {
-        return window.DTDataEntryGrid.getVanillaGridData(...args);
-    }
-
-    /**
      * Get data from the grid as CSV-compatible format
      */
     function getGridDataAsCSV(...args) {
@@ -2289,91 +2129,12 @@
     }
 
     /**
-     * GitHub Issue #175: Validate grid data against modifier constraints
-     * Returns validation result with list of invalid cells and error messages
-     * This validation BLOCKS navigation - user must fix errors to proceed
-     */
-    function validateGridData(...args) {
-        return window.DTDataEntryGrid.validateGridData(...args);
-    }
-
-    /**
-     * Helper to get cell value based on data type
-     */
-    function getCellValue(...args) {
-        return window.DTDataEntryGrid.getCellValue(...args);
-    }
-
-    /**
-     * GitHub Issue #175: Highlight grid cells with validation errors (amber/warning color)
-     */
-    function highlightGridErrorCells(...args) {
-        return window.DTDataEntryGrid.highlightGridErrorCells(...args);
-    }
-
-    /**
-     * GitHub Issue #175: Clear all grid error highlights
-     */
-    function clearGridErrorCellHighlights(...args) {
-        return window.DTDataEntryGrid.clearGridErrorCellHighlights(...args);
-    }
-
-    /**
-     * GitHub Issue #175: Show grid validation errors in modal footer
-     * Uses showModalNotification for consistent footer messaging
-     */
-    function showGridValidationErrors(...args) {
-        return window.DTDataEntryGrid.showGridValidationErrors(...args);
-    }
-
-    /**
-     * GitHub Issue #175: Hide grid validation errors
-     */
-    function hideGridValidationErrors(...args) {
-        return window.DTDataEntryGrid.hideGridValidationErrors(...args);
-    }
-
-    /**
      * Validate grid for blank cells
      * Returns validation result with list of blank cells
      * GitHub Issue #175: Skip optional/nullable fields - they're allowed to be blank
      */
     function validateGridForBlankCells(...args) {
         return window.DTDataEntryGrid.validateGridForBlankCells(...args);
-    }
-
-    /**
-     * Highlight blank cells with warning style
-     */
-    function highlightBlankCells(...args) {
-        return window.DTDataEntryGrid.highlightBlankCells(...args);
-    }
-
-    /**
-     * Clear all blank cell warning highlights
-     */
-    function clearBlankCellHighlights(...args) {
-        return window.DTDataEntryGrid.clearBlankCellHighlights(...args);
-    }
-
-    // Grid drag/drop handlers
-    function handleGridDragOver(...args) {
-        return window.DTDataEntryGrid.handleGridDragOver(...args);
-    }
-
-    function handleGridDragLeave(...args) {
-        return window.DTDataEntryGrid.handleGridDragLeave(...args);
-    }
-
-    function handleGridDrop(...args) {
-        return window.DTDataEntryGrid.handleGridDrop(...args);
-    }
-
-    /**
-     * Hide grid and show file details container
-     */
-    function hideGridShowFileDetails(...args) {
-        return window.DTDataEntryGrid.hideGridShowFileDetails(...args);
     }
 
     /**
@@ -3278,9 +3039,6 @@
         openComputerFileDialog,
 
         // GitHub Issue #129: Grid data entry
-        handleGridDrop,
-        handleGridDragOver,
-        handleGridDragLeave,
         clearFileAndShowGrid,
         initializeDataEntryGrid,
         getGridDataAsCSV,

@@ -54,12 +54,24 @@
  * true and false sorts as numbers. A value that is a number sits right.
  *
  * ── Editing: the `editable` attribute (rows the page holds) ──
- *   A click holds a cell; the arrow keys, Tab, Home, End and Page Up/Down move from it. Enter, F2,
- *   a double-click or typing edits it: Enter keeps the value and goes down, Tab across, Esc gives
- *   it up, a click elsewhere keeps it. Delete empties it. A block copied from a spreadsheet pastes
+ *   Typing mode, as a data-entry grid: every cell is drawn as a box, and a click puts the caret in
+ *   it where it was clicked. Enter keeps the value and goes down, Tab across (on to the next row at
+ *   the end of one), Up and Down a row, each already open for typing; a click elsewhere keeps it.
+ *   Esc gives it up and leaves the cell held: the arrow keys, Tab, Home, End and Page Up/Down move
+ *   the hold, typing or Enter opens it again, Delete empties it. A yes/no cell turns over on a
+ *   click, Space or Enter. A block copied from a spreadsheet pastes
  *   from the held cell (tab between cells, a line a row); Ctrl+C copies the cell. Ctrl+Z undoes,
  *   Ctrl+Y (or Ctrl+Shift+Z) does again; a paste is one step.
  *   { id, name, editable: false }        a column that is only read
+ *   { id, editor: { type: 'date' | 'time' | 'datetime-local' | 'number', value: v => 'yyyy-mm-dd' | null, step } }
+ *                                        the browser's own box for it (value: the cell's value as that box
+ *                                        takes it; null when it can't, and the box is plain text)
+ *   { id, editor: { type: 'checkbox' } }  yes/no: Enter or a double-click turns it over
+ *   orders.onCellKey = (event, held) => true   the screen sees each key first (held: { index, id, row,
+ *                                        editing?, value? }); true when it took it (Ctrl+D, Tab adding a row)
+ *   orders.held; orders.select(index, id); orders.write([{ index | row, id, value }], kind); orders.edit()
+ *   dbmn-table-undo { redo }    before Ctrl+Z / Ctrl+Y: preventDefault() and the screen undoes (its history)
+ *   dbmn-table-paste { text, index, id }   before a paste: preventDefault() and the screen reads it
  *   orders.addEventListener('dbmn-table-edit', e => …e.detail.kind ('edit' | 'paste' | 'undo' | 'redo'),
  *       e.detail.changes [{ row, id, index, value, old }], e.detail.left (pasted cells with nowhere to go)…);
  *   A listener may change a change's `value`, or refuse them all with preventDefault(); otherwise
@@ -448,7 +460,7 @@
             });
             this._body.addEventListener('click', event => {
                 if (this._nestClick(event)) return;
-                // Editable: a click holds the cell (a double-click, Enter or typing edits it)
+                // Editable: the press on the cell (mousedown) has opened it for typing already
                 if (this._editClick(event)) return;
                 const td = event.target.closest('td.cell-expandable');
                 if (!td) { this._rowEvent('dbmn-table-row', event); return; }
@@ -989,6 +1001,9 @@
                 const value = row ? row[column.id] : null;
                 const td = make('td', (column.numbers || typeof value === 'number' ? 'text-right' : '') + (column.className ? ` ${column.className}` : ''));
                 if (!row) { td.textContent = '\u00a0'; tr.append(td); return; }
+                // Editable: a cell that takes no typing is drawn plain; a yes/no one turns over on a click
+                if (this._editable() && !this._canEdit(column, row)) td.classList.add('dbmn-cell-readonly');
+                else if (this._editable() && column.editor && column.editor.type === 'checkbox') td.classList.add('dbmn-cell-box');
                 if (this._nestCount(column, value, row) > 0) {
                     td.classList.add('has-nested');
                     td.dataset.col = column.id;
@@ -1266,6 +1281,7 @@
                 tr.append(td);
                 this._body.replaceChildren(tr);
                 this._rendered = { start: -1, end: -1 };
+                this._editing = null;
                 return;
             }
             const box = this._scroll;
@@ -1626,6 +1642,12 @@
     /* ── Editing (the `editable` attribute): a cell at a time, as a spreadsheet ── */
     Object.assign(DbmnTable.prototype, {
         _editable() { return this.hasAttribute('editable') && !this._source; },
+        /** Hold a cell (and bring it into view), as a click does. */
+        select(index, id) { this._select(index, id); },
+        /** Give cells values, as typing does: told first (dbmn-table-edit), kept, drawn. */
+        write(changes, kind) { this._writeCells(changes || [], kind || 'edit'); },
+        /** Edit the held cell now, as Enter does. */
+        edit() { this._editStart(); },
         /** What a column takes: not one marked editable: false, nor a cell that holds a list of records. */
         _canEdit(column, row) {
             return !!column && column.editable !== false && !(row && this._nestCount(column, row[column.id], row) > 0);
@@ -1645,11 +1667,103 @@
             this._keys = keys;
             this._undo = [];
             this._redo = [];
-            this._body.addEventListener('dblclick', event => {
-                if (!this._editable()) return;
-                const at = this._cellAt(event.target);
-                if (at) { this._select(at.index, at.id); this._editStart(); }
-            });
+            this._body.addEventListener('mousedown', event => this._editPress(event));
+        },
+        /**
+         * Typing mode: a press on a cell opens it for typing, the caret where it was pressed (the
+         * open box keeps its focus: the press is not let take it). A yes/no cell turns over instead.
+         */
+        _editPress(event) {
+            if (!this._editable() || event.button !== 0) return;
+            if (event.target.closest('button, a, select, textarea, td.has-nested, .dbmn-cell-input')) return;
+            const at = this._cellAt(event.target);
+            if (!at) return;
+            event.preventDefault();
+            const column = this._columns.find(c => c.id === at.id);
+            if (column && column.editor && column.editor.type === 'checkbox') {
+                this._select(at.index, at.id, { hold: true });
+                this._editStart(undefined, {});
+                return;
+            }
+            this._select(at.index, at.id, { caret: this._caretAt(event) });
+        },
+        /** Where in the cell's text a press landed (the caret goes there), or 'end'. */
+        _caretAt(event) {
+            const td = event.target.closest('td');
+            let node = null, offset = 0;
+            if (document.caretPositionFromPoint) {
+                const p = document.caretPositionFromPoint(event.clientX, event.clientY);
+                if (p) { node = p.offsetNode; offset = p.offset; }
+            } else if (document.caretRangeFromPoint) {
+                const r = document.caretRangeFromPoint(event.clientX, event.clientY);
+                if (r) { node = r.startContainer; offset = r.startOffset; }
+            }
+            if (!td || !node || node.nodeType !== 3 || !td.contains(node)) return 'end';
+            const walk = document.createTreeWalker(td, NodeFilter.SHOW_TEXT);
+            let before = 0;
+            for (let n = walk.nextNode(); n && n !== node; n = walk.nextNode()) before += n.nodeValue.length;
+            return before + offset;
+        },
+        /** The place among the rows shown of a row the page holds (-1: not shown). */
+        _indexOfRow(row) {
+            return this._source ? -1 : this._view.findIndex(i => this._rows[i] === row);
+        },
+        /**
+         * The open box after the rows are drawn again (a scroll, a check that redraws the marks): it
+         * moves into its cell's new drawing with what was typed and the caret. Scrolled out of view,
+         * what was typed is kept.
+         */
+        _keepEditing() {
+            const e = this._editing;
+            if (e.td.isConnected && e.td.contains(e.input)) return;
+            const index = this._indexOfRow(e.row);
+            const col = this._columns.findIndex(c => c.id === e.id);
+            const tr = index >= 0 ? this._mainAt(index - this._rendered.start) : null;
+            const td = tr && col >= 0 ? tr.cells[col] : null;
+            if (!td) { e.finish(true, null, true); return; }
+            this._active = { index, id: e.id };
+            let sel = null;
+            try { sel = [e.input.selectionStart, e.input.selectionEnd]; } catch (error) { sel = null; }
+            this._openBox(td, e.input, e.text);
+            e.td = td;
+            e.input.focus({ preventScroll: true });
+            try { if (sel && sel[0] !== null) e.input.setSelectionRange(sel[0], sel[1]); } catch (error) { /* (a date box has no caret) */ }
+        },
+        /**
+         * The box laid over its cell: the cell keeps its text, hidden, so it is the size it was, and
+         * the box's text starts where the cell's did. Opening a cell moves nothing.
+         */
+        _openBox(td, input, text) {
+            const style = window.getComputedStyle(td);
+            const ghost = make('span', 'dbmn-cell-ghost', text || '\u00a0');
+            const edge = 2;   // (the box's border)
+            input.style.paddingLeft = `${Math.max(0, parseFloat(style.paddingLeft) - edge)}px`;
+            input.style.paddingRight = `${Math.max(0, parseFloat(style.paddingRight) - edge)}px`;
+            input.style.textAlign = style.textAlign;
+            td.classList.add('dbmn-cell-editing');
+            td.replaceChildren(ghost, input);
+        },
+        /** Ctrl+Z / Ctrl+Y: the screen's history when it has one (dbmn-table-undo), else the table's. */
+        _undoKey(redo) {
+            const asked = new CustomEvent('dbmn-table-undo', { bubbles: true, cancelable: true, detail: { redo } });
+            if (!this.dispatchEvent(asked)) return;
+            if (redo) this._redoLast(); else this._undoLast();
+        },
+        /** Tab: the next cell that takes typing, on to the next row's first at the end of one. */
+        _tab(dir) {
+            const a = this._active;
+            if (!a) return;
+            const cols = this._columns;
+            let index = a.index;
+            let c = cols.findIndex(col => col.id === a.id);
+            const length = this._length();
+            for (let guard = 0; guard < cols.length * 2 + 2; guard++) {
+                c += dir;
+                if (c >= cols.length) { if (index >= length - 1) { c = cols.length - 1; break; } index += 1; c = 0; }
+                if (c < 0) { if (index <= 0) { c = 0; break; } index -= 1; c = cols.length - 1; }
+                if (this._canEdit(cols[c], this._rowAt(index))) break;
+            }
+            this._select(index, cols[c].id);
         },
         /** Where a cell is: the row's place among the rows shown, and its column. */
         _cellAt(target) {
@@ -1659,29 +1773,38 @@
             const index = this._rendered.start + this._mainIndex(td.parentElement);
             return column && index >= 0 ? { index, id: column.id } : null;
         },
-        /** A click on a cell holds it: the keys move from there. */
+        /** A click on a cell: the press before it has opened it (_editPress); nothing more to do. */
         _editClick(event) {
             if (!this._editable()) return false;
+            if (event.target.closest('.dbmn-cell-input')) return true;
             if (event.target.closest('button, a, input, select, textarea, td.has-nested')) return false;
-            const at = this._cellAt(event.target);
-            if (!at) return false;
-            this._select(at.index, at.id);
-            return true;
+            return !!this._cellAt(event.target);
         },
-        _select(index, id) {
+        /**
+         * Hold a cell; in an editable table it opens for typing straight away (the caret at `how.caret`,
+         * a number or 'end'; arriving by a key, its text selected, so typing replaces it). `how.hold`:
+         * held only. A cell that takes no typing (editable: false, a yes/no, a list of records) is held.
+         */
+        _select(index, id, how) {
             const length = this._length();
             if (!length || !this._columns.length) return;
             index = Math.max(0, Math.min(length - 1, index));
             if (!this._columns.some(c => c.id === id)) id = this._columns[0].id;
+            if (this._editing) {
+                if (this._editing.id === id && this._indexOfRow(this._editing.row) === index) return;
+                this._editing.finish(true, null, true);
+            }
             this._active = { index, id };
             this._editInit();
             this._intoView();
             this._markActive();
             this._keys.focus({ preventScroll: true });
+            if (this._editable() && !(how && how.hold)) this._editStart(undefined, Object.assign({ auto: true }, how));
         },
         /** The held cell drawn as held (it moves with the drawing as the rows scroll). */
         _markActive() {
             if (!this._built) return;
+            if (this._editing) this._keepEditing();
             this._body.querySelectorAll('td.dbmn-cell-active').forEach(td => td.classList.remove('dbmn-cell-active'));
             const a = this._active;
             if (!a || this._editing) return;
@@ -1714,15 +1837,22 @@
         _editKey(event) {
             const a = this._active;
             if (!a) return;
+            // The screen first (its own keys: Ctrl+D, a Tab that adds a row): true means it took the key
+            if (typeof this.onCellKey === 'function' && this.onCellKey(event, this.held) === true) { event.preventDefault(); return; }
             const mod = event.ctrlKey || event.metaKey;
             const page = Math.max(1, Math.floor(this._scroll.clientHeight / this._rowH) - 1);
             const k = event.key;
-            if (mod && (k === 'z' || k === 'Z')) { event.preventDefault(); (event.shiftKey ? this._redoLast() : this._undoLast()); return; }
-            if (mod && (k === 'y' || k === 'Y')) { event.preventDefault(); this._redoLast(); return; }
+            const undo = mod && (k === 'z' || k === 'Z') && !event.shiftKey;
+            const redo = mod && ((k === 'y' || k === 'Y') || ((k === 'z' || k === 'Z') && event.shiftKey));
+            if (undo || redo) {
+                event.preventDefault();
+                this._undoKey(redo);
+                return;
+            }
             if (mod) return;   // (copy and paste come as their own events)
             const moves = { ArrowDown: [1, 0], ArrowUp: [-1, 0], ArrowRight: [0, 1], ArrowLeft: [0, -1], PageDown: [page, 0], PageUp: [-page, 0] };
             if (moves[k]) { event.preventDefault(); this._move(...moves[k]); return; }
-            if (k === 'Tab') { event.preventDefault(); this._move(0, event.shiftKey ? -1 : 1); return; }
+            if (k === 'Tab') { event.preventDefault(); this._tab(event.shiftKey ? -1 : 1); return; }
             if (k === 'Home') { event.preventDefault(); this._select(a.index, this._columns[0].id); return; }
             if (k === 'End') { event.preventDefault(); this._select(a.index, this._columns[this._columns.length - 1].id); return; }
             if (k === 'Enter' || k === 'F2') { event.preventDefault(); this._editStart(); return; }
@@ -1731,8 +1861,12 @@
             // A key that types: the cell is edited, starting from it
             if (k.length === 1 && !event.altKey) { event.preventDefault(); this._editStart(k); }
         },
-        /** The held cell becomes a box to type in: Enter keeps it and goes down, Tab across, Esc gives it up. */
-        _editStart(typed) {
+        /**
+         * The held cell becomes a box to type in: Enter keeps it and goes down, Tab across, Up and
+         * Down a row, Esc gives it up (the cell stays held). `how`: { auto } it opened by being held
+         * (a yes/no is not turned over by that), { caret } where the caret goes.
+         */
+        _editStart(typed, how) {
             const a = this._active;
             if (!a || this._editing) return;
             const row = this._rowAt(a.index);
@@ -1742,35 +1876,97 @@
             const td = tr && tr.cells[this._columns.indexOf(column)];
             if (!td) return;
             const old = row[column.id];
+            const editor = column.editor || {};
+            // A yes/no cell: Enter or a double-click turns it over, no box
+            if (editor.type === 'checkbox') {
+                if (how && how.auto) return;
+                const on = /^(true|yes|y|1)$/i.test(textOf(old).trim());
+                this._writeCells([{ index: a.index, id: column.id, value: on ? 'false' : 'true' }], 'edit');
+                return;
+            }
             const input = make('input', 'dbmn-cell-input');
             input.type = 'text';
             input.value = typed !== undefined ? typed : textOf(old);
+            // A date, a time, a number: the box the browser has for it, when the value reads as one
+            if (editor.type && typed === undefined) {
+                const shown = typeof editor.value === 'function' ? editor.value(old) : textOf(old);
+                if (shown !== null && shown !== undefined) {
+                    try { input.type = editor.type; } catch (error) { input.type = 'text'; }
+                    if (editor.type !== 'number') input.value = shown;
+                    if (editor.step) input.step = String(editor.step);
+                }
+            }
+            if (editor.type === 'number') input.inputMode = 'decimal';
             input.setAttribute('aria-label', `${column.name || column.id}, row ${a.index + 1}`);
-            td.classList.add('dbmn-cell-editing');
-            td.replaceChildren(input);
-            this._editing = { input, td };
+            this._openBox(td, input, textOf(old));
             input.focus();
-            if (typed === undefined) input.select();
-            else input.setSelectionRange(input.value.length, input.value.length);
+            const end = input.value.length;
+            try {
+                if (typed !== undefined) input.setSelectionRange(end, end);
+                else if (how && how.caret !== undefined) {
+                    const at = how.caret === 'end' ? end : Math.max(0, Math.min(end, how.caret));
+                    input.setSelectionRange(at, at);
+                } else input.select();
+            } catch (error) { /* (a date box has no caret) */ }
+            const start = input.value;
             let done = false;
-            const finish = (keep, then) => {
+            // `quiet`: the screen has moved things itself (a key it took): no focus taken back
+            const finish = (keep, then, quiet) => {
                 if (done) return;
                 done = true;
                 this._editing = null;
-                if (keep && input.value !== textOf(old)) this._writeCells([{ index: a.index, id: column.id, value: input.value }], 'edit');
+                const index = this._indexOfRow(row);
+                if (keep && input.value !== textOf(old) && index >= 0) this._writeCells([{ index, row, id: column.id, value: input.value }], 'edit');
                 else this._render(true);
                 if (then) then();
                 this._markActive();
-                this._keys.focus({ preventScroll: true });
+                if (!quiet && !this._editing) this._keys.focus({ preventScroll: true });
             };
+            this._editing = { input, td, row, id: column.id, finish, text: textOf(old) };
+            const text = input.type === 'text';
             input.addEventListener('keydown', event => {
-                if (event.key === 'Enter') { event.preventDefault(); finish(true, () => this._move(event.shiftKey ? -1 : 1, 0)); }
-                else if (event.key === 'Tab') { event.preventDefault(); finish(true, () => this._move(0, event.shiftKey ? -1 : 1)); }
-                else if (event.key === 'Escape') { event.preventDefault(); finish(false); }
+                // The screen's keys while typing too (Tab at the end of a row adds one)
+                if (typeof this.onCellKey === 'function' && this.onCellKey(event, Object.assign({ editing: true, value: input.value }, this.held)) === true) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    finish(true, null, true);
+                    return;
+                }
+                const k = event.key;
+                const mod = event.ctrlKey || event.metaKey;
+                // Ctrl+Z with nothing typed here: the table's (or the screen's) last change, and the box opens again
+                if (mod && !event.altKey && /^[zZyY]$/.test(k) && input.value === start) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    finish(false);   // (held while it is undone: the keys stay in the table)
+                    this._undoKey(k === 'y' || k === 'Y' || event.shiftKey);
+                    const back = this._active;
+                    if (back) this._select(back.index, back.id);
+                    return;
+                }
+                const page = Math.max(1, Math.floor(this._scroll.clientHeight / this._rowH) - 1);
+                const rows = { Enter: event.shiftKey ? -1 : 1, PageDown: page, PageUp: -page };
+                if (text && !event.altKey && !mod) { rows.ArrowDown = 1; rows.ArrowUp = -1; }
+                if (rows[k] !== undefined) { event.preventDefault(); finish(true, () => this._move(rows[k], 0)); }
+                else if (k === 'Tab') { event.preventDefault(); finish(true, () => this._tab(event.shiftKey ? -1 : 1)); }
+                else if (k === 'Escape') { event.preventDefault(); finish(false); }
                 event.stopPropagation();
             });
-            // A click elsewhere keeps what was typed
-            input.addEventListener('blur', () => finish(true));
+            // A block from a spreadsheet pasted into the box: pasted across and down, as on a held cell
+            input.addEventListener('paste', event => {
+                const pasted = event.clipboardData ? event.clipboardData.getData('text/plain') : '';
+                if (!/[\t\n]/.test(pasted.replace(/[\r\n]+$/, ''))) return;
+                event.preventDefault();
+                finish(false);
+                this._pasteBlock(pasted);
+                const back = this._active;
+                if (back) this._select(back.index, back.id);
+            });
+            // A click elsewhere keeps what was typed. Not the box being moved as the rows are drawn
+            // again: the browser blurs it on the way, and _keepEditing has it back in focus by now
+            input.addEventListener('blur', () => queueMicrotask(() => {
+                if (!done && input.isConnected && document.activeElement !== input) finish(true);
+            }));
         },
         /** Many cells pasted from a spreadsheet: tab between cells, a line a row, from the held cell. */
         _editPaste(event) {
@@ -1779,6 +1975,14 @@
             const text = event.clipboardData ? event.clipboardData.getData('text/plain') : '';
             if (!text) return;
             event.preventDefault();
+            this._pasteBlock(text);
+        },
+        _pasteBlock(text) {
+            const a = this._active;
+            if (!a) return;
+            // A screen that reads pasted data its own way (commas, pipes, rows to add) takes it here
+            const asked = new CustomEvent('dbmn-table-paste', { bubbles: true, cancelable: true, detail: { text, index: a.index, id: a.id } });
+            if (!this.dispatchEvent(asked)) return;
             const lines = text.replace(/\r\n?/g, '\n').split('\n');
             if (lines.length > 1 && lines[lines.length - 1] === '') lines.pop();
             const at = this._columns.findIndex(c => c.id === a.id);
@@ -1836,6 +2040,15 @@
             if (!last) return;
             this._undo.push(last);
             this._writeCells(last.map(ch => ({ row: ch.row, index: ch.index, id: ch.id, value: ch.value })), 'redo');
+        }
+    });
+
+    /** The held cell: { index (among the rows shown), id, row }, or null. */
+    Object.defineProperty(DbmnTable.prototype, 'held', {
+        get() {
+            const a = this._active;
+            if (!a) return null;
+            return { index: a.index, id: a.id, row: this._rowAt(a.index) };
         }
     });
 

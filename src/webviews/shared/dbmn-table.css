@@ -108,16 +108,30 @@ dbmn-table [hidden] { display: none !important; }
 .dbmn-table-keys { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; left: -9999px; }
 .dbmn-table-grid td.dbmn-cell-active { outline: 2px solid var(--dbmn-focusBorder); outline-offset: -2px; }
 dbmn-table:not(.is-editing-grid) .dbmn-table-grid td.dbmn-cell-active { outline-color: color-mix(in srgb, var(--dbmn-focusBorder) 45%, transparent); }
-dbmn-table[editable] .dbmn-table-body td { cursor: cell; }
-.dbmn-table-grid td.dbmn-cell-editing { padding: 0; overflow: visible; }
+/* Typing mode: every cell a box to type in, as a data-entry grid (one click puts the caret in);
+   a cell that takes no typing is drawn plain, a yes/no one turns over on a click */
+dbmn-table[editable] .dbmn-table-body td {
+    cursor: text;
+    background: var(--dbmn-input-background);
+    border: 1px solid var(--dbmn-input-border, var(--dbmn-panel-border, rgba(128, 128, 128, 0.35)));
+}
+dbmn-table[editable] .dbmn-table-body td.dbmn-cell-readonly,
+dbmn-table[editable] .dbmn-table-body td.has-nested { cursor: default; background: transparent; }
+dbmn-table[editable] .dbmn-table-body td.dbmn-cell-box { cursor: pointer; }
+/* The open box lies over its cell (the cell keeps its hidden text for its size): opening moves nothing */
+.dbmn-table-grid td.dbmn-cell-editing { position: relative; }
+.dbmn-cell-ghost { visibility: hidden; }
 .dbmn-cell-input {
+    position: absolute;
+    inset: 0;
     width: 100%;
     height: 100%;
-    min-height: 22px;
+    margin: 0;
     box-sizing: border-box;
     padding: 0 6px;
     border: 2px solid var(--dbmn-focusBorder);
-    background: var(--dbmn-input-background);
+    /* (the cell's own colour shows through: a cell to fix stays amber while it is typed in) */
+    background: transparent;
     color: var(--dbmn-input-foreground);
     font: inherit;
 }
