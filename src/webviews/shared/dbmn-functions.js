@@ -16,13 +16,19 @@
  *       functions: [                          // what can be ticked (the screen's list, from its core service)
  *           { id: 'trim', label: 'Trim spaces', sql: ['TRIM(', 'x', ')'] },
  *           { id: 'first', label: 'First characters', sql: ['SUBSTR(', 'x', ', 1, ', { key: 'n', label: 'How many characters', number: true }, ')'] },
- *           { id: 'translate', label: 'Translate values', sql: ['TRANSLATE(', 'x', ', ', { key: 'table', label: 'Lookup table', kind: 'lookup', options: [{ id, name, count }] }, ')'] }
+ *           { id: 'translate', label: 'Translate values', sql: ['TRANSLATE(', 'x', ', ', { key: 'table', label: 'Lookup table', kind: 'lookup',
+ *               options: [{ id, name, count, columns: [{ id, name }] }] }, ')'] }
+ *               // a lookup piece: the table, then From (the column the value is in) and To (what it
+ *               // becomes), from that table's columns: params { table, from, to }, all ids
  *       ],
  *       defaults: { n: 4 },                   // a value's starting value, by key
  *       applied: [{ id: 'trim', params: {} }],// what is ticked now, in order
  *       asLabel: 'Compares as',               // the heading over the values the functions make
  *       baseLabel: 'BL',                      // a column to compare against: its heading (leave out for none)
  *       sample: async applied => ({ rows: [{ before, after, base }], agree: 0.93, error }),
+ *                                             // or, for a lookup, the whole table to show in their place:
+ *                                             // { table: { columns: [{ id, name }], rows: [{ [id]: value }] }, value }
+ *                                             // (the row whose From is `value`, this record's, is lit)
  *                                             // asked each time the ticks or values change; an answer
  *                                             // to an older ask is dropped; null: nothing to show
  *       onOpenLookup: id => …                 // "Open" beside a lookup table: the dialog closes first
@@ -60,7 +66,10 @@
                 if (piece.kind === 'lookup') {
                     const option = (piece.options || []).find(o => o.id === value);
                     // (a table that has gone is said to be missing: nothing is looked up in its place)
-                    return option ? option.name : value ? 'missing table' : '…';
+                    if (!option) return value ? 'missing table' : '…';
+                    const named = id => { const c = (option.columns || []).find(col => col.id === id); return c ? c.name : ''; };
+                    const from = named(a.params ? a.params.from : ''), to = named(a.params ? a.params.to : '');
+                    return from && to ? `${option.name}: ${from} → ${to}` : option.name;
                 }
                 return value === undefined ? '' : String(value);
             }).join('');
@@ -140,9 +149,38 @@
                     pick.addEventListener('change', () => { pick.classList.toggle('is-missing', !!pick.selectedOptions[0] && pick.selectedOptions[0].classList.contains('dbmn-fx-missing')); });
                     pick.dataset.fnValue = piece.key;
                     pick.addEventListener('click', e => e.preventDefault());
-                    pick.addEventListener('change', () => { if (box.checked) ask(); else tick(true); });
                     inputs[piece.key] = pick;
                     code.append(pick);
+                    // From (the column this value is in) and To (what it becomes): the picked table's columns
+                    const saved = had && had.params ? had.params : {};
+                    const side = (key, label) => {
+                        const select = el('select', 'dbmn-modal-input dbmn-fx-lookup-col');
+                        select.setAttribute('aria-label', label);
+                        select.dataset.fnValue = key;
+                        select.addEventListener('click', e => e.preventDefault());
+                        select.addEventListener('change', () => { if (box.checked) ask(); else tick(true); });
+                        inputs[key] = select;
+                        return select;
+                    };
+                    const fromPick = side('from', 'From: the column the value is in');
+                    const toPick = side('to', 'To: what it becomes');
+                    const fill = keep => {
+                        const table = (piece.options || []).find(t => t.id === pick.value);
+                        const cols = table && Array.isArray(table.columns) ? table.columns : [];
+                        [[fromPick, 0], [toPick, 1]].forEach(([select, at]) => {
+                            const was = keep ? select.value : '';
+                            select.replaceChildren(...cols.map(c => { const option = el('option', '', c.name); option.value = c.id; return option; }));
+                            select.disabled = cols.length === 0;
+                            // (kept when the new table has that column; else the first, and the second for To)
+                            const value = cols.some(c => c.id === was) ? was : cols[Math.min(at, cols.length - 1)] ? cols[Math.min(at, cols.length - 1)].id : '';
+                            select.value = value;
+                        });
+                    };
+                    fill(false);
+                    if (saved.from && Array.from(fromPick.options).some(x => x.value === saved.from)) fromPick.value = saved.from;
+                    if (saved.to && Array.from(toPick.options).some(x => x.value === saved.to)) toPick.value = saved.to;
+                    pick.addEventListener('change', () => { fill(true); if (box.checked) ask(); else tick(true); });
+                    code.append(el('span', 'dbmn-fx-word', ' from '), fromPick, el('span', 'dbmn-fx-word', ' to '), toPick);
                     if (typeof o.onOpenLookup === 'function') {
                         const go = el('button', 'dbmn-fx-open', 'Open');
                         go.type = 'button';
@@ -201,6 +239,7 @@
                     const input = line.inputs[piece.key];
                     if (!input) return;
                     params[piece.key] = piece.number ? Math.max(1, parseInt(input.value, 10) || 1) : input.value;
+                    if (piece.kind === 'lookup') ['from', 'to'].forEach(k => { if (line.inputs[k]) params[k] = line.inputs[k].value; });
                 });
                 return { id, params };
             });
@@ -225,6 +264,9 @@
         }
         /** The values as they are and as the functions leave them (and the column compared with, beside them). */
         function draw(got) {
+            if (got.table && Array.isArray(got.table.columns)) { drawLookup(got); return; }
+            sampleBox.hidden = false;
+            lutBox.hidden = true;
             const list = Array.isArray(got.rows) ? got.rows : [];
             rows.replaceChildren(...list.map(r => {
                 const tr = el('tr');
@@ -245,12 +287,57 @@
             note.textContent = got.error || (list.length ? '' : 'No values to show yet.');
         }
 
+        /**
+         * A lookup: the whole table, scrolling, From and To marked (the other columns quieter), and
+         * the row this record's value is in lit and in view.
+         */
+        const lutBox = el('div', 'table-container dbmn-fx-lut-box');
+        lutBox.hidden = true;
+        function drawLookup(got) {
+            sampleBox.hidden = true;
+            lutBox.hidden = false;
+            const applied = picked();
+            const lookup = applied.map(a => a.params).find(p => p && p.table !== undefined) || {};
+            const columns = got.table.columns;
+            const rowsOf = Array.isArray(got.table.rows) ? got.table.rows : [];
+            const value = got.value === undefined || got.value === null ? null : show(got.value).trim();
+            const lut = el('table', 'data-table dbmn-fx-lut');
+            const head = el('tr');
+            columns.forEach(c => {
+                const th = el('th', c.id === lookup.from ? 'is-from' : c.id === lookup.to ? 'is-to' : '', c.name);
+                if (c.id === lookup.from) th.append(el('small', '', ' from'));
+                if (c.id === lookup.to) th.append(el('small', '', ' to'));
+                head.append(th);
+            });
+            const thead = el('thead');
+            thead.append(head);
+            const tbody = el('tbody');
+            let lit = null;
+            rowsOf.forEach(r => {
+                const tr = el('tr');
+                const used = value !== null && show(r[lookup.from]).trim() === value;
+                if (used) { tr.className = 'is-used'; if (!lit) lit = tr; }
+                columns.forEach(c => {
+                    const td = el('td', 'font-mono' + (c.id === lookup.from ? ' is-from' : c.id === lookup.to ? ' is-to' : ''), show(r[c.id]));
+                    td.title = td.textContent;
+                    tr.append(td);
+                });
+                tbody.append(tr);
+            });
+            lut.append(thead, tbody);
+            lutBox.replaceChildren(lut);
+            if (lit && lit.scrollIntoView) lit.scrollIntoView({ block: 'nearest' });
+            agree.textContent = '';
+            note.textContent = got.error || (rowsOf.length === 0 ? 'The table has no rows yet.'
+                : value === null ? '' : lit ? '' : `${value} isn't in ${(columns.find(c => c.id === lookup.from) || {}).name || 'From'}.`);
+        }
+
         const side = el('div', 'dbmn-fx-side');
         const top = el('p', 'form-hint dbmn-fx-top');
         top.append(el('span', '', 'Tick any. They apply in the order you tick them.'), clear);
         side.append(top, group);
         const result = el('div', 'dbmn-fx-side');
-        result.append(el('p', 'form-hint', o.asLabel ? `The column ${o.asLabel.charAt(0).toLowerCase()}${o.asLabel.slice(1)}` : 'It becomes'), made, sampleBox, agree, note);
+        result.append(el('p', 'form-hint', o.asLabel ? `The column ${o.asLabel.charAt(0).toLowerCase()}${o.asLabel.slice(1)}` : 'It becomes'), made, sampleBox, lutBox, agree, note);
         body.append(side, result);
         ask();
 

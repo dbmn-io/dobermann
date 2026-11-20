@@ -82,3 +82,15 @@
 .dbmn-fx-open:hover { text-decoration: underline; }
 .dbmn-fx-clear:disabled { visibility: hidden; }
 @media (max-width: 700px) { .dbmn-fx-form { grid-template-columns: minmax(0, 1fr); } }
+/* Translate values: From and To after the table */
+.dbmn-fx-code select.dbmn-fx-lookup-col { max-width: 9em; }
+.dbmn-fx-word { color: var(--dbmn-descriptionForeground); }
+/* The whole lookup table: From and To marked, the other columns quieter, this record's row lit */
+.dbmn-fx-lut-box { margin: 0; max-height: 260px; overflow: auto; }
+.dbmn-fx-lut { width: 100%; }
+.dbmn-fx-lut th,
+.dbmn-fx-lut td { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 16em; }
+.dbmn-fx-lut th { position: sticky; top: 0; background: var(--dbmn-editor-background); }
+.dbmn-fx-lut th small { color: var(--dbmn-textLink-foreground); font-weight: 600; }
+.dbmn-fx-lut td:not(.is-from):not(.is-to) { color: var(--dbmn-descriptionForeground); }
+.dbmn-fx-lut tr.is-used td { background: color-mix(in srgb, var(--dbmn-editorWarning-foreground, #cca700) 18%, transparent); color: var(--dbmn-foreground); }

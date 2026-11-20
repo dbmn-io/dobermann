@@ -494,12 +494,16 @@
                 { id: 'ltrimZeros', label: 'Drop leading zeros', sql: ['LTRIM(', 'x', ", '0')"] },
                 { id: 'first', label: 'First characters', sql: ['SUBSTR(', 'x', ', 1, ', { key: 'n', number: true, label: 'How many characters' }, ')'] },
                 { id: 'replace', label: 'Replace text', sql: ['REPLACE(', 'x', ", '", { key: 'from', label: 'Text to replace' }, "', '", { key: 'to', label: 'Replace it with' }, "')"] },
-                { id: 'translate', label: 'Translate values', sql: ['TRANSLATE(', 'x', ', ', { key: 'table', label: 'Lookup table', kind: 'lookup', options: [{ id: 'uom', name: 'Units of measure', count: 12 }, { id: 'sites', name: 'Site codes', count: 40 }] }, ')'] }
+                { id: 'translate', label: 'Translate values', sql: ['TRANSLATE(', 'x', ', ', { key: 'table', label: 'Lookup table', kind: 'lookup', options: LOOKUP_OPTIONS }, ')'] }
             ],
             defaults: { n: 4, from: '-', to: '' },
             asLabel: 'Compares as',
             baseLabel: 'BL',
             sample: applied => new Promise(done => setTimeout(() => {
+                // Translate values ticked: the whole table, the row with this record's value lit
+                const lookup = applied.find(x => x.id === 'translate');
+                const table = lookup && LOOKUP_ROWS[lookup.params.table];
+                if (table) { done({ table: { columns: LOOKUP_OPTIONS.find(t => t.id === lookup.params.table).columns, rows: table }, value: lookup.params.table === 'uom' ? 'CS' : 'MEL' }); return; }
                 const after = before.map(v => applied.reduce((value, a) => (fns[a.id] ? fns[a.id](value, a.params) : value), v));
                 done({ rows: before.map((v, i) => ({ before: v, after: after[i], base: base[i] })), agree: after.filter((v, i) => v === base[i]).length / base.length });
             }, 120)),
@@ -507,6 +511,16 @@
         });
         $('dsFunctionsSaid').textContent = applied ? `Applied: ${applied.map(a => a.id).join(', ') || 'none'}` : 'Cancelled';
     }
+
+    /* Made-up lookup tables for the Functions demo: several columns, a value looked up in one, becoming another's */
+    const LOOKUP_OPTIONS = [
+        { id: 'uom', name: 'Units of measure', count: 4, columns: [{ id: 'erp', name: 'ERP unit' }, { id: 'wms', name: 'WMS unit' }, { id: 'fin', name: 'Finance unit' }] },
+        { id: 'sites', name: 'Site codes', count: 3, columns: [{ id: 'code', name: 'code' }, { id: 'site', name: 'site' }] }
+    ];
+    const LOOKUP_ROWS = {
+        uom: [{ erp: 'EA', wms: 'EACH', fin: 'UNIT' }, { erp: 'CS', wms: 'CASE', fin: 'BOX12' }, { erp: 'PL', wms: 'PALLET', fin: 'PLT' }, { erp: 'KG', wms: 'KILO', fin: 'KG' }],
+        sites: [{ code: 'SYD', site: 'Sydney DC' }, { code: 'MEL', site: 'Melbourne DC' }, { code: 'BNE', site: 'Brisbane DC' }]
+    };
 
     /* ── Which rows a join keeps: the five pictures, and the menu Query's Join opens from its button ── */
     const JOIN_KINDS = [

@@ -107,7 +107,7 @@ test('a lookup table is picked from the saved ones, and Open closes the dialog a
     await p.setContent(page());
     await p.evaluate(() => { window.opened = []; window.openIt({ onOpenLookup: id => window.opened.push(id) }); });
     const translate = line(p, 'Translate values');
-    await translate.locator('select').selectOption('uom');
+    await translate.locator('select.dbmn-fx-lookup').selectOption('uom');
     await expect(translate.locator('input[type="checkbox"]')).toBeChecked();
     await expect(p.locator('.dbmn-fx-sql')).toHaveText('TRANSLATE(C1.sku, Units of measure)');
     await translate.locator('.dbmn-fx-open').click();
@@ -118,11 +118,55 @@ test('a lookup table is picked from the saved ones, and Open closes the dialog a
 test('a lookup table that has been deleted shows as missing, never quietly another', async ({ page: p }) => {
     await p.setContent(page());
     await p.evaluate(() => window.openIt({ applied: [{ id: 'translate', params: { table: 'gone' } }] }));
-    const pick = line(p, 'Translate values').locator('select');
+    const pick = line(p, 'Translate values').locator('select.dbmn-fx-lookup');
     await expect(pick).toHaveValue('gone');
     await expect(pick).toHaveClass(/is-missing/);
     await expect(pick.locator('option:checked')).toHaveText('Missing table (deleted)');
     await expect(p.locator('.dbmn-fx-sql')).toHaveText('TRANSLATE(C1.sku, missing table)');
     await pick.selectOption('uom');
     await expect(pick).not.toHaveClass(/is-missing/);
+});
+
+test('Translate values: From and To from the table\'s columns; the whole table shown, From and To marked, this record\'s row lit', async ({ page: p }) => {
+    await p.setContent(page());
+    await p.evaluate(() => {
+        const units = { id: 'units', name: 'Units', count: 3, columns: [{ id: 'erp', name: 'ERP unit' }, { id: 'wms', name: 'WMS unit' }, { id: 'fin', name: 'Finance unit' }] };
+        const rows = [{ erp: 'EA', wms: 'EACH', fin: 'UNIT' }, { erp: 'CS', wms: 'CASE', fin: 'BOX12' }, { erp: 'PL', wms: 'PALLET', fin: 'PLT' }];
+        FUNCTIONS[4] = { id: 'translate', label: 'Translate values', sql: ['TRANSLATE(', 'x', ', ', { key: 'table', label: 'Lookup table', kind: 'lookup', options: [units, { id: 'other', name: 'Other', count: 0, columns: [{ id: 'a', name: 'A' }] }] }, ')'] };
+        window.openIt({ baseLabel: undefined, sample: applied => (applied.some(a => a.id === 'translate') ? { table: { columns: units.columns, rows }, value: 'CS' } : window.sampleOf(applied)) });
+    });
+    const translate = line(p, 'Translate values');
+    await translate.locator('select.dbmn-fx-lookup').selectOption('units');
+    // From the first column, to the second, by default
+    await expect(translate.locator('select.dbmn-fx-lookup-col')).toHaveCount(2);
+    await expect(translate.locator('select.dbmn-fx-lookup-col').first()).toHaveValue('erp');
+    await expect(translate.locator('select.dbmn-fx-lookup-col').last()).toHaveValue('wms');
+    await expect(p.locator('.dbmn-fx-sql')).toHaveText('TRANSLATE(C1.sku, Units: ERP unit → WMS unit)');
+    // The whole table, From and To marked, the row with this record's value (CS) lit
+    await expect(p.locator('.dbmn-fx-lut tbody tr')).toHaveCount(3);
+    await expect(p.locator('.dbmn-fx-lut th.is-from')).toHaveText('ERP unit from');
+    await expect(p.locator('.dbmn-fx-lut th.is-to')).toHaveText('WMS unit to');
+    await expect(p.locator('.dbmn-fx-lut tr.is-used td')).toHaveText(['CS', 'CASE', 'BOX12']);
+    await expect(p.locator('.dbmn-fx-sample-box')).toBeHidden();
+    // Another To: what it becomes changes; Apply gives the table and both columns, by id
+    await translate.locator('select.dbmn-fx-lookup-col').last().selectOption('fin');
+    await expect(p.locator('.dbmn-fx-sql')).toHaveText('TRANSLATE(C1.sku, Units: ERP unit → Finance unit)');
+    await expect(p.locator('.dbmn-fx-lut th.is-to')).toHaveText('Finance unit to');
+    await p.locator('[data-action-id="ok"]').click();
+    await expect.poll(() => p.evaluate(() => window.result)).toEqual([{ id: 'translate', params: { table: 'units', from: 'erp', to: 'fin' } }]);
+});
+
+test('Translate values applied before comes back with its From and To; another table keeps a column it also has', async ({ page: p }) => {
+    await p.setContent(page());
+    await p.evaluate(() => {
+        const cols = (...names) => names.map(n => ({ id: n, name: n.toUpperCase() }));
+        FUNCTIONS[4] = { id: 'translate', label: 'Translate values', sql: ['TRANSLATE(', 'x', ', ', { key: 'table', label: 'Lookup table', kind: 'lookup', options: [{ id: 'a', name: 'A', columns: cols('x', 'y', 'z') }, { id: 'b', name: 'B', columns: cols('q', 'z') }] }, ')'] };
+        window.openIt({ applied: [{ id: 'translate', params: { table: 'a', from: 'z', to: 'x' } }] });
+    });
+    const cols = line(p, 'Translate values').locator('select.dbmn-fx-lookup-col');
+    await expect(cols.first()).toHaveValue('z');
+    await expect(cols.last()).toHaveValue('x');
+    await line(p, 'Translate values').locator('select.dbmn-fx-lookup').selectOption('b');
+    await expect(cols.first()).toHaveValue('z');   // B has z too: kept
+    await expect(cols.last()).toHaveValue('z');    // B has no x: its second column
 });
