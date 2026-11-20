@@ -123,11 +123,8 @@ describe('parseSearchExpression', () => {
         expect(result[1].pattern).to.equal('other');
     });
 
-    it('handles a lone dash as a plain term (not negation)', () => {
-        const result = parseSearchExpression('-');
-        expect(result).to.have.length(1);
-        expect(result[0].pattern).to.equal('-');
-        expect(result[0].negated).to.equal(false);
+    it('a lone dash is a word still being typed: nothing to find yet (as in the Hub)', () => {
+        expect(parseSearchExpression('-')).to.have.length(0);
     });
 
     it('parses negated wildcard', () => {
@@ -251,12 +248,10 @@ describe('parseSearchExpression', () => {
         expect(result[1].negated).to.equal(true);
     });
 
-    it('treats trailing - with only whitespace after as literal', () => {
+    it('a trailing - with nothing after it is a word still being typed', () => {
         const result = parseSearchExpression('foo - ');
-        expect(result).to.have.length(2);
+        expect(result).to.have.length(1);
         expect(result[0].pattern).to.equal('foo');
-        expect(result[1].pattern).to.equal('-');
-        expect(result[1].negated).to.equal(false);
     });
 });
 
@@ -288,12 +283,13 @@ describe('matchesValue', () => {
         expect(matchesValue(term, 'abbc')).to.equal(false);
     });
 
-    it('exact match requires full cell value', () => {
+    it('quotes are a phrase: the words together, in that order, anywhere in the value (2026-11-21: one search)', () => {
         const term = parseSearchExpression('"New York"')[0];
         expect(matchesValue(term, 'New York')).to.equal(true);
         expect(matchesValue(term, 'new york')).to.equal(true);
-        expect(matchesValue(term, 'New York City')).to.equal(false);
-        expect(matchesValue(term, 'I love New York')).to.equal(false);
+        expect(matchesValue(term, 'New York City')).to.equal(true);
+        expect(matchesValue(term, 'I love New York')).to.equal(true);
+        expect(matchesValue(term, 'York New')).to.equal(false);
     });
 
     it('wildcard is anchored (full value match)', () => {
@@ -1005,7 +1001,7 @@ describe('Search: suggestions that know what a column is', () => {
     it('the search in words says how it is being read', () => {
         const date = (ms: number) => new Date(ms).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
         expect(describeSearch('@poDate>7d', headings, types, NOW)).to.equal(`Reading this as: poDate (date) after ${date(NOW - 7 * 86400000)}`);
-        expect(describeSearch('@urgent=true kettle', headings, types, NOW)).to.equal('Reading this as: urgent (yes/no) is yes and any column holds kettle');
+        expect(describeSearch('@urgent=true kettle', headings, types, NOW)).to.equal('Reading this as: urgent (yes/no) is yes and the row holds kettle');
         expect(describeSearch('@qty=10..90', headings, types, NOW)).to.equal('Reading this as: qty (number) is from 10 to 90');
         expect(describeSearch('@poDate=30d..7d', headings, types, NOW)).to.equal(`Reading this as: poDate (date) is from ${date(NOW - 30 * 86400000)} to ${date(NOW - 7 * 86400000)}`);
         expect(describeSearch('@poDate>soon', headings, types, NOW)).to.equal('Reading this as: poDate (date) after soon (not a date)');
@@ -1040,5 +1036,49 @@ describe('Search: a column the table does not have shows as unknown', () => {
 
     it('with no column names given, every name is col-name as before', () => {
         expect(tokenizeForDisplay('@nothere=1')[0].kind).to.equal('col-name');
+    });
+});
+
+
+// =============================================================
+// One search for the Hub and every table (James, 2026-11-21)
+// =============================================================
+
+describe('one search: plain words', () => {
+    const cols = [{ id: 'request' }, { id: 'endpoint' }];
+    const get = (row: Record<string, string>, id: string) => row[id];
+    const row = { request: 'GET /inventory', endpoint: 'Playground — List Inventory' };
+    const finds = (q: string, r: Record<string, string> = row) => matchesRow(parseSearchExpression(q), r, cols, get);
+
+    it('a space is AND: each word anywhere in the row, in any order', () => {
+        expect(finds('get inventory')).to.equal(true);
+        expect(finds('inventory get')).to.equal(true);
+        expect(finds('get playground')).to.equal(true);   // (in two different columns)
+        expect(finds('get orders')).to.equal(false);
+    });
+    it('-word leaves a row out; comma is OR; ` + ` still reads as AND', () => {
+        expect(finds('get -playground')).to.equal(false);
+        expect(finds('post, inventory')).to.equal(true);
+        expect(finds('get + inventory')).to.equal(true);
+    });
+    it('`-` `_` `.` `/` read as spaces: bulk up finds bulk-upload; an id with hyphens or underscores is still one word', () => {
+        expect(finds('bulk up', { request: 'POST /bulk-upload', endpoint: '' })).to.equal(true);
+        expect(finds('ACAU-ASR3690', { request: 'x ACAU-ASR3690', endpoint: '' })).to.equal(true);
+        expect(finds('batch_1732', { request: 'batch_1732_7', endpoint: '' })).to.equal(true);
+        expect(finds('batch_1732', { request: 'batch 99 1732', endpoint: '' })).to.equal(false);
+    });
+    it('a quoted phrase stays one, in order', () => {
+        expect(finds('"list inventory"')).to.equal(true);
+        expect(finds('"inventory list"')).to.equal(false);
+    });
+    it('column terms keep their whole values (hyphens, quotes), with words beside them', () => {
+        const logs = [{ id: 'source' }, { id: 'run' }, { id: 'level' }, { id: 'text' }];
+        const line = { source: 'sign-in', run: '7c1e40aa-5d1f-4c55', level: 'warn', text: 'token sent' };
+        const at = (r: Record<string, string>, id: string) => r[id];
+        expect(matchesRow(parseSearchExpression('@source=sign-in'), line, logs, at)).to.equal(true);
+        expect(matchesRow(parseSearchExpression('@run=7c1e40aa-5d1f-4c55'), line, logs, at)).to.equal(true);
+        expect(matchesRow(parseSearchExpression('@level=war'), line, logs, at)).to.equal(false);
+        expect(matchesRow(parseSearchExpression('@level=error|warn -sent'), line, logs, at)).to.equal(false);
+        expect(matchesRow(parseSearchExpression('@level=error|warn token'), line, logs, at)).to.equal(true);
     });
 });

@@ -20,14 +20,16 @@
 /**
  * Parse a search expression string into an array of structured terms.
  *
- * Syntax:
- *   ,                → OR between terms
- *   space + space    → AND between terms
- *   space - term     → exclude matching rows (also `-term` at start)
+ * Syntax (one search for the Hub and every table, James 2026-11-21):
+ *   space            → AND: every word must be found, each anywhere in the row, in any order
+ *   ,                → OR between parts
+ *   -word            → leave out rows with it
  *   *                → zero or more characters (wildcard)
  *   ?                → exactly one character (wildcard)
- *   "quoted"         → exact literal match (no substring)
- *   plain text       → case-insensitive substring
+ *   "two words"      → a phrase: those words together, in that order
+ *   plain word       → found in any column, any case; `-` `_` `.` `/` read as spaces
+ *                      (`bulk up` finds bulk-upload, `get inventory` finds GET /inventory)
+ *   (` + ` between words still reads as AND)
  *
  * `+` and `-` are operators only at a word boundary (start of input or after whitespace).
  * Inside a term they are literal characters, so `ACAU-ASR3690` matches as-is.
@@ -79,13 +81,18 @@ function parseWords(searchString) {
         var clauseTermCount = 0;
 
         for (var j = 0; j < andParts.length; j++) {
-            var raw = andParts[j].trim();
-            if (raw === '') continue;
+            // A space is AND too: each word on its own (a quoted phrase stays one)
+            var words = splitOnSpaces(andParts[j]);
+            for (var w = 0; w < words.length; w++) {
+                var raw = words[w].trim();
+                if (raw === '' || raw === '-') continue;
 
-            var term = parseSingleTerm(raw);
-            term.andGroup = andGroupIndex;
-            parsed.push(term);
-            clauseTermCount++;
+                var term = parseSingleTerm(raw);
+                if (!term.pattern) continue;
+                term.andGroup = andGroupIndex;
+                parsed.push(term);
+                clauseTermCount++;
+            }
         }
 
         if (clauseTermCount > 0) andGroupIndex++;
@@ -510,6 +517,41 @@ function splitOnBoundaryOperators(str) {
 }
 
 /**
+ * Split a string on whitespace, outside double quotes: `get "bulk upload" -paused` →
+ * `get`, `"bulk upload"`, `-paused`. (A `-` with a space after it stays with the next word.)
+ * @param {string} str
+ * @returns {string[]}
+ */
+function splitOnSpaces(str) {
+    var parts = [];
+    var current = '';
+    var inQuotes = false;
+    for (var i = 0; i < str.length; i++) {
+        var ch = str.charAt(i);
+        if (ch === '"') { inQuotes = !inQuotes; current += ch; continue; }
+        if (!inQuotes && /\s/.test(ch)) {
+            if (current === '-') continue;   // (`- word`: the dash is the next word's)
+            if (current) parts.push(current);
+            current = '';
+            continue;
+        }
+        current += ch;
+    }
+    if (current) parts.push(current);
+    return parts;
+}
+
+/**
+ * A plain word, or a value, as searching reads it: lower case, `-` `_` `.` `/` and spaces as one
+ * space, trimmed. So `bulk up` finds `bulk-upload`, and `/inventory` finds `GET /inventory`.
+ * @param {string} text
+ * @returns {string}
+ */
+function normWords(text) {
+    return String(text == null ? '' : text).toLowerCase().replace(/[\s\-_./]+/g, ' ').trim();
+}
+
+/**
  * Convert a wildcard pattern to an anchored, case-insensitive RegExp.
  * All regex special chars are escaped except * and ? which map to .* and . respectively.
  * @param {string} pattern
@@ -562,17 +604,13 @@ function stringifyCell(value) {
  * @returns {boolean} true if the term's pattern matches (ignoring negation — caller handles that)
  */
 function matchesValue(term, cellString) {
-    if (term.exact) {
-        // Case-insensitive exact match (full cell value)
-        return cellString.toLowerCase() === term.pattern.toLowerCase();
-    }
-
     if (term.hasWildcards && term._regex) {
         return term._regex.test(cellString);
     }
-
-    // Plain substring match (case-insensitive) — backwards compatible
-    return cellString.toLowerCase().indexOf(term.pattern.toLowerCase()) !== -1;
+    // A word, or a quoted phrase (its words together, in order): read the same way in both
+    var want = normWords(term.pattern);
+    if (!want) return cellString.toLowerCase().indexOf(term.pattern.toLowerCase()) !== -1;
+    return normWords(cellString).indexOf(want) !== -1;
 }
 
 /**
@@ -1059,8 +1097,13 @@ function describeSearch(text, headings, typesOf, now) {
         var ranged = term.values.some(function (v) { return typeof v === 'object'; });
         return term.column + (type ? ' (' + TYPE_WORDS[type] + ')' : '') + ' ' + (ranged ? (term.op === '!=' ? 'is not' : 'is') : word) + ' ' + value;
     });
-    var words = rest.replace(/\s+/g, ' ').trim();
-    if (words) says.push('any column holds ' + words);
+    // The words: each found anywhere in the row (a phrase as one), or left out
+    var parsedWords = parseWords(rest.replace(/,/g, ' '));
+    var shown = function (t) { return t.exact ? '"' + t.pattern + '"' : t.pattern; };
+    var found = parsedWords.filter(function (t) { return !t.negated; }).map(shown);
+    var without = parsedWords.filter(function (t) { return t.negated; }).map(shown);
+    if (found.length) says.push('the row holds ' + found.join(' and '));
+    if (without.length) says.push('not ' + without.join(' or '));
     return 'Reading this as: ' + says.join(' and ');
 }
 

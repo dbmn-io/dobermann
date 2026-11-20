@@ -336,7 +336,8 @@ test('rows the page holds: sized again when the first rows come, never squeezed 
     expect(filled).not.toEqual(empty);
     const time = page.locator('#t .dbmn-table-body tr').first().locator('td').first();
     expect(await time.evaluate(td => td.scrollWidth <= td.clientWidth)).toBe(true);
-    await page.locator('#t .search-input').fill('number 7');
+    // (a phrase: two words apart would find a 7 anywhere in a row too)
+    await page.locator('#t .search-input').fill('"number 7"');
     await expect(page.locator('#t .dbmn-table-count')).toHaveText('1 of 50 rows');
     expect(await page.evaluate(() => document.getElementById('t').shown.map(r => r.when))).toEqual(['2026-11-19 14:03:22.107']);
 });
