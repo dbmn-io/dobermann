@@ -128,10 +128,11 @@ function parseWords(searchString) {
 var COLUMN_OPS = ['!=', '!~', '>=', '<=', '=', '~', '>', '<'];
 // A value ends at a space or a comma (the "or" between parts), unless quoted
 var COLUMN_VALUE_SRC = '("[^"]*"?|[^\\s",]*)';
-var COLUMN_TERM_SRC = '@("[^"]*"?|[^\\s=!~<>",]*)(?:\\s*(!=|!~|>=|<=|=|~|>|<)\\s*' + COLUMN_VALUE_SRC + ')?';
+// (`@@word` is a word searched in every column, shown or not: not a column term)
+var COLUMN_TERM_SRC = '@(?!@)("[^"]*"?|[^\\s=!~<>",]*)(?:\\s*(!=|!~|>=|<=|=|~|>|<)\\s*' + COLUMN_VALUE_SRC + ')?';
 var COLUMN_TERM_RE = new RegExp('(^|\\s)' + COLUMN_TERM_SRC, 'g');
 var COLUMN_TERM_AT = new RegExp('^' + COLUMN_TERM_SRC);
-var HAS_COLUMN_TERM = /(^|[\s,])@/;
+var HAS_COLUMN_TERM = /(^|[\s,])@(?!@)/;
 
 /** Top-level commas, outside quotes: the "or" between clauses. */
 function splitClauses(str) {
@@ -141,7 +142,7 @@ function splitClauses(str) {
     var i = 0;
     while (i < str.length) {
         var ch = str.charAt(i);
-        if (!inQuote && ch === '@' && (i === 0 || /[\s,]/.test(str.charAt(i - 1)))) {
+        if (!inQuote && ch === '@' && str.charAt(i + 1) !== '@' && (i === 0 || /[\s,]/.test(str.charAt(i - 1)))) {
             var m = COLUMN_TERM_AT.exec(str.slice(i));
             cur += m[0];
             i += m[0].length;
@@ -432,6 +433,14 @@ function parseSingleTerm(raw) {
         }
     }
 
+    // `@@word`: searched in every column, the ones not shown too (a plain word: only those shown).
+    // James, 2026-11-21: "just the word only searches on what's visible… a deep search… @@"
+    var deep = false;
+    if (pattern.indexOf('@@') === 0) {
+        deep = true;
+        pattern = pattern.substring(2);
+    }
+
     // Check for exact match (quoted)
     if (pattern.length >= 2 && pattern.charAt(0) === '"' && pattern.charAt(pattern.length - 1) === '"') {
         exact = true;
@@ -449,6 +458,7 @@ function parseSingleTerm(raw) {
         pattern: pattern,
         negated: negated,
         exact: exact,
+        deep: deep,
         hasWildcards: hasWildcards,
         andGroup: 0,
         _regex: compiledRegex
@@ -660,9 +670,11 @@ function matchesWords(parsedTerms, row, columns, extractNestedValue) {
         }
     }
 
+    // A plain word: the columns shown (one marked `hidden` is not); an `@@word`: every column
     function rowMatchesTerm(t) {
         for (var c = 0; c < columns.length; c++) {
             if (columns[c].type === 'group') continue;
+            if (columns[c].hidden && !t.deep) continue;
             var cellValue = stringifyCell(extractNestedValue(row, columns[c].id));
             if (matchesValue(t, cellValue)) return true;
         }
@@ -768,6 +780,16 @@ function tokenizeForDisplay(searchString, headings, hidden) {
 
     while (i < len) {
         var ch = searchString.charAt(i);
+
+        // `@@word`: a word searched in every column, shown or not ('deep', coloured as a hidden column)
+        if (ch === '@' && searchString.charAt(i + 1) === '@' && (i === 0 || /[\s,+\-]/.test(searchString.charAt(i - 1)))) {
+            var dm = /^@@("[^"]*"?|[^\s,]*)/.exec(searchString.slice(i));
+            push(dm[0], 'deep', false);
+            i += dm[0].length;
+            prevChar = searchString.charAt(i - 1);
+            atGroupStart = false;
+            continue;
+        }
 
         // A column term at a word boundary: @column, its operator, its value
         if (ch === '@' && (i === 0 || /[\s,]/.test(searchString.charAt(i - 1)))) {
@@ -1010,10 +1032,12 @@ function columnSuggestions(typed, headings, keysOf, typesOf, hidden) {
         // `@column.`: the keys inside that column's nested data (then the keys inside those)
         var inside = nestedSuggestions(typedName, names, keys, start, text, typeOf);
         if (inside) return inside;
+        // `@` alone, with columns not shown: first, `@@` (a word searched in every column)
+        var deepFirst = !at[2] && unseen.length ? [{ text: '@@', label: 'a word in every column, shown or not', start: start, end: text.length, hidden: true }] : [];
         var exact = names.filter(function (h) { return h.toLowerCase() === partial; });
         // Typed in full: on to the operators (and a dot, when it holds nested data)
         if (exact.length && at[2].length) return opSuggestions(text, text.length, keys(exact[0], []).length > 0, typeOf(exact[0], []));
-        return names
+        return deepFirst.concat(names
             .map(function (h) { return { h: h, pos: h.toLowerCase().indexOf(partial) }; })
             .filter(function (x) { return x.pos !== -1; })
             .sort(function (a, b) { return (isHidden(a.h) ? 1 : 0) - (isHidden(b.h) ? 1 : 0) || (a.pos === 0 ? 0 : 1) - (b.pos === 0 ? 0 : 1) || a.h.localeCompare(b.h); })
@@ -1023,7 +1047,7 @@ function columnSuggestions(typed, headings, keysOf, typesOf, hidden) {
                 var item = { text: '@' + quote(x.h), label: isHidden(x.h) ? label + ' · not shown' : label, start: start, end: text.length };
                 if (isHidden(x.h)) item.hidden = true;
                 return item;
-            });
+            }));
     }
     // `@column ` picked: the operators
     var picked = /(^|[\s,])@("[^"]+"|[^\s=!~<>",]+)$/.exec(text);
@@ -1077,7 +1101,8 @@ function opSuggestions(text, end, nested, type) {
 function describeSearch(text, headings, typesOf, now, hidden) {
     var terms = [];
     var rest = extractColumnTerms(String(text || ''), terms);
-    if (!terms.length) return '';
+    // (words alone need no reading, unless one is searched in every column: that is said)
+    if (!terms.length && !/(^|[\s,+\-])@@./.test(String(text || ''))) return '';
     var names = (headings || []).filter(function (h) { return h; });
     var day = function (ms) { return new Date(ms).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }); };
     var moment = function (t) {
@@ -1114,7 +1139,7 @@ function describeSearch(text, headings, typesOf, now, hidden) {
     });
     // The words: each found anywhere in the row (a phrase as one), or left out
     var parsedWords = parseWords(rest.replace(/,/g, ' '));
-    var shown = function (t) { return t.exact ? '"' + t.pattern + '"' : t.pattern; };
+    var shown = function (t) { return (t.exact ? '"' + t.pattern + '"' : t.pattern) + (t.deep ? ' (in any column, shown or not)' : ''); };
     var found = parsedWords.filter(function (t) { return !t.negated; }).map(shown);
     var without = parsedWords.filter(function (t) { return t.negated; }).map(shown);
     if (found.length) says.push('the row holds ' + found.join(' and '));

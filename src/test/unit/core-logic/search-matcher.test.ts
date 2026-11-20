@@ -1098,14 +1098,53 @@ describe('SearchMatcher: a column searched but not shown is told apart (James, 2
 
     it('in the @ list: shown columns first, then those not shown, marked', () => {
         const list = columnSuggestions('@', headings, undefined, undefined, hidden);
-        expect(list.map((s: { text: string }) => s.text)).to.deep.equal(['@order_no', '@status', '@body', '@customer']);
-        expect(list.map((s: { label: string }) => s.label)).to.deep.equal(['column', 'column', 'column · not shown', 'column · not shown']);
-        expect(list.filter((s: { hidden?: boolean }) => s.hidden).length).to.equal(2);
+        expect(list.map((s: { text: string }) => s.text)).to.deep.equal(['@@', '@order_no', '@status', '@body', '@customer']);
+        expect(list.map((s: { label: string }) => s.label)).to.deep.equal(['a word in every column, shown or not', 'column', 'column', 'column · not shown', 'column · not shown']);
+        expect(list.filter((s: { hidden?: boolean }) => s.hidden).length).to.equal(3);
         expect(columnSuggestions('@', headings).map((s: { text: string }) => s.text)).to.deep.equal(['@body', '@customer', '@order_no', '@status'], 'none given: as before');
     });
 
     it('on the line under the box: "(not shown)"', () => {
         expect(describeSearch('@customer=Kettle', headings, undefined, undefined, hidden)).to.contain('customer (not shown) is Kettle');
         expect(describeSearch('@status=open', headings, undefined, undefined, hidden)).to.contain('status is open');
+    });
+});
+
+describe('SearchMatcher: a plain word looks in the columns shown; @@word in every column (James, 2026-11-21)', () => {
+    const { describeSearch } = require('../../../webviews/shared/search-matcher.js');
+    const columns = [{ id: 'method', name: 'method' }, { id: 'path', name: 'path' }, { id: 'body', name: 'body', hidden: true }];
+    const row = { method: 'GET', path: '/inventory', body: '{"note":"very urgent"}' };
+    const at = (r: Record<string, string>, id: string) => r[id];
+    const finds = (text: string) => matchesRow(parseSearchExpression(text), row, columns, at);
+
+    it('a plain word skips a column marked hidden; @@ reaches it; a shown column is found either way', () => {
+        expect(finds('urgent')).to.equal(false);
+        expect(finds('@@urgent')).to.equal(true);
+        expect(finds('get @@urgent')).to.equal(true);
+        expect(finds('@@get')).to.equal(true);
+        expect(finds('get -@@urgent')).to.equal(false);
+        expect(finds('get -urgent')).to.equal(true, 'not urgent in what is shown');
+        expect(finds('@@"very urgent"')).to.equal(true, 'a phrase, everywhere');
+        expect(finds('"very urgent"')).to.equal(false);
+        expect(finds('@body~urgent')).to.equal(true, '@name reaches a hidden column');
+        expect(finds('nothing, @@urgent')).to.equal(true, 'comma or');
+    });
+
+    it('@@ is not a column term, and alone it filters nothing', () => {
+        expect(finds('@@')).to.equal(true);
+        expect(finds('get @@')).to.equal(true);
+        expect(finds('@@urgent @method=GET')).to.equal(true);
+        expect(finds('@@urgent @method=POST')).to.equal(false);
+    });
+
+    it('coloured as one piece; said under the box; offered first after @ when a column is not shown', () => {
+        const kinds = tokenizeForDisplay('get -@@urgent', ['method', 'path', 'body'], ['body']).map((s: { text: string; kind: string }) => `${s.text}:${s.kind}`);
+        expect(kinds).to.include('@@urgent:deep');
+        expect(describeSearch('@@urgent', ['method', 'body'], undefined, undefined, ['body'])).to.equal('Reading this as: the row holds urgent (in any column, shown or not)');
+        expect(describeSearch('urgent', ['method', 'body'])).to.equal('');
+        const list = columnSuggestions('@', ['method', 'body'], undefined, undefined, ['body']);
+        expect(list[0].text).to.equal('@@');
+        expect(columnSuggestions('@', ['method', 'body']).map((s: { text: string }) => s.text)).to.not.include('@@', 'nothing hidden: not offered');
+        expect(columnSuggestions('@@', ['method', 'body'], undefined, undefined, ['body'])).to.deep.equal([]);
     });
 });

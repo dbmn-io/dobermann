@@ -138,8 +138,9 @@
  *   orders.layout = saved;            // after `columns`: the order, widths, hidden columns and sort kept
  *   orders.searchWith(input, mirror); // the screen's own search box, with the @column suggestions
  *   orders.searchFields = [{ id: 'body', name: 'body', get: row => row.request.body }];
- *                                     // fields the search reaches that are not columns: plain words find
- *                                     // them, @body names them, @ suggests them (with every column, shown or not)
+ *                                     // fields the search reaches that are not columns: @@word finds a word
+ *                                     // in them (a plain word looks only in the columns shown), @body names
+ *                                     // them, @ suggests them (with every column, shown or not)
  *   orders.totals = { qty: '12,410' } // a row under the rows, from the screen; null takes it away
  *   orders.busy = true;               // something is looking: the search box's glass is the spinner
  *                                     // (with `source` it turns by itself while rows are asked for)
@@ -422,9 +423,15 @@
             return this._types[key];
         }
         /** The search in words, under the box: "Reading this as: placed (date) after 12 Nov 2026". */
-        _reading(text) {
+        _reading(text, columns) {
             const matcher = window.SearchMatcher;
-            return matcher && matcher.describeSearch ? matcher.describeSearch(text, this._searchColumns().map(c => c.name), (heading, path) => this._typeOf(heading, path), undefined, this._unseenNames()) : '';
+            const cols = columns || this._searchColumns();
+            return matcher && matcher.describeSearch ? matcher.describeSearch(text, cols.map(c => c.name), (heading, path) => this._typeOf(heading, path), undefined, cols.filter(c => c.hidden).map(c => c.name)) : '';
+        }
+        /** The box coloured: what it names, told apart as shown, not shown, or no column (one look at the columns per key). */
+        _colour(mirror, text, columns) {
+            if (!window.SearchMatcher || !mirror) return;
+            window.SearchMatcher.renderHighlight(mirror, text, columns.map(c => c.name), columns.filter(c => c.hidden).map(c => c.name));
         }
         _inHand() {
             const rows = [];
@@ -1131,14 +1138,15 @@
         }
         /** What a search reaches: every column (shown or not, the table's own left out) and the screen's hidden fields. */
         _searchColumns() {
-            const columns = this._all.filter(c => !own(c.id)).map(c => ({ id: c.id, name: c.name || c.id }));
-            const fields = (this._fields || []).filter(f => !columns.some(c => c.id === f.id)).map(f => ({ id: f.id, name: f.name || f.id }));
+            // (`hidden`: not shown. A plain word skips it; `@@word` and `@name` reach it)
+            const shown = new Set(this._columns.map(c => c.id));
+            const columns = this._all.filter(c => !own(c.id)).map(c => ({ id: c.id, name: c.name || c.id, hidden: !shown.has(c.id) }));
+            const fields = (this._fields || []).filter(f => !columns.some(c => c.id === f.id)).map(f => ({ id: f.id, name: f.name || f.id, hidden: true }));
             return columns.concat(fields);
         }
         /** The names of what is searched but not shown: columns removed from view, and the screen's hidden fields. */
         _unseenNames() {
-            const shown = new Set(this._columns.map(c => c.id));
-            return this._searchColumns().filter(c => !shown.has(c.id)).map(c => c.name);
+            return this._searchColumns().filter(c => c.hidden).map(c => c.name);
         }
         /** A row's value for a column or a hidden field (a field may say how to read it). */
         _readField() {
@@ -1147,7 +1155,8 @@
         }
         /**
          * Fields the search reaches that are not columns (an endpoint's body, a run's headers):
-         * [{ id, name, get?(row) }]. Plain words find them, `@name` names them, `@` suggests them.
+         * [{ id, name, get?(row) }]. `@@word` finds a word in them (a plain word looks only in the
+         * columns shown), `@name` names them, `@` suggests them.
          */
         set searchFields(list) {
             this._fields = Array.isArray(list) ? list.filter(f => f && f.id) : [];
@@ -1205,21 +1214,30 @@
             slice();
         }
 
-        /** A column removed or shown again: the box's colours and the line under it follow (the rows were searched the same). */
+        /**
+         * A column removed or shown again: searched again (a plain word looks only in the columns
+         * shown), so the box's colours and the line under it follow too. Other changes (a width, a
+         * sort) leave the search as it is.
+         */
         _recolour() {
             const input = this._box();
+            const shownNow = this._columns.map(c => c.id).join('\u0001');
+            const changed = this._shownBefore !== undefined && this._shownBefore !== shownNow;
+            this._shownBefore = shownNow;
             if (!input || !input.value.trim()) return;
-            const mirror = input === this._input ? this._mirror : this._outerMirror;
-            if (window.SearchMatcher && mirror) window.SearchMatcher.renderHighlight(mirror, input.value, this._searchColumns().map(c => c.name), this._unseenNames());
-            if (input === this._input) { const reads = this._reading(input.value); this._reads.textContent = reads; this._reads.hidden = !reads; }
+            if (changed) { this._searched(); return; }
+            const columns = this._searchColumns();
+            this._colour(input === this._input ? this._mirror : this._outerMirror, input.value, columns);
+            if (input === this._input) { const reads = this._reading(input.value, columns); this._reads.textContent = reads; this._reads.hidden = !reads; }
         }
         _searched() {
             const input = this._box();
             const mirror = input === this._input ? this._mirror : this._outerMirror;
             const text = input ? input.value : '';
-            // (a column named that the table does not have shows red in the box)
-            if (window.SearchMatcher && mirror) window.SearchMatcher.renderHighlight(mirror, text, this._searchColumns().map(c => c.name), this._unseenNames());
-            const reads = this._reading(text);
+            // (a column named that the table does not have shows red in the box; one not shown, purple)
+            const columns = this._searchColumns();
+            this._colour(mirror, text, columns);
+            const reads = this._reading(text, columns);
             if (input === this._input) { this._reads.textContent = reads; this._reads.hidden = !reads; }
             this.dispatchEvent(new CustomEvent('dbmn-table-search', { bubbles: true, detail: { text: text.trim(), reads } }));
             if (this._source) {
