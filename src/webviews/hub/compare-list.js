@@ -51,6 +51,10 @@
             sources: (q.sources || []).map(s => Object.assign({}, s, { view: s.name }))
         }));
     }
+    /** A query is shown as a query unless it has a Compare join: then it is a compare, with Compare's icon. */
+    function asQuery(c) {
+        return !!c.isQuery && !(c.joins || []).some(j => j.kind === 'compare');
+    }
     /** Every report, the newest first. */
     function reports(state) {
         const when = r => new Date(r.updatedAt || r.comparedAt || r.createdAt).getTime();
@@ -151,7 +155,7 @@
                 ? [typeof c.rows === 'number' ? `${c.rows.toLocaleString()} rows` : 'not run yet', ago(new Date(c.updatedAt || c.createdAt).getTime())].join(' · ')
                 : [found(c), ago(new Date(c.comparedAt || c.createdAt).getTime())].join(' · ');
             row.innerHTML =
-                '<span class="tx-status-icon icon" data-icon="' + (c.isQuery ? 'blend' : 'scale') + '" title="' + (c.isQuery ? 'Query' : 'Compare') + '"></span>' +
+                '<span class="tx-status-icon icon" data-icon="' + (asQuery(c) ? 'blend' : 'scale') + '" title="' + (asQuery(c) ? 'Query' : 'Compare') + '"></span>' +
                 '<span class="tx-row-main">' +
                     '<span class="catalogue-row-name" title="' + escapeHtml(c.endpointName) + '">' + (c.endpointName ? marked(c.endpointName) : '(unnamed)') + '</span>' +
                     '<span class="catalogue-row-path" title="' + escapeHtml(c.isQuery ? joined(c) : sides(c)) + '">' + marked(c.isQuery ? joined(c) : `${c.endpoint && c.endpoint !== c.endpointName ? c.endpoint + ' · ' : ''}${c.sources[0].view} · ${sides(c)}`) + '</span>' +

@@ -261,7 +261,8 @@
             { separator: true },
             ...(v.file
                 ? [{ id: 'pick', label: 'Pick the file again', icon: 'upload' }]
-                : [{ id: 'latest', label: 'Read the newest result', icon: 'refresh-cw' }, { id: 'console', label: 'Open in the Console', icon: 'external-link' }]),
+                : [{ id: 'run', label: `Add another run of ${v.runOf ? (view(v.runOf) || v).name : v.name}`, icon: 'plus' },
+                    { id: 'latest', label: 'Read the newest result', icon: 'refresh-cw' }, { id: 'console', label: 'Open in the Console', icon: 'external-link' }]),
             { separator: true },
             { id: 'remove', label: 'Remove from the query', icon: 'x', danger: true }
         ];
@@ -276,6 +277,7 @@
             else if (id === 'latest') { setBusy('Reading the newest result…'); post({ type: 'query.latest', id: v.id }); }
             else if (id === 'console') post({ type: 'query.openConsole', id: v.id });
             else if (id === 'remove') post({ type: 'query.removeView', id: v.id });
+            else if (id === 'run') addView(view(v.runOf) || v);
         });
     }
     function pickAgain(v) {
@@ -303,7 +305,10 @@
                 inner.setAttribute('aria-haspopup', 'menu');
                 inner.addEventListener('click', event => { if (!slotDragged) slotMenu(event, v); });
             }
-            const name = el('span', `compare-result-name${v.error ? ' color-error' : ''}`, v.name);
+            // A run of a view (C1...) goes by the view's name and its run; the first run says BL once it has runs
+            const runOf = v.runOf ? view(v.runOf) : null;
+            const name = el('span', `compare-result-name${v.error ? ' color-error' : ''}`, runOf ? runOf.name : v.name);
+            if (v.run) name.appendChild(el('span', 'query-run-chip', v.run));
             // Data a week old, or a month: said on the slot, on every step
             const old = ageIcon(v);
             if (old) name.prepend(old);
@@ -313,6 +318,21 @@
             if (old) inner.title += `\n${old.title}`;
             if (out) inner.title += v.off ? '\nHidden: left out of the report. Its menu shows it again.' : '\nNot joined yet: left out of the report until its columns are picked on Join.';
             if (v.off) { const eye = el('i', 'query-sign'); eye.dataset.icon = 'eye-off'; name.prepend(eye); }
+            // In a compare: the scale on each view in it (the Baseline says so), "to show" on the others
+            const compare = ui.state && ui.state.compare;
+            if (compare) {
+                const isIn = compare.views.includes(v.id);
+                const badge = el('span', `query-slot-badge${isIn ? ' is-in' : ''}`);
+                if (isIn) {
+                    badge.innerHTML = window.Icons ? window.Icons.icon('scale') : '';
+                    if (v.id === compare.baseline) badge.appendChild(el('span', '', 'Baseline'));
+                    badge.title = v.id === compare.baseline ? 'The Baseline: every view in the compare is matched to it' : 'In the compare';
+                } else {
+                    badge.textContent = 'to show';
+                    badge.title = 'Joined in to show: not compared';
+                }
+                inner.appendChild(badge);
+            }
             if (edit) inner.appendChild(el('span', 'compare-result-caret', '▾'));
             box.appendChild(inner);
             return box;
@@ -462,8 +482,11 @@
      * Add a view: find a saved result (type to search: its request, endpoint, System, environment),
      * pick it, and pick its View when it has more than one.
      */
-    async function addView() {
+    async function addView(of) {
         const SHOWN = 100;
+        // Another run of a view: only its endpoint's results, read through its View, and not one it has already
+        const runOf = of && of.id ? of : null;
+        const used = new Set(views().map(v => v.executionId).filter(Boolean));
         const body = el('div', 'query-add-form compare-drill-body');
         const searchBox = el('div', 'dbmn-modal-field');
         const search = el('input', 'dbmn-modal-input');
@@ -497,12 +520,12 @@
         const fillViews = () => {
             const names = viewsOf(ui.sources.find(r => r.id === picked));
             viewSel.replaceChildren(...(names.length ? names : ['']).map(n => { const o = el('option', '', n || 'Top-level fields'); o.value = n; return o; }));
-            // One View, or none: nothing to choose
-            viewField.hidden = names.length < 2;
+            // One View, or none: nothing to choose (a run is read through its view's)
+            viewField.hidden = names.length < 2 || !!runOf;
         };
         const draw = () => {
             const words = window.SearchWords.parseWords(search.value);
-            const found = ui.sources.filter(r => window.SearchWords.matches(words, haystack(r)));
+            const found = ui.sources.filter(r => window.SearchWords.matches(words, haystack(r)) && (!runOf || (r.endpointId === runOf.endpointId && !used.has(r.id))));
             if (!found.some(r => r.id === picked)) picked = found.length ? found[0].id : '';
             rows.replaceChildren(...found.slice(0, SHOWN).map(r => {
                 const tr = el('tr');
@@ -528,13 +551,14 @@
         draw();
         setTimeout(() => search.focus(), 0);
         const answer = await window.DbmnModal.show({
-            title: 'Add a view', body, size: 'lg',
+            title: runOf ? `Another run of ${runOf.name}` : 'Add a view', body, size: 'lg',
             actions: [{ id: 'cancel', label: 'Cancel', variant: 'secondary' }, { id: 'add', label: 'Add', variant: 'primary' }]
         });
         const result = ui.sources.find(r => r.id === picked);
         if (answer.actionId !== 'add' || !result) return;
         setBusy('Reading the result…');
-        post({ type: 'query.addView', endpointId: result.endpointId, executionId: result.id, view: viewSel.value });
+        if (runOf) post({ type: 'query.addRun', of: runOf.id, executionId: result.id });
+        else post({ type: 'query.addView', endpointId: result.endpointId, executionId: result.id, view: viewSel.value });
     }
 
     /** A workbook of several sheets was read: which become views? Each sheet ticked is one. */
@@ -824,7 +848,7 @@
     }
     /** What a count means, on hover. */
     /** What each kind of join is called in its SQL, and which unmatched rows it keeps. */
-    const JOIN_SQL = { inner: 'JOIN', left: 'LEFT JOIN', right: 'RIGHT JOIN', outer: 'OUTER JOIN' };
+    const JOIN_SQL = { inner: 'JOIN', left: 'LEFT JOIN', right: 'RIGHT JOIN', outer: 'OUTER JOIN', compare: 'Compare' };
     const keeps = kind => ({ left: kind === 'left' || kind === 'outer', right: kind === 'right' || kind === 'outer' });
     /** What a join does with the rows so far that find no match: `blank` says what is left blank ("Bins blank"). */
     const unmatchedSays = (join, blank, rowsWord) => (keeps(join.kind).left
@@ -884,6 +908,7 @@
     /** The kinds of join, said with the two views' names: [kind, name, what it keeps]. */
     function joinKinds(left, right) {
         return [
+            ['compare', 'Compare', 'Match the same record in each, by the key, and compare them. Every record kept'],
             ['inner', 'Join', `Only rows ${left} and ${right} both have`],
             ['left', 'Left join', `All of ${left}; ${right} where it matches`],
             ['right', 'Right join', `All of ${right}; ${left} where it matches`],
@@ -895,7 +920,7 @@
      * colours) and a caret; a click opens the kinds under it, each with its picture, name and
      * what it keeps (the shared menu). No SQL words: the pictures say it.
      */
-    function kindButton(join, v) {
+    function kindButton(join, v, onPick) {
         const leftView = view(join.on[0] && join.on[0].left.view) || views()[0] || { name: 'the rows so far' };
         const colours = { left: colourValue(leftView.id), right: colourValue(v.id) };
         const kinds = joinKinds(leftView.name, v.name);
@@ -910,10 +935,19 @@
         b.append(window.RelationGlyph.join(join.kind, colours), el('span', 'query-join-caret', '\u25BE'));
         b.addEventListener('click', () => {
             b.setAttribute('aria-expanded', 'true');
-            const items = kinds.map(([id, label, detail]) => ({ id, label, detail, glyph: window.RelationGlyph.join(id, colours), checked: id === join.kind }));
+            // A compare takes so many views: Compare can't be picked for another once it is full
+            const compare = ui.state && ui.state.compare;
+            const full = !!compare && join.kind !== 'compare' && compare.views.length >= (ui.state.maxCompare || 4);
+            const items = kinds.map(([id, label, detail]) => ({
+                id, label, glyph: window.RelationGlyph.join(id, colours), checked: id === join.kind,
+                detail: id === 'compare' && full ? `A compare takes ${ui.state.maxCompare || 4} views: take one out to put ${v.name} in` : detail,
+                disabled: id === 'compare' && full
+            }));
             window.DbmnContextMenu.show(b, items, id => {
                 b.setAttribute('aria-expanded', 'false');
-                if (id && id !== join.kind) { join.kind = id; sendJoin(join); }
+                if (!id || id === join.kind) return;
+                if (onPick) onPick(id);
+                else { join.kind = id; sendJoin(join); }
             });
         });
         return b;
@@ -1061,6 +1095,153 @@
         return shut();
     }
 
+    /** A column's value on the first record every view has (the report's sample row), or ''. */
+    function sampleOf(viewId, column) {
+        const hit = ((ui.state && ui.state.sampleRow) || []).find(c => c.view === viewId && c.column === column);
+        return hit ? hit.value : '';
+    }
+    /** A pair as the host takes it back: { left: { view, column, fns }, right: { column, fns } }. */
+    function pagePair(left, right) {
+        return { left: { view: left.view, column: left.column, fns: left.fns || [] }, right: { column: right.column, fns: right.fns || [] } };
+    }
+
+    /**
+     * A compare's Join: one band for every view in it. A line per key column: the Baseline's column
+     * once, each other view's column under its slot (with ƒ), the value on the first record they
+     * all have under each; + AND adds a key column across all of them. Under a view out of the
+     * compare, "Not compared": picking one of its columns puts it in (a compare takes so many). The
+     * kind is one button for the compare: picking another kind makes every one of its joins that.
+     * Then how many are in, and the rows the compare leaves.
+     */
+    function compareBand() {
+        const s = ui.state;
+        const joins = s.joins.filter(j => j.kind === 'compare');
+        const first = joins[0];
+        // (just picked here, before the host says so: the compare from the joins as they stand)
+        const compare = s.compare || { baseline: (first.on[0] && first.on[0].left.view) || (views()[0] || {}).id, views: [] };
+        if (!s.compare) compare.views = [compare.baseline, ...joins.map(j => j.view)];
+        const baseline = view(compare.baseline) || views()[0];
+        const members = compare.views;
+        const max = s.maxCompare || 4;
+        const full = members.length >= max;
+        const band = el('section', 'query-join query-compare');
+        band.dataset.compare = '';
+        band.setAttribute('aria-label', `Compare ${members.map(id => (view(id) || {}).name).join(', ')}`);
+        const joinOf = id => s.joins.find(j => j.view === id);
+        const sendAll = (kind) => joins.forEach(j => { j.kind = kind; post({ type: 'query.setJoin', view: j.view, kind, on: j.on }); });
+        first.on.forEach((pair, p) => {
+            const cells = {};
+            views().forEach(v => {
+                if (v.id === baseline.id) {
+                    const cell = at(v.id, 'query-compare-key');
+                    cell.append(sidePicker(first, p, 'left', v), el('span', 'query-compare-value font-mono', sampleOf(v.id, pair.left.column)));
+                    cells[v.id] = cell;
+                    return;
+                }
+                const join = joinOf(v.id);
+                if (members.includes(v.id) && join && v.runOf) {
+                    // A run: its first run's column, the same View ("sku, the same")
+                    const ref = join.on[p] && join.on[p].right;
+                    const cell = at(v.id, 'query-compare-key');
+                    cell.append(el('span', 'query-compare-same font-mono', ref && ref.column ? `${ref.column}, the same` : 'the same column'), el('span', 'query-compare-value font-mono', ref ? sampleOf(v.id, ref.column) : ''));
+                    cells[v.id] = cell;
+                    return;
+                }
+                if (members.includes(v.id) && join) {
+                    const cell = at(v.id, 'query-compare-key');
+                    const ref = join.on[p] && join.on[p].right;
+                    if (!join.on[p]) join.on[p] = { left: Object.assign({}, pair.left), right: { column: '' } };
+                    const pick = sidePicker(join, p, 'right', v);
+                    // The first key column: "Not compared" takes the view out; it then joins the Baseline below, to show
+                    if (p === 0) {
+                        const select = pick.querySelector('select');
+                        const out = el('option', '', 'Not compared');
+                        out.value = '\u0000out';
+                        select.insertBefore(out, select.options[1] || null);
+                        select.addEventListener('change', event => {
+                            if (select.value !== '\u0000out') return;
+                            event.stopImmediatePropagation();
+                            post({ type: 'query.setJoin', view: v.id, kind: 'left', on: join.on.filter(x => x.right.column).map(x => pagePair(x.left, x.right)) });
+                            setBusy('Joining…');
+                        }, true);
+                    }
+                    cell.append(pick, el('span', 'query-compare-value font-mono', ref ? sampleOf(v.id, ref.column) : ''));
+                    cells[v.id] = cell;
+                    return;
+                }
+                // A view after the Baseline, out of the compare: its columns, to put it in
+                if (p === 0 && join && viewAt(v.id) > viewAt(baseline.id)) {
+                    const cell = at(v.id, 'query-compare-out');
+                    const select = el('select');
+                    select.setAttribute('aria-label', `${v.name} in the compare`);
+                    const no = el('option', '', 'Not compared'); no.value = ''; select.appendChild(no);
+                    v.columns.forEach(c => {
+                        const o = el('option', '', full ? `${c.name} (a compare takes ${max})` : c.name);
+                        o.value = c.name; o.title = c.sample; o.disabled = full;
+                        select.appendChild(o);
+                    });
+                    select.addEventListener('change', () => {
+                        if (!select.value) return;
+                        setBusy('Joining…');
+                        post({ type: 'query.setJoin', view: v.id, kind: 'compare', on: [pagePair(first.on[0].left, { column: select.value })] });
+                    });
+                    const pick = el('span', 'query-pick');
+                    pick.appendChild(select);
+                    cell.append(pick, el('span', 'query-compare-out-says', 'joins below, to show'));
+                    cells[v.id] = cell;
+                }
+            });
+            const lead = [];
+            const says = [];
+            if (p === 0) {
+                lead.push(kindButton(first, view(first.view) || baseline, kind => { setBusy('Joining…'); sendAll(kind); }));
+                const and = el('button', 'compare-tool-btn text-link font-mono font-size-12', '+ AND');
+                and.dataset.and = '';
+                and.type = 'button';
+                and.title = 'Another key column, across every view in the compare';
+                and.addEventListener('click', () => { first.on.push({ left: { view: baseline.id, column: '' }, right: { column: '' }, picked: true }); renderJoins(); });
+                says.push(and);
+            } else {
+                lead.push(el('span', `query-and ${KW}`, 'AND'));
+                const drop = el('button', 'compare-tool-btn icon');
+                drop.type = 'button';
+                drop.title = 'Take this key column out';
+                drop.setAttribute('aria-label', 'Take this key column out');
+                drop.dataset.icon = 'x';
+                drop.addEventListener('click', () => { first.on.splice(p, 1); sendJoin(first); });
+                says.push(drop);
+            }
+            band.appendChild(line('query-pair query-compare-line', cells, says, lead));
+        });
+        // How many are in: a compare takes so many, each view counting
+        band.appendChild(line('query-compare-count', {}, [], [el('span', 'query-lead-text form-hint', `${members.length} of ${max} in the compare${full ? ': take one out to put another in' : ''}`)]));
+        // The rows the compare leaves: every record of every view in it, one row each
+        const last = joins[joins.length - 1];
+        const after = {};
+        views().forEach(v => {
+            if (!members.includes(v.id)) return;
+            const cell = el('div', 'query-at query-after');
+            const join = joinOf(v.id);
+            if (v.id === baseline.id) cell.appendChild(el('span', 'query-made', count(v.rows || 0)));
+            else if (join && join.stats) {
+                const st = join.stats;
+                const only = st.rightRows - st.rightMatched;
+                const said = el('span', 'query-made query-compare-stat');
+                said.append(el('span', '', `${count(st.rightMatched)} matched`));
+                if (only) said.append(el('span', '', `${count(only)} only here`));
+                said.title = `${v.name}: ${count(st.rightMatched)} records match a record before it in the compare; ${count(only)} match none and are kept, as rows of their own`;
+                cell.appendChild(said);
+            }
+            after[v.id] = cell;
+        });
+        // The rows it leaves, at the end of the line: every record of every view in it, once
+        const total = last && last.stats ? el('span', 'query-made query-compare-rows', `${count(last.stats.rowsAfter)} rows`) : null;
+        const made = line('query-made-line', after, [total], [el('span', 'query-lead-text', 'Rows after this compare')]);
+        made.dataset.kind = 'made';
+        band.appendChild(made);
+        return band;
+    }
+
     /**
      * The values behind a count, in a dialog: each value of that kind once, with how many of that
      * view's rows hold it, under a sentence that says what the count is.
@@ -1131,9 +1312,11 @@
         const first = s.views[0];
         const lines = [line('query-total-line', totals, [first.error ? errorLine(first) : null], [el('span', 'query-lead-text', 'Rows in each view')])];
         if (s.views.length < 2) lines.push(el('p', 'compare-match-empty', 'Add another view to join.'));
+        // The views in a compare join as one: one band, first; the joins that bring views in to show below it
+        if (s.joins.some(j => j.kind === 'compare')) lines.push(compareBand());
         s.views.slice(1).forEach((v, i) => {
             const join = s.joins.find(j => j.view === v.id);
-            if (join) lines.push(joinBand(v, join, s.views.slice(0, i + 1)));
+            if (join && join.kind !== 'compare') lines.push(joinBand(v, join, s.views.slice(0, i + 1)));
         });
         box.replaceChildren(...lines);
         injectIcons(box);
@@ -1521,6 +1704,7 @@
         if (ui.state) ui.state.joins.forEach(j => { drafts[j.view] = j.on.filter(p => !(p.left.column && p.right.column) && (p.left.column || p.right.column || p.picked)); });
         ui.state = m;
         showName(m.name);
+        showKind(m.compare);
         m.joins.forEach(j => (drafts[j.view] || []).forEach(p => { if (m.views.some(v => v.id === p.left.view)) j.on.push(p); }));
         if (!m.reading) { ui.busy = ''; ui.settled = true; }
         $('queryDistinct').checked = !!m.distinct;
@@ -1640,6 +1824,14 @@
         $('queryName').value = name;
         // Still the name it was given ("New query", "New query 2"): shown as not yet named
         $('queryName').unnamed = /^New query( \d+)?$/.test(name);
+    }
+    /** Compare or Query, under the name: a query with a Compare join is a compare. */
+    function showKind(compare) {
+        const label = $('queryKindLabel');
+        const is = !!compare;
+        label.className = 'query-kind-label' + (is ? ' is-compare' : '');
+        label.title = is ? 'It has a Compare join: its views are compared' : 'No Compare join';
+        label.innerHTML = (window.Icons ? window.Icons.icon(is ? 'scale' : 'blend') : '') + `<span>${is ? 'Compare' : 'Query'}</span>`;
     }
     $('queryName').addEventListener('dbmn-name-change', event => post({ type: 'query.rename', name: event.detail.name }));
 

@@ -14,7 +14,7 @@
  * way), so this file has no host in it.
  */
 import type { Database, SqlJsStatic, SqlValue } from 'sql.js';
-import { fromSql, keySql, quoteName, refNames, tableNames, tableSql, writeSql, WriteSqlOptions } from './query-sql';
+import { fromSql, keySql, leftKeySql, quoteName, refNames, tableNames, tableSql, writeSql, WriteSqlOptions } from './query-sql';
 import { keepsUnmatched } from './query-types';
 import type { QueryJoinStats, QueryRelationship, QueryRows, QueryValue, QuerySpec } from './query-types';
 
@@ -143,7 +143,7 @@ export class QuerySession {
         const ks = join.on.map((_, i) => `k${i}`);
         const notNull = ks.map(k => `${k} IS NOT NULL`).join(' AND ');
         const same = ks.map(k => `lg.${k} = rg.${k}`).join(' AND ');
-        const [leftRows, matchedRows, pairs, rightRows, rightMatched] = this.run(`WITH _l AS (SELECT ${join.on.map((p, i) => `${keySql(p.left, names)} AS k${i}`).join(', ')} ${fromSql(this.spec, index)}),
+        const [leftRows, matchedRows, pairs, rightRows, rightMatched] = this.run(`WITH _l AS (SELECT ${join.on.map((_, i) => `${leftKeySql(this.spec, index, i, names)} AS k${i}`).join(', ')} ${fromSql(this.spec, index)}),
 _r AS (SELECT ${join.on.map((p, i) => `${keySql(p.right, names)} AS k${i}`).join(', ')} FROM ${tableSql(rightView, this.tables)}),
 _lg AS (SELECT ${ks.join(', ')}, COUNT(*) AS n FROM _l WHERE ${notNull} GROUP BY ${ks.join(', ')}),
 _rg AS (SELECT ${ks.join(', ')}, COUNT(*) AS n FROM _r WHERE ${notNull} GROUP BY ${ks.join(', ')})
@@ -181,7 +181,7 @@ SELECT (SELECT COUNT(*) FROM _l), COALESCE(SUM(lg.n), 0), COALESCE(SUM(lg.n * rg
         const names = refNames(this.spec.views);
         const n = join.on.length;
         const ks = Array.from({ length: n }, (_, i) => `k${i}`);
-        const leftKeys = join.on.map((p, i) => `${keySql(p.left, names)} AS k${i}`).join(', ');
+        const leftKeys = join.on.map((_, i) => `${leftKeySql(this.spec, index, i, names)} AS k${i}`).join(', ');
         const rightKeys = join.on.map((p, i) => `${keySql(p.right, names)} AS k${i}`).join(', ');
         const notNull = ks.map(k => `${k} IS NOT NULL`).join(' AND ');
         const same = ks.map(k => `lg.${k} = rg.${k}`).join(' AND ');

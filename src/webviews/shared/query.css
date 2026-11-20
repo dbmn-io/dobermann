@@ -22,7 +22,7 @@
 /* A view's name is longer than BL or C1 */
 .query-page .compare-tag { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; }
 /* The top of the gutter: what the slots beside it are */
-.query-head-lead { align-self: center; }
+.query-head-lead { align-self: center; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
 /* The query's name sits in the gutter the lines' headings use: cut short to fit, whole on hover */
 .query-head-lead dbmn-name { --name-width: var(--query-lead); }
 /* A view's age: a week old is a warning, a month old is out of date. On its slot and on Views */
@@ -225,3 +225,23 @@
 /* Which rows a join keeps: the picture and a caret, opening the kinds (shared menu) */
 .query-join-kind { display: inline-flex; align-items: center; gap: 3px; padding: 2px 6px; }
 .query-join-caret { font-size: 10px; color: var(--vscode-descriptionForeground); }
+
+/* Compare or Query, under the report's name: the Hub's icon for it and the word */
+.query-kind-label { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; line-height: 1; padding: 2px 7px 2px 5px; border-radius: 10px; border: 1px solid var(--vscode-panel-border); color: var(--vscode-descriptionForeground); }
+.query-kind-label svg { width: 12px; height: 12px; }
+.query-kind-label.is-compare { color: var(--vscode-charts-yellow, #cca700); border-color: currentColor; }
+
+/* A compare's Join: one band, a box under every view in it, the value on the first record they all have */
+.query-compare-key { display: flex; flex-direction: column; align-items: stretch; gap: 2px; }
+.query-compare-value { font-size: 11px; color: var(--vscode-descriptionForeground); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-height: 14px; }
+.query-compare-out { display: flex; flex-direction: column; align-items: stretch; gap: 2px; background: repeating-linear-gradient(135deg, transparent 0 6px, color-mix(in srgb, var(--vscode-panel-border) 35%, transparent) 6px 12px); }
+.query-compare-out-says { font-size: 11px; color: var(--vscode-descriptionForeground); }
+.query-compare-count .query-lead-text { white-space: nowrap; }
+.query-compare-rows { font-weight: 600; }
+.query-slot-badge { display: inline-flex; align-items: center; gap: 3px; font-size: 10px; color: var(--vscode-descriptionForeground); margin-left: auto; white-space: nowrap; }
+.query-slot-badge.is-in { color: var(--vscode-charts-yellow, #cca700); }
+.query-slot-badge svg { width: 13px; height: 13px; }
+/* A run of a view: its name (BL, C1...) beside the view's, on its slot */
+.query-run-chip { margin-left: 6px; font-size: 10.5px; font-weight: 600; padding: 0 5px; border-radius: 3px; border: 1px solid currentColor; opacity: .85; }
+.query-compare-same { font-size: 12px; color: var(--vscode-descriptionForeground); padding: 3px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.query-compare-stat { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.25; font-size: 11.5px; }

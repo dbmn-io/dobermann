@@ -19,6 +19,9 @@ export interface QueryView {
     columns: string[];
     /** Its columns with no value in any row: left out of the columns shown until they are picked. */
     empty?: string[];
+    /** One run of a view that has several (BL, C1...), and the view's own name: a level of a formula's @ path. */
+    run?: string;
+    runOfName?: string;
 }
 
 /**
@@ -54,14 +57,19 @@ export interface QueryPair {
 /**
  * How a join keeps rows: an inner JOIN only rows that match; LEFT JOIN every row so far, matched
  * or not; RIGHT JOIN every row of the joining view; an outer join (FULL OUTER JOIN) every row of both.
+ *
+ * A Compare join is DBMN's own: the views it joins are compared. Every view in the compare joins
+ * the Baseline (the first Compare join's left view) on one key, every record of every view kept,
+ * and a record only some of them have still lines up with the others (its key is whichever of
+ * theirs it has). A query with a Compare join is a compare. See query-compare.ts.
  */
-export type QueryJoinKind = 'left' | 'inner' | 'right' | 'outer';
+export type QueryJoinKind = 'left' | 'inner' | 'right' | 'outer' | 'compare';
 
-export const QUERY_JOIN_KINDS: readonly QueryJoinKind[] = ['inner', 'left', 'right', 'outer'];
+export const QUERY_JOIN_KINDS: readonly QueryJoinKind[] = ['compare', 'inner', 'left', 'right', 'outer'];
 
 /** Does a join of this kind keep the rows so far that find no match (left), or the joining view's (right)? */
 export function keepsUnmatched(kind: QueryJoinKind): { left: boolean; right: boolean } {
-    return { left: kind === 'left' || kind === 'outer', right: kind === 'right' || kind === 'outer' };
+    return { left: kind === 'left' || kind === 'outer' || kind === 'compare', right: kind === 'right' || kind === 'outer' || kind === 'compare' };
 }
 
 export interface QueryJoin {

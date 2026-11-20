@@ -14,6 +14,7 @@ import { CALC_VIEW } from './query-types';
 import type { ColumnRef, QueryCalc, QueryFn, QueryJoin, QueryJoinKind, QueryKey, QuerySpec, QueryView } from './query-types';
 import { columnFnSql } from '../column-functions/column-functions';
 import { formulaSql, parseFormula } from './formula';
+import { compareLeftKeys } from './query-compare';
 import type { FormulaColumn } from './formula';
 
 const PLAIN = /^[A-Za-z_][A-Za-z0-9_]*$/;
@@ -94,12 +95,22 @@ export function keySql(key: QueryKey, tables: Map<string, string>): string {
     return applyFns(joined, key.fns);
 }
 
-function onSql(join: QueryJoin, tables: Map<string, string>, indent: string): string {
-    if (!join.on.length) throw new Error('Query: a join needs at least one pair');
-    return join.on.map(pair => `${keySql(pair.right, tables)} = ${keySql(pair.left, tables)}`).join(`\n${indent}AND `);
+/**
+ * The left side of pair `pair` of join `index` as SQL: its own left side, or for a Compare join
+ * the key of whichever view in the compare so far has the record (query-compare.ts).
+ */
+export function leftKeySql(spec: QuerySpec, index: number, pair: number, names: Map<string, string>): string {
+    const keys = compareLeftKeys(spec.joins, index, pair).map(k => keySql(k, names));
+    return keys.length > 1 ? `COALESCE(${keys.join(', ')})` : keys[0] ?? '';
 }
 
-const JOIN_SQL: Record<QueryJoinKind, string> = { inner: 'JOIN', left: 'LEFT JOIN', right: 'RIGHT JOIN', outer: 'FULL OUTER JOIN' };
+function onSql(spec: QuerySpec, index: number, tables: Map<string, string>, indent: string): string {
+    const join = spec.joins[index];
+    if (!join.on.length) throw new Error('Query: a join needs at least one pair');
+    return join.on.map((pair, p) => `${keySql(pair.right, tables)} = ${leftKeySql(spec, index, p, tables)}`).join(`\n${indent}AND `);
+}
+
+const JOIN_SQL: Record<QueryJoinKind, string> = { inner: 'JOIN', left: 'LEFT JOIN', right: 'RIGHT JOIN', outer: 'FULL OUTER JOIN', compare: 'FULL OUTER JOIN' };
 
 /** FROM and its joins, up to (not including) join number `upTo` (all of them when left out). */
 export function fromSql(spec: QuerySpec, upTo?: number): string {
@@ -117,7 +128,7 @@ export function fromSql(spec: QuerySpec, upTo?: number): string {
     const lines = [`FROM ${tableSql(first, tables)}`];
     joins.forEach((join, i) => {
         const indent = ' '.repeat(2 + width + 1);
-        lines.push(`  ${heads[i].padEnd(width)} ON ${onSql(join, names, indent)}`);
+        lines.push(`  ${heads[i].padEnd(width)} ON ${onSql(spec, i, names, indent)}`);
     });
     return lines.join('\n');
 }
@@ -139,7 +150,7 @@ export function allColumns(spec: QuerySpec): ColumnRef[] {
 export function joinKeyColumns(spec: QuerySpec): { key: ColumnRef; same: ColumnRef }[] {
     const out: { key: ColumnRef; same: ColumnRef }[] = [];
     for (const join of spec.joins) {
-        if (join.kind === 'right' || join.kind === 'outer') continue;
+        if (join.kind === 'right' || join.kind === 'outer' || join.kind === 'compare') continue;
         for (const pair of join.on) {
             const single = pair.left.parts.length === 1 && pair.right.parts.length === 1;
             if (single) out.push({ key: { view: pair.right.parts[0].view, column: pair.right.parts[0].column }, same: { view: pair.left.parts[0].view, column: pair.left.parts[0].column } });
@@ -171,7 +182,11 @@ const COLUMN_KEY = '\n';
 
 /** The columns a formula can name: each view's, as `@view.column` (a column "address.city" two levels deep). */
 export function formulaColumns(spec: QuerySpec): FormulaColumn[] {
-    return spec.views.flatMap(v => v.columns.map(column => ({ key: `${v.id}${COLUMN_KEY}${column}`, path: [v.name, ...column.split('.')] })));
+    // A run is a level of the path: @Stock.C1.quantityOnHand
+    return spec.views.flatMap(v => v.columns.map(column => ({
+        key: `${v.id}${COLUMN_KEY}${column}`,
+        path: [...(v.run ? [v.runOfName ?? v.name, v.run] : [v.name]), ...column.split('.')]
+    })));
 }
 
 /**

@@ -41,6 +41,29 @@ export interface QuerySource {
     file?: { name: string; sheet?: string };
     /** Hidden by the user: kept in the query, with its joins, but left out of what it makes until shown again. */
     off?: boolean;
+    /**
+     * Another run of the same endpoint and View as the view `runOf` (its first run, the BL): a
+     * table of its own, always matched with the first by a Compare join on the same key column.
+     * `run` is its name: C1, C2... The first run has neither; it is BL once it has a run.
+     */
+    runOf?: string;
+    run?: string;
+}
+
+/** A run's name, or BL for the first run of a view that has runs, or '' for a view with none. */
+export function runName(query: Pick<SavedQuery, 'sources'>, id: string): string {
+    const source = query.sources.find(s => s.id === id);
+    if (!source) return '';
+    if (source.run) return source.run;
+    return query.sources.some(s => s.runOf === id) ? 'BL' : '';
+}
+
+/** The next run's name for the view `of`: C1, C2... (never one already taken). */
+export function nextRunName(query: Pick<SavedQuery, 'sources'>, of: string): string {
+    const taken = new Set(query.sources.filter(s => s.runOf === of).map(s => s.run));
+    let n = 1;
+    while (taken.has(`C${n}`)) n++;
+    return `C${n}`;
 }
 
 export interface SavedQuery {

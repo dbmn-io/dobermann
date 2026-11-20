@@ -37,7 +37,7 @@ export function buildQueryPage(asset: AssetUrl, config: { queryId: string; name:
             <!-- Compare's slots, one per view, first: the match table on Join sits on their grid -->
             <!-- The gutter the lines' headings sit in (Request, View, ... on Views; the joins on Join): the same width on every step, so the slots never move -->
             <!-- ...and it holds the query's name (shared/dbmn-name.js): click it to rename, from the first step on -->
-            <span class="query-lead query-head-lead"><dbmn-name id="queryName" label="Query name" max="30" value="${attr(config.name)}"></dbmn-name></span>
+            <span class="query-lead query-head-lead"><dbmn-name id="queryName" label="Query name" max="30" value="${attr(config.name)}"></dbmn-name><span id="queryKindLabel" class="query-kind-label" role="status"></span></span>
             <div id="queryViews" class="compare-results-bar" role="group" aria-label="The views joined"></div>
             <!-- Shown after the last slot (renderTop puts it in the slots' row) -->
             <span id="queryAdds" class="query-adds">
