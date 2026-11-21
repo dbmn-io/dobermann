@@ -399,20 +399,6 @@ function columnsNamed(columns, name) {
     return { columns: [], path: [] };
 }
 
-/** Every column term met (a space is "and"), each by a column it names (a name no column has matches nothing). */
-function matchesColumnTerms(columnTerms, row, columns, extractNestedValue) {
-    for (var t = 0; t < columnTerms.length; t++) {
-        var term = columnTerms[t];
-        var named = columnsNamed(columns, term.column);
-        var met = false;
-        for (var c = 0; c < named.columns.length && !met; c++) {
-            met = matchesColumnTerm(term, extractNestedValue(row, named.columns[c].id), named.path);
-        }
-        if (!met) return false;
-    }
-    return true;
-}
-
 /**
  * Parse a single raw term string into a structured term object.
  * @param {string} raw - Trimmed term string
@@ -635,6 +621,9 @@ function matchesValue(term, cellString) {
  * To exclude something across every OR alternative, repeat it in each clause:
  * `foo -err,bar -err` rather than `foo,bar -err` (which would mean "foo OR (bar AND NOT err)").
  *
+ * Built on planSearch (one plan per search and set of columns, kept), so a screen testing a
+ * cell's value once (Query's engine) gets the same answers as this.
+ *
  * @param {Array} parsedTerms - Output of parseSearchExpression()
  * @param {object} row - A data row object
  * @param {Array} columns - Column definitions with .id and .type properties
@@ -642,71 +631,112 @@ function matchesValue(term, cellString) {
  * @returns {boolean} true if the row should be included
  */
 function matchesRow(parsedTerms, row, columns, extractNestedValue) {
-    if (parsedTerms && parsedTerms.clauses) {
-        if (!parsedTerms.clauses.length) return true;
-        return parsedTerms.clauses.some(function (clause) {
-            return matchesColumnTerms(clause.columnTerms, row, columns, extractNestedValue) &&
-                matchesWords(clause.words, row, columns, extractNestedValue);
-        });
-    }
-    return matchesWords(parsedTerms, row, columns, extractNestedValue);
+    var plan = planFor(parsedTerms, columns);
+    var terms = plan.terms;
+    return plan.rowMatches(function (i) {
+        var t = terms[i];
+        for (var c = 0; c < t.columns.length; c++) {
+            if (t.test(extractNestedValue(row, t.columns[c]))) return true;
+        }
+        return false;
+    });
 }
 
-function matchesWords(parsedTerms, row, columns, extractNestedValue) {
-    if (!parsedTerms || parsedTerms.length === 0) {
-        return true;
-    }
+/** (the last plan made for a search, kept while its columns are the same array: a screen that
+    changes its columns passes a new one, as every caller does) */
+var PLANS = typeof WeakMap === 'function' ? new WeakMap() : null;
+function planFor(parsedTerms, columns) {
+    if (!PLANS || !parsedTerms || typeof parsedTerms !== 'object') return planSearch(parsedTerms, columns);
+    var kept = PLANS.get(parsedTerms);
+    if (kept && kept.columns === columns) return kept.plan;
+    var plan = planSearch(parsedTerms, columns);
+    PLANS.set(parsedTerms, { columns: columns, plan: plan });
+    return plan;
+}
 
-    var groups = {}; // { groupIndex: { positives: [], negatives: [] } }
+/**
+ * A search taken apart for a screen that tests each distinct value once (Query's engine: each
+ * distinct text is stored once). matchesRow is this plan, cell by cell.
+ *
+ *   var plan = SearchMatcher.planSearch(SearchMatcher.parseSearchExpression(text), columns);
+ *   plan.terms[i] = { kind: 'word', deep, columns: [ids], test(value) }       a plain word (the columns
+ *                                                                           shown) or @@word (every column)
+ *                 | { kind: 'column', column, columns: [ids], test(value) }  @column, typed or not (the
+ *                                                                           columns that name: none, none met)
+ *   plan.rowMatches(hit)    hit(i): is term i met in this row, in any of its columns? Asked lazily,
+ *                           only for the terms the answer still needs. Commas, spaces, - and the
+ *                           clauses applied as matchesRow applies them.
+ *
+ * The contract: test(value) depends on that one cell's value only (not its column, not its row;
+ * a date is read against the search's "now", fixed when it was parsed), so its answer may be kept
+ * per distinct value. It reads the value as matchesRow does: null as "null", a number as its text,
+ * an object as its JSON (a word), or by its values inside (a column term).
+ *
+ * @param {object|Array} parsedTerms - Output of parseSearchExpression()
+ * @param {Array} columns - Column definitions with .id, .type and .hidden
+ * @returns {{terms: Array, rowMatches: function(function(number): boolean): boolean}}
+ */
+function planSearch(parsedTerms, columns) {
+    var terms = [];
+    var cols = columns || [];
+    var shown = [];
+    var every = [];
+    cols.forEach(function (c) {
+        if (c.type === 'group') return;
+        every.push(c.id);
+        if (!c.hidden) shown.push(c.id);
+    });
+    var word = function (t) {
+        terms.push({ kind: 'word', deep: !!t.deep, columns: t.deep ? every : shown, term: t, test: function (value) { return matchesValue(t, stringifyCell(value)); } });
+        return terms.length - 1;
+    };
+    var column = function (t) {
+        var named = columnsNamed(cols, t.column);
+        terms.push({ kind: 'column', column: t.column, columns: named.columns.map(function (c) { return c.id; }), term: t, test: function (value) { return matchesColumnTerm(t, value, named.path); } });
+        return terms.length - 1;
+    };
+    // Each clause (between commas): its column terms all met, and its words' groups (a group:
+    // every positive met, no negative)
+    var groupsOf = function (words) {
+        var groups = {};
+        var order = [];
+        (words || []).forEach(function (t) {
+            var g = groups[t.andGroup];
+            if (!g) { g = groups[t.andGroup] = { positives: [], negatives: [] }; order.push(g); }
+            (t.negated ? g.negatives : g.positives).push(word(t));
+        });
+        return order;
+    };
+    var clauses;
+    if (!parsedTerms) clauses = [];
+    else if (parsedTerms.clauses) {
+        // (no clause at all: every row)
+        clauses = parsedTerms.clauses.length ? parsedTerms.clauses.map(function (clause) {
+            return { columnTerms: (clause.columnTerms || []).map(column), groups: groupsOf(clause.words) };
+        }) : [];
+    } else clauses = parsedTerms.length ? [{ columnTerms: [], groups: groupsOf(parsedTerms) }] : [];
 
-    for (var i = 0; i < parsedTerms.length; i++) {
-        var term = parsedTerms[i];
-        var idx = term.andGroup;
-        if (!groups[idx]) groups[idx] = { positives: [], negatives: [] };
-        if (term.negated) {
-            groups[idx].negatives.push(term);
-        } else {
-            groups[idx].positives.push(term);
-        }
-    }
-
-    // A plain word: the columns shown (one marked `hidden` is not); an `@@word`: every column
-    function rowMatchesTerm(t) {
-        for (var c = 0; c < columns.length; c++) {
-            if (columns[c].type === 'group') continue;
-            if (columns[c].hidden && !t.deep) continue;
-            var cellValue = stringifyCell(extractNestedValue(row, columns[c].id));
-            if (matchesValue(t, cellValue)) return true;
+    function rowMatches(hit) {
+        if (!clauses.length) return true;
+        for (var k = 0; k < clauses.length; k++) {
+            var clause = clauses[k];
+            var met = true;
+            for (var t = 0; t < clause.columnTerms.length && met; t++) met = hit(clause.columnTerms[t]);
+            if (!met) continue;
+            if (!clause.groups.length) return true;
+            for (var g = 0; g < clause.groups.length; g++) {
+                var group = clause.groups[g];
+                var all = true;
+                for (var p = 0; p < group.positives.length && all; p++) all = hit(group.positives[p]);
+                if (!all) continue;
+                var none = true;
+                for (var n = 0; n < group.negatives.length && none; n++) none = !hit(group.negatives[n]);
+                if (none) return true;
+            }
         }
         return false;
     }
-
-    var groupKeys = Object.keys(groups);
-    if (groupKeys.length === 0) return true;
-
-    for (var gi = 0; gi < groupKeys.length; gi++) {
-        var group = groups[groupKeys[gi]];
-
-        var positivesAllMatch = true;
-        for (var pp = 0; pp < group.positives.length; pp++) {
-            if (!rowMatchesTerm(group.positives[pp])) {
-                positivesAllMatch = false;
-                break;
-            }
-        }
-        if (!positivesAllMatch) continue;
-
-        var anyNegMatches = false;
-        for (var nn = 0; nn < group.negatives.length; nn++) {
-            if (rowMatchesTerm(group.negatives[nn])) {
-                anyNegMatches = true;
-                break;
-            }
-        }
-        if (!anyNegMatches) return true;
-    }
-
-    return false;
+    return { terms: terms, rowMatches: rowMatches };
 }
 
 /**
@@ -1243,8 +1273,8 @@ function followScroll(input, mirror) {
 // Export for use in both browser and Node.js environments
 if (typeof module !== 'undefined' && module.exports) {
     // Node.js/CommonJS
-    module.exports = { parseSearchExpression, matchesValue, matchesRow, tokenizeForDisplay, renderHighlight, columnSuggestions, nestedKeys, nestedKeysFor, COLUMN_OPS, resolveTime, timeOfCell, typeOfValues, describeSearch };
+    module.exports = { parseSearchExpression, matchesValue, matchesRow, planSearch, tokenizeForDisplay, renderHighlight, columnSuggestions, nestedKeys, nestedKeysFor, COLUMN_OPS, resolveTime, timeOfCell, typeOfValues, describeSearch };
 } else {
     // Browser/Global
-    window.SearchMatcher = { parseSearchExpression, matchesValue, matchesRow, tokenizeForDisplay, renderHighlight, columnSuggestions, nestedKeys, nestedKeysFor, attachColumnSuggest, followScroll, COLUMN_OPS, resolveTime, timeOfCell, typeOfValues, describeSearch };
+    window.SearchMatcher = { parseSearchExpression, matchesValue, matchesRow, planSearch, tokenizeForDisplay, renderHighlight, columnSuggestions, nestedKeys, nestedKeysFor, attachColumnSuggest, followScroll, COLUMN_OPS, resolveTime, timeOfCell, typeOfValues, describeSearch };
 }

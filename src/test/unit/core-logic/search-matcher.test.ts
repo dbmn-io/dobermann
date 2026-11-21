@@ -1148,3 +1148,55 @@ describe('SearchMatcher: a plain word looks in the columns shown; @@word in ever
         expect(columnSuggestions('@@', ['method', 'body'], undefined, undefined, ['body'])).to.deep.equal([]);
     });
 });
+
+// =============================================================
+// planSearch: each term tested once per distinct value (Query's engine), the same answers as matchesRow
+// =============================================================
+
+describe('planSearch', () => {
+    const { planSearch } = require('../../../webviews/shared/search-matcher.js');
+    const cols = [{ id: 'm', name: 'method' }, { id: 'q', name: 'qty' }, { id: 'b', name: 'body', hidden: true }, { id: 'g', name: 'grp', type: 'group' }];
+    const rows = [
+        { m: 'GET', q: 5, b: 'urgent', g: 'x' }, { m: 'POST', q: 42, b: 'draft', g: 'x' }, { m: 'GET', q: null, b: '', g: 'x' },
+        { m: 'get-all', q: '007', b: null, g: 'x' }, { m: '', q: 0, b: 'urgent draft', g: 'x' }
+    ];
+    const read = (row: Record<string, unknown>, id: string) => row[id];
+    /** The engine's way: each term's test run once per distinct value, its answer kept. */
+    const cached = (text: string) => {
+        const plan = planSearch(parseSearchExpression(text), cols);
+        const asked: string[][] = plan.terms.map(() => []);
+        const kept = plan.terms.map(() => new Map<unknown, boolean>());
+        const found = rows.map(row => plan.rowMatches((i: number) => plan.terms[i].columns.some((id: string) => {
+            const v = (row as Record<string, unknown>)[id];
+            if (!kept[i].has(v)) { kept[i].set(v, plan.terms[i].test(v)); asked[i].push(String(v)); }
+            return kept[i].get(v);
+        })));
+        return { plan, found, asked };
+    };
+
+    it('gives matchesRow\'s answers, row by row, for words, -, @@, commas, @column and typed terms', () => {
+        ['get', '-get', 'get -post', '@@urgent', '-@@draft', 'get, post', '@qty>4', '@qty>4 -@@draft', '@method=get|post @qty<10', '@nope=1', '@nope=1, get', '', 'urgent', '"get all"', 'g?t*', 'null', '@qty=""']
+            .forEach(text => {
+                const terms = parseSearchExpression(text);
+                expect(cached(text).found, text).to.deep.equal(rows.map(row => matchesRow(terms, row, cols, read)));
+            });
+    });
+
+    it('says which columns each term looks at: a word the shown ones, @@ every one, @column the ones it names (a group never)', () => {
+        const { plan } = cached('get -@@urgent @qty>1 @nope=1');
+        expect(plan.terms.map((t: { kind: string; columns: string[] }) => `${t.kind}:${t.columns.join('')}`)).to.deep.equal(['column:q', 'column:', 'word:mq', 'word:mqb']);
+    });
+
+    it('tests a value once per term, however many rows hold it', () => {
+        const { asked } = cached('@method=get');
+        expect(asked[0]).to.deep.equal(['GET', 'POST', 'get-all', '']);
+    });
+
+    it('asks only what the answer still needs', () => {
+        const plan = planSearch(parseSearchExpression('get post, put'), cols);
+        const asked: number[] = [];
+        plan.rowMatches((i: number) => { asked.push(i); return false; });
+        expect(asked).to.deep.equal([0, 2], 'get missed: post not asked; then put');
+        expect(planSearch(parseSearchExpression(''), cols).rowMatches(() => false)).to.equal(true);
+    });
+});
