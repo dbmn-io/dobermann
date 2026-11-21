@@ -215,4 +215,22 @@ describe('The engine, compare: James\'s rule for repeats and blanks, the old Com
         e.load('C2', { columns: ['k', 'q'], rows: [['k1', 1]] });
         assert.deepStrictEqual((await read(10)).stats.sample, { rows: 10, of: 50, inEvery: 1, byInput: [10, 10, 1] });
     });
+
+    it('a column of mostly new texts (an id, a key) keeps its own texts: the same values read back, before and after the dictionary is tidied, and it still compares', async () => {
+        const e = new QueryEngine();
+        const n = 5000;
+        const rows = Array.from({ length: n }, (_, i) => [`id-${i}`, i % 3 === 0 ? 'A' : 'B', i % 7 === 0 ? null : i]);
+        e.load('T', { columns: ['id', 'kind', 'q'], rows: rows.slice(0, 3000) }, { more: true });
+        e.append('T', { columns: ['id', 'kind', 'q'], rows: rows.slice(3000) }, { last: true });
+        const all = async () => { const out = await e.run({ steps: [{ from: 'T' }] }); assert.ok('result' in out); return e.read(out.result, 0, n).rows; };
+        assert.deepStrictEqual(await all(), rows);
+        // (another table loaded and dropped: the dictionary tidied, the texts kept as they are)
+        e.load('X', { columns: ['x'], rows: Array.from({ length: 3000 }, (_, i) => [`x-${i}`]) });
+        e.drop('X');
+        assert.deepStrictEqual(await all(), rows);
+        e.load('U', { columns: ['id'], rows: [['id-4999'], ['id-0'], ['none']] });
+        const out = await e.run({ steps: [{ as: 'cmp', compare: ['T', 'U'], on: [[col('id', 'T')], [col('id', 'U')]], columns: [] }] });
+        assert.ok('result' in out);
+        assert.strictEqual((e.stats(out.result, 'cmp') as CompareStats).perInput[1].againstBaseline.matched, 2);
+    });
 });

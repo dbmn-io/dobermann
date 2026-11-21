@@ -64,10 +64,19 @@ export class TextDictionary {
     }
 }
 
+/** Texts a column takes through the dictionary before it is judged (the share new among them). */
+const JUDGE_AFTER = 2048;
+/** New texts past this share: the column keeps its own texts, the dictionary would only cost (ids, keys, numbers as text). */
+const MOSTLY_NEW = 0.9;
+
 export class Column {
     private tags: Uint8Array;
     private nums: Float64Array | null = null;
     private codes: Int32Array | null = null;
+    /** Its own texts, a row each, when nearly every text is new (an id, a key): no dictionary for it. */
+    private own: string[] | null = null;
+    private seen = 0;
+    private fresh = 0;
     length = 0;
 
     constructor(private readonly dict: TextDictionary, capacity = 1024) {
@@ -88,9 +97,16 @@ export class Column {
         const i = this.length++;
         if (v === null) { this.tags[i] = BLANK; return; }
         if (typeof v === 'string') {
-            if (!this.codes) this.codes = new Int32Array(this.tags.length);
             this.tags[i] = TEXT;
+            if (this.own) { this.own[i] = v; return; }
+            if (!this.codes) this.codes = new Int32Array(this.tags.length);
+            const before = this.dict.size;
             this.codes[i] = this.dict.code(v);
+            // (judged once: nearly every text new, and it keeps its own from here; its codes so far become texts)
+            if (this.seen < JUDGE_AFTER) {
+                if (this.dict.size > before) this.fresh++;
+                if (++this.seen === JUDGE_AFTER && this.fresh > MOSTLY_NEW * JUDGE_AFTER) this.ownTexts();
+            }
             return;
         }
         if (!this.nums) this.nums = new Float64Array(this.tags.length);
@@ -103,9 +119,17 @@ export class Column {
         switch (this.tags[i]) {
             case INT: return this.nums![i];
             case REAL: return new Real(this.nums![i]);
-            case TEXT: return this.dict.text(this.codes![i]);
+            case TEXT: return this.own ? this.own[i] : this.dict.text(this.codes![i]);
             default: return null;
         }
+    }
+
+    /** From now on its own texts: those it has so far read out of the dictionary (which lets them go at its next compact). */
+    private ownTexts(): void {
+        const own = new Array<string>(this.length);
+        for (let i = 0; i < this.length; i++) if (this.tags[i] === TEXT) own[i] = this.dict.text(this.codes![i]);
+        this.own = own;
+        this.codes = null;
     }
 
     /** Complete: the spare room the doubling left is given back. */
@@ -126,9 +150,11 @@ export class Column {
         for (let i = 0; i < this.length; i++) if (this.tags[i] === TEXT) this.codes[i] = to[this.codes[i]];
     }
 
-    /** Roughly what the column holds in memory, in bytes (its texts are the dictionary's). */
+    /** Roughly what the column holds in memory, in bytes (its texts are the dictionary's, or its own). */
     bytes(): number {
-        return this.tags.byteLength + (this.nums?.byteLength ?? 0) + (this.codes?.byteLength ?? 0);
+        let own = 0;
+        if (this.own) for (const t of this.own) if (t !== undefined) own += 2 * t.length + 40;
+        return this.tags.byteLength + (this.nums?.byteLength ?? 0) + (this.codes?.byteLength ?? 0) + own;
     }
 }
 
