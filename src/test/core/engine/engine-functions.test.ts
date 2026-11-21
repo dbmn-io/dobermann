@@ -113,6 +113,53 @@ describe('The engine, first piece: tables, select, filter, functions', () => {
         ]);
     });
 
+    it('sort as SQLite ORDER BY, ties in their order: ascending, descending (blanks last), two keys, a calculated key', () => {
+        const rows: Value[][] = [];
+        VALUES.forEach((a, i) => VALUES.slice(0, 6).forEach(b => rows.push([a, b, i])));
+        const db = new SQL_.Database();
+        sqliteTable(db, ['a', 'b', 'n'], rows);
+        const sql = (order: string) => db.exec(`SELECT a, b, n FROM t ORDER BY ${order}, rowid`)[0].values;
+        const e = new QueryEngine();
+        e.load('t', { columns: ['a', 'b', 'n'], rows });
+        const ours = (by: { value: Expr; descending?: boolean }[]) => {
+            const out = e.run({ steps: [{ from: 't' }, { sort: 'step 1', by }] });
+            assert.ok('result' in out, JSON.stringify(out));
+            return e.read(out.result, 0, rows.length).rows;
+        };
+        const a: Expr = { column: 'a' }, b: Expr = { column: 'b' };
+        assert.deepStrictEqual(ours([{ value: a }]), sql('a'));
+        assert.deepStrictEqual(ours([{ value: a, descending: true }]), sql('a DESC'));
+        assert.deepStrictEqual(ours([{ value: b }, { value: a, descending: true }]), sql('b, a DESC'));
+        assert.deepStrictEqual(ours([{ value: { fn: 'LENGTH', args: [a] } }]), sql('LENGTH(a)'));
+        db.close();
+    });
+
+    it('select and filter at their edges: a filter keeps only true rows (blank, 0 and "abc" are not); steps read by name; the result can be a middle step', () => {
+        const e = new QueryEngine();
+        e.load('t', { columns: ['a'], rows: [[1], [0], [null], ['abc'], ['2x'], [''], [-1]] });
+        const kept = e.run({ steps: [{ from: 't' }, { filter: 'step 1', where: { column: 'a' } }] });
+        assert.ok('result' in kept);
+        assert.deepStrictEqual(e.read(kept.result, 0, 9).rows, [[1], ['2x'], [-1]]);
+        const middle = e.run({ result: 'doubled', steps: [
+            { from: 't', as: 'in' },
+            { as: 'doubled', select: 'in', columns: [{ name: 'd', value: { fn: '*', args: [{ column: 'a', of: 'in' }, { value: 2 }] } }, { name: 'k', value: { value: 'x' } }] },
+            { filter: 'doubled', where: { fn: '>', args: [{ column: 'd' }, { value: 0 }] } }
+        ] });
+        assert.ok('result' in middle);
+        assert.strictEqual(middle.total, 7);
+        assert.deepStrictEqual(e.read(middle.result, 0, 2).rows, [[2, 'x'], [0, 'x']]);
+    });
+
+    it('check refuses a select with no columns or two of one name, a sort with nothing to sort by, a step that reads one after it', () => {
+        const e = new QueryEngine();
+        e.load('t', { columns: ['a'], rows: [] });
+        const said = (q: Parameters<QueryEngine['check']>[0]) => e.check(q).map(p => p.message).join(' | ');
+        assert.match(said({ steps: [{ from: 't' }, { select: 'step 1', columns: [] }] }), /at least one column/);
+        assert.match(said({ steps: [{ from: 't' }, { select: 'step 1', columns: [{ name: 'x', value: { column: 'a' } }, { name: 'x', value: { value: 1 } }] }] }), /Two columns are called "x"/);
+        assert.match(said({ steps: [{ from: 't' }, { sort: 'step 1', by: [] }] }), /something to sort by/);
+        assert.match(said({ steps: [{ from: 't' }, { filter: 'later', where: { value: 1 } }, { as: 'later', select: 'step 1', columns: [{ name: 'a', value: { column: 'a' } }] }] }), /no table or step called "later"/);
+    });
+
     it('tables come in, in pieces, and are read a window at a time; a table still loading is refused', () => {
         const e = new QueryEngine();
         e.load('t', { columns: ['a', 'b'], rows: [[1, 'x']] }, { more: true });
@@ -134,7 +181,7 @@ describe('The engine, first piece: tables, select, filter, functions', () => {
         assert.match(said({ steps: [{ from: 'nope' }] })[0], /no table or step called "nope"/);
         assert.match(said({ steps: [{ from: 't' }, { select: 'step 1', columns: [{ name: 'x', value: { column: 'b' } }] }] })[0], /no column "b"/);
         assert.match(said({ steps: [{ from: 't' }, { filter: 'step 1', where: { fn: 'UPPER', args: [] } }] })[0], /UPPER takes 1 values, not 0/);
-        assert.match(said({ steps: [{ from: 't' }, { sort: 'step 1', by: [] }] })[0], /does not run a sort step yet/);
+        assert.match(said({ steps: [{ from: 't' }, { group: 'step 1', by: [], aggregates: [] }] })[0], /does not run a group step yet/);
     });
 
     it('Translate values reads a loaded lookup table: the first row whose from-column holds the value, as text; not found, the value', () => {

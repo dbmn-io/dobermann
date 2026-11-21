@@ -6,9 +6,9 @@
  * Query as plain data, a Table out.
  *
  * Built in pieces, each tested against SQLite (sql.js, as the app runs today) by the tester's
- * reference harness. **Piece 1** implements: `load`, `append`, `drop`, `check` and `run` / `read`
- * / `release` for a query of `from`, `select` and `filter` steps, and every function in FUNCTIONS
- * with its operators. The other steps (`join`, `compare`, `group`, `sort`), `stats` and `cancel`
+ * reference harness. **Pieces 1 and 2** implement: `load`, `append`, `drop`, `check` and `run` /
+ * `read` / `release` for a query of `from`, `select`, `filter` and `sort` steps, and every function in FUNCTIONS
+ * with its operators. The other steps (`join`, `compare`, `group`), `stats` and `cancel`
  * are declared here as agreed and come in later pieces; until then `check` refuses them by name.
  */
 
@@ -95,6 +95,7 @@ export type Step =
     | { as?: string; select: string; columns: { name: string; value: Expr }[] }
     | { as?: string; filter: string; where: Expr }
     | { as?: string; group: string; by: { name: string; value: Expr }[]; aggregates: { name: string; fn: Aggregate; value?: Expr }[] }
+    /** Blank first, then numbers, then text by code points; descending reverses (blanks last); ties keep their order. */
     | { as?: string; sort: string; by: { value: Expr; descending?: boolean }[] };
 
 /** A query: its steps in order, and which step's table is the answer (its `as`, or the last step when left out). */

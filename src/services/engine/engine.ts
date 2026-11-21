@@ -9,7 +9,7 @@
 import { ARITY, callFunction, type FunctionContext, type LookupSource } from './engine-functions';
 import { StoredTable } from './engine-columns';
 import { FUNCTIONS, type Engine, type Expr, type FunctionName, type Problem, type Query, type ResultId, type Step, type Table, type TableWindow, type CompareStats, type JoinStats, type StatsWindow } from './engine-types';
-import { fromValue, toValue, truthy, type V } from './engine-values';
+import { compareValues, fromValue, toValue, truthy, type V } from './engine-values';
 
 /** A step's rows: its columns, how many rows, and a value by row and column. */
 interface Relation {
@@ -20,7 +20,7 @@ interface Relation {
 
 /** The step kinds this piece runs; the rest are refused by name until their piece. */
 const STEP_KINDS = ['from', 'join', 'compare', 'select', 'filter', 'group', 'sort'] as const;
-const RUNS_NOW = new Set(['from', 'select', 'filter']);
+const RUNS_NOW = new Set(['from', 'select', 'filter', 'sort']);
 
 function kindOf(step: Step): typeof STEP_KINDS[number] | undefined {
     return STEP_KINDS.find(k => k in step);
@@ -93,10 +93,17 @@ export class QueryEngine implements Engine {
             let out = columns;
             if (kind === 'select') {
                 const s = step as Extract<Step, { select: string }>;
+                if (!s.columns.length) problems.push({ step: name, message: 'A select step needs at least one column.' });
                 s.columns.forEach(c => this.checkExpr(c.value, columns, input, name, problems));
                 out = s.columns.map(c => c.name);
+                const seen = new Set<string>();
+                out.forEach(c => { if (seen.has(c)) problems.push({ step: name, message: `Two columns are called "${c}".` }); seen.add(c); });
             } else if (kind === 'filter') {
                 this.checkExpr((step as Extract<Step, { filter: string }>).where, columns, input, name, problems);
+            } else if (kind === 'sort') {
+                const s = step as Extract<Step, { sort: string }>;
+                if (!s.by.length) problems.push({ step: name, message: 'A sort step needs something to sort by.' });
+                s.by.forEach(b => this.checkExpr(b.value, columns, input, name, problems));
             }
             known.set(name, out);
             if (step.as) known.set(step.as, out);
@@ -157,12 +164,39 @@ export class QueryEngine implements Engine {
             const exprs = s.columns.map(c => this.compile(c.value, base));
             return { columns: s.columns.map(c => c.name), rowCount: base.rowCount, value: (row, c) => exprs[c](row) };
         }
+        if (kind === 'sort') return this.sorted(step as Extract<Step, { sort: string }>, base);
         // filter: the rows whose condition is true, as SQLite's WHERE reads it
         const where = this.compile((step as Extract<Step, { filter: string }>).where, base);
         const kept: number[] = [];
         for (let r = 0; r < base.rowCount; r++) if (truthy(where(r)) === true) kept.push(r);
         const rows = Int32Array.from(kept);
         return { columns: base.columns, rowCount: rows.length, value: (row, c) => base.value(rows[row], c) };
+    }
+
+    /**
+     * Sort: by each `by` in turn, in compareValues' order (blank first, then numbers, then text by
+     * code points); `descending` reverses it, so blanks come last. Ties: rows equal on every `by`
+     * keep the order they came in (a stable sort; SQLite promises no order for ties).
+     */
+    private sorted(step: Extract<Step, { sort: string }>, base: Relation): Relation {
+        const n = base.rowCount;
+        const keys = step.by.map(b => {
+            const f = this.compile(b.value, base);
+            const values = new Array<V>(n);
+            for (let r = 0; r < n; r++) values[r] = f(r);
+            return { values, sign: b.descending ? -1 : 1 };
+        });
+        const order = new Array<number>(n);
+        for (let r = 0; r < n; r++) order[r] = r;
+        order.sort((x, y) => {
+            for (const k of keys) {
+                const c = compareValues(k.values[x], k.values[y]);
+                if (c) return c * k.sign;
+            }
+            return x - y;
+        });
+        const rows = Int32Array.from(order);
+        return { columns: base.columns, rowCount: n, value: (row, c) => base.value(rows[row], c) };
     }
 
     private tableRelation(name: string): Relation {
