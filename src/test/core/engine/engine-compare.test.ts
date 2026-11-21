@@ -188,4 +188,31 @@ describe('The engine, compare: James\'s rule for repeats and blanks, the old Com
             [null, '007', 'notInBaseline']
         ]);
     });
+
+    it('a sample compare (Join and Columns): the Baseline\'s first rows and the others\' rows with their keys, the rows the whole compare gives for those keys; its figures; keys found again when a view changes', async () => {
+        const e = new QueryEngine();
+        // BL: k0..k49 once; C1: shuffled, k3 twice, some keys of its own, a blank; C2: every third key
+        const bl = Array.from({ length: 50 }, (_, i) => [`k${i}`, i]);
+        const c1 = [...Array.from({ length: 50 }, (_, i) => [`k${(i * 7) % 50}`, i % 5 === 0 ? i + 1 : (i * 7) % 50]), ['k3', 99], ['x1', 1], [null, 2]];
+        const c2 = Array.from({ length: 17 }, (_, i) => [`k${i * 3}`, i * 3]);
+        e.load('BL', { columns: ['k', 'q'], rows: bl });
+        e.load('C1', { columns: ['k', 'q'], rows: c1 });
+        e.load('C2', { columns: ['k', 'q'], rows: c2 });
+        const step = (sample?: number) => ({ as: 'cmp', compare: ['BL', 'C1', 'C2'], on: ['BL', 'C1', 'C2'].map(v => [col('k', v)]), columns: [{ name: 'q', values: ['BL', 'C1', 'C2'].map(v => col('q', v)) }], ...(sample === undefined ? {} : { sample }) });
+        const read = async (sample?: number) => {
+            const out = await e.run({ steps: [step(sample)] });
+            assert.ok('result' in out);
+            return { rows: e.read(out.result, 0, 999).rows, stats: e.stats(out.result, 'cmp') as CompareStats };
+        };
+        const whole = await read();
+        const some = await read(10);
+        const keysOf = new Set(bl.slice(0, 10).map(r => r[0]));
+        // (the whole compare's rows for the first ten keys, in the same order)
+        assert.deepStrictEqual(some.rows, whole.rows.filter(r => keysOf.has(r[0] as string)));
+        // k0..k9 in C1 every one; in C2 k0, k3, k6, k9
+        assert.deepStrictEqual(some.stats.sample, { rows: 10, of: 50, inEvery: 4, byInput: [10, 10, 4] });
+        // A view's rows change: its keys are found again
+        e.load('C2', { columns: ['k', 'q'], rows: [['k1', 1]] });
+        assert.deepStrictEqual((await read(10)).stats.sample, { rows: 10, of: 50, inEvery: 1, byInput: [10, 10, 1] });
+    });
 });

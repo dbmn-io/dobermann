@@ -123,7 +123,12 @@ export type Step =
      * i has no cell in it, and is not measured there. A value differs from the
      * first present, compared input's (the Baseline's unless it lacks the record) when they aren't alike (sameValue; two blanks alike).
      */
-    | { as?: string; compare: string[]; on: Expr[][]; columns: { name: string; values: (Expr | null)[] }[]; notCompared?: string[] }
+    /**
+     * `sample`: only the Baseline's first rows, and of each other input only the rows holding one of
+     * their keys (found through a key index kept for that input and key: QueryEngine's keyIndex). What
+     * Join and Columns show while the user builds a query: never a pass over every row.
+     */
+    | { as?: string; compare: string[]; on: Expr[][]; columns: { name: string; values: (Expr | null)[] }[]; notCompared?: string[]; sample?: number }
     | { as?: string; select: string; columns: { name: string; value: Expr }[] }
     | { as?: string; filter: string; where: Expr }
     /**
@@ -217,6 +222,11 @@ export interface CompareStats {
     }[];
     rows: number;
     status: { same: number; diff: number; missing: number; notInBaseline: number; noKey: number };
+    /**
+     * A sample compare's (the step's `sample`): the Baseline's records in it, how many of them have their
+     * key in every other input, and in each input (the Baseline's own count first); its whole rows.
+     */
+    sample?: { rows: number; of: number; inEvery: number; byInput: number[] };
 }
 
 /**

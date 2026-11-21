@@ -92,6 +92,16 @@ function keyOf(parts: V[]): string | null {
     return key;
 }
 
+/** A key's text, as the compare matches keys (engine-compare.ts keyOf): null when a part is blank. */
+function keyText(parts: V[]): string | null {
+    let key = '';
+    for (const v of parts) {
+        if (v === null) return null;
+        key += keyPart(v);
+    }
+    return key;
+}
+
 const giveWay = (): Promise<void> => new Promise(resolve => setTimeout(resolve, 0));
 const count = (n: number): string => n.toLocaleString('en-US');
 
@@ -121,6 +131,7 @@ export class QueryEngine implements Engine {
 
     /** Start a table (replacing one of the same name). `more`: further pieces follow by `append`; it is loading until one says `last`. */
     load(name: string, table: Table, options?: { more?: boolean }): void {
+        this.forgetKeys(name);
         const replaced = this.tables.has(name);
         const stored = new StoredTable(name, [...table.columns], this.dict);
         stored.complete = false;
@@ -136,11 +147,13 @@ export class QueryEngine implements Engine {
         if (table.columns.length !== stored.columns.length || table.columns.some((c, i) => c !== stored.columns[i])) {
             throw new Error(`Engine: the rows for "${name}" have other columns`);
         }
+        this.forgetKeys(name);
         this.put(stored, table);
         if (options?.last) this.completed(stored);
     }
 
     drop(name: string): void {
+        this.forgetKeys(name);
         if (this.tables.delete(name)) this.tidy();
     }
 
@@ -488,7 +501,10 @@ export class QueryEngine implements Engine {
     private async compared(step: Extract<Step, { compare: string[] }>, name: string, input: (n: string) => Relation,
         slice: (stage: string, done: number, total: number) => Promise<void>, keep: (stats: CompareStats) => void): Promise<Relation> {
         const names = step.compare;
-        const rels = names.map(n => input(n));
+        const whole = names.map(n => input(n));
+        const sample = typeof step.sample === 'number' ? Math.max(0, Math.floor(step.sample)) : undefined;
+        const sampled = sample === undefined ? undefined : await this.sampleInputs(step, names, whole, sample, slice);
+        const rels = sampled ? sampled.rels : whole;
         const places = rels.length;
         const columns = step.columns ?? [];
         const skipped = new Set(step.notCompared ?? []);
@@ -499,7 +515,7 @@ export class QueryEngine implements Engine {
             values: columns.map(c => { const e = c.values[i]; return e ? this.compile(e, rel, names[i]) : undefined; }),
             skipped: i > 0 && skipped.has(names[i])
         })), columns.length, (done, total) => slice(`Comparing ${names.length} inputs`, done, total), SLICE);
-        keep(made.stats);
+        keep(sampled ? { ...made.stats, sample: sampled.facts } : made.stats);
         const { rowAt, status, relation, differs, diffBy, repeatedBy } = made;
         const length = made.stats.rows;
         const inputCols = rels.map(r => r.cols.length);
@@ -526,6 +542,67 @@ export class QueryEngine implements Engine {
                 return p < places ? diffBy[p][row] : repeatedBy[p - places][row];
             }
         };
+    }
+
+    /**
+     * A sample compare's inputs: the Baseline's first `n` rows, and of each other input the rows that hold
+     * one of their keys, in their own order (by its key index); with how many of the Baseline's sample
+     * have their key in each input and in every one.
+     */
+    private async sampleInputs(step: Extract<Step, { compare: string[] }>, names: string[], rels: Relation[], n: number,
+        slice: (stage: string, done: number, total: number) => Promise<void>): Promise<{ rels: Relation[]; facts: { rows: number; of: number; inEvery: number; byInput: number[] } }> {
+        const first = { ...rels[0], rowCount: Math.min(n, rels[0].rowCount) };
+        const keyFns = step.on[0].map(e => this.compile(e, first, names[0]));
+        const keys: (string | null)[] = [];
+        for (let r = 0; r < first.rowCount; r++) keys.push(keyText(keyFns.map(f => f(r))));
+        const byInput = [first.rowCount];
+        const inAll = keys.map(k => k !== null);
+        const out: Relation[] = [first];
+        for (let p = 1; p < rels.length; p++) {
+            const index = await this.keyIndex(names[p], step.on[p], rels[p], slice);
+            const rows: number[] = [];
+            const seen = new Set<string>();
+            let found = 0;
+            keys.forEach((k, i) => {
+                const at = k === null ? undefined : index.get(k);
+                if (!at) { inAll[i] = false; return; }
+                found++;
+                if (!seen.has(k!)) { seen.add(k!); rows.push(...at); }
+            });
+            byInput.push(found);
+            rows.sort((a, b) => a - b);
+            const base = rels[p];
+            const list = Int32Array.from(rows);
+            out.push({ cols: base.cols, rowCount: list.length, value: (row, c) => base.value(list[row], c) });
+        }
+        return { rels: out, facts: { rows: first.rowCount, of: rels[0].rowCount, inEvery: inAll.filter(Boolean).length, byInput } };
+    }
+
+    /** Keys kept for a table and a key (keyIndex): its rows by key text; let go when the table changes. */
+    private readonly keyIndexes = new Map<string, Map<string, number[]>>();
+
+    /** An input's rows by their key's text (a blank key left out): kept for a loaded table, made once for anything else. */
+    private async keyIndex(name: string, on: Expr[], rel: Relation, slice: (stage: string, done: number, total: number) => Promise<void>): Promise<Map<string, number[]>> {
+        const id = `${name}\n${JSON.stringify(on)}`;
+        const table = this.tables.has(name);
+        const had = table ? this.keyIndexes.get(id) : undefined;
+        if (had) return had;
+        const fns = on.map(e => this.compile(e, rel, name));
+        const index = new Map<string, number[]>();
+        for (let r = 0; r < rel.rowCount; r++) {
+            if (r && r % SLICE === 0) await slice(`Finding the keys in ${name}`, r, rel.rowCount);
+            const k = keyText(fns.map(f => f(r)));
+            if (k === null) continue;
+            const list = index.get(k);
+            if (list) list.push(r); else index.set(k, [r]);
+        }
+        if (table) this.keyIndexes.set(id, index);
+        return index;
+    }
+
+    /** A table changed: the keys kept for it go. */
+    private forgetKeys(name: string): void {
+        for (const id of [...this.keyIndexes.keys()]) if (id.startsWith(`${name}\n`)) this.keyIndexes.delete(id);
     }
 
     /** Group (the rule is on the step in engine-types.ts): a row per group, its `by` values from its first row, then the aggregates. */
