@@ -110,8 +110,8 @@ export type Step =
      * compared column c. `notCompared`: inputs kept in the rows but left out of status, relation and
      * differs (Results' Hide); never the Baseline.
      *
-     * Columns out: every input's columns (named by `of`), then `status` ("diff", "notInBaseline",
-     * "missing", "same": the first that applies; engine-compare.ts), `relation`
+     * Columns out: every input's columns (named by `of`), then `status` ("noKey", "diff",
+     * "notInBaseline", "missing", "same": the first that applies; engine-compare.ts), `relation`
      * ("oneToOne", "oneToMany", "onlyBase", "onlyOther"), a `missing:<input>` per input and a
      * `differs:<column>` per compared column, then a `diff:<input>` per input (one of its values
      * differs from its column's first) and a `repeated:<input>` per input (it holds the row's key on
@@ -210,7 +210,7 @@ export interface CompareStats {
         againstAll: { matched: number; repeatedKeys: number; repeatedRecords: number; onlyHere: number };
     }[];
     rows: number;
-    status: { same: number; diff: number; missing: number; notInBaseline: number };
+    status: { same: number; diff: number; missing: number; notInBaseline: number; noKey: number };
 }
 
 /**

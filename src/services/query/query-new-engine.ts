@@ -496,6 +496,10 @@ function statusColumns(spec: QuerySpec, values: Expr[], places: string[], where:
     const shown = (place: string) => !where.hidden.includes(place);
     const own = (name: string): Expr => ({ column: name, of: 'compare' });
     const missing = (p: number): Expr => ({ fn: '=', args: [own(`missing:${places[p]}`), { value: 1 }] });
+    // A record whose key is blank (James, 2026-11-21): its own status, No key, when the result holding it is shown
+    const holders = places.map((_, p) => p).filter(p => shown(labels[p]));
+    const keyIsBlank: Expr = { fn: '=', args: [own('status'), { value: 'noKey' }] };
+    const noKey = and([keyIsBlank, or(holders.map(p => not(missing(p))))]);
     const columns: { name: string; value: Expr }[] = [];
     const resultCols = resultColumns(spec);
     // Each compared column: its cells (shown), each present when its view has the record; a cell differs from the first present
@@ -508,7 +512,7 @@ function statusColumns(spec: QuerySpec, values: Expr[], places: string[], where:
         const flags = cells.map((i, k) => {
             if (k === 0) return { value: 0 } as Expr;
             const firstIs = (j: number) => and([present[j], not(or(present.slice(0, j)))]);
-            return yes(and([present[k], or(cells.slice(0, k).map((jCol, j) => and([firstIs(j), differ(values[i], values[jCol])])))]));
+            return yes(and([not(noKey), present[k], or(cells.slice(0, k).map((jCol, j) => and([firstIs(j), differ(values[i], values[jCol])])))]));
         });
         columns.push({ name: `s_g${gi}`, value: yes(or(flags)) });
         cells.forEach((i, k) => {
@@ -519,7 +523,7 @@ function statusColumns(spec: QuerySpec, values: Expr[], places: string[], where:
     });
     diffPlaces.forEach((place, k) => columns.push({ name: `s_dp${k}`, value: yes(or(placeFlags.get(place)!)) }));
     places.forEach((v, p) => {
-        columns.push({ name: `s_missing${p}`, value: own(`missing:${v}`) });
+        columns.push({ name: `s_missing${p}`, value: ifThen(noKey, { value: 0 }, own(`missing:${v}`)) });
         columns.push({ name: `s_repeated${p}`, value: own(`repeated:${v}`) });
     });
     const shownMissing = places.map((_, p) => p).filter(p => shown(labels[p])).map(missing);
@@ -530,6 +534,8 @@ function statusColumns(spec: QuerySpec, values: Expr[], places: string[], where:
     void anyDiff;
     columns.push({ name: 's_diff', value: yes(or(groupFlags)) });
     columns.push({ name: 's_same', value: yes(and([not(or(groupFlags)), not(or(shownMissing))])) });
+    // (No key's place: the shown result holding the record)
+    columns.push({ name: 's_nokey', value: holders.reduceRight<Expr>((rest, p) => ifThen(and([keyIsBlank, not(missing(p))]), { value: labels[p] }, rest), { value: null }) });
     // Relation: a shown Baseline without the record, only in another; a shown view without it, only in the Baseline; a shown view repeating the key, one to many
     const baseShown = shown(labels[0]);
     columns.push({
@@ -547,6 +553,8 @@ export function statusOfRow(get: (name: string) => Value, st: StatusLayout): Row
         missing: st.labels.filter((l, p) => shown(l) && get(`s_missing${p}`) === 1),
         groups: st.groups.filter((_, g) => get(`s_g${g}`) === 1)
     };
+    const noKey = get('s_nokey');
+    if (typeof noKey === 'string') out.noKey = noKey;
     out.relation = get('s_relation') as RelationKind;
     const repeated = st.labels.filter((l, p) => shown(l) && get(`s_repeated${p}`) === 1);
     if (repeated.length) out.repeated = repeated;
@@ -561,6 +569,7 @@ export function statusFilterExpr(filter: StatusFilter, st: StatusLayout): Expr |
         const kinds: Expr[] = [];
         if (filter.kinds.includes('diff')) kinds.push(is('s_diff', 1));
         if (filter.kinds.includes('same')) kinds.push(is('s_same', 1));
+        if (filter.kinds.includes('noKey')) kinds.push(known({ column: 's_nokey' }));
         st.labels.forEach((l, p) => { if (!st.hidden.includes(l) && filter.kinds!.includes(`missing:${l}`)) kinds.push(is(`s_missing${p}`, 1)); });
         all.push(or(kinds));
     }
@@ -581,6 +590,7 @@ export function statusCountsStep(input: string, st: StatusLayout): Query['steps'
             { name: 'all', fn: 'count' },
             sumOf('diff', { column: 's_diff' }),
             sumOf('same', { column: 's_same' }),
+            sumOf('nokey', yes(known({ column: 's_nokey' }))),
             ...st.places.map((_, p) => sumOf(`missing${p}`, { column: `s_missing${p}` })),
             ...RELATIONS.map(r => sumOf(`rel_${r}`, is('s_relation', r))),
             ...st.groups.map((_, g) => sumOf(`g${g}`, { column: `s_g${g}` }))
@@ -593,9 +603,10 @@ export function statusCountsOf(row: Value[], st: StatusLayout): StatusCounts {
     const n = st.places.length;
     const num = (v: Value) => (typeof v === 'number' ? v : 0);
     const out: StatusCounts = { all: num(row[0]), diff: num(row[1]), same: num(row[2]), missing: {}, relations: {}, columns: {} };
-    st.labels.forEach((l, p) => { const k = num(row[3 + p]); if (k && !st.hidden.includes(l)) out.missing[l] = k; });
-    RELATIONS.forEach((r, i) => { const k = num(row[3 + n + i]); if (k) out.relations[r] = k; });
-    st.groups.forEach((g, i) => { const k = num(row[3 + n + 4 + i]); if (k) out.columns[g] = k; });
+    if (num(row[3])) out.noKey = num(row[3]);
+    st.labels.forEach((l, p) => { const k = num(row[4 + p]); if (k && !st.hidden.includes(l)) out.missing[l] = k; });
+    RELATIONS.forEach((r, i) => { const k = num(row[4 + n + i]); if (k) out.relations[r] = k; });
+    st.groups.forEach((g, i) => { const k = num(row[4 + n + 4 + i]); if (k) out.columns[g] = k; });
     return out;
 }
 

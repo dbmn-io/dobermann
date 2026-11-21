@@ -4,7 +4,7 @@
  * Query's Results when the query compares: Compare's own controls, drawn with Compare's markup and
  * styles (compare.css), so a compare reads the same whichever screen it is on.
  *
- *  - Status, first: DIFF and its places, Missing and its places, or Same. Its heading's arrow opens
+ *  - Status, first: DIFF and its places, Missing and its places, No key and its place, or Same. Its heading's arrow opens
  *    the Status filter: a tick per line, Only beside each (the line alone; on the line already
  *    alone, every line back), a funnel after the heading while it filters.
  *  - How each row's key met the others (one to one, one to many, not in every result, not in the
@@ -45,7 +45,7 @@
 
         /* ---------- Filters ---------- */
 
-        /** The Status menu's lines: Same, DIFF, Missing in each place that has any. */
+        /** The Status menu's lines: Same, DIFF, Missing in each place that has any, No key (a blank key) where there is one. */
         function statusOptions() {
             const c = ui.counts || { missing: {} };
             const all = ui.countsAll || { missing: {} };
@@ -53,6 +53,7 @@
             if (c.same || all.same) out.push({ value: 'same', n: c.same || 0, of: c.same || 0 });
             if (c.diff || all.diff) out.push({ value: 'diff', n: c.diff || 0, of: all.diff || 0 });
             shownPlaces().forEach(p => { const n = (c.missing || {})[p] || 0; const of = (all.missing || {})[p] || 0; if (n || of) out.push({ value: `missing:${p}`, place: p, n, of }); });
+            if (c.noKey || all.noKey) out.push({ value: 'noKey', n: c.noKey || 0, of: all.noKey || 0 });
             return out;
         }
         const ticked = value => !ui.filter.kinds || ui.filter.kinds.includes(value);
@@ -130,8 +131,9 @@
         }
         function renderStatusMenu() {
             const options = statusOptions();
-            const nameOf = o => (o.place === undefined ? (o.value === 'diff' ? 'DIFF' : 'Same') : `Missing ${o.place}`);
+            const nameOf = o => (o.value === 'noKey' ? 'No key' : o.place === undefined ? (o.value === 'diff' ? 'DIFF' : 'Same') : `Missing ${o.place}`);
             const pillOf = o => {
+                if (o.value === 'noKey') return noKeyPill();
                 if (o.place === undefined) return el('span', `status-pill-generic compare-${o.value}`, o.value === 'diff' ? 'DIFF' : 'Same');
                 const box = el('span', 'compare-status');
                 box.append(el('span', 'status-pill-generic compare-missing', 'Missing'), tag(o.place));
@@ -197,8 +199,19 @@
                 st.missing.forEach(p => g.appendChild(tag(p)));
                 box.appendChild(g);
             }
-            if (!st.diff.length && !st.missing.length) box.appendChild(el('span', 'status-pill-generic compare-same', 'Same'));
+            if (st.noKey) {
+                const g = el('span', 'compare-status-group');
+                g.append(noKeyPill(), tag(st.noKey));
+                box.appendChild(g);
+            }
+            if (!st.diff.length && !st.missing.length && !st.noKey) box.appendChild(el('span', 'status-pill-generic compare-same', 'Same'));
             return box;
+        }
+        /** No key: the record's key is blank, so it matches nothing (Missing's outline). */
+        function noKeyPill() {
+            const pill = el('span', 'status-pill-generic compare-missing', 'No key');
+            pill.title = 'Its key is blank, so it matches nothing';
+            return pill;
         }
         /**
          * Status's width, as Compare sizes it: its widest one line (DIFF with every other result's tag,
@@ -371,7 +384,7 @@
             wrap.append(bar, box);
             show(ui.recordView || 'table');
             const key = (m.fields[0] && m.fields[0].values.map(v => v[0]).find(v => v !== undefined && v !== null)) || 'Record';
-            const said = m.status ? (m.status.diff.length ? `DIFF ${m.status.diff.join(' ')}` : m.status.missing.length ? `Missing ${m.status.missing.join(' ')}` : 'Same') : '';
+            const said = m.status ? (m.status.diff.length ? `DIFF ${m.status.diff.join(' ')}` : m.status.missing.length ? `Missing ${m.status.missing.join(' ')}` : m.status.noKey ? `No key ${m.status.noKey}` : 'Same') : '';
             window.DbmnModal.show({ title: `${key}${said ? `: ${said}` : ''}`, body: wrap, size: 'large', maximisable: true, actions: [{ id: 'close', label: 'Close', variant: 'secondary' }] });
         }
 

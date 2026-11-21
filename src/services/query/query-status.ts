@@ -30,11 +30,16 @@ export interface RowStatus {
     relation?: RelationKind;
     /** The places where its key is on more than one row. */
     repeated?: string[];
+    /**
+     * Its key is blank, so it matches nothing (James, 2026-11-21): No key, counted apart from Same,
+     * DIFF and Missing; the place holding the record. Only the engine says it (query-new-engine.ts).
+     */
+    noKey?: string;
 }
 
 /** What Results shows, by Compare's filters. Each left out (or null) lets every row through. */
 export interface StatusFilter {
-    /** 'same', 'diff', 'missing:<place>': the ticked lines of the Status menu. */
+    /** 'same', 'diff', 'missing:<place>', 'noKey': the ticked lines of the Status menu. */
     kinds?: string[] | null;
     /** Compared columns: rows that differ in any of them. */
     columns?: string[];
@@ -110,8 +115,9 @@ export function rowStatus(
 export function passes(status: RowStatus, filter: StatusFilter): boolean {
     const kinds = filter.kinds;
     if (kinds) {
-        const same = !status.diff.length && !status.missing.length;
-        const ok = (status.diff.length > 0 && kinds.includes('diff')) || status.missing.some(p => kinds.includes(`missing:${p}`)) || (same && kinds.includes('same'));
+        const same = !status.diff.length && !status.missing.length && !status.noKey;
+        const ok = (status.diff.length > 0 && kinds.includes('diff')) || status.missing.some(p => kinds.includes(`missing:${p}`)) || (same && kinds.includes('same'))
+            || (!!status.noKey && kinds.includes('noKey'));
         if (!ok) return false;
     }
     if (filter.columns?.length && !filter.columns.some(c => status.groups.includes(c))) return false;
@@ -124,6 +130,8 @@ export interface StatusCounts {
     all: number;
     same: number;
     diff: number;
+    /** Rows whose key is blank (RowStatus.noKey), where there are any. */
+    noKey?: number;
     missing: Record<string, number>;
     relations: Partial<Record<RelationKind, number>>;
     columns: Record<string, number>;
@@ -134,7 +142,8 @@ export function statusCounts(statuses: RowStatus[], indices: number[]): StatusCo
     for (const i of indices) {
         const st = statuses[i];
         if (st.diff.length) out.diff++;
-        if (!st.diff.length && !st.missing.length) out.same++;
+        if (!st.diff.length && !st.missing.length && !st.noKey) out.same++;
+        if (st.noKey) out.noKey = (out.noKey ?? 0) + 1;
         st.missing.forEach(p => { out.missing[p] = (out.missing[p] ?? 0) + 1; });
         if (st.relation) out.relations[st.relation] = (out.relations[st.relation] ?? 0) + 1;
         st.groups.forEach(g => { out.columns[g] = (out.columns[g] ?? 0) + 1; });

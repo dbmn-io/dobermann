@@ -16,7 +16,8 @@
  * - An input without the key is missing on those rows.
  * - Every row is compared; the Baseline is not special in this. `relation` says repeated
  *   ("oneToMany") where any input has the key more than once.
- * - A blank key never matches anything: each record with a blank in its key is a row of its own.
+ * - A blank key never matches anything: each record with a blank in its key is a row of its own,
+ *   with a status of its own, "noKey" (James, 2026-11-21), counted apart from the others.
  *
  * Rows come in the order their keys first appear: the Baseline's, then each later input's.
  *
@@ -24,14 +25,14 @@
  * is compared (the Baseline, unless it lacks the record or is in notCompared), equal by sameValue
  * (42 and "42" alike, as Results has always measured it by text: query-status.ts rowStatus; two
  * blanks alike, a blank and a value not); so a row the Baseline lacks is still
- * compared among the others. Status, the first that applies: "diff" where a value differs, else
- * "notInBaseline" where the Baseline lacks the record, else "missing" where a compared input
- * lacks it, else "same".
+ * compared among the others. Status, the first that applies: "noKey" where the key is blank, else
+ * "diff" where a value differs, else "notInBaseline" where the Baseline lacks the record, else
+ * "missing" where a compared input lacks it, else "same".
  */
 import type { CompareStats } from './engine-types';
 import { alike, keyPart, type V } from './engine-values';
 
-export const COMPARE_STATUS = ['same', 'diff', 'missing', 'notInBaseline'] as const;
+export const COMPARE_STATUS = ['same', 'diff', 'missing', 'notInBaseline', 'noKey'] as const;
 export const COMPARE_RELATION = ['oneToOne', 'oneToMany', 'onlyBase', 'onlyOther'] as const;
 
 /** One input of a compare: its rows, its key's parts and its compared values as functions of a row. */
@@ -105,13 +106,20 @@ export async function runCompare(inputs: CompareInput[], columns: number, tick: 
 
     // 2. The rows: as many for a key as the most any input has; the one shown on each, the many in order
     const rowsOf: number[][] = inputs.map(() => []);
+    // (rows whose key is blank: one record each, never repeated)
+    const blankRows: number[] = [];
     const repeatedRow: number[] = [];
     // (for each repeated row, the inputs that hold its key more than once)
     const repeatedIn: number[][] = [];
     let length = 0;
     for (let k = 0; k < keys; k++) {
         const each = many.get(k);
-        if (!each) { for (let p = 0; p < places; p++) rowsOf[p].push(firstRow[p][k]); length++; continue; }
+        if (!each) {
+            for (let p = 0; p < places; p++) rowsOf[p].push(firstRow[p][k]);
+            if (blank[k]) blankRows.push(length);
+            length++;
+            continue;
+        }
         const n = Math.max(...each.map(list => list.length));
         const holders = each.map((list, p) => (list.length > 1 ? p : -1)).filter(p => p >= 0);
         for (let i = 0; i < n; i++) {
@@ -130,7 +138,9 @@ export async function runCompare(inputs: CompareInput[], columns: number, tick: 
     const relation = new Uint8Array(length);
     const differs = Array.from({ length: columns }, () => new Uint8Array(length));
     const diffBy = inputs.map(() => new Uint8Array(length));
-    const counts = { same: 0, diff: 0, missing: 0, notInBaseline: 0 };
+    const noKey = new Uint8Array(length);
+    for (const r of blankRows) noKey[r] = 1;
+    const counts = { same: 0, diff: 0, missing: 0, notInBaseline: 0, noKey: 0 };
     for (let row = 0; row < length; row++) {
         if (++done % every === 0) await tick(done, work);
         const b = rowAt[0][row];
@@ -148,7 +158,7 @@ export async function runCompare(inputs: CompareInput[], columns: number, tick: 
                 if (!alike(first, value(r))) { differs[c][row] = 1; diffBy[p][row] = 1; changed = true; }
             }
         }
-        status[row] = changed ? 1 : b < 0 ? 3 : missing ? 2 : 0;
+        status[row] = noKey[row] ? 4 : changed ? 1 : b < 0 ? 3 : missing ? 2 : 0;
         counts[COMPARE_STATUS[status[row]]]++;
     }
 

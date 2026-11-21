@@ -90,7 +90,7 @@ describe('The engine, compare: James\'s rule for repeats and blanks, the old Com
             const stats = e.stats(out.result, 'step 1') as CompareStats;
             // (the old counts, but for rows the Baseline lacks that now differ among the others)
             const moved = got.rows.filter((r, i) => old.kindOf(i) === 'notInBaseline' && r[status] === 'diff').length;
-            assert.deepStrictEqual(stats.status, { same: old.counts.same, diff: old.counts.changed + moved, missing: old.counts.missing, notInBaseline: old.counts.notInBaseline - moved });
+            assert.deepStrictEqual(stats.status, { same: old.counts.same, diff: old.counts.changed + moved, missing: old.counts.missing, notInBaseline: old.counts.notInBaseline - moved, noKey: 0 });
         });
     }
 
@@ -143,10 +143,10 @@ describe('The engine, compare: James\'s rule for repeats and blanks, the old Com
         ]);
         // a, b, b, c, c (BL repeats it: a row each, compared), x, y
         assert.strictEqual(stats.rows, 7);
-        assert.deepStrictEqual(stats.status, { same: 1, diff: 0, missing: 4, notInBaseline: 2 });
+        assert.deepStrictEqual(stats.status, { same: 1, diff: 0, missing: 4, notInBaseline: 2, noKey: 0 });
     });
 
-    it('the Baseline\'s repeats are compared like any input\'s; a blank key is a row of its own', async () => {
+    it('the Baseline\'s repeats are compared like any input\'s; a blank key is a row of its own, No key', async () => {
         const e = new QueryEngine();
         e.load('BL', { columns: ['k', 'v'], rows: [['a', 1], ['a', 2], ['a', 3], [null, 9], ['b', 5]] });
         e.load('C1', { columns: ['k', 'v'], rows: [['a', 1], [null, 9], ['b', 5], ['b', 6]] });
@@ -157,10 +157,29 @@ describe('The engine, compare: James\'s rule for repeats and blanks, the old Com
             ['a', 1, 'a', 1, 'same', 'oneToMany', 0, 0, 0, 0, 0, 1, 0],
             ['a', 2, 'a', 1, 'diff', 'oneToMany', 0, 0, 1, 0, 1, 1, 0],
             ['a', 3, 'a', 1, 'diff', 'oneToMany', 0, 0, 1, 0, 1, 1, 0],
-            [null, 9, null, null, 'missing', 'onlyBase', 0, 1, 0, 0, 0, 0, 0],
+            [null, 9, null, null, 'noKey', 'onlyBase', 0, 1, 0, 0, 0, 0, 0],
             ['b', 5, 'b', 5, 'same', 'oneToMany', 0, 0, 0, 0, 0, 0, 1],
             ['b', 5, 'b', 6, 'diff', 'oneToMany', 0, 0, 1, 0, 1, 0, 1],
-            [null, null, null, 9, 'notInBaseline', 'onlyOther', 1, 0, 0, 0, 0, 0, 0]
+            [null, null, null, 9, 'noKey', 'onlyOther', 1, 0, 0, 0, 0, 0, 0]
+        ]);
+        // (counted apart: James, 2026-11-21)
+        assert.deepStrictEqual((e.stats(out.result, 'step 1') as CompareStats).status, { same: 2, diff: 3, missing: 0, notInBaseline: 0, noKey: 2 });
+    });
+
+    it('numbers and text alike when their characters are (James, 2026-11-21): in the key and in compared values', async () => {
+        const e = new QueryEngine();
+        e.load('BL', { columns: ['k', 'v'], rows: [[42, 12.5], [7, 12.5], ['9', 'x'], [3, 1]] });
+        e.load('C1', { columns: ['k', 'v'], rows: [['42', '12.5'], ['007', 12.5], [9, 'x'], [3, '1.0']] });
+        const out = await e.run({ steps: [{ compare: ['BL', 'C1'], on: [[col('k', 'BL')], [col('k', 'C1')]], columns: [{ name: 'v', values: [col('v', 'BL'), col('v', 'C1')] }] }] });
+        assert.ok('result' in out);
+        const got = e.read(out.result, 0, 99);
+        const at = (c: string) => got.columns.indexOf(c);
+        assert.deepStrictEqual(got.rows.map(r => [r[at('BL.k')], r[at('C1.k')], r[at('status')]]), [
+            [42, '42', 'same'],
+            [7, null, 'missing'],
+            ['9', 9, 'same'],
+            [3, 3, 'diff'], // 1 and "1.0": not the same characters
+            [null, '007', 'notInBaseline']
         ]);
     });
 });

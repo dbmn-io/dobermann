@@ -626,7 +626,9 @@ function compareCols(names: string[], cols: Col[][], columns: { name: string }[]
 function findColumn(e: { column: string; of?: string }, cols: Col[], input: string): number | string {
     const named = cols.map((c, i) => ({ c, i })).filter(x => x.c.name === e.column);
     // `of`: the columns that input (or step) gave; the step's own input names every column it has
-    const owned = e.of === undefined ? [] : named.filter(x => x.c.owners.includes(e.of!));
+    let owned = e.of === undefined ? [] : named.filter(x => x.c.owners.includes(e.of!));
+    // (several: the one that came from there, as a compare's own `status` beside its inputs' after a later join)
+    if (owned.length > 1) { const made = owned.filter(x => x.c.owners[0] === e.of); if (made.length) owned = made; }
     const found = e.of === undefined ? named : owned.length ? owned : e.of === input ? named : [];
     if (found.length === 1) return found[0].i;
     if (!found.length) return e.of !== undefined && e.of !== input ? `There is no column "${e.column}" in "${e.of}".` : `There is no column "${e.column}".`;

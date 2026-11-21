@@ -544,6 +544,34 @@ describe('Query compare on the new engine', () => {
             assert.deepStrictEqual(page.status.map(same), want.rows.map(same));
             assert.ok(page.status.some(x => x.groups.includes('both')) && page.status.some(x => x.diff.includes('reference')), JSON.stringify([columns, page.status.slice(0, 5)]));
         });
+
+        it('a blank key is No key (James, 2026-11-21): counted apart from Same, DIFF and Missing, a filter of its own; a hidden holder\'s is not', async () => {
+            const spec = runsSpec();
+            const rowsOf = {
+                bl: [{ sku: 'A', qty: 1, status: 'OK' }, { sku: 'B', qty: 2, status: 'OK' }, { sku: null, qty: 9, status: 'OK' }],
+                c1: [{ sku: 'A', qty: 1, status: 'OK' }, { sku: 'B', qty: 3, status: 'OK' }, { sku: '', qty: 9, status: 'OK' }],
+                c2: [{ sku: 'A', qty: 1, status: 'OK' }]
+            };
+            const engine = new QueryEngine();
+            for (const v of spec.views) loadView(engine, v.id, v.columns, rowsOf[v.id as keyof typeof rowsOf]);
+            const read = async (hidden: string[], filter?: StatusFilter) => {
+                const paged = (await runPaged(engine, spec, null, undefined, undefined, status(hidden, filter)))!;
+                return readStatusPage(engine, paged, 0, paged.total, status(hidden, filter));
+            };
+            const all = await read([]);
+            // ('' is a key, as before: only a blank one is No key)
+            assert.deepStrictEqual(all.rows.map(r => r[0]), ['A', 'B', null, '']);
+            assert.deepStrictEqual(all.status.map(x => [x.noKey ?? '', x.diff.length ? 'diff' : '', x.missing.join(' ')]), [
+                ['', '', ''], ['', 'diff', 'C2'], ['BL', '', ''], ['', '', 'BL C2']
+            ]);
+            const counts = await pagedCounts(engine, spec, undefined, status([]));
+            assert.deepStrictEqual([counts?.all, counts?.same, counts?.diff, counts?.noKey, counts?.missing], [4, 1, 1, 1, { C2: 2, BL: 1 }]);
+            assert.deepStrictEqual((await read([], { kinds: ['noKey'] })).rows.map(r => r[1]), [9]);
+            assert.deepStrictEqual((await read([], { kinds: ['missing:C2'] })).rows.map(r => r[0]), ['B', '']);
+            // The Baseline hidden: its blank-key record is no longer No key
+            const hidden = await read(['BL']);
+            assert.strictEqual(hidden.status[2].noKey, undefined);
+        });
     });
 
     it('a worker that dies: the calls waiting on it and every call after are refused, in words, and it says it is no longer alive', async () => {
