@@ -7,7 +7,11 @@
  * blanked, or turned from a number into the same number written as text). Each row's records,
  * its kind and which columns differ must be the old Compare's, in its order.
  *
- * Both sides get the same values, as Query loads them (yes/no as the text "true"/"false").
+ * Both sides get the same values, as Query loads them (yes/no as the text "true"/"false"), except
+ * one rule: James (2026-11-21, "loose is good. do it.") has a number equal text with the same
+ * characters, where the old Compare is strict by type. So the old Compare is given every number as
+ * the text it reads as (42 as "42"): strict on text is then the loose rule, and "007" against 7 or
+ * "12.50" against 12.5 still differ.
  * James's rule (2026-11-21) parts from the old Compare in two places, so the data here holds
  * neither: no key repeats in the Baseline, and no key is blank (null). Those are counted by
  * hand in engine-compare-repeats.test.ts.
@@ -70,7 +74,8 @@ describe('Query engine compare against the old Compare (reference, the tester\'s
             const names = inputs.map((_, p) => (p === 0 ? 'BL' : `C${p}`));
             const compared = columns.filter(c => !keys.includes(c) && c !== 'id');
 
-            const sides = inputs.map(t => t.rows.map(row => Object.fromEntries(columns.map((c, i) => [c, row[i]]))));
+            const asText = (v: EngineValue) => (typeof v === 'number' ? String(v) : v);   // the loose rule, for the old Compare
+            const sides = inputs.map(t => t.rows.map(row => Object.fromEntries(columns.map((c, i) => [c, asText(row[i])]))));
             const old = await compareAcross(sides, { keyColumns: keys, compareColumns: compared }, 0);
 
             const e = new QueryEngine();
@@ -102,7 +107,7 @@ describe('Query engine compare against the old Compare (reference, the tester\'s
             }
             assert.deepStrictEqual(wrong.slice(0, 6), [], `${wrong.length} differences from the old Compare`);
             const stats = e.stats(out.result, 'step 1') as CompareStats;
-            assert.deepStrictEqual(stats.status, { same: old.counts.same, diff: old.counts.changed, missing: old.counts.missing, notInBaseline: old.counts.notInBaseline });
+            assert.deepStrictEqual(stats.status, { same: old.counts.same, diff: old.counts.changed, missing: old.counts.missing, notInBaseline: old.counts.notInBaseline, noKey: 0 });
             assert.strictEqual(old.counts.duplicate, 0, 'no repeats in the Baseline');
             // The data has every kind in it, and later runs repeat keys, so the passes above mean something
             if (preset === 'everything') {

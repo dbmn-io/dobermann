@@ -6,6 +6,8 @@
  * query-engine.ts): neither the engine's code nor the SQL, so a shared mistake shows.
  *
  * A key with a blank part (null) is left out of the matching, as in a join; "" is a value.
+ * A number matches text with the same characters (James, 2026-11-21: "loose is good. do it."):
+ * 42 = "42", but 7 is not "007" and 12.5 is not "12.50".
  */
 import * as assert from 'assert';
 import { QueryEngine } from '../../../services/engine/engine';
@@ -22,7 +24,7 @@ function groups(rows: EngineValue[][], at: number[]): Map<string, { key: EngineV
     for (const row of rows) {
         const key = at.map(i => row[i]);
         if (key.some(v => v === null)) continue;
-        const id = JSON.stringify(key.map(v => (typeof v === 'number' ? { n: v } : v)));
+        const id = JSON.stringify(key.map(v => (typeof v === 'number' ? String(v) : v)));   // loose: the text a number reads as
         const g = m.get(id); if (g) g.n++; else m.set(id, { key, n: 1 });
     }
     return m;
@@ -69,9 +71,7 @@ describe('Query engine join statistics against a hand count (reference, the test
                 const out = await e.run({ steps: [{ as: 'l', from: 'L' }, { as: 'r', from: 'R' }, { as: 'j', join: kind, left: 'l', right: 'r', on: pair.leftKey.map((k, i) => ({ left: { column: k, of: 'l' }, right: { column: pair.rightKey[i], of: 'r' } })) }] });
                 assert.ok('result' in out, JSON.stringify(out));
                 const st = e.stats(out.result, 'j') as JoinStats;
-                const { typeMismatch, ...rest } = st;
-                assert.deepStrictEqual(rest, want.stats, kind);
-                assert.strictEqual(typeMismatch, false, `${kind}: text keys on both sides`);
+                assert.deepStrictEqual(st, want.stats, kind);
                 assert.strictEqual(out.total, want.stats.rowsAfter, `${kind}: the rows made are the count said`);
                 // The values behind each count, all of them in one window, then in pages of 7
                 const lists: Record<string, { key: EngineValue[]; l: number; r: number }[]> = { oneToOne: [], oneToMany: [], manyToOne: [], manyToMany: [], onlyLeft: [], onlyRight: [] };
@@ -112,15 +112,20 @@ describe('Query engine join statistics against a hand count (reference, the test
         assert.ok((refused.stats.j2 as JoinStats).rowsAfter > 5000, 'the failing join says how many rows it would make');
     });
 
-    it('a key that is a number on one side and text on the other is said (typeMismatch)', async () => {
+    it('James, 2026-11-21 ("loose is good. do it."): a number key meets the same characters as text, and only those', async () => {
         const e = new QueryEngine();
-        e.load('L', { columns: ['k'], rows: [['1'], ['2'], [null]] });
-        e.load('R', { columns: ['k'], rows: [[1], [2]] });
+        e.load('L', { columns: ['k', 'a'], rows: [['1', 'l1'], ['2', 'l2'], [null, 'lb'], ['007', 'l7'], ['12.50', 'l12'], [' 3', 'l3']] });
+        e.load('R', { columns: ['k', 'b'], rows: [[1, 'r1'], [2, 'r2'], [7, 'r7'], [12.5, 'r12'], [3, 'r3']] });
         const out = await e.run({ steps: [{ as: 'j', join: 'outer', left: 'L', right: 'R', on: [{ left: { column: 'k' }, right: { column: 'k' } }] }] });
         assert.ok('result' in out);
         const st = e.stats(out.result, 'j') as JoinStats;
-        assert.strictEqual(st.typeMismatch, true);
-        assert.strictEqual(st.leftMatched, 0);
+        // Counted by hand: '1'-1 and '2'-2 meet; '007', '12.50' and ' 3' do not; null is blank
+        assert.strictEqual(st.leftMatched, 2);
+        assert.strictEqual(st.rightMatched, 2);
         assert.strictEqual(st.leftBlank, 1);
+        assert.strictEqual(st.keys.oneToOne, 2);
+        assert.strictEqual(out.total, 2 + 4 + 3, 'two pairs, four left alone, three right alone');
+        const pairs = e.read(out.result, 0, out.total).rows.filter(r => r.includes('l1') || r.includes('l2')).map(r => [r[1], r[3]]);
+        assert.deepStrictEqual(pairs.sort(), [['l1', 'r1'], ['l2', 'r2']]);
     });
 });

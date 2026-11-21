@@ -10,17 +10,18 @@
  *   on each row and is compared each time, the Baseline included. Inputs with several are paired in
  *   order of appearance; one with fewer than the most shows its last again. An input with none is
  *   missing. No "duplicate, not compared": every row is compared.
- * - A blank (null) key never matches: each blank-key record is a row of its own (James: "ok.").
+ * - A blank (null) key never matches: each blank-key record is a row of its own (James: "ok."), with
+ *   the status No key, counted apart from the rest (James, 2026-11-21: "3. d. ok"). Empty text is a key.
  * Everything else is still the old Compare's rule (engine-vs-old-compare.test.ts).
  */
 import * as assert from 'assert';
 import { QueryEngine } from '../../../services/engine/engine';
-import type { Expr, Value } from '../../../services/engine/engine-types';
+import type { CompareStats, Expr, Value } from '../../../services/engine/engine-types';
 
 const col = (name: string, of: string): Expr => ({ column: name, of });
 
 /** Each input as [key, v, id] rows; the compare's rows as [each input's record id or null, status, differs:v]. */
-async function compare(inputs: Record<string, [Value, Value, string][]>): Promise<Value[][]> {
+async function compare(inputs: Record<string, [Value, Value, string][]>, counts?: (s: CompareStats['status']) => void): Promise<Value[][]> {
     const names = Object.keys(inputs);
     const e = new QueryEngine();
     for (const n of names) e.load(n, { columns: ['k', 'v', 'id'], rows: inputs[n] });
@@ -32,6 +33,7 @@ async function compare(inputs: Record<string, [Value, Value, string][]>): Promis
     assert.ok('result' in out, JSON.stringify(out));
     const got = e.read(out.result, 0, out.total);
     const at = [...names.map(n => got.columns.indexOf(`${n}.id`)), got.columns.indexOf('status'), got.columns.indexOf('differs:v')];
+    counts?.((e.stats(out.result, 'step 1') as CompareStats).status);
     return got.rows.map(r => at.map(i => r[i]));
 }
 
@@ -82,16 +84,39 @@ describe('Compare: repeated and blank keys, James\'s rule (reference, hand-count
         ]);
     });
 
-    it('blank keys (James, 2026-11-21: "ok."): never match; each blank-key record is a row of its own', async () => {
+    it('blank keys (James, 2026-11-21: "ok.", then "3. d. ok"): never match; each blank-key record is a row of its own, No key', async () => {
+        let status: CompareStats['status'] | undefined;
         assert.deepStrictEqual(await compare({
             BL: [[null, 1, 'bn'], ['a', 1, 'b0']],
             C1: [[null, 1, 'cn'], ['a', 1, 'c0']],
             C2: [['a', 1, 'd0'], [null, 1, 'dn']],
-        }), [
-            ['bn', null, null, 'missing', 0],          // the Baseline's blank: in its own order, nobody else's
+        }, s => { status = s; }), [
+            ['bn', null, null, 'noKey', 0],            // the Baseline's blank: in its own order, nobody else's
             ['b0', 'c0', 'd0', 'same', 0],
-            [null, 'cn', null, 'notInBaseline', 0],    // then the keys the Baseline lacks, in input order
-            [null, null, 'dn', 'notInBaseline', 0],
+            [null, 'cn', null, 'noKey', 0],            // then the keys the Baseline lacks, in input order
+            [null, null, 'dn', 'noKey', 0],
         ]);
+        assert.deepStrictEqual(status, { same: 1, diff: 0, missing: 0, notInBaseline: 0, noKey: 3 });
+    });
+
+    it('empty text is a key, not blank: it matches like any other', async () => {
+        assert.deepStrictEqual(await compare({
+            BL: [['', 1, 'be']],
+            C1: [['', 2, 'ce']],
+        }), [['be', 'ce', 'diff', 1]]);
+    });
+
+    it('James, 2026-11-21 ("loose is good. do it."): a number key and value equal the same characters as text', async () => {
+        let status: CompareStats['status'] | undefined;
+        assert.deepStrictEqual(await compare({
+            BL: [[42, 5, 'b42'], [7, 12.5, 'b7'], [8, 3, 'b8']],
+            C1: [['42', '5', 'c42'], ['007', 12.5, 'c007'], ['8', '3.0', 'c8']],
+        }, s => { status = s; }), [
+            ['b42', 'c42', 'same', 0],                 // 42 = "42", 5 = "5"
+            ['b7', null, 'missing', 0],                // 7 is not "007"
+            ['b8', 'c8', 'diff', 1],                   // 3 is not "3.0"
+            [null, 'c007', 'notInBaseline', 0],
+        ]);
+        assert.deepStrictEqual(status, { same: 1, diff: 1, missing: 1, notInBaseline: 1, noKey: 0 });
     });
 });

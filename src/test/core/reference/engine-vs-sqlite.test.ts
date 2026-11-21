@@ -203,11 +203,16 @@ describe('Query engine against SQLite (reference, the tester\'s)', () => {
         return engine.read(ran.result, 0, 1).rows[0][0] as Value;
     }
 
-    it('difference 1 (James, 2026-11-21: "yes for now"): comparisons are exact by type (a number never equals text)', async () => {
-        assert.strictEqual(await one('=', 42, '42'), 0);
-        assert.strictEqual(await one('=', '42', 42), 0);
+    it('difference 1 (James, 2026-11-21: "loose is good. do it."): a number equals text with the same characters', async () => {
+        assert.strictEqual(await one('=', 42, '42'), 1);
+        assert.strictEqual(await one('=', '42', 42), 1);
+        assert.strictEqual(await one('=', 12.5, '12.5'), 1);
         assert.strictEqual(await one('=', 42, 42), 1);
         assert.strictEqual(await one('=', '42', '42'), 1);
+        // Loose is by the text, never by reading the text as a number: leading zeros and trailing zeros still differ.
+        assert.strictEqual(await one('=', 7, '007'), 0);
+        assert.strictEqual(await one('=', 12.5, '12.50'), 0);
+        assert.strictEqual(await one('=', 42, ' 42'), 0);
     });
 
     it('difference 2 (James, 2026-11-21: text that is not a number reads as blank): FLOOR and CEIL read text as NUMBER does', async () => {
@@ -243,6 +248,51 @@ describe('Query engine against SQLite (reference, the tester\'s)', () => {
         const r2 = await none.run({ steps: [{ as: 't', from: 'T' }, { group: 't', by: [], aggregates: [{ name: 's', fn: 'sum', value: { column: 'x' } }] }] });
         assert.ok('result' in r2);
         assert.deepStrictEqual(none.read(r2.result, 0, 1).rows, [[null]], 'a sum with nothing to add is blank');
+    });
+
+    it('difference 2, the count (James, 2026-11-21: "blank, plus a count"): text that is not a number is counted, blanks are not', async () => {
+        // Counted by hand: 'abc', '12abc' and '1.2.3' are text that isn't a number; '', ' ' and null are already blank;
+        // ' 41 ', '5' and 3 are numbers. So 3 in every column that reads x as a number, and none in one that doesn't.
+        const xs: EngineValue[] = ['abc', '12abc', '5', 3, '', ' ', null, ' 41 ', '1.2.3'];
+        const e = new QueryEngine();
+        e.load('T', { columns: ['x'], rows: xs.map(v => [v]) });
+        const ran = await e.run({ steps: [{ as: 't', from: 'T' }, { as: 'r', select: 't', columns: [
+            { name: 'plus', value: { fn: '+' as never, args: [{ column: 'x' }, { value: 1 }] } },
+            { name: 'num', value: { fn: 'NUMBER' as never, args: [{ column: 'x' }] } },
+            { name: 'floor', value: { fn: 'FLOOR' as never, args: [{ column: 'x' }] } },
+            { name: 'upper', value: { fn: 'UPPER' as never, args: [{ column: 'x' }] } },
+            { name: 'same', value: { column: 'x' } },
+        ] }] }, { countNotNumbers: ['plus', 'num', 'floor', 'upper', 'same'] });
+        assert.ok('result' in ran, JSON.stringify(ran));
+        assert.deepStrictEqual(ran.notNumbers, { r: { plus: 3, num: 3, floor: 3 } }, 'only counts above 0; Upper and a plain column read no numbers');
+        const g = new QueryEngine();
+        g.load('T', { columns: ['k', 'x'], rows: xs.map((v, i) => [i < 4 ? 'a' : 'b', v]) });
+        const grouped = await g.run({ steps: [{ as: 't', from: 'T' }, { as: 'g', group: 't', by: [{ name: 'k', value: { column: 'k' } }], aggregates: [{ name: 's', fn: 'sum', value: { column: 'x' } }, { name: 'n', fn: 'countValues', value: { column: 'x' } }] }] });
+        assert.ok('result' in grouped, JSON.stringify(grouped));
+        assert.deepStrictEqual(g.read(grouped.result, 0, 2).rows, [['a', 8, 4], ['b', 41, 4]]);
+        assert.deepStrictEqual(grouped.notNumbers, { g: { s: 3 } }, 'Sum left out "abc", "12abc" and "1.2.3"; Count of values reads no numbers');
+    });
+
+    it('difference 2, the count: a yes/no test (IF, AND, a filter) on such text is not true and is not counted', async () => {
+        const e = new QueryEngine();
+        e.load('T', { columns: ['x'], rows: [['abc'], ['1'], [1], ['1.2.3'], [null]] });
+        const ran = await e.run({ steps: [{ as: 't', from: 'T' }, { as: 'f', filter: 't', where: { fn: 'OR' as never, args: [{ column: 'x' }, { value: 1 }] } },   // reads x as yes/no, keeps every row
+            { as: 'r', select: 'f', columns: [
+                { name: 'iff', value: { fn: 'IF' as never, args: [{ column: 'x' }, { value: 'yes' }, { value: 'no' }] } },
+                { name: 'both', value: { fn: 'AND' as never, args: [{ column: 'x' }, { value: 1 }] } },
+            ] }] }, { countNotNumbers: ['iff', 'both'] });
+        assert.ok('result' in ran, JSON.stringify(ran));
+        assert.strictEqual(ran.notNumbers, undefined);
+        assert.deepStrictEqual(e.read(ran.result, 0, ran.total).rows.map(r => r[0]), ['no', 'yes', 'yes', 'no', 'no'], '"abc" and "1.2.3" are not true; "1" and 1 are');
+    });
+
+    it('difference 1 in a group (the Query session\'s reading of "equal", 2026-11-21): 42 and "42" are one group; "042" is not', async () => {
+        const e = new QueryEngine();
+        e.load('T', { columns: ['k'], rows: [[42], ['42'], ['042'], [12.5], ['12.5'], ['12.50'], [null], [null]] });
+        const ran = await e.run({ steps: [{ as: 't', from: 'T' }, { as: 'g', group: 't', by: [{ name: 'k', value: { column: 'k' } }], aggregates: [{ name: 'n', fn: 'count' }] }] });
+        assert.ok('result' in ran, JSON.stringify(ran));
+        const counts = e.read(ran.result, 0, ran.total).rows.map(r => r[1]);
+        assert.deepStrictEqual(counts, [2, 1, 2, 1, 2], 'by first seen: 42 twice, "042", 12.5 twice, "12.50", blank twice');
     });
 
     it('difference 4 (James, 2026-11-21: "Yes."): Upper and Lower case change every letter, accented ones too', async () => {
