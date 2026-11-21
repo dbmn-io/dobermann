@@ -15,7 +15,9 @@
  */
 import { asColumnValue, wholeNumber, type ColumnFn } from '../column-functions/column-functions';
 import { QueryEngine } from '../engine/engine';
-import type { CompareStats, Expr, Progress, Query, Value } from '../engine/engine-types';
+import type { CompareStats, Expr, FunctionName, Progress, Query, Value } from '../engine/engine-types';
+import { FUNCTIONS } from '../engine/engine-types';
+import type { FormulaNode } from './formula';
 import { queryCompare } from './query-compare';
 import { lookupsUsed, resultColumns } from './query-sql';
 import { CALC_VIEW, type ColumnRef, type QueryJoinStats, type QueryKey, type QuerySpec } from './query-types';
@@ -74,6 +76,28 @@ export function fnExpr(x: Expr, f: ColumnFn): Expr {
 /** A lookup table's name in the engine. */
 export function lookupTableName(id: string): string {
     return `__lookup_${id}`;
+}
+
+/**
+ * A calculated column's formula (formula.ts's tree) as an engine Expr: formulaSql, node for node.
+ * `column(key)` gives a column's Expr. Every builder function is an engine function of the same
+ * name; the engine's listed differences from SQLite apply (engine-types.ts). COMPARE has no single
+ * value: its sides are columns of their own (resultColumns), as in formulaSql.
+ */
+export function formulaExpr(node: FormulaNode, column: (key: string) => Expr): Expr {
+    const go = (n: FormulaNode): Expr => formulaExpr(n, column);
+    switch (node.k) {
+        case 'num': return { value: Number.isFinite(node.v) ? node.v : null };
+        case 'str': return { value: node.v };
+        case 'ref': return column(node.key);
+        case 'neg': return { fn: 'NEG', args: [go(node.a)] };
+        case 'bin': return { fn: node.op, args: [go(node.a), go(node.b)] };
+        case 'fn': {
+            if (node.name === 'COMPARE') throw new Error('Formula: COMPARE has no single value; write each side');
+            if (!(FUNCTIONS as readonly string[]).includes(node.name)) throw new Error(`Formula: no function ${node.name}`);
+            return { fn: node.name as FunctionName, args: node.args.map(go) };
+        }
+    }
 }
 
 /** A view's column with its functions, the first innermost. */

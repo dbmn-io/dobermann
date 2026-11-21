@@ -13,7 +13,9 @@ import type { SqlJsStatic } from 'sql.js';
 import { COLUMN_FUNCTIONS, columnFnSql, type ColumnFn } from '../../../services/column-functions/column-functions';
 import { QueryEngine } from '../../../services/engine/engine';
 import { QuerySession } from '../../../services/query/query-engine';
-import { compareQuery, fnExpr, loadView, onSqliteLine, runCompareOnEngine, whyNotOnEngine } from '../../../services/query/query-new-engine';
+import { compareQuery, fnExpr, formulaExpr, loadView, onSqliteLine, runCompareOnEngine, whyNotOnEngine } from '../../../services/query/query-new-engine';
+import { formulaSql, parseFormula, FORMULA_FUNCTIONS } from '../../../services/query/formula';
+import type { Value } from '../../../services/engine/engine-types';
 import { compareKeySql, resultColumns } from '../../../services/query/query-sql';
 import { rowStatus } from '../../../services/query/query-status';
 import type { QuerySpec } from '../../../services/query/query-types';
@@ -166,5 +168,49 @@ describe('Query compare on the new engine', () => {
             assert.deepStrictEqual(got, expected, f.fn);
         }
         db.close();
+    });
+
+    it('a calculated column\'s formula on the engine gives what its SQL gives, every builder function, but for the listed differences', async () => {
+        // Values that read the same by SQLite's leading-number rule and the engine's one rule (difference 2), plain letters only (difference 4)
+        const values: Value[] = [null, 0, 1, -7, 2.5, 100, 'abc', 'Abc d', ' x ', '0042', '7', '1.5', ''];
+        const plain = (v: Value) => typeof v !== 'string' || /^\s*[+-]?(\d+\.?\d*|\.\d+)\s*$/.test(v);
+        const rows: Value[][] = [];
+        for (const a of values) for (const b of values) rows.push([a, b]);
+        const columns = [{ key: 'a', path: ['t', 'a'] }, { key: 'b', path: ['t', 'b'] }];
+        // [formula, does it read its values as numbers]: those are given only rows whose text is a plain number
+        const formulas: [string, boolean][] = [
+            ['@a + @b', true], ['@a - @b', true], ['@a * @b', true], ['@a / @b', true], ['-@a', true],
+            ['@a = @b', false], ['@a <> @b', false], ['@a > @b', false], ['@a < @b', false], ['@a >= @b', false], ['@a <= @b', false],
+            ['IF(@a > 1, "big", "small")', false], ['IF(@a = @b, 1)', false], ['IFBLANK(@a, @b)', false],
+            ['AND(@a > 0, @b > 0)', false], ['OR(@a > 0, @b > 0)', false], ['NOT(@a > 0)', false],
+            ['ROUND(@a * 1.25, 1)', true], ['ROUND(@a)', true], ['ABS(@a)', true], ['FLOOR(@a / 3)', true], ['CEIL(@a / 3)', true],
+            ['MIN(@a, @b)', false], ['MAX(@a, @b)', false],
+            ['CONCAT(@a, " · ", @b)', false], ['UPPER(@a)', false], ['LOWER(@a)', false], ['TRIM(@a)', false],
+            ['LEFT(@a, 2)', false], ['RIGHT(@a, 2)', false], ['SUBSTR(@a, 2, 2)', false], ['REPLACE(@a, "b", "B")', false], ['LENGTH(@a)', false],
+            ['NUMBER(@a)', true], ['TEXT(@a)', false]
+        ];
+        // Every builder function is in the list (COMPARE is columns, not a value)
+        const used = new Set(formulas.flatMap(([f]) => [...f.matchAll(/([A-Z]+)\(/g)].map(m => m[1])));
+        assert.deepStrictEqual(FORMULA_FUNCTIONS.map(f => f.name).filter(n => n !== 'COMPARE' && !used.has(n)), []);
+        const db = new SQL.Database();
+        db.run('CREATE TABLE t (a, b)');
+        rows.forEach(r => db.run('INSERT INTO t VALUES (?, ?)', r as (string | number | null)[]));
+        const engine = new QueryEngine();
+        engine.load('t', { columns: ['a', 'b'], rows });
+        const wrong: string[] = [];
+        for (const [text, numeric] of formulas) {
+            const tree = parseFormula(text, columns).tree;
+            const want = db.exec(`SELECT ${formulaSql(tree, key => key)} FROM t`)[0].values.map(r => r[0]);
+            const out = await engine.run({ steps: [{ from: 't' }, { select: 'step 1', columns: [{ name: 'y', value: formulaExpr(tree, key => ({ column: key })) }] }] });
+            assert.ok('result' in out, `${text}: ${JSON.stringify(out)}`);
+            const got = engine.read(out.result, 0, rows.length).rows.map(r => r[0]);
+            rows.forEach((r, i) => {
+                if (numeric && !(plain(r[0]) && plain(r[1]))) return;
+                const w = want[i], g = got[i];
+                if (!(Object.is(w, g) || (typeof w === 'number' && w === g))) wrong.push(`${text} on ${JSON.stringify(r)}: SQL ${JSON.stringify(w)}, engine ${JSON.stringify(g)}`);
+            });
+        }
+        db.close();
+        assert.deepStrictEqual(wrong.slice(0, 8), [], `${wrong.length} values differ`);
     });
 });
