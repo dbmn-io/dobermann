@@ -46,7 +46,7 @@ const STATE = {
     columnCells: []
 };
 
-const page = () => `<!doctype html><html><head>
+const page = (state = STATE) => `<!doctype html><html><head>
 <style>:root{--vscode-foreground:#d8dce1;--vscode-editor-background:#1e1f22;--vscode-panel-border:#3a3e44;--vscode-focusBorder:#4f9be0;--vscode-descriptionForeground:#969da6;
 --vscode-charts-blue:#4f8fd8;--vscode-charts-green:#57b07a;--vscode-charts-purple:#a77ad6;--vscode-charts-orange:#d9894a;--vscode-charts-yellow:#c2a73f;--vscode-charts-red:#c06a9a;
 --vscode-textLink-foreground:#4f9be0;--vscode-input-background:#2a2a2a;--vscode-editor-font-family:monospace}
@@ -57,7 +57,7 @@ ${SCRIPTS.map(rel => `<script>${read(rel)}</script>`).join('\n')}</head><body>
 <script>
 (() => {
   window.posted = [];
-  const ui = { state: ${JSON.stringify(STATE)} };
+  const ui = { state: ${JSON.stringify(state)} };
   // The page's own helpers, as query-page.js has them
   function el(tagName, className, content) { const n = document.createElement(tagName); if (className) n.className = className; if (content !== undefined) n.textContent = content; return n; }
   function laneGroups() {
@@ -108,6 +108,7 @@ ${SCRIPTS.map(rel => `<script>${read(rel)}</script>`).join('\n')}</head><body>
       state: () => ui.state, openCalc: () => {}, pickFns: () => {}
   });
   step.render();
+  window.columnsStep = step;
 })();
 </script></body></html>`;
 
@@ -215,4 +216,22 @@ test('a compared row: a cell that differs from the first cell in slot order is a
     await expect(row.locator('[data-view="s1"]')).not.toHaveClass(/is-diff/);
     const colours = await row.evaluate(r => ['s1', 's2'].map(v => getComputedStyle(r.querySelector(`[data-view="${v}"] .dbmn-cell-value`)).color));
     expect(colours[1]).not.toBe(colours[0]);
+});
+
+test('one view, no join, no key: every column taken out leaves the step empty, sends nothing (never "every column"), and says it is empty; a column put back ends it', async ({ page: p }) => {
+    const one = {
+        views: [{ id: 's1', name: 'Stock', run: '', runOf: '', columns: [{ name: 'sku', sample: 'WOOF-033' }, { name: 'gtin', sample: '00012345600012' }] }],
+        compare: null, joins: [], keyColumns: [], columns: [{ view: 's1', column: 'sku' }], sampleRow: [], columnCells: []
+    };
+    await p.setContent(page(one));
+    expect(await p.evaluate(() => window.columnsStep.isEmpty())).toBe(false);
+    await p.locator('#queryColumns .query-rep-row').first().locator('.dbmn-cell').first().click({ button: 'right' });
+    await p.locator('.dbmn-context-menu').getByText('Take it out of the report').click();
+    await expect(p.locator('#queryColumns')).toContainText('Nothing here yet. Click a cell below to show it.');
+    expect(await selects(p)).toEqual([]);
+    expect(await p.evaluate(() => window.columnsStep.isEmpty())).toBe(true);
+    // Both columns are free below; putting one back sends it alone
+    await rowNamed(p, 'gtin').locator('[data-view="s1"]').click();
+    await expect.poll(() => selects(p)).toEqual([[{ view: 's1', column: 'gtin' }]]);
+    await expect.poll(() => p.evaluate(() => window.columnsStep.isEmpty())).toBe(false);
 });

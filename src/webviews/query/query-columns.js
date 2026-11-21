@@ -19,6 +19,9 @@
  * icon beside a name, where two or more cells are free and one is in the compare, brings the row
  * up, compared. Whatever comes up is lit for a moment; rows that move slide to their new place.
  *
+ * Every column taken out of a report with no key leaves the step empty, "Nothing here yet", and
+ * sends nothing: isEmpty() says so, and the page refuses Results until a column is put back.
+ *
  * Runs are grouped where they are drawn (each run is still its own view underneath: its own
  * entries in what is sent). The page hands its helpers in (ctx). Styles: shared/query-columns.css.
  */
@@ -27,7 +30,8 @@
 
     /**
      * ctx: { el, at, line, views, view, viewAt, colour, post, setBusy, count, state, injectIcons,
-     *        openCalc(calc|null), pickFns(ref, done), CALC_VIEW }
+     *        openCalc(calc|null), pickFns(ref, done), CALC_VIEW, stepsChanged?() }
+     *   stepsChanged(): the step is empty, or not, with no answer from the host (the page's steps redraw)
      *   line(className, cells, says, lead): a .dbmn-lanes-row; cells by view id (or { __span }), a cell each
      *   at(viewId, className): a run's cell in that view's colours
      */
@@ -35,6 +39,15 @@
         const { el, at, line, views, view } = ctx;
         let dragFrom = -1;
         let lastAdded = '';
+        /**
+         * Every column taken out of a report with no key: the step is empty on the page and nothing
+         * is sent (an empty select is "every column" to the host). Held as the host's columns at
+         * that moment: once the host has others (a column put back), it is over. The page asks
+         * isEmpty() before Results.
+         */
+        let emptied = null;
+        const hostColumns = () => JSON.stringify(ctx.state().columns || []);
+        const isEmpty = () => emptied !== null && emptied === hostColumns();
 
         const id = c => `${c.view}\u0000${c.column}`;
         /** A value of a view's column: from the report's sample row (the first where every view matched), else the view's own first. */
@@ -103,6 +116,9 @@
 
         /** The report's columns as the host has them, every entry a copy. */
         function entries() {
+            if (isEmpty()) return [];
+            // (a column put back: the page's steps hear that Results can be reached again)
+            if (emptied !== null) { emptied = null; if (ctx.stepsChanged) ctx.stepsChanged(); }
             return (ctx.state().columns || []).map(c => Object.assign({}, c, { fns: (c.fns || []).slice() }));
         }
         /** Entries as report columns: a compared column is the entries side by side with one group. The key's entries are the Key row's. */
@@ -133,7 +149,8 @@
             let out = keys.concat(list.filter(c => !keys.includes(c)));
             if (!out.length) {
                 const first = [...key.byView.entries()][0];
-                if (!first) { if (window.DbmnToast) window.DbmnToast.info('A report needs one column at least.'); render(); return; }
+                // No key either: empty here, nothing sent (Results is refused until a column is put back)
+                if (!first) { emptied = hostColumns(); render(); if (ctx.stepsChanged) ctx.stepsChanged(); return; }
                 out = [{ view: first[0], column: first[1], fns: [] }];
             }
             ctx.setBusy('Updating…');
@@ -473,7 +490,7 @@
             lastAdded = '';
         }
 
-        return { render };
+        return { render, isEmpty };
     }
 
     window.QueryColumns = { create };
