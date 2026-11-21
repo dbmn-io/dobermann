@@ -21,9 +21,27 @@ import { differences, load, rows } from './sqlite-reference';
 /** A generator value as the engine takes it: yes/no as the text "true"/"false", as Query loads. */
 const toEngine = (v: Value): EngineValue => (typeof v === 'boolean' ? (v ? 'true' : 'false') : v);
 
+/**
+ * James's one rule for reading text as a number (2026-11-21, "Blank." and "ok."), written here
+ * from the rule, not from the engine: a number is itself; text that is a plain number, spaces
+ * round it allowed, is that number; anything else (other text, "", yes/no) is blank.
+ */
+export function readNumber(v: EngineValue): EngineValue {
+    if (v === null || typeof v === 'number') return v;
+    const t = v.trim();
+    return /^[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?$/.test(t) ? Number(t) : null;
+}
+
+/** The table with a column "n:<c>" beside each column: its values read by the rule, for SQLite's number cases. */
+function withNumbers(t: Table): Table {
+    return { name: t.name, columns: [...t.columns, ...t.columns.map(c => `n:${c}`)], rows: t.rows.map(r => { const e = r.map(toEngine); return [...e, ...e.map(readNumber)]; }) };
+}
+
 /** An expression for both sides: the engine's form and SQLite's text. */
 interface Case { name: string; engine: Expr; sql: string }
 const col = (c: string): Case => ({ name: c, engine: { column: c }, sql: `"${c}"` });
+/** A column as a number: the engine reads it by the rule itself; SQLite is given it already read. */
+const numCol = (c: string): Case => ({ name: c, engine: { column: c }, sql: `"n:${c}"` });
 const lit = (v: string | number): Case => ({ name: JSON.stringify(v), engine: { value: v }, sql: typeof v === 'number' ? String(v) : `'${v.replace(/'/g, "''")}'` });
 const fn = (name: string, sqlFn: (args: string[]) => string, ...args: Case[]): Case => ({
     name: `${name}(${args.map(a => a.name).join(', ')})`,
@@ -62,6 +80,7 @@ describe('Query engine against SQLite (reference, the tester\'s)', () => {
 
     /** The rows of one select of `exprs` over table L, from both sides. */
     async function both(table: Table, select: Case[], where?: Case): Promise<{ expected: Value[][]; actual: Value[][] }> {
+        table = withNumbers(table);
         const db = load(SQL, [table]);
         const sql = `SELECT ${select.map(c => c.sql).join(', ')} FROM "L"${where ? ` WHERE ${where.sql}` : ''}`;
         let expected: Value[][];
@@ -83,7 +102,7 @@ describe('Query engine against SQLite (reference, the tester\'s)', () => {
             const { left } = makePair({ seed: 21, rows: 400, ...PRESETS[preset] });
             const failures: string[] = [];
             for (const c of left.columns) {
-                for (const k of [col(c), ...textCases(col(c)), ...numberCases(col(c))]) {
+                for (const k of [col(c), ...textCases(col(c)), ...numberCases(numCol(c))]) {
                     const { expected, actual } = await both(left, [k]);
                     const d = differences(expected, actual, 3);
                     if (d.missing.length || d.extra.length) failures.push(`${k.name}: missing ${d.missing.join(' ')} extra ${d.extra.join(' ')}`);
@@ -203,6 +222,27 @@ describe('Query engine against SQLite (reference, the tester\'s)', () => {
         assert.strictEqual(await one('NUMERIC', '0042'), 42);
     });
 
+    it('difference 2 too: one rule everywhere: arithmetic, Sum, and the edges SQLite reads differently', async () => {
+        assert.strictEqual(await one('+', 'abc', 1), null);
+        assert.strictEqual(await one('+', '12abc', 1), null);
+        assert.strictEqual(await one('+', ' 41 ', 1), 42);
+        assert.strictEqual(await one('*', '', 2), null);
+        assert.strictEqual(await one('NUMBER', '1.2.3'), null);
+        assert.strictEqual(await one('NUMBER', '1e'), null);
+        assert.strictEqual(await one('NUMBER', '1e3'), 1000);
+        assert.strictEqual(await one('ABS', '-7'), 7);
+        const e = new QueryEngine();
+        e.load('T', { columns: ['x'], rows: [['abc'], ['12abc'], ['5'], [3], [''], [null]] });
+        const ran = await e.run({ steps: [{ as: 't', from: 'T' }, { group: 't', by: [], aggregates: [{ name: 's', fn: 'sum', value: { column: 'x' } }] }] });
+        assert.ok('result' in ran);
+        assert.deepStrictEqual(e.read(ran.result, 0, 1).rows, [[8]], 'Sum adds "5" and 3; "abc", "12abc", "" add nothing');
+        const none = new QueryEngine();
+        none.load('T', { columns: ['x'], rows: [['abc'], ['']] });
+        const r2 = await none.run({ steps: [{ as: 't', from: 'T' }, { group: 't', by: [], aggregates: [{ name: 's', fn: 'sum', value: { column: 'x' } }] }] });
+        assert.ok('result' in r2);
+        assert.deepStrictEqual(none.read(r2.result, 0, 1).rows, [[null]], 'a sum with nothing to add is blank');
+    });
+
     it('difference 4 (James, 2026-11-21: "Yes."): Upper and Lower case change every letter, accented ones too', async () => {
         assert.strictEqual(await one('UPPER', 'café'), 'CAFÉ');
         assert.strictEqual(await one('LOWER', 'ÉTÉ'), 'été');
@@ -216,7 +256,9 @@ describe('Query engine group against SQLite (reference, the tester\'s)', () => {
     /** A group of L by `by` (column names; none for one row), every aggregate on `of`, from both sides, groups in first-seen order. */
     async function both(table: Table, by: string[], of: string): Promise<{ expected: Value[][]; actual: Value[][] }> {
         const q = (c: string) => `"${c}"`;
-        const aggs = `COUNT(*), COUNT(${q(of)}), SUM(${q(of)}), MIN(${q(of)}), MAX(${q(of)})`;
+        // Sum reads text by the rule (text that is not a number left out): SQLite sums the read column
+        const aggs = `COUNT(*), COUNT(${q(of)}), SUM(${q(`n:${of}`)}), MIN(${q(of)}), MAX(${q(of)})`;
+        table = withNumbers(table);
         const sql = by.length
             ? `SELECT ${by.map(q).join(', ')}, ${aggs} FROM "L" GROUP BY ${by.map(q).join(', ')} ORDER BY MIN(rowid)`
             : `SELECT ${aggs} FROM "L"`;
