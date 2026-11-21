@@ -35,7 +35,7 @@ import { CALC_VIEW, QUERY_JOIN_KINDS } from '../../services/query/query-types';
 import { comparableRuns, type RequestTemplates, type RunHeaderValue } from '../../services/compare/compare-runs';
 import { alignCompareJoins, groupCompare, isCompare, MAX_COMPARE_VIEWS, queryCompare, runJoin } from '../../services/query/query-compare';
 import { columnCellDiffs, comparedGroups, passes, rowStatus, statusCounts, type RowStatus, type StatusCounts, type StatusFilter } from '../../services/query/query-status';
-import { lookupsIn } from '../../services/column-functions/column-functions';
+import { asColumnValue, lookupsIn } from '../../services/column-functions/column-functions';
 import type { LookupTablesReader, LookupTableSummary } from '../../services/lookup-tables/lookup-tables';
 import type { ColumnRef, QueryFn, QueryJoin, QueryJoinKind, QueryJoinStats, QueryKey, QuerySpec } from '../../services/query/query-types';
 import { ConsoleExportService } from '../../services/console/export.service';
@@ -81,6 +81,8 @@ export interface QueryConfig {
 
 export type QueryMessage = { type: string; [key: string]: unknown };
 
+/** A view's rows into the engine this many at a time (a file's, read whole: feedEngine). */
+const FEED_ROWS = 20_000;
 /** Search reads this many rows between giving way to the page. */
 const SEARCH_CHUNK = 5000;
 /** The Join step's preview. */
@@ -1093,7 +1095,64 @@ export class QueryController {
     private async load(source: QuerySource): Promise<void> {
         if (this.loaded.has(source.id)) return;
         // (how far it has got, on the footer's line: "Reading C2: 30,000 rows (page 60 of 210)")
-        this.loaded.set(source.id, await this.readView(source, text => this.post({ type: 'query.progress', text })));
+        const say = (text: string) => this.post({ type: 'query.progress', text });
+        // On the new engine its rows go into the engine as they are read, piece by piece, never held here
+        const feed = this.ports.newCompareEngine?.() ? this.feedEngine(source.id) : undefined;
+        const loaded = await this.readView(source, say, feed?.piece);
+        this.loaded.set(source.id, feed && !loaded.error ? await feed.finish(loaded) : loaded);
+    }
+
+    /**
+     * A view's rows into the engine as they are read (load): each piece of rows appended to its table
+     * and let go, the table complete with the last. Kept here: how many rows, each column's rows with a
+     * value and a value from it (what Views and Columns show), as a dropped view keeps them.
+     */
+    private feedEngine(id: string): { piece: (columns: string[], rows: QueryRowData[]) => Promise<void>; finish: (loaded: LoadedView) => Promise<LoadedView> } {
+        const host = this.engineHostNow();
+        let started = false;
+        let count = 0;
+        let columns: string[] = [];
+        const filled = new Map<string, number>();
+        const samples = new Map<string, string>();
+        const piece = async (cols: string[], rows: QueryRowData[]): Promise<void> => {
+            columns = cols;
+            for (const c of cols) {
+                let n = 0;
+                for (const row of rows) { const v = row[c]; if (v !== null && v !== undefined && v !== '') n++; }
+                filled.set(c, (filled.get(c) ?? 0) + n);
+                if (!samples.get(c)) samples.set(c, sample(rows, c));
+            }
+            const table = { columns: cols, rows: rows.map(r => cols.map(c => asColumnValue(r[c]))) };
+            if (!started) await host.load(id, table, { more: true }); else await host.append(id, table);
+            started = true;
+            count += rows.length;
+        };
+        const finish = async (loaded: LoadedView): Promise<LoadedView> => {
+            // (a file's rows come whole: in pieces from here)
+            for (let at = 0; at < loaded.rows.length; at += FEED_ROWS) await piece(loaded.columns, loaded.rows.slice(at, at + FEED_ROWS));
+            if (started) await host.append(id, { columns, rows: [] }, { last: true });
+            else await host.load(id, { columns: loaded.columns, rows: [] });
+            const out: LoadedView = { columns: loaded.columns, rows: [], rowBasis: loaded.rowBasis, dropped: { count, samples } };
+            this.filled.set(out, new Map(loaded.columns.map(c => [c, filled.get(c) ?? 0])));
+            this.streamed.set(id, JSON.stringify([id, loaded.columns, count]));
+            return out;
+        };
+        return { piece, finish };
+    }
+
+    /** Views in the engine as they are now (their id, columns and rows: engineLoad's entry), by id: loaded again only when that changes. */
+    private readonly streamed = new Map<string, string>();
+
+    /** The engine, or a new one when there is none or it stopped working (everything kept in the old one let go). */
+    private engineHostNow(): EngineHost {
+        if (this.engine && this.engine.alive()) return this.engine;
+        this.engine?.close();
+        this.engineLookups.clear();
+        this.streamed.clear();
+        this.engineKey = '';
+        this.paged = undefined; this.pagedAll = undefined; this.pagedHeld = undefined; this.pagedBase = undefined; this.engineCompare = undefined;
+        this.engine = this.ports.engineHost?.() ?? localEngineHost(new QueryEngine(undefined, QUERY_ROW_TESTS));
+        return this.engine;
     }
 
     /**
@@ -1136,7 +1195,7 @@ export class QueryController {
     /** Response files read and made rows of at a time: the page gives way between them, and says how far it has got. */
     private static readonly READ_FILES = 50;
 
-    private async readView(source: QuerySource, said?: (text: string, done: number, total: number) => void): Promise<LoadedView> {
+    private async readView(source: QuerySource, said?: (text: string, done: number, total: number) => void, sink?: (columns: string[], rows: QueryRowData[]) => Promise<void>): Promise<LoadedView> {
         if (source.file) {
             const kept = await this.ports.queryFiles?.read(this.query?.id ?? '', source.id);
             return kept
@@ -1163,6 +1222,7 @@ export class QueryController {
             let view = saved;
             let named: { id: string; name: string }[] | undefined;
             const rows: QueryRowData[] = [];
+            let read = 0;
             for (let at = 0; at < Math.max(1, files.length); at += step) {
                 const responses = await this.extractor.extractResponses(files.slice(at, at + step), config.responseFileStatusMap, config.responseFileDetails);
                 view ??= rootView(responses);
@@ -1174,14 +1234,19 @@ export class QueryController {
                     side.columns.forEach(c => count.set(c.name, (count.get(c.name) ?? 0) + 1));
                     named = side.columns.map(c => ({ id: c.id, name: (count.get(c.name) ?? 0) > 1 ? c.id : c.name }));
                 }
+                const piece: QueryRowData[] = [];
                 for (const row of side.rows) {
                     const out: QueryRowData = {};
                     for (const c of named ?? []) out[c.name] = row[c.id];
-                    rows.push(out);
+                    piece.push(out);
                 }
+                // (into the engine as it is read, or held here)
+                if (sink && piece.length) await sink((named ?? []).map(c => c.name), piece);
+                else for (const row of piece) rows.push(row);
+                read += piece.length;
                 const done = Math.min(files.length, at + step);
                 if (files.length > step) {
-                    said?.(`Reading ${name}: ${rows.length.toLocaleString('en-US')} rows (page ${done.toLocaleString('en-US')} of ${files.length.toLocaleString('en-US')})`, done, files.length);
+                    said?.(`Reading ${name}: ${read.toLocaleString('en-US')} rows (page ${done.toLocaleString('en-US')} of ${files.length.toLocaleString('en-US')})`, done, files.length);
                     await new Promise(resolve => setTimeout(resolve, 0));
                 }
             }
@@ -2074,22 +2139,18 @@ export class QueryController {
 
     private async engineLoad(spec: QuerySpec): Promise<EngineHost> {
         const key = JSON.stringify(spec.views.map(v => [v.id, v.columns, this.rowCount(v.id)]));
-        if (this.engine && this.engineKey === key) return this.engine;
-        // (a new engine when the views changed in a way the key resets, or the last one stopped working)
-        const reuse = this.engine && this.engineKey.startsWith('[') && this.engine.alive();
-        const engine = reuse ? this.engine! : (this.ports.engineHost?.() ?? localEngineHost(new QueryEngine(undefined, QUERY_ROW_TESTS)));
-        if (!reuse) { this.paged = undefined; this.pagedAll = undefined; this.pagedHeld = undefined; this.pagedBase = undefined; this.engineCompare = undefined; }
-        if (engine !== this.engine) { this.engine?.close(); this.engineLookups.clear(); }
-        // (only the views not in it yet, or changed, go in again)
-        const had = new Map<string, string>((JSON.parse(this.engineKey || '[]') as [string, string[], number][]).map(v => [v[0], JSON.stringify(v)]));
+        if (this.engine && this.engine.alive() && this.engineKey === key) return this.engine;
+        // (the engine there is, or a new one when it stopped working: then every view goes in again)
+        const engine = this.engineHostNow();
+        // Only the views not in it yet, or changed: a view read on the new engine went in as it was read (feedEngine)
         for (const view of spec.views) {
             const entry = JSON.stringify([view.id, view.columns, this.rowCount(view.id)]);
-            if (had.get(view.id) === entry && engine === this.engine) continue;
+            if (this.streamed.get(view.id) === entry) continue;
             await loadViewInto(engine, view.id, view.columns, await this.rowsOf(view.id));
+            this.streamed.set(view.id, entry);
             // (the engine has them now: let go here)
             this.dropRows(view.id);
         }
-        this.engine = engine;
         this.engineKey = key;
         return engine;
     }
