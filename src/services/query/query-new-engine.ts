@@ -15,7 +15,8 @@
  */
 import { asColumnValue, wholeNumber, type ColumnFn } from '../column-functions/column-functions';
 import { QueryEngine } from '../engine/engine';
-import type { CompareStats, Expr, FunctionName, Progress, Query, Value } from '../engine/engine-types';
+import type { CompareStats, Expr, FunctionName, JoinStats, Progress, Query, StatsWindow, Table, Value } from '../engine/engine-types';
+import { ROW_LIMIT } from '../engine/engine-types';
 import { FUNCTIONS } from '../engine/engine-types';
 import type { FormulaNode } from './formula';
 import { queryCompare } from './query-compare';
@@ -229,7 +230,36 @@ export interface CompareOnEngine {
  * with the engine's words when the query can't run (the row limit among them).
  * `timings`: how long each part took, in ms, for the stage timings the setting logs.
  */
-export async function runOnEngine(engine: QueryEngine, spec: QuerySpec, onProgress?: (p: Progress) => void): Promise<(CompareOnEngine & { timings: [string, number][] }) | undefined> {
+/** The engine refused a join past the row limit: which join of the spec, how many rows, and the figures counted until then. */
+export class TooManyOnEngine extends Error {
+    constructor(readonly tooMany: { join: number; rows: number; limit: number }, readonly stats: Map<string, QueryJoinStats>) {
+        super(`Join ${tooMany.join + 1} would make ${tooMany.rows} rows`);
+    }
+}
+
+/** A plain join's figures as the Join step reads them, with the values behind each count (the first 50 of each kind, as today). */
+function plainJoinStats(engine: QueryEngine, result: string, step: string, stats: JoinStats): QueryJoinStats {
+    const kinds: StatsWindow['kind'][] = ['onlyLeft', 'onlyRight', 'oneToOne', 'oneToMany', 'manyToOne', 'manyToMany'];
+    const values = kinds.flatMap(kind => {
+        const w = engine.stats(result, step, { kind, side: 'left', from: 0, count: 50 }) as Table;
+        const parts = w.columns.length - 2;
+        return w.rows.map(r => ({ key: r.slice(0, parts), left: Number(r[parts]), right: Number(r[parts + 1]) }));
+    });
+    return { ...stats, values };
+}
+
+/** The Join step's figures from a run: a compare's from CompareStats, each plain join's (its spec index's view) from its JoinStats. */
+function joinFigures(spec: QuerySpec, places: string[], get: (step: string) => JoinStats | CompareStats | undefined, values?: (step: string, stats: JoinStats) => QueryJoinStats): Map<string, QueryJoinStats> {
+    const compare = places.length ? get('compare') as CompareStats | undefined : undefined;
+    const out = compare ? compareJoinStats(compare, places) : new Map<string, QueryJoinStats>();
+    spec.joins.filter(j => j.kind !== 'compare').forEach((j, i) => {
+        const st = get(`join${i + 1}`) as JoinStats | undefined;
+        if (st) out.set(j.view, values ? values(`join${i + 1}`, st) : { ...st, values: [] });
+    });
+    return out;
+}
+
+export async function runOnEngine(engine: QueryEngine, spec: QuerySpec, onProgress?: (p: Progress) => void): Promise<(CompareOnEngine & { timings: [string, number][]; duplicates: number }) | undefined> {
     const timings: [string, number][] = [];
     let at = now();
     const lap = (what: string) => { const t = now(); timings.push([what, Math.round(t - at)]); at = t; };
@@ -237,16 +267,30 @@ export async function runOnEngine(engine: QueryEngine, spec: QuerySpec, onProgre
     const out = await engine.run(query, { onProgress: p => { onProgress?.(p); } });
     lap('engine run');
     if ('cancelled' in out) return undefined;
-    if ('problems' in out) throw new Error(out.problems.map(p => p.message).join(' '));
+    if ('problems' in out) {
+        // Past the row limit: which join (by the spec's numbering), and the figures counted until then
+        const failing = out.problems.find(p => /^join\d+$/.test(p.step));
+        if (failing && out.stats) {
+            const plain = spec.joins.map((j, i) => ({ j, i })).filter(x => x.j.kind !== 'compare');
+            const at = plain[Number(failing.step.slice(4)) - 1]?.i ?? 0;
+            const stats = joinFigures(spec, layout.places, step => out.stats?.[step]);
+            throw new TooManyOnEngine({ join: at, rows: (out.stats[failing.step] as JoinStats).rowsAfter, limit: ROW_LIMIT }, stats);
+        }
+        throw new Error(out.problems.map(p => p.message).join(' '));
+    }
     try {
-        const stats = layout.places.length ? compareJoinStats(engine.stats(out.result, 'compare') as CompareStats, layout.places) : new Map<string, QueryJoinStats>();
-        spec.joins.filter(j => j.kind !== 'compare').forEach((j, i) => stats.set(j.view, { ...(engine.stats(out.result, `join${i + 1}`) as Omit<QueryJoinStats, 'values'>), values: [] }));
+        const stats = joinFigures(spec, layout.places, step => engine.stats(out.result, step) as JoinStats | CompareStats, (step, st) => plainJoinStats(engine, out.result, step, st));
         lap('statistics');
         const read = engine.read(out.result, 0, out.total);
         lap('read every row');
         const { rows, keyValues } = resultRows(read.rows, layout);
         lap('rows for Results');
-        return { rows, keyValues, stats, total: out.total, layout, timings };
+        // Rows alike in every column shown: what Distinct would fold
+        const seen = new Set<string>();
+        for (const r of rows) seen.add(r.map(v => (v === null ? '\u0000' : typeof v === 'number' ? `n${v}` : `t${String(v)}`)).join('\u0001'));
+        const duplicates = spec.distinct ? 0 : rows.length - seen.size;
+        lap('rows alike');
+        return { rows, keyValues, stats, total: out.total, layout, timings, duplicates };
     } finally {
         engine.release(out.result);
     }

@@ -13,7 +13,7 @@ import type { SqlJsStatic } from 'sql.js';
 import { COLUMN_FUNCTIONS, columnFnSql, type ColumnFn } from '../../../services/column-functions/column-functions';
 import { QueryEngine } from '../../../services/engine/engine';
 import { QuerySession } from '../../../services/query/query-engine';
-import { buildQuery, compareKeyExprs, compareQuery, fnExpr, fnSampleQueries, formulaExpr, labelExpr, loadLookupTable, loadView, queryWithColumns, recordQuery, resultRows, onSqliteLine, runCompareOnEngine, whyNotOnEngine } from '../../../services/query/query-new-engine';
+import { buildQuery, runOnEngine, TooManyOnEngine, compareKeyExprs, compareQuery, fnExpr, fnSampleQueries, formulaExpr, labelExpr, loadLookupTable, loadView, queryWithColumns, recordQuery, resultRows, onSqliteLine, runCompareOnEngine, whyNotOnEngine } from '../../../services/query/query-new-engine';
 import { formulaSql, parseFormula, FORMULA_FUNCTIONS } from '../../../services/query/formula';
 import type { Value } from '../../../services/engine/engine-types';
 import { compareKeySql, resultColumns } from '../../../services/query/query-sql';
@@ -347,6 +347,62 @@ describe('Query compare on the new engine', () => {
             const first = (await runCompareOnEngine(engine, spec))!;
             assert.deepStrictEqual(check.rows.map(r => r[0]), first.rows.slice(0, 4).map(r => r[0]));
             assert.deepStrictEqual(check.rows.map(r => r[1]), first.rows.slice(0, 4).map(r => (typeof r[1] === 'number' ? r[1] * 2 : null)));
+        });
+    });
+
+    describe('every query on the engine: the Join step\'s figures and Distinct', () => {
+        const views = [{ id: 'inv', name: 'inv', columns: ['sku', 'gtin'] }, { id: 'prod', name: 'prod', columns: ['gtin', 'name'] }];
+        const data: Record<string, Row[]> = {
+            inv: [{ sku: 'A', gtin: 'G1' }, { sku: 'B', gtin: 'G2' }, { sku: 'C', gtin: 'G2' }, { sku: 'D', gtin: null }, { sku: 'E', gtin: 'G7' }, { sku: 'A', gtin: 'G1' }],
+            prod: [{ gtin: 'G1', name: 'Bone' }, { gtin: 'G2', name: 'Ball' }, { gtin: 'G2', name: 'Ball 2' }, { gtin: 'G3', name: 'Lead' }]
+        };
+        const spec = (kind: 'inner' | 'left' | 'right' | 'outer', distinct = false): QuerySpec => ({
+            views, joins: [{ view: 'prod', kind, on: [{ left: { parts: [{ view: 'inv', column: 'gtin' }] }, right: { parts: [{ view: 'prod', column: 'gtin' }] } }] }],
+            select: [{ view: 'inv', column: 'sku' }, { view: 'prod', column: 'name' }], distinct
+        });
+        const engineFor = () => { const e = new QueryEngine(); for (const v of views) loadView(e, v.id, v.columns, data[v.id]); return e; };
+
+        it('a plain join\'s figures and the values behind each count, as joinStats gives them', async () => {
+            const s = spec('left');
+            const session = new QuerySession(SQL, s);
+            for (const v of views) await session.load(v.id, data[v.id]);
+            const want = session.joinStats(0);
+            session.close();
+            const got = (await runOnEngine(engineFor(), s))!.stats.get('prod')!;
+            const { values: wantValues, ...wantRest } = want;
+            const { values: gotValues, ...gotRest } = got;
+            assert.deepStrictEqual(gotRest, wantRest);
+            const sorted = (v: typeof want.values) => v.map(x => JSON.stringify(x)).sort();
+            assert.deepStrictEqual(sorted(gotValues), sorted(wantValues));
+        });
+
+        it('Distinct: the rows alike counted, as SQLite counts them; on, they fold', async () => {
+            const s = spec('left');
+            const session = new QuerySession(SQL, s);
+            for (const v of views) await session.load(v.id, data[v.id]);
+            const all = session.count();
+            session.setSpec(spec('left', true));
+            const distinct = session.count();
+            session.close();
+            const run = (await runOnEngine(engineFor(), s))!;
+            assert.strictEqual(run.duplicates, all - distinct);
+            const folded = (await runOnEngine(engineFor(), spec('left', true)))!;
+            assert.strictEqual(folded.total, distinct);
+        });
+
+        it('a join past the row limit: refused, which join and how many rows, and the figures counted until then', async () => {
+            const many: Row[] = Array.from({ length: 1500 }, (_, i) => ({ sku: `S${i}`, gtin: 'G' }));
+            const e = new QueryEngine(1_000_000);
+            const s: QuerySpec = { views, joins: [{ view: 'prod', kind: 'inner', on: [{ left: { parts: [{ view: 'inv', column: 'gtin' }] }, right: { parts: [{ view: 'prod', column: 'gtin' }] } }] }], select: [] };
+            loadView(e, 'inv', views[0].columns, many);
+            loadView(e, 'prod', views[1].columns, Array.from({ length: 1500 }, (_, i) => ({ gtin: 'G', name: `N${i}` })));
+            // (2,250,000 rows: past the engine's limit)
+            await assert.rejects(runOnEngine(e, s), (error: unknown) => {
+                assert.ok(error instanceof TooManyOnEngine);
+                assert.deepStrictEqual([error.tooMany.join, error.tooMany.rows], [0, 2_250_000]);
+                assert.strictEqual(error.stats.get('prod')?.rowsAfter, 2_250_000);
+                return true;
+            });
         });
     });
 });

@@ -48,7 +48,7 @@ import type { QueryFileStore } from '../../services/query/query-file-store';
 import * as searchMatcherScript from '../../webviews/shared/search-matcher.js';
 import { sharedScript } from '../../utils/shared-script';
 import { QueryEngine } from '../../services/engine/engine';
-import { compareKeyExprs, fnSampleQueries, formulaExpr, labelExpr, loadLookupTable, loadView, onSqliteLine, queryWithColumns, recordQuery, runOnEngine, whyNotOnEngine, whyNotQueryOnEngine } from '../../services/query/query-new-engine';
+import { compareKeyExprs, fnSampleQueries, formulaExpr, labelExpr, loadLookupTable, loadView, onSqliteLine, queryWithColumns, recordQuery, runOnEngine, TooManyOnEngine, whyNotQueryOnEngine } from '../../services/query/query-new-engine';
 import type { Query as EngineQuery, TableWindow } from '../../services/engine/engine-types';
 
 const { parseSearchExpression, matchesRow } = sharedScript<typeof searchMatcherScript>(searchMatcherScript, 'SearchMatcher');
@@ -136,6 +136,8 @@ export class QueryController {
     private engineRunning: string | undefined;
     private engineStats: Map<string, QueryJoinStats> | undefined;
     private engineNote = '';
+    /** Rows alike in every column shown, from the last run: what Distinct would fold. */
+    private engineDuplicates = 0;
     private engineOn = false;
     private filtered: { key: string; indices: number[]; searched?: number[] } | undefined;
     private searchSeq = 0;
@@ -1192,12 +1194,26 @@ export class QueryController {
                     // On the new engine: its stages said as they come (Stop reaches it between slices)
                     let said = '';
                     const words: Record<string, string> = { Starting: 'Starting', Done: 'Reading the rows' };
-                    const result = await this.engineRead(spec, engineKey(spec), stg => {
-                        const text = words[stg] ?? (stg.startsWith('Comparing') ? `Comparing ${spec.views.length} views` : stg);
-                        if (text !== said) { said = text; this.post({ type: 'query.counting', since, stage: text }); }
-                    });
+                    let result: QueryResult | undefined;
+                    try {
+                        result = await this.engineRead(spec, engineKey(spec), stg => {
+                            // (the engine names a view by its id: said by its name)
+                            const named = spec.views.reduce((t, v) => t.split(v.id).join(v.run || v.name), stg);
+                            const text = words[stg] ?? (stg.startsWith('Comparing') ? `Comparing ${spec.views.length} views` : named);
+                            if (text !== said) { said = text; this.post({ type: 'query.counting', since, stage: text }); }
+                        });
+                    } catch (error) {
+                        // Past the row limit: the joins' figures until then still show, and the step says why
+                        if (error instanceof TooManyOnEngine) {
+                            const counted = error.stats;
+                            stats = spec.joins.map(j => counted.get(j.view) ?? null);
+                            throw new Error(tooManyRowsText(error.tooMany, spec));
+                        }
+                        throw error;
+                    }
                     if (!result || version !== this.version || this.closed) return;
                     total = result.rows.length;
+                    duplicates = this.engineDuplicates;
                     stats = spec.joins.map(j => this.engineStats?.get(j.view) ?? null);
                     preview = result.rows.slice(0, PREVIEW_ROWS);
                     resultTypes = columnTypes(spread(result.rows, TYPE_SAMPLE), resultColumns.length);
@@ -1455,10 +1471,12 @@ export class QueryController {
         const now = this.spec().spec;
         this.session?.setSpec(now);
         const sql = this.session?.sql() ?? '';
-        if (result && held && this.session) {
+        // (on the new engine too: the rows held are moved, not read again)
+        const onEngine = this.onEngine(now);
+        if (result && held && (this.session || onEngine)) {
             for (const row of result.rows) move(row);
             result.columns = columns;
-            result.key = sql;
+            result.key = onEngine ? engineKey(now) : sql;
             if (this.filtered) this.filtered.key = JSON.stringify([String(query.search ?? '').trim(), query.sort ? { column: query.sort.column, dir: query.sort.dir } : null]);
         } else {
             this.result = undefined;
@@ -1674,18 +1692,16 @@ export class QueryController {
     }
 
     /**
-     * Is this query run on the new engine? "New compare engine (testing)" on, and a compare of runs
-     * and nothing more (query-new-engine.ts whyNotOnEngine). With the setting on and the query more
-     * than that, the Join step says why it runs on SQLite.
+     * Is this query run on the new engine? "New compare engine (testing)" on, and the query one the
+     * engine takes (query-new-engine.ts whyNotQueryOnEngine: not SQL of its own or a calculation
+     * written as SQL). With the setting on and the query on SQLite, the Join step says why.
      */
     private onEngine(spec: QuerySpec): boolean {
         const on = !!this.ports.newCompareEngine?.();
-        // (a query of one view, no joins yet, is the engine's too: the Views step never loads sql.js)
-        const single = !spec.joins.length && !whyNotQueryOnEngine(spec);
-        const why = on && !single ? (this.query?.sql ? 'it has SQL of its own' : whyNotOnEngine(spec)) : undefined;
-        // (said only of a compare: a plain query, or a compare whose key is still to pick, is not one yet)
-        const unsaid = why === 'it is not a compare' || why === 'its key is not picked yet';
-        this.engineNote = on && why && !unsaid ? onSqliteLine(why) : '';
+        // Every query, but one with SQL of its own or a calculated column written as SQL
+        const why = on ? (this.query?.sql ? 'it has SQL of its own' : whyNotQueryOnEngine(spec)) : undefined;
+        // (a join still to make is not said: the step shows it)
+        this.engineNote = on && why && why !== 'a join has no key yet' ? onSqliteLine(why) : '';
         this.engineOn = on && !why;
         return this.engineOn;
     }
@@ -1729,6 +1745,7 @@ export class QueryController {
         at = performance.now();
         laps.push(...run.timings.map(([what, ms]) => `${what} ${ms}`));
         this.engineStats = run.stats;
+        this.engineDuplicates = run.duplicates;
         this.result = this.compareResult(key, spec, run.layout.columns, run.rows, run.keyValues, run.layout.places);
         lap('row status');
         this.filtered = undefined;
