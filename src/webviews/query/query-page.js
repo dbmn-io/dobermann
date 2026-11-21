@@ -1492,7 +1492,7 @@
         } else if (keyed && sample) {
             // A sample: how many of the Baseline's first records each other view has
             // (the sentence says it is of a sample: only its figures are marked, the design system's sample figure)
-            const stat = el('span', 'query-made query-compare-stat', `In ${firstN} of ${nameOf(baseline)}: `);
+            const stat = el('span', 'query-made query-compare-sample', `In ${firstN} of ${nameOf(baseline)}: `);
             others.forEach((v, i) => { stat.append(`${i ? ' · ' : ''}${nameOf(v)} `, asSample(el('span', 'dbmn-lanes-figure', count(sampleFound(v))))); });
             stat.append(' found');
             bar.appendChild(stat);
