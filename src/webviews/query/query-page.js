@@ -182,9 +182,14 @@
         // A view that sits out (hidden, or not joined yet) holds nothing up: the report is the views that are in
         return !!s && !s.error && s.views.some(v => !v.waiting && !v.error) && s.views.every(v => !v.error || v.off);
     }
+    /** Columns left empty (the last column taken out, with no key): Results would show the column just removed. A compare always has its key. */
+    const EMPTY_REPORT = 'Pick a column for the report first: nothing is in it.';
+    // (through ui: the step bar can draw before the Columns step is made)
+    function reportEmpty() { const c = ui.columnsStep; return !!(c && typeof c.isEmpty === 'function' && c.isEmpty()); }
     function waitsFor(n) {
         if (n >= 2 && views().length === 0) return 'Views';
         if (n >= 3 && !joinsReady()) return 'Join';
+        if (n >= 4 && reportEmpty()) return 'Columns';
         // A new query is walked through: a step opens once the one before it has been visited, so
         // Join and Columns are seen before Results (a view left unjoined still sits out and holds
         // nothing up). A saved query, opened again, has been through them: every step is open
@@ -198,7 +203,9 @@
             if (n < ui.step) return { status: 'done', summary: '' };
             const blocked = waitsFor(n);
             if (!blocked) return { status: 'available', summary: '', title: `Go to ${STEPS[i].label}` };
-            return n === ui.step + 1 ? { status: 'blocked', waitsFor: blocked, summary: `Waits for ${blocked}` } : { status: 'pending', summary: '' };
+            // (an empty report says what to do, in the footer's status, as the step bar's reason)
+            const says = blocked === 'Columns' && reportEmpty() ? EMPTY_REPORT : `Waits for ${blocked}`;
+            return n === ui.step + 1 ? { status: 'blocked', waitsFor: blocked, summary: says } : { status: 'pending', summary: '' };
         });
         // What each step holds, for the list the folded steps open
         const said = stepSummaries();
@@ -213,6 +220,7 @@
         next.classList.toggle('hidden', ui.step === 4);
         next.textContent = ui.step < 4 ? `Next: ${STEPS[ui.step].label}` : 'Next';
         next.disabled = !!waitsFor(ui.step + 1) || !!ui.busy;
+        next.title = ui.step === 3 && reportEmpty() ? EMPTY_REPORT : '';
         $('queryBackBtn').disabled = ui.step === 1 || !!ui.busy;
     }
     /** A line per step: its views, its joins, its columns, its rows. */
@@ -1605,11 +1613,14 @@
 
     /* The Columns step (query-columns.js) and the calculation builder (query-calc.js), drawn with this page's own pieces */
     const columnsStep = window.QueryColumns.create({
+        // Columns tells the step bar when its report becomes empty or not (Next: Results waits while it is)
+        stepsChanged: () => renderBar(),
         el, at, line, views, view, viewAt, colour, post, setBusy, count, injectIcons, CALC_VIEW: '',
         state: () => ui.state,
         openCalc: calc => openCalc(calc),
         pickFns: (ref, done) => pickFns(null, ref, done)
     });
+    ui.columnsStep = columnsStep;
     function renderColumns() { columnsStep.render(); }
     /** A calculated column, in the builder: its name and formula; the host reads it and keeps it. */
     function openCalc(calc) {
