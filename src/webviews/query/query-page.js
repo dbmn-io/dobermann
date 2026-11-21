@@ -1040,10 +1040,11 @@
     /** The kinds of join, said with the two views' names: [kind, name, what it keeps]. */
     function joinKinds(left, right) {
         return [
-            ['compare', 'Compare', 'Match the same record in each, by the key, and compare them. Every record kept'],
-            ['inner', 'Join', `Only rows ${left} and ${right} both have`],
-            ['left', 'Left join', `All of ${left}; ${right} where it matches`],
-            ['right', 'Right join', `All of ${right}; ${left} where it matches`],
+            // (as the mock words them)
+            ['compare', 'Compare', 'Match the same record in every view, by a key, and compare them. Every record of every view is kept'],
+            ['inner', 'Join', 'Only rows both have'],
+            ['left', 'Left join', 'All of the left view; the right where it matches'],
+            ['right', 'Right join', 'All of the right view; the left where it matches'],
             ['outer', 'Outer join', 'Every row of both, matched where they can be']
         ];
     }
@@ -1070,7 +1071,10 @@
             // A compare takes so many views: Compare can't be picked for another once it is full
             const compare = ui.state && ui.state.compare;
             const full = !!compare && join.kind !== 'compare' && compare.views.length >= (ui.state.maxCompare || 4);
-            const items = kinds.map(([id, label, detail]) => ({
+            // Compare is the way in on a query's first join, and the compare's own kind; never on a plain join beside a compare
+            const firstJoin = ((ui.state.joins || [])[0] || {}).view === join.view;
+            const offerCompare = join.kind === 'compare' || (!compare && firstJoin);
+            const items = kinds.filter(([id]) => id !== 'compare' || offerCompare).map(([id, label, detail]) => ({
                 id, label, glyph: window.RelationGlyph.join(id, colours), checked: id === join.kind,
                 detail: id === 'compare' && full ? `A compare takes ${ui.state.maxCompare || 4} views: take one out to put ${v.name} in` : detail,
                 disabled: id === 'compare' && full
@@ -1292,7 +1296,8 @@
         band.dataset.compare = '';
         band.setAttribute('aria-label', `Compare ${members.map(id => (view(id) || {}).name).join(', ')}`);
         const joinOf = id => s.joins.find(j => j.view === id);
-        const sendAll = (kind) => joins.forEach(j => { j.kind = kind; post({ type: 'query.setJoin', view: j.view, kind, on: j.on }); });
+        // (one change for the whole compare: one refresh, one step back)
+        const sendAll = (kind) => { joins.forEach(j => { j.kind = kind; }); post({ type: 'query.setCompareKind', kind }); };
         first.on.forEach((pair, p) => {
             const cells = {};
             views().forEach(v => {
@@ -1321,7 +1326,8 @@
                         const select = pick.querySelector('select');
                         const out = el('option', '', 'Not compared');
                         out.value = '\u0000out';
-                        select.insertBefore(out, select.options[1] || null);
+                        // (first in the picker: how a view is taken out of the compare)
+                        select.insertBefore(out, select.options[0] || null);
                         select.addEventListener('change', event => {
                             if (select.value !== '\u0000out') return;
                             event.stopImmediatePropagation();

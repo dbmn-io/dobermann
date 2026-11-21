@@ -87,6 +87,11 @@ export interface SavedQuery {
     createdAt: string;
     updatedAt: string;
     /** Rows the query made when it last ran (the Hub list's line). */
+    /**
+     * The compare Delete join last took apart (its joins as they were, and its runs), so picking
+     * Compare again on one of them puts it back as it was, in one step. Gone once a compare is made.
+     */
+    droppedCompare?: { joins: QueryJoin[]; runs: { id: string; runOf: string; run?: string; name: string }[] };
     rows?: number;
     /** 'unticked': columns picked before a shared name was left unticked have had theirs unticked, once (untickClashes). */
     clashes?: 'unticked';

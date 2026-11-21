@@ -289,6 +289,22 @@ export class QueryController {
                     const join = q.joins.find(j => j.view === message.view);
                     if (!join) return;
                     const madeCompare = message.kind === 'compare' && join.kind !== 'compare';
+                    // Compare picked again on a view of the compare Delete join took apart: it comes back as it was
+                    const dropped = madeCompare ? q.droppedCompare : undefined;
+                    if (dropped && dropped.joins.some(j => j.view === join.view)) {
+                        dropped.joins.forEach(was => { const now = q.joins.find(j => j.view === was.view); if (now) { now.kind = 'compare'; now.on = was.on; } });
+                        dropped.runs.forEach(r => {
+                            const x = q.sources.find(s => s.id === r.id);
+                            if (!x || !q.sources.some(s => s.id === r.runOf)) return;
+                            x.runOf = r.runOf;
+                            if (r.run) x.run = r.run;
+                            if (!q.sources.some(s => s !== x && s.name.toLowerCase() === r.name.toLowerCase())) x.name = r.name;
+                        });
+                        delete q.droppedCompare;
+                        alignCompareJoins(q.joins, runsOf(q));
+                        return;
+                    }
+                    if (madeCompare) delete q.droppedCompare;
                     if (QUERY_JOIN_KINDS.includes(message.kind as QueryJoinKind)) {
                         const kind = message.kind as QueryJoinKind;
                         // A compare takes up to four views, the Baseline included
@@ -328,8 +344,22 @@ export class QueryController {
                     });
                 });
                 // Delete join (the join-type menu): the views go back to not joined, out of the report until joined again
+                // A compare's kind, from its one button: every join in it takes it, in one change
+                case 'query.setCompareKind': return await this.change(q => {
+                    const kind = String(message.kind) as QueryJoinKind;
+                    if (!QUERY_JOIN_KINDS.includes(kind)) return;
+                    q.joins.forEach(j => { if (j.kind === 'compare') j.kind = kind; });
+                    alignCompareJoins(q.joins, runsOf(q));
+                });
                 case 'query.deleteJoin': return await this.change(q => {
                     const gone = new Set((Array.isArray(message.views) ? message.views : [message.view]).map(String));
+                    // A compare taken apart is kept, so Compare picked again puts it back as it was (one step)
+                    if (q.joins.some(j => gone.has(j.view) && j.kind === 'compare')) {
+                        q.droppedCompare = {
+                            joins: JSON.parse(JSON.stringify(q.joins.filter(j => j.kind === 'compare'))) as QueryJoin[],
+                            runs: q.sources.filter(x => gone.has(x.id) && x.runOf).map(x => ({ id: x.id, runOf: x.runOf as string, run: x.run, name: x.name }))
+                        };
+                    }
                     q.joins.forEach(j => { if (gone.has(j.view)) { j.kind = 'left'; j.on = []; } });
                     // A run is only ever compared with its first run: out of the compare, it is a view of its own
                     q.sources.forEach(x => {
