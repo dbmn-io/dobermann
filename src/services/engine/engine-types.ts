@@ -6,9 +6,10 @@
  * Query as plain data, a Table out.
  *
  * Built in pieces, each tested against SQLite (sql.js, as the app runs today) by the tester's
- * reference harness. **Pieces 1 and 2** implement: `load`, `append`, `drop`, `check` and `run` /
- * `read` / `release` for a query of `from`, `select`, `filter` and `sort` steps, and every function in FUNCTIONS
- * with its operators. The other steps (`join`, `compare`, `group`), `stats` and `cancel`
+ * reference harness. **Pieces 1 to 3** implement: `load`, `append`, `drop`, `check`, `run` (with
+ * progress) / `cancel` / `read` / `release` for a query of `from`, `join`, `select`, `filter` and
+ * `sort` steps, and every function in FUNCTIONS
+ * with its operators. The other steps (`compare`, `group`), `stats` and `cancel`
  * are declared here as agreed and come in later pieces; until then `check` refuses them by name.
  */
 
@@ -90,6 +91,12 @@ export type Aggregate = 'count' | 'countValues' | 'sum' | 'min' | 'max';
 /** One step of a query. `as` names it, when a later step reads it. */
 export type Step =
     | { as?: string; from: string }
+    /**
+     * Rows of two inputs matched on keys. A key with a blank in it matches nothing; keys match
+     * exactly by type. Rows come out in the left input's order, each with its matches in the right
+     * input's order; then (right, outer) the right input's rows that matched nothing, in its order.
+     * The columns: the left's, then the right's; `{ column, of }` names one by the input it came from.
+     */
     | { as?: string; join: JoinKind; left: string; right: string; on: { left: Expr; right: Expr }[] }
     | { as?: string; compare: string[]; on: Expr[][]; columns: { name: string; values: Expr[] }[]; notCompared?: string[] }
     | { as?: string; select: string; columns: { name: string; value: Expr }[] }
@@ -153,6 +160,25 @@ export interface StatsWindow {
     count: number;
 }
 
+/* ---------- Running ---------- */
+
+/** How far a run has got: what it is doing ("Joining products"), rows done of rows to do in it. */
+export interface Progress {
+    result: ResultId;
+    stage: string;
+    done: number;
+    total: number;
+}
+
+export interface RunOptions {
+    onProgress?: (progress: Progress) => void;
+}
+
+export type RunOutcome = { result: ResultId; total: number } | { problems: Problem[] } | { cancelled: true };
+
+/** The most rows a join may make (James, 2026-11-21: two million for the beta). */
+export const ROW_LIMIT = 2_000_000;
+
 /* ---------- The engine ---------- */
 
 export interface Engine {
@@ -163,9 +189,14 @@ export interface Engine {
     drop(name: string): void;
     /** Why a query can't run, before any work: unknown table, column, function or step; a table still loading. */
     check(query: Query): Problem[];
-    /** Run a query; its result stays inside the engine until released. */
-    run(query: Query): { result: ResultId; total: number } | { problems: Problem[] };
-    /** Abandon a result's work (a later piece: runs are synchronous until then). */
+    /**
+     * Run a query; its result stays inside the engine until released. It works in slices, giving
+     * way between them: `onProgress` hears each stage and how far it has got (the first call
+     * carries the result's id, for `cancel`). A join that would make more than the row limit is
+     * refused before any row is made.
+     */
+    run(query: Query, options?: RunOptions): Promise<RunOutcome>;
+    /** Stop a run between slices: it ends `{ cancelled: true }`. */
     cancel(result: ResultId): void;
     /** A window of a result. */
     read(result: ResultId, from: number, count: number): TableWindow;
