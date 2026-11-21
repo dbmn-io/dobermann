@@ -13,7 +13,7 @@ import type { SqlJsStatic } from 'sql.js';
 import { COLUMN_FUNCTIONS, columnFnSql, type ColumnFn } from '../../../services/column-functions/column-functions';
 import { QueryEngine } from '../../../services/engine/engine';
 import { QuerySession } from '../../../services/query/query-engine';
-import { buildQuery, compareQuery, fnExpr, formulaExpr, loadView, resultRows, onSqliteLine, runCompareOnEngine, whyNotOnEngine } from '../../../services/query/query-new-engine';
+import { buildQuery, compareKeyExprs, compareQuery, fnExpr, fnSampleQueries, formulaExpr, labelExpr, loadLookupTable, loadView, queryWithColumns, recordQuery, resultRows, onSqliteLine, runCompareOnEngine, whyNotOnEngine } from '../../../services/query/query-new-engine';
 import { formulaSql, parseFormula, FORMULA_FUNCTIONS } from '../../../services/query/formula';
 import type { Value } from '../../../services/engine/engine-types';
 import { compareKeySql, resultColumns } from '../../../services/query/query-sql';
@@ -137,7 +137,8 @@ describe('Query compare on the new engine', () => {
         assert.strictEqual(whyNotOnEngine({ ...spec, joins: [...spec.joins, { view: 'x', kind: 'left', on: [] }] }), 'it has a join besides the compare');
         assert.strictEqual(whyNotOnEngine({ ...spec, calc: [{ name: 'd', expr: '1' }] }), 'it has a calculated column');
         assert.strictEqual(whyNotOnEngine({ ...spec, distinct: true }), 'Distinct is on');
-        assert.strictEqual(whyNotOnEngine({ ...spec, select: [{ view: 'bl', column: 'sku', fns: [{ fn: 'translate', table: 't', from: 'a', to: 'b' }] }] }), 'it uses Translate values');
+        // (Translate values runs on the engine: its lookup table is loaded into it)
+        assert.strictEqual(whyNotOnEngine({ ...spec, select: [{ view: 'bl', column: 'sku', fns: [{ fn: 'translate', table: 't', from: 'a', to: 'b' }] }] }), undefined);
         assert.strictEqual(onSqliteLine('it has a calculated column'), 'New compare engine (testing): this query runs on the old engine, because it has a calculated column.');
         assert.deepStrictEqual(compareQuery(spec).layout.places, ['bl', 'c1', 'c2']);
     });
@@ -294,6 +295,58 @@ describe('Query compare on the new engine', () => {
                 select: [{ view: 'bl', column: 'sku' }, { view: 'bl', column: 'qty', group: 'qty' }, { view: 'c1', column: 'qty', group: 'qty' }, { view: 'prod', column: 'name' }]
             };
             await same(spec, 'compare + join');
+        });
+    });
+
+    describe('the Columns step\'s and Results\' small reads on the engine', () => {
+        const rows: Row[] = [
+            { sku: ' a-1 ', qty: 1 }, { sku: 'B-2', qty: 2 }, { sku: ' a-1 ', qty: 3 }, { sku: '', qty: 4 }, { sku: null, qty: 5 },
+            { sku: 'c-3', qty: 6 }, { sku: 'd-4', qty: 7 }, { sku: 'e-5', qty: 8 }, { sku: 'f-6', qty: 9 }, { sku: 42, qty: 10 }
+        ];
+        const read = async (engine: QueryEngine, query: Parameters<QueryEngine['run']>[0], n: number) => {
+            const out = await engine.run(query);
+            assert.ok('result' in out, JSON.stringify(out));
+            return engine.read(out.result, 0, n);
+        };
+
+        it('the function dialog\'s sample: a few different values, as they are and as the functions leave them; the record\'s own first', async () => {
+            const engine = new QueryEngine();
+            loadView(engine, 'v', ['sku', 'qty'], rows);
+            const fns: ColumnFn[] = [{ fn: 'trim' }, { fn: 'upper' }, { fn: 'replace', from: '-', to: '' }];
+            const { few, own } = fnSampleQueries('v', 'sku', fns, 'd-4');
+            // SQLite's: SELECT DISTINCT sku, f(sku) … WHERE sku IS NOT NULL AND sku <> '' LIMIT 6
+            const db = new SQL.Database();
+            db.run('CREATE TABLE v (sku, qty)');
+            rows.forEach(r => db.run('INSERT INTO v VALUES (?, ?)', [r.sku as string | number | null, r.qty as number]));
+            const want = db.exec(`SELECT DISTINCT sku, ${columnFnSql('sku', fns)} FROM v WHERE sku IS NOT NULL AND sku <> '' LIMIT 6`)[0].values;
+            db.close();
+            assert.deepStrictEqual((await read(engine, few, 6)).rows, want);
+            assert.deepStrictEqual((await read(engine, own!, 1)).rows, [['d-4', 'D4']]);
+        });
+
+        it('Translate values reads its lookup table in the engine', async () => {
+            const engine = new QueryEngine();
+            loadView(engine, 'v', ['sku', 'qty'], rows);
+            loadLookupTable(engine, { id: 't1', columns: [{ id: 'erp' }, { id: 'wms' }], rows: [{ erp: 'B-2', wms: 'Bee' }, { erp: '42', wms: 'Answer' }] });
+            const { few } = fnSampleQueries('v', 'sku', [{ fn: 'translate', table: 't1', from: 'erp', to: 'wms' }], '');
+            const got = (await read(engine, few, 9)).rows;
+            assert.deepStrictEqual(got.filter(r => r[0] === 'B-2' || r[0] === 42), [['B-2', 'Bee'], [42, 'Answer']]);
+        });
+
+        it('the record window\'s records, and the calculation check\'s first rows with the key beside them', async () => {
+            const spec = runsSpec();
+            const data = { bl: runRows(0, 30), c1: runRows(1, 30), c2: runRows(2, 30) };
+            const engine = new QueryEngine();
+            for (const v of spec.views) loadView(engine, v.id, v.columns, data[v.id as keyof typeof data]);
+            const keys = compareKeyExprs(spec);
+            assert.deepStrictEqual(keys.map(k => k.view), ['bl', 'c1', 'c2']);
+            const got = await read(engine, recordQuery('c1', keys[1].expr, 'SKU-3'), 5);
+            assert.deepStrictEqual(got.rows, data.c1.filter(r => r.sku === 'SKU-3').map(r => [r.sku, r.qty, r.status]));
+            // The check: the key from whichever view has the record, then the formula on the first rows
+            const check = await read(engine, queryWithColumns(spec, [labelExpr(spec, { view: 'bl', column: 'sku' }), { fn: '*', args: [{ column: 'qty', of: 'bl' }, { value: 2 }] }]), 4);
+            const first = (await runCompareOnEngine(engine, spec))!;
+            assert.deepStrictEqual(check.rows.map(r => r[0]), first.rows.slice(0, 4).map(r => r[0]));
+            assert.deepStrictEqual(check.rows.map(r => r[1]), first.rows.slice(0, 4).map(r => (typeof r[1] === 'number' ? r[1] * 2 : null)));
         });
     });
 });

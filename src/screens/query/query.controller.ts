@@ -48,7 +48,8 @@ import type { QueryFileStore } from '../../services/query/query-file-store';
 import * as searchMatcherScript from '../../webviews/shared/search-matcher.js';
 import { sharedScript } from '../../utils/shared-script';
 import { QueryEngine } from '../../services/engine/engine';
-import { loadView, onSqliteLine, runOnEngine, whyNotOnEngine, whyNotQueryOnEngine } from '../../services/query/query-new-engine';
+import { compareKeyExprs, fnSampleQueries, formulaExpr, labelExpr, loadLookupTable, loadView, onSqliteLine, queryWithColumns, recordQuery, runOnEngine, whyNotOnEngine, whyNotQueryOnEngine } from '../../services/query/query-new-engine';
+import type { Query as EngineQuery, TableWindow } from '../../services/engine/engine-types';
 
 const { parseSearchExpression, matchesRow } = sharedScript<typeof searchMatcherScript>(searchMatcherScript, 'SearchMatcher');
 
@@ -180,6 +181,40 @@ export class QueryController {
         }
     }
 
+    /** The lookup tables the engine holds, by id: the version loaded. */
+    private readonly engineLookups = new Map<string, string>();
+
+    /** The lookup tables these functions read, into the engine (again when one changed). */
+    private async loadEngineLookups(engine: QueryEngine, ids: string[]): Promise<void> {
+        if (!ids.length) return;
+        if (!this.ports.lookups) throw new Error('This query translates values with a lookup table, and lookup tables are not available here.');
+        for (const id of ids) {
+            const table = await this.ports.lookups.get(id);
+            if (!table) throw new Error('A lookup table this query translates with has been deleted, so it can\'t run. Untick Translate values on its column, or pick another table.');
+            if (this.engineLookups.get(id) === table.updatedAt) continue;
+            loadLookupTable(engine, table);
+            this.engineLookups.set(id, table.updatedAt);
+        }
+    }
+
+    /** A few rows of a query on the engine (the Columns step's and the record window's small reads). */
+    private async engineWindow(spec: QuerySpec, query: EngineQuery, count: number, extraView?: string): Promise<TableWindow> {
+        const engine = this.engineFor(spec);
+        // (a view not joined yet is read on its own: it goes in too)
+        if (extraView && !spec.views.some(v => v.id === extraView)) {
+            const loaded = this.loaded.get(extraView);
+            if (loaded) loadView(engine, extraView, loaded.columns, loaded.rows);
+        }
+        const out = await engine.run(query);
+        if ('cancelled' in out) return { columns: [], rows: [], total: 0 };
+        if ('problems' in out) throw new Error(out.problems.map(p => p.message).join(' '));
+        try {
+            return engine.read(out.result, 0, count);
+        } finally {
+            engine.release(out.result);
+        }
+    }
+
     constructor(private readonly session_: ScreenSession, private readonly ports: QueryPorts, private readonly config: QueryConfig) {
         // A lookup table edited or deleted (in Reporting): a query that reads it runs again
         this.stopLookups = ports.lookups?.onChange(change => {
@@ -187,6 +222,7 @@ export class QueryController {
             const { spec } = this.query ? this.spec() : { spec: undefined };
             if (!spec || !lookupsUsed(spec).includes(change.id)) return;
             this.lookupsLoaded.delete(change.id);
+            this.engineLookups.delete(change.id);
             this.result = undefined;
             void this.refresh();
         });
@@ -789,9 +825,11 @@ export class QueryController {
 
     /** A few of a column's values, as they are and as `fns` leave them: the function dialog's sample. */
     private async fnSample(message: { view: string; column: string; fns?: QueryFn[]; seq: number; record?: string }): Promise<void> {
-        const tables = tableNames(this.spec().spec.views);
+        const { spec } = this.spec();
+        const tables = tableNames(spec.views);
         // Translate values being tried: its table loaded, its columns filled in
         message.fns = this.withLookupColumns(message.fns ?? []);
+        if (this.onEngine(spec)) return await this.fnSampleOnEngine(spec, message);
         for (const id of lookupsIn(message.fns)) {
             const table = await this.ports.lookups?.get(id);
             if (table && this.session && this.lookupsLoaded.get(id) !== table.updatedAt) { this.session.loadLookup(table); this.lookupsLoaded.set(id, table.updatedAt); }
@@ -822,6 +860,29 @@ export class QueryController {
         this.post({ type: 'query.fnSample', seq: message.seq, rows, error, ...(lookupTable ? { table: lookupTable, value: rows[0]?.[0] ?? null } : {}) });
     }
 
+    /** fnSample on the new engine: the same rows, read without sql.js. */
+    private async fnSampleOnEngine(spec: QuerySpec, message: { view: string; column: string; fns?: QueryFn[]; seq: number; record?: string }): Promise<void> {
+        let rows: unknown[][] = [];
+        let error: string | undefined;
+        try {
+            await this.loadEngineLookups(this.engineFor(spec), lookupsIn(message.fns));
+            if (message.column) {
+                const { few, own } = fnSampleQueries(message.view, message.column, message.fns ?? [], String(message.record ?? ''));
+                rows = (await this.engineWindow(spec, few, 6, message.view)).rows;
+                if (own) {
+                    const mine = (await this.engineWindow(spec, own, 1, message.view)).rows[0];
+                    if (mine) rows = [mine, ...rows.filter(r => String(r[0]) !== String(mine[0]))].slice(0, 6);
+                }
+            }
+        } catch (e) {
+            error = e instanceof Error ? e.message : String(e);
+        }
+        const last = [...(message.fns ?? [])].reverse().find(f => f.fn === 'translate');
+        const lookup = last && last.fn === 'translate' ? await this.ports.lookups?.get(last.table) : undefined;
+        const lookupTable = lookup ? { columns: lookup.columns.map(c => ({ id: c.id, name: c.name })), rows: lookup.rows } : undefined;
+        this.post({ type: 'query.fnSample', seq: message.seq, rows, error, ...(lookupTable ? { table: lookupTable, value: rows[0]?.[0] ?? null } : {}) });
+    }
+
     /** Every column a formula can name: its key, its whole @ path, the shortest that is unique, and a value from it. */
     private formulaColumnsFor(): { key: string; full: string; short: string; path: string[]; view: string; sample: string }[] {
         const { spec } = this.spec();
@@ -839,7 +900,7 @@ export class QueryController {
      * The calculation builder's check, as the user types: the formula read (formula.ts), its SQL,
      * and its value on the first few rows; or what is wrong, where, and the columns to pick from.
      */
-    private calcCheck(formula: string, seq: number): void {
+    private async calcCheck(formula: string, seq: number): Promise<void> {
         const { spec } = this.spec();
         const columns = formulaColumns(spec);
         const names = refNames(spec.views);
@@ -855,9 +916,16 @@ export class QueryController {
                 ? { view: keyPart.view, column: keyPart.column }
                 : first ? { view: first.id, column: first.columns[0] } : undefined;
             const label = key ? compareKeyColumnSql(key, spec, names) ?? columnSql(key, names) : "''";
-            const rows = this.session && spec.views.length
-                ? this.session.run(`SELECT ${label}, ${sql.join(', ')} ${fromSql(spec)} LIMIT 4`).rows
-                : [];
+            let rows: unknown[][] = [];
+            if (this.onEngine(spec) && spec.views.length) {
+                // On the new engine: the formula's Expr on the query's first rows, the key beside each
+                const byKey = (k: string) => { const at = k.indexOf('\n'); return { column: k.slice(at + 1), of: k.slice(0, at) }; };
+                await this.loadEngineLookups(this.engineFor(spec), lookupsUsed(spec));
+                const window = await this.engineWindow(spec, queryWithColumns(spec, [key ? labelExpr(spec, key) : { value: '' }, ...sides.map(side => formulaExpr(side, byKey))]), 4);
+                rows = window.rows;
+            } else if (this.session && spec.views.length) {
+                rows = this.session.run(`SELECT ${label}, ${sql.join(', ')} ${fromSql(spec)} LIMIT 4`).rows;
+            }
             this.post({ type: 'query.calcCheck', seq, ok: true, sql: sql.join(',\n'), compare: !!parsed.compare, label: key?.column ?? '', rows, used: parsed.columns });
         } catch (error) {
             const e = error as { message?: string; at?: number; choices?: string[] };
@@ -927,9 +995,12 @@ export class QueryController {
         const sql = sqlIn.trim().replace(/;\s*$/, '');
         if (sql) {
             if (!/^\s*(select|with)\b/i.test(sql) || sql.includes(';')) throw new Error('Write one SELECT.');
-            if (!this.session) throw new Error('Add a view first.');
+            // (your own SQL is SQLite's: its tables are loaded for it, the new engine's setting or not)
+            const { spec } = this.spec();
+            const session = this.session ?? (spec.views.length ? await this.sessionFor(spec, this.version) : undefined);
+            if (!session) throw new Error('Add a view first.');
             try {
-                this.session.run(`SELECT * FROM (${sql}) LIMIT 1`);
+                session.run(`SELECT * FROM (${sql}) LIMIT 1`);
             } catch (error) {
                 throw new Error(`That SQL does not run: ${error instanceof Error ? error.message : String(error)}`);
             }
@@ -1506,22 +1577,32 @@ export class QueryController {
     private async record(index: number, hidden: string[]): Promise<void> {
         const result = this.result;
         const session = this.session;
-        if (!result || !session || !result.keyViews || !result.keyValues || !Number.isInteger(index) || !result.rows[index]) return;
         const { spec } = this.spec();
+        const onEngine = this.onEngine(spec);
+        if (!result || (!session && !onEngine) || !result.keyViews || !result.keyValues || !Number.isInteger(index) || !result.rows[index]) return;
+        const engineKeys = onEngine ? compareKeyExprs(spec) : [];
         const tables = tableNames(spec.views);
         const keys = compareKeySql(spec);
         const places: string[] = [];
         const records: Record<string, unknown>[][] = [];
-        result.keyViews.forEach((viewId, p) => {
+        for (const [p, viewId] of result.keyViews.entries()) {
             const place = result.keyPlaces![p];
-            if (hidden.includes(place)) return;
+            if (hidden.includes(place)) continue;
             places.push(place);
             const value = result.keyValues![index][p];
             const view = spec.views.find(v => v.id === viewId);
-            if (value === null || value === undefined || !view) { records.push([]); return; }
+            if (value === null || value === undefined || !view) { records.push([]); continue; }
+            if (onEngine) {
+                // On the new engine: the view's rows whose key is the row's (up to five)
+                const key = engineKeys.find(k => k.view === viewId);
+                const out = key ? await this.engineWindow(spec, recordQuery(viewId, key.expr, value as string | number), 5) : { columns: [], rows: [] };
+                records.push(out.rows.map(r => Object.fromEntries(out.columns.map((c, i) => [c, r[i]]))));
+                continue;
+            }
+            if (!session) { records.push([]); continue; }
             const out = session.run(`SELECT * FROM ${quoteName(tables.get(viewId) ?? '')} AS ${quoteName(refNames(spec.views).get(viewId) ?? '')} WHERE ${keys[p].sql} = ${typeof value === 'number' ? value : `'${String(value).replace(/'/g, "''")}'`} LIMIT 5`);
             records.push(out.rows.map(r => Object.fromEntries(out.columns.map((c, i) => [c, r[i]]))));
-        });
+        }
         const names = [...new Set(records.flatMap(rs => rs.flatMap(r => Object.keys(r))))];
         const text = (v: unknown): string => (v === null || v === undefined ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v));
         const fields = names.map(name => {
@@ -1614,6 +1695,7 @@ export class QueryController {
         const key = JSON.stringify(spec.views.map(v => [v.id, v.columns, this.loaded.get(v.id)?.rows.length ?? 0]));
         if (this.engine && this.engineKey === key) return this.engine;
         const engine = this.engine && this.engineKey.startsWith('[') ? this.engine : new QueryEngine();
+        if (engine !== this.engine) this.engineLookups.clear();
         // (only the views not in it yet, or changed, go in again)
         const had = new Map<string, string>((JSON.parse(this.engineKey || '[]') as [string, string[], number][]).map(v => [v[0], JSON.stringify(v)]));
         for (const view of spec.views) {
@@ -1635,6 +1717,7 @@ export class QueryController {
         const laps: string[] = [];
         const lap = (what: string) => { const t = performance.now(); laps.push(`${what} ${Math.round(t - at)}`); at = t; };
         const engine = this.engineFor(spec);
+        await this.loadEngineLookups(engine, lookupsUsed(spec));
         lap('views into the engine');
         let run;
         try {

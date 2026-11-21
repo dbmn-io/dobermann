@@ -19,7 +19,7 @@ import type { CompareStats, Expr, FunctionName, Progress, Query, Value } from '.
 import { FUNCTIONS } from '../engine/engine-types';
 import type { FormulaNode } from './formula';
 import { queryCompare } from './query-compare';
-import { formulaColumns, lookupsUsed, resultColumns } from './query-sql';
+import { formulaColumns, resultColumns } from './query-sql';
 import { parseFormula } from './formula';
 import { CALC_VIEW, type ColumnRef, type QueryJoinStats, type QueryKey, type QuerySpec } from './query-types';
 
@@ -29,7 +29,6 @@ export function whyNotOnEngine(spec: QuerySpec): string | undefined {
     if (!compare) return 'it is not a compare';
     if (spec.joins.some(j => j.kind !== 'compare')) return 'it has a join besides the compare';
     if ((spec.calc ?? []).length || spec.select.some(c => c.view === CALC_VIEW)) return 'it has a calculated column';
-    if (lookupsUsed(spec).length) return 'it uses Translate values';
     if (spec.distinct) return 'Distinct is on';
     const keys = compareKeys(spec);
     if (!keys.length || keys.some(k => !k.parts.length || k.parts.some(p => !p.column))) return 'its key is not picked yet';
@@ -300,7 +299,6 @@ export function keyExpr(key: QueryKey): Expr {
 /** Why a query can't run on the engine yet (whatever its kind), or undefined. */
 export function whyNotQueryOnEngine(spec: QuerySpec): string | undefined {
     if (!spec.views.length) return 'it has no views';
-    if (lookupsUsed(spec).length) return 'it uses Translate values';
     if ((spec.calc ?? []).some(c => !c.formula)) return 'it has a calculated column written as SQL';
     if (spec.joins.some(j => !j.on.length || j.on.some(p => !p.left.parts.length || !p.right.parts.length))) return 'a join has no key yet';
     return undefined;
@@ -361,4 +359,57 @@ export function buildQuery(spec: QuerySpec): { query: Query; layout: CompareLayo
         // (the keys already shown by a compare's key column: resultRows leaves them as they are)
         layout: { columns, places, keyParts, keyColumnOf: columns.map(() => undefined) }
     };
+}
+
+/* ---------- The Columns step's and Results' small reads, on the engine ---------- */
+
+/** A lookup table (Translate values) into the engine, under the name TRANSLATE reads: its columns by id, its values as text. */
+export function loadLookupTable(engine: QueryEngine, table: { id: string; columns: { id: string }[]; rows: Array<Record<string, string>> }): void {
+    const columns = table.columns.map(c => c.id);
+    engine.load(lookupTableName(table.id), { columns, rows: table.rows.map(r => columns.map(c => (r[c] === undefined ? null : String(r[c])))) });
+}
+
+/** Each compare view's key (its first pair's, as compareKeySql), as an Expr over that view alone. */
+export function compareKeyExprs(spec: QuerySpec): { view: string; expr: Expr }[] {
+    return compareKeysByView(spec).filter(v => v.keys[0]).map(v => ({ view: v.view, expr: keyExpr(v.keys[0]) }));
+}
+
+/** The query's rows as buildQuery makes them, but with these columns: the calculation check's first rows. */
+export function queryWithColumns(spec: QuerySpec, columns: Expr[]): Query {
+    const { query } = buildQuery({ ...spec, distinct: false });
+    const last = query.steps[query.steps.length - 1] as Extract<Query['steps'][number], { select: string }>;
+    return { steps: [...query.steps.slice(0, -1), { as: 'rows', select: last.select, columns: columns.map((value, i) => ({ name: `c${i}`, value })) }], result: 'rows' };
+}
+
+/** The label beside each line of the calculation check: a compare's key from whichever view has it, else the column. */
+export function labelExpr(spec: QuerySpec, ref: ColumnRef): Expr {
+    const keys = compareKeysByView(spec);
+    const first = keys[0]?.keys.findIndex(k => k.parts.length === 1 && k.parts[0].view === ref.view && k.parts[0].column === ref.column && !k.fns?.length && !k.parts[0].fns?.length) ?? -1;
+    if (first < 0) return refExpr(ref);
+    return coalesce([refExpr(ref), ...keys.slice(1).map(v => v.keys[first]).filter(Boolean).map(keyExpr)]);
+}
+
+/** The function dialog's sample: a few different values of a view's column, as they are and as `fns` leave them; the record's own first. */
+export function fnSampleQueries(view: string, column: string, fns: ColumnFn[], record: string): { few: Query; own: Query | undefined } {
+    const plain: Expr = { column, of: view };
+    const made = fns.reduce<Expr>((x, f) => fnExpr(x, f), plain);
+    const pick = { select: 'kept', columns: [{ name: 'plain', value: plain }, { name: 'made', value: made }] };
+    return {
+        few: { steps: [
+            { from: view },
+            { as: 'kept', filter: 'step 1', where: { fn: 'AND', args: [{ fn: '=', args: [plain, plain] }, { fn: '<>', args: [plain, { value: '' }] }] } },
+            { as: 'picked', ...pick },
+            { group: 'picked', by: [{ name: 'plain', value: { column: 'plain' } }, { name: 'made', value: { column: 'made' } }], aggregates: [] }
+        ] },
+        own: record ? { steps: [
+            { from: view },
+            { as: 'kept', filter: 'step 1', where: { fn: '=', args: [{ fn: 'TEXT', args: [plain] }, { value: record }] } },
+            pick
+        ] } : undefined
+    };
+}
+
+/** The record window's records of one view: the rows whose key is the row's (up to five). */
+export function recordQuery(view: string, key: Expr, value: Value): Query {
+    return { steps: [{ from: view }, { filter: 'step 1', where: { fn: '=', args: [key, { value }] } }] };
 }
