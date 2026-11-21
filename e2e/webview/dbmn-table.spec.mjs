@@ -263,6 +263,37 @@ test('rows on demand: the screen\'s own search box searches, and reload asks aga
     await expect(page.locator('#t .dbmn-table-body tr').first().locator('td').nth(1)).toHaveText('Mill Lane Deli');
 });
 
+test('rows on demand: a column removed and the rows asked again in place, the rows on screen stay until theirs land, never blank', async ({ page }) => {
+    // (the first page answers quickly, the rest slowly: as when the host works a compare's Status out again)
+    await page.setContent(sourcePage().replace('window.wait);', '(typeof window.wait === "function" ? window.wait(start) : window.wait));'));
+    await expect(firstCell(page)).toHaveText('SO-10000');
+    const rowHeight = await page.locator('#t .dbmn-table-body tr').first().evaluate(r => r.getBoundingClientRect().height);
+    await page.locator('#t .dbmn-table-scroll').evaluate((box, h) => { box.scrollTop = 1000 * h; }, rowHeight);
+    await expect.poll(async () => Number((await firstCell(page).textContent()).slice(3))).toBeGreaterThan(10900);
+    await expect(page.locator('#t .dbmn-table-body tr.dbmn-table-waiting')).toHaveCount(0);
+    const before = await firstCell(page).textContent();
+    await page.evaluate(() => { window.wait = start => (start === 0 ? 50 : 1500); });
+    // The screen takes a column out (its x), then asks again, staying where it is
+    await page.locator('#t th[data-col="ref"] .col-hide-btn').click({ force: true });
+    await page.evaluate(() => document.getElementById('t').reload({ keep: true }));
+    // The first page is in, the one on screen is not: the rows drawn are still there, not empty rows
+    await page.waitForFunction(() => window.asked.filter(a => a.start === 0).length >= 2);
+    await page.waitForTimeout(400);
+    // (looked at once, not waited for: the slow page is not in yet)
+    expect(await page.evaluate(() => window.asked.filter(a => a.start > 0).length)).toBeGreaterThan(0);
+    expect(await page.locator('#t .dbmn-table-body tr.dbmn-table-waiting').count()).toBe(0);
+    expect(await firstCell(page).textContent()).toBe(before);
+    expect(await page.locator('#t .dbmn-table-body tr').first().locator('td').count()).toBe(3);
+    // Then its own page lands in their place
+    await page.waitForTimeout(1300);
+    await expect(page.locator('#t .dbmn-table-body tr.dbmn-table-waiting')).toHaveCount(0);
+    await expect(firstCell(page)).toHaveText(before);
+    // Asked again from the top (a new search): nothing of the old rows is kept for later
+    await page.evaluate(() => { window.wait = 20; document.getElementById('t').reload(); });
+    await expect(firstCell(page)).toHaveText('SO-10000');
+    expect(await page.locator('#t').evaluate(t => t._was.size)).toBe(0);
+});
+
 test('the layout: what the user moved, removed and resized is told, and a saved layout is taken back', async ({ page }) => {
     await page.setContent(sourcePage());
     await expect(firstCell(page)).toHaveText('SO-10000');
@@ -773,6 +804,34 @@ test('a group moves and is removed as one, never past a pinned column', async ({
     await page.mouse.up();
     await expect.poll(ids).toEqual(['sku', 'status', 'qty|0', 'qty|1', 'desc|0', 'desc|1']);
     await expect(page.locator('#t .dbmn-table-body tr').first().locator('td').nth(4)).toHaveText('Item 0');
+    // While held, the group's name goes with its columns, and the group it passes slides aside, name and all
+    const descHead = page.locator('#t th[data-group="desc"]:not([data-col])');
+    const qtyHead = page.locator('#t th[data-group="qty"]:not([data-col])');
+    const grab = await page.locator('#t th[data-col="desc|1"] .column-name').boundingBox();
+    const qtyBox = await qtyHead.boundingBox();
+    // (by one of its columns' names: that moves the whole group too)
+    await page.mouse.move(grab.x + 5, grab.y + grab.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(qtyBox.x - 40, grab.y + grab.height / 2, { steps: 12 });
+    await expect(descHead).toHaveClass(/col-lift/);
+    await expect(page.locator('#t th[data-col="desc|0"]')).toHaveClass(/col-lift/);
+    await expect(qtyHead).toHaveClass(/col-shift-right/);
+    await expect(page.locator('#t th[data-col="qty|0"]')).toHaveClass(/col-shift-right/);
+    const moving = await descHead.evaluate(th => new DOMMatrix(getComputedStyle(th).transform).m41);
+    const under = await page.locator('#t th[data-col="desc|0"]').evaluate(th => new DOMMatrix(getComputedStyle(th).transform).m41);
+    expect(moving).toBeLessThan(-50);
+    expect(Math.abs(moving - under)).toBeLessThan(2);
+    await page.mouse.up();
+    await expect.poll(ids).toEqual(['sku', 'status', 'desc|0', 'desc|1', 'qty|0', 'qty|1']);
+    expect(await page.evaluate(() => { const d = window.told.at(-1); return [d.change, d.id]; })).toEqual(['moved', 'desc']);
+    // and back, by the other group's column
+    const back = await page.locator('#t th[data-col="qty|0"] .column-name').boundingBox();
+    const descBox = await descHead.boundingBox();
+    await page.mouse.move(back.x + 5, back.y + back.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(descBox.x - 300, back.y + back.height / 2, { steps: 12 });
+    await page.mouse.up();
+    await expect.poll(ids).toEqual(['sku', 'status', 'qty|0', 'qty|1', 'desc|0', 'desc|1']);
     // A column under a group cannot be moved or removed on its own; the group's x removes both
     await page.locator('#t th[data-col="qty|0"]').click({ button: 'right' });
     await expect(page.locator('.dbmn-context-menu-item', { hasText: 'Move to start' })).toHaveCount(0);

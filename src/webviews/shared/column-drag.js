@@ -57,7 +57,9 @@
 
         function begin(event) {
             const units = unitsFor(press.th);
-            const from = units.findIndex(u => u.head === press.th);
+            // (pressed on a heading inside a unit, a column under a group's name: the whole unit moves)
+            let from = units.findIndex(u => u.head === press.th);
+            if (from < 0) from = units.findIndex(u => u.cells && u.cells.includes(press.th));
             if (from < 0 || units.length < 2) { press = null; return; }
             const lefts = units.map(u => (u.left === undefined ? u.head.offsetLeft : u.left));
             const widths = units.map(u => (u.width === undefined ? u.head.offsetWidth : u.width));

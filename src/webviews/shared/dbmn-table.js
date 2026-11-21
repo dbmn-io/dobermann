@@ -223,6 +223,7 @@
             this._set = {};         // widths the user set (the rest are measured)
             this._source = null;    // rows that stay with the screen
             this._pages = new Map();
+            this._was = new Map();  // asked again in place: the pages before, shown until each one's new page lands
             this._asked = new Set();
             this._gen = 0;          // answers to an earlier asking are dropped
             this._fresh = false;    // asked again; the first page is not in yet
@@ -677,6 +678,10 @@
         /** Ask again: what is in hand is let go, and the first page asked for. The rows drawn stay until it lands. */
         _again(keep) {
             this._gen += 1;
+            // In place (a column taken out, a live refresh): the rows in hand are shown until their
+            // new ones land, page by page, so nothing on screen goes blank meanwhile. From the top: let go
+            if (keep) { const was = new Map(this._was); this._pages.forEach((rows, page) => was.set(page, rows)); this._was = was; }
+            else this._was = new Map();
             this._pages.clear();
             this._asked.clear();
             // (where an open row now sits is not known until its page is in: it closes)
@@ -697,6 +702,7 @@
             Promise.resolve(answer).then(got => {
                 if (gen !== this._gen) return;   // asked again since: this answer is of rows no longer wanted
                 this._asked.delete(page);
+                this._was.delete(page);
                 this._pages.set(page, Array.isArray(got) ? got : (got && Array.isArray(got.rows) ? got.rows : []));
                 if (got && typeof got.total === 'number') this._total = got.total;
                 if (got && !Array.isArray(got)) this._of = typeof got.of === 'number' ? got.of : null;
@@ -725,12 +731,16 @@
             this._rendered = { start: -1, end: -1 };
             this._render(true);
         }
-        /** Row `i` of the rows shown; undefined while its page is on its way. */
+        /** Row `i` of the rows shown; while its page is on its way, the row there before (asked again in place), else undefined. */
         _rowAt(i) {
             if (!this._source) return this._rows[this._view[i]];
             const page = Math.floor(i / PAGE);
             const got = this._pages.get(page);
-            if (!got) { this._ask(page); return undefined; }
+            if (!got) {
+                this._ask(page);
+                const was = this._was.get(page);
+                return was ? was[i - page * PAGE] : undefined;
+            }
             return got[i - page * PAGE];
         }
         _length() { return this._source ? this._total : this._view.length; }
@@ -853,7 +863,8 @@
             return this._units().filter(unit => !unit.pinned).map(unit => {
                 const head = unit.group ? this._head.querySelector(`th[data-group="${CSS.escape(unit.group.id)}"]:not([data-col])`)
                     : this._head.querySelector(`th[data-col="${CSS.escape(unit.columns[0].column.id)}"]`);
-                const cells = [];
+                // (a group's name goes with its columns, and slides aside with them when passed)
+                const cells = unit.group && head ? [head] : [];
                 unit.columns.forEach(({ column, index }) => {
                     if (unit.group) { const sub = this._head.querySelector(`th[data-col="${CSS.escape(column.id)}"]`); if (sub) cells.push(sub); }
                     rows.forEach(r => { if (r.cells.length === this._columns.length && r.cells[index]) cells.push(r.cells[index]); });
@@ -915,9 +926,10 @@
                     if (column.sortable !== false) actions.append(head.sortButton({ label: name, numbers: this._numbers(column), dir }));
                     if (own && movable && removable && !column.pinned && column.removable !== false) actions.append(head.hideButton({ label: name }));
                 }
-                const moves = own && movable && !column.pinned;
+                // (a column under a group's name moves its whole group)
+                const moves = movable && !column.pinned;
                 const label = make('span', 'column-name' + (moves ? ' is-movable' : ''), name);
-                label.title = (moves ? 'Hold and drag to move this column. ' : '') + `@${name}= searches it`;
+                label.title = (moves ? (own ? 'Hold and drag to move this column. ' : 'Hold and drag to move these columns. ') : '') + `@${name}= searches it`;
                 // The key: its values one per row
                 if (column.key) {
                     th.classList.add('is-key');
