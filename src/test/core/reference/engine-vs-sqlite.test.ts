@@ -131,28 +131,28 @@ describe('Query engine against SQLite (reference, the tester\'s)', () => {
         return engine.read(ran.result, 0, 1).rows[0][0] as Value;
     }
 
-    it('difference 1: comparisons are exact by type (a number never equals text)', () => {
+    it('difference 1 (manager\'s ruling, pending James): comparisons are exact by type (a number never equals text)', () => {
         assert.strictEqual(one('=', 42, '42'), 0);
         assert.strictEqual(one('=', '42', 42), 0);
         assert.strictEqual(one('=', 42, 42), 1);
         assert.strictEqual(one('=', '42', '42'), 1);
     });
 
-    it('difference 2: FLOOR and CEIL read text as NUMBER does', () => {
+    it('difference 2 (manager\'s ruling, pending James): FLOOR and CEIL read text as NUMBER does', () => {
         assert.strictEqual(one('FLOOR', 'abc'), null);
         assert.strictEqual(one('FLOOR', '12abc'), null);
         assert.strictEqual(one('FLOOR', '1e3'), 1000);
         assert.strictEqual(one('CEIL', '2.1'), 3);
     });
 
-    it('difference 3: As a number (NUMERIC) is NUMBER: not a plain number gives blank', () => {
+    it('difference 3 (James, 2026-11-21: "Blank."): As a number (NUMERIC) is NUMBER: not a plain number gives blank', () => {
         assert.strictEqual(one('NUMERIC', 'abc'), null);
         assert.strictEqual(one('NUMERIC', '12abc'), null);
         assert.strictEqual(one('NUMERIC', ''), null);
         assert.strictEqual(one('NUMERIC', '0042'), 42);
     });
 
-    it('difference 4: Upper and Lower case change every letter, accented ones too', () => {
+    it('difference 4 (James, 2026-11-21: "Yes."): Upper and Lower case change every letter, accented ones too', () => {
         assert.strictEqual(one('UPPER', 'café'), 'CAFÉ');
         assert.strictEqual(one('LOWER', 'ÉTÉ'), 'été');
     });
