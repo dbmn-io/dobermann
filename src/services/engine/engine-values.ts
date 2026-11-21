@@ -107,16 +107,14 @@ export function arithmetic(v: V): number | Real | null {
 }
 
 /**
- * CAST(x AS NUMERIC). Text: its leading number ("0042" → 42, "1.50" → 1.5, "12abc" → 12); a real
- * that is whole becomes an integer ("1.0" → 1, "1e3" → 1000).
- * QUIRK for James (DESIGN-review.md §3): text with no number in it ("abc", "") becomes 0, as SQLite
- * does today. If James wants blank instead, flip NUMERIC_TEXT_WITHOUT_A_NUMBER_IS_ZERO.
+ * SQLite's CAST(x AS NUMERIC), as NUMBER uses it on text it has already found to be a number: its
+ * leading number ("0042" → 42, "1.50" → 1.5); a real that is whole becomes an integer ("1.0" → 1,
+ * "1e3" → 1000). (Text with no number in it, 0, as SQLite; NUMBER never passes such text.)
  */
-export const NUMERIC_TEXT_WITHOUT_A_NUMBER_IS_ZERO = true;
 export function castNumeric(v: V): V {
     if (v === null || isNumber(v)) return v;
     const m = NUMBER_PREFIX.exec(v);
-    if (!m) return NUMERIC_TEXT_WITHOUT_A_NUMBER_IS_ZERO ? 0 : null;
+    if (!m) return 0;
     const n = Number(m[1]);
     if (!Number.isFinite(n)) return new Real(n);
     if (Number.isInteger(n) && Math.abs(n) < 9.2e18) return Number.isSafeInteger(n) ? n : new Real(n);
@@ -161,9 +159,10 @@ export function truthy(v: V): boolean | null {
 }
 
 /**
- * The order SQLite gives values with no column affinity (as Query's tables have): blank first,
- * then numbers by value, then text by its characters' code points (BINARY: the same order as the
- * bytes of UTF-8). A number is never equal to text.
+ * The order of values, everywhere (comparisons, join keys, filters, sort): blank first, then
+ * numbers by value, then text by its characters' code points (the same order as UTF-8's bytes).
+ * Exact by type: a number is never equal to text, whatever either side came from. NUMBER(x) and
+ * TEXT(x) are how a user makes two sides meet (engine-types.ts, "Differences from SQLite").
  */
 export function compareValues(a: V, b: V): number {
     if (a === null || b === null) return a === null ? (b === null ? 0 : -1) : 1;
@@ -191,36 +190,4 @@ export function compareText(a: string, b: string): number {
 /** A value's characters, as SQLite counts them (code points; a number as its text). */
 export function chars(t: string): string[] {
     return Array.from(t);
-}
-
-/**
- * A value's affinity in a comparison, as SQLite gives it: a column of Query's tables (declared with
- * no type) has BLOB affinity; a CAST gives its type (TEXT, NUMERIC); a constant or any other
- * expression has none. Comparing, SQLite first converts: a side with a number affinity turns the
- * other side's well-formed number text into a number ("0042" = CAST(x AS INTEGER) compares 42); a
- * side with TEXT affinity turns the other side's number into text only when that side has no
- * affinity at all, a constant (TEXT(x) = 5 compares "5" with "5"; TEXT(x) = a column holding 5 doesn't).
- */
-export type Affinity = 'blob' | 'none' | 'text' | 'numeric';
-
-/** Text that is wholly a number becomes it (an integer when it is a whole one); anything else as it is. */
-export function applyNumericAffinity(v: V): V {
-    if (typeof v !== 'string' || !WHOLE_NUMBER.test(v)) return v;
-    const n = Number(v.trim());
-    if (Number.isSafeInteger(n)) return n;
-    return new Real(n);
-}
-
-/** A number becomes its text; anything else as it is. */
-export function applyTextAffinity(v: V): V {
-    return isNumber(v) ? asText(v) : v;
-}
-
-/** The two sides of a comparison after SQLite's conversions for their affinities. */
-export function forComparison(a: V, aff: Affinity, b: V, bff: Affinity): [V, V] {
-    if (aff === 'numeric' && bff !== 'numeric') return [a, applyNumericAffinity(b)];
-    if (bff === 'numeric' && aff !== 'numeric') return [applyNumericAffinity(a), b];
-    if (aff === 'text' && bff === 'none') return [a, applyTextAffinity(b)];
-    if (bff === 'text' && aff === 'none') return [applyTextAffinity(a), b];
-    return [a, b];
 }

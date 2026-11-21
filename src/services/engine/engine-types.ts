@@ -12,6 +12,23 @@
  * are declared here as agreed and come in later pieces; until then `check` refuses them by name.
  */
 
+/*
+ * Differences from SQLite (intended; everything not listed here gives what SQLite gives today, and
+ * the reference tests expect the engine's rule for these):
+ *
+ * 1. Comparisons are exact by type, always: a number never equals text, whether a side is a
+ *    column, a constant or a function's result. SQLite converts by "affinity": TEXT(x) = 42 is
+ *    true there for x 42, NUMERIC(x) = '42' and NUMERIC(x) = a column holding "42" too; here they
+ *    are false. The same in join keys, filters and sort. So "As a number" on one side of a key
+ *    matches only numbers on the other: put it on both sides.
+ * 2. FLOOR and CEIL read their value as NUMBER does: text that is not a plain number ("abc",
+ *    "12abc") gives blank, and "1e3" is 1000. SQLite gives 0, 12 and 1.
+ * 3. "As a number" (NUMERIC) is NUMBER: text that is not a plain number ("abc", "12abc", "")
+ *    gives blank (James, 2026-11-21). SQLite gives 0, 12 and 0.
+ * 4. Upper case / Lower case change every letter, accented ones included ("é" → "É"; James,
+ *    2026-11-21). SQLite changes a–z only.
+ */
+
 /** A value in a table: text, a number, or blank (null). Yes/no comes in as the text "true" / "false". */
 export type Value = string | number | null;
 
@@ -46,7 +63,7 @@ export type Expr =
  *   Numbers        ROUND  ABS  FLOOR  CEIL  MIN  MAX
  *   Text           CONCAT  UPPER  LOWER  TRIM  LTRIM  LEFT  RIGHT  SUBSTR  REPLACE  LENGTH
  *   Convert        TEXT (CAST AS TEXT: "As text" and the formula's TEXT)
- *                  NUMERIC (CAST AS NUMERIC: the ƒ dialog's "As a number")
+ *                  NUMERIC (the ƒ dialog's "As a number": the same rule as NUMBER)
  *                  NUMBER (the formula's NUMBER: a plain number, else blank)
  *   Lookup         TRANSLATE(value, table, fromColumn, toColumn): reads a loaded table
  *

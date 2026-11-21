@@ -9,15 +9,10 @@
  */
 import type { FunctionName } from './engine-types';
 import {
-    applyNumericAffinity, arithmetic, asDouble, asText, castInteger, castNumeric, chars, compareValues, isNumber, makeNumber,
+    arithmetic, asDouble, asText, castInteger, castNumeric, chars, compareValues, isNumber, makeNumber,
     num, numericType, Real, truthy, type V
 } from './engine-values';
 
-/**
- * QUIRK for James (DESIGN-review.md §3): SQLite's UPPER and LOWER change only the letters a–z /
- * A–Z ("é" stays "é"), and the app gives that today. If James wants every letter, flip this.
- */
-export const UPPER_LOWER_ASCII_ONLY = true;
 
 /** A loaded table a function reads (TRANSLATE): its column names and rows, as the engine holds them. */
 export interface LookupSource {
@@ -75,9 +70,9 @@ function compare(a: V, b: V, test: (c: number) => boolean): V {
 /** A value as text, for the text functions (blank stays blank; a number as its text). */
 const text = (v: V): string | null => asText(v);
 
-function asciiCase(t: string, upper: boolean): string {
-    if (!UPPER_LOWER_ASCII_ONLY) return upper ? t.toUpperCase() : t.toLowerCase();
-    return upper ? t.replace(/[a-z]+/g, s => s.toUpperCase()) : t.replace(/[A-Z]+/g, s => s.toLowerCase());
+/** Upper / Lower case: every letter, accented ones included (James, 2026-11-21; SQLite changes a–z only). */
+function letterCase(t: string, upper: boolean): string {
+    return upper ? t.toUpperCase() : t.toLowerCase();
 }
 
 /** SQLite's TRIM/LTRIM: characters from a set (default a space) off the ends. */
@@ -142,17 +137,22 @@ function abs(x: V): V {
     return new Real(Math.abs(asDouble(v)));
 }
 
-/** The formula's FLOOR: CAST(x AS INTEGER) - (x < CAST(x AS INTEGER)); the CAST's INTEGER affinity reads x's number text as a number. */
+/**
+ * FLOOR and CEIL, on numbers: x read as NUMBER reads it (a number, or text that is a plain number;
+ * anything else blank), then the whole number at or below (FLOOR) or at or above (CEIL) it, an
+ * integer, held at SQLite's 64-bit ends as its CAST is.
+ */
 function floor(x: V): V {
-    if (x === null) return null;
-    const i = castInteger(x)!;
-    return i - (compareValues(applyNumericAffinity(x), i) < 0 ? 1 : 0);
+    const n = numberFn(x);
+    if (n === null) return null;
+    const i = castInteger(n)!;
+    return i - (compareValues(n, i) < 0 ? 1 : 0);
 }
-/** The formula's CEIL: CAST(x AS INTEGER) + (x > CAST(x AS INTEGER)). */
 function ceil(x: V): V {
-    if (x === null) return null;
-    const i = castInteger(x)!;
-    return i + (compareValues(applyNumericAffinity(x), i) > 0 ? 1 : 0);
+    const n = numberFn(x);
+    if (n === null) return null;
+    const i = castInteger(n)!;
+    return i + (compareValues(n, i) > 0 ? 1 : 0);
 }
 
 /** SQLite's MIN/MAX of several: blank if any is blank, else the least / greatest in SQLite's order. */
@@ -228,8 +228,8 @@ export function callFunction(name: FunctionName, a: V[], ctx: FunctionContext): 
         case 'MIN': return minMax(a, false);
         case 'MAX': return minMax(a, true);
         case 'CONCAT': return a.map(v => text(v) ?? '').join('');
-        case 'UPPER': { const t = text(a[0]); return t === null ? null : asciiCase(t, true); }
-        case 'LOWER': { const t = text(a[0]); return t === null ? null : asciiCase(t, false); }
+        case 'UPPER': { const t = text(a[0]); return t === null ? null : letterCase(t, true); }
+        case 'LOWER': { const t = text(a[0]); return t === null ? null : letterCase(t, false); }
         case 'TRIM': { const t = text(a[0]); return t === null ? null : trimSet(t, ' ', true, true); }
         case 'LTRIM': {
             const t = text(a[0]);
@@ -253,7 +253,8 @@ export function callFunction(name: FunctionName, a: V[], ctx: FunctionContext): 
         }
         case 'LENGTH': { const t = text(a[0]); return t === null ? null : chars(t).length; }
         case 'TEXT': return text(a[0]);
-        case 'NUMERIC': return castNumeric(a[0]);
+        // "As a number": the same rule as NUMBER (James, 2026-11-21: text that is not a number is blank)
+        case 'NUMERIC': return numberFn(a[0]);
         case 'NUMBER': return numberFn(a[0]);
         case 'TRANSLATE': return translate(a[0], a[1], a[2], a[3], ctx);
     }

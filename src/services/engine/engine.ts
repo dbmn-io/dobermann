@@ -9,19 +9,14 @@
 import { ARITY, callFunction, type FunctionContext, type LookupSource } from './engine-functions';
 import { StoredTable } from './engine-columns';
 import { FUNCTIONS, type Engine, type Expr, type FunctionName, type Problem, type Query, type ResultId, type Step, type Table, type TableWindow, type CompareStats, type JoinStats, type StatsWindow } from './engine-types';
-import { forComparison, fromValue, toValue, truthy, type Affinity, type V } from './engine-values';
+import { fromValue, toValue, truthy, type V } from './engine-values';
 
 /** A step's rows: its columns, how many rows, and a value by row and column. */
 interface Relation {
     columns: string[];
-    /** Each column's affinity for comparisons (engine-values.ts Affinity): a table's columns BLOB, a select's its expression's. */
-    affinity: Affinity[];
     rowCount: number;
     value(row: number, column: number): V;
 }
-
-/** The comparisons, which first convert their sides for their affinities, as SQLite does. */
-const COMPARISONS = new Set<FunctionName>(['=', '<>', '>', '<', '>=', '<=']);
 
 /** The step kinds this piece runs; the rest are refused by name until their piece. */
 const STEP_KINDS = ['from', 'join', 'compare', 'select', 'filter', 'group', 'sort'] as const;
@@ -160,41 +155,36 @@ export class QueryEngine implements Engine {
         if (kind === 'select') {
             const s = step as Extract<Step, { select: string }>;
             const exprs = s.columns.map(c => this.compile(c.value, base));
-            return { columns: s.columns.map(c => c.name), affinity: exprs.map(x => x.aff), rowCount: base.rowCount, value: (row, c) => exprs[c].f(row) };
+            return { columns: s.columns.map(c => c.name), rowCount: base.rowCount, value: (row, c) => exprs[c](row) };
         }
         // filter: the rows whose condition is true, as SQLite's WHERE reads it
-        const where = this.compile((step as Extract<Step, { filter: string }>).where, base).f;
+        const where = this.compile((step as Extract<Step, { filter: string }>).where, base);
         const kept: number[] = [];
         for (let r = 0; r < base.rowCount; r++) if (truthy(where(r)) === true) kept.push(r);
         const rows = Int32Array.from(kept);
-        return { columns: base.columns, affinity: base.affinity, rowCount: rows.length, value: (row, c) => base.value(rows[row], c) };
+        return { columns: base.columns, rowCount: rows.length, value: (row, c) => base.value(rows[row], c) };
     }
 
     private tableRelation(name: string): Relation {
         const t = this.tables.get(name)!;
         // (a snapshot of its length: rows appended later are not in this result)
         const count = t.rowCount;
-        return { columns: t.columns, affinity: t.columns.map(() => 'blob' as Affinity), rowCount: count, value: (row, c) => t.value(row, c) };
+        return { columns: t.columns, rowCount: count, value: (row, c) => t.value(row, c) };
     }
 
-    /** An expression as a function of a row of `rel`, with its affinity (a CAST's type: TEXT, NUMERIC; else none). */
-    private compile(e: Expr, rel: Relation): { f: (row: number) => V; aff: Affinity } {
+    /** An expression as a function of a row of `rel`. Comparisons are exact by type (engine-values.ts compareValues). */
+    private compile(e: Expr, rel: Relation): (row: number) => V {
         if ('column' in e) {
             const at = rel.columns.indexOf(e.column);
-            return { f: row => rel.value(row, at), aff: rel.affinity[at] ?? 'none' };
+            return row => rel.value(row, at);
         }
         if ('value' in e) {
             const v = fromValue(e.value);
-            return { f: () => v, aff: 'none' };
+            return () => v;
         }
         const args = e.args.map(a => this.compile(a, rel));
         const name: FunctionName = e.fn;
-        const aff: Affinity = name === 'TEXT' ? 'text' : name === 'NUMERIC' ? 'numeric' : 'none';
-        if (COMPARISONS.has(name)) {
-            const [x, y] = args;
-            return { f: row => callFunction(name, forComparison(x.f(row), x.aff, y.f(row), y.aff), this.ctx), aff };
-        }
-        return { f: row => callFunction(name, args.map(a => a.f(row)), this.ctx), aff };
+        return row => callFunction(name, args.map(a => a(row)), this.ctx);
     }
 
     cancel(_result: ResultId): void {

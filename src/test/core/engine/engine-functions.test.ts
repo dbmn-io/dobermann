@@ -49,14 +49,15 @@ describe('The engine, first piece: tables, select, filter, functions', () => {
     before(async () => { SQL_ = await initSqlJs({ locateFile: () => SQL_WASM_PATH }); });
 
     /** Every value (or pair of values) through one function, in SQLite and in the engine: the same answers. */
-    function same(fn: FunctionName, arity: number, extra: Value[] = []) {
+    /** `ours`: for a row on the list of differences (engine-types.ts), the engine's answer; else SQLite's is expected. */
+    function same(fn: FunctionName, arity: number, extra: Value[] = [], ours?: (row: Value[]) => Value | undefined) {
         const rows: Value[][] = [];
         if (arity === 1) VALUES.forEach(v => rows.push([v, ...extra]));
         else VALUES.forEach(a => VALUES.forEach(b => rows.push([a, b, ...extra])));
         const columns = ['a', 'b', 'c', 'd'].slice(0, arity + extra.length);
         const db = new SQL_.Database();
         sqliteTable(db, columns, rows);
-        const want = db.exec(`SELECT ${SQL[fn]!(columns)} FROM t`)[0].values.map(r => r[0]);
+        const want = db.exec(`SELECT ${SQL[fn]!(columns)} FROM t`)[0].values.map((r, i) => { const o = ours?.(rows[i]); return o === undefined ? r[0] : o; });
         db.close();
         const engine = new QueryEngine();
         engine.load('t', { columns, rows });
@@ -68,7 +69,17 @@ describe('The engine, first piece: tables, select, filter, functions', () => {
         assert.deepStrictEqual(wrong.slice(0, 5), [], `${fn}: ${wrong.length} values differ, e.g. ${JSON.stringify(wrong.slice(0, 5))}`);
     }
 
-    for (const fn of ['NEG', 'ABS', 'FLOOR', 'CEIL', 'UPPER', 'LOWER', 'TRIM', 'LENGTH', 'TEXT', 'NUMERIC', 'NUMBER', 'NOT', 'ROUND'] as FunctionName[]) {
+    // The listed differences (engine-types.ts): text read as NUMBER reads it
+    const plainNumber = /^\s*[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?\s*$/;
+    const asNumber = (v: Value): Value | undefined => (typeof v !== 'string' ? undefined : plainNumber.test(v) ? Number(v.trim()) : null);
+    it('FLOOR as SQLite; text as NUMBER reads it (difference 2)', () => same('FLOOR', 1, [], r => { const n = asNumber(r[0]); return n === undefined ? undefined : n === null ? null : Math.floor(n as number); }));
+    it('CEIL as SQLite; text as NUMBER reads it (difference 2)', () => same('CEIL', 1, [], r => { const n = asNumber(r[0]); return n === undefined ? undefined : n === null ? null : Math.ceil(n as number); }));
+    it('As a number (NUMERIC) as SQLite for numbers; text as NUMBER reads it (difference 3)', () => same('NUMERIC', 1, [], r => asNumber(r[0])));
+    it('Upper / Lower case as SQLite, but every letter (difference 4)', () => {
+        same('UPPER', 1, [], r => (typeof r[0] === 'string' ? r[0].toUpperCase() : undefined));
+        same('LOWER', 1, [], r => (typeof r[0] === 'string' ? r[0].toLowerCase() : undefined));
+    });
+    for (const fn of ['NEG', 'ABS', 'TRIM', 'LENGTH', 'TEXT', 'NUMBER', 'NOT', 'ROUND'] as FunctionName[]) {
         it(`${fn} as SQLite`, () => same(fn, 1));
     }
     for (const fn of ['+', '-', '*', '/', '=', '<>', '>', '<', 'IFBLANK', 'AND', 'OR', 'MIN', 'MAX', 'CONCAT', 'LTRIM', 'LEFT', 'RIGHT', 'SUBSTR', 'ROUND'] as FunctionName[]) {
@@ -81,30 +92,25 @@ describe('The engine, first piece: tables, select, filter, functions', () => {
         same('IF', 2, ['no']);
     });
 
-    it('comparisons convert their sides for a CAST\'s affinity, as SQLite: TEXT(a) = b, NUMERIC(a) = b, a selected TEXT column compared later', () => {
-        const rows: Value[][] = [];
-        VALUES.forEach(a => VALUES.forEach(b => rows.push([a, b])));
-        const db = new SQL_.Database();
-        sqliteTable(db, ['a', 'b'], rows);
-        const want = db.exec(`SELECT (CAST(a AS TEXT) = b), (CAST(a AS NUMERIC) = b), (b < CAST(a AS TEXT)), (CAST(a AS TEXT) = 42), (CAST(a AS NUMERIC) = '42') FROM t`)[0].values;
-        const later = db.exec(`SELECT (x = b) FROM (SELECT CAST(a AS TEXT) AS x, b FROM t)`)[0].values.map(r => r[0]);
-        db.close();
+    it('comparisons are exact by type, whatever the sides came from (difference 1): TEXT(a) = 42 and NUMERIC(a) = \'42\' only meet by type', () => {
         const e = new QueryEngine();
+        const rows: Value[][] = [[42, '42'], ['42', 42], ['0042', '42'], [1.5, '1.5']];
         e.load('t', { columns: ['a', 'b'], rows });
         const a: Expr = { column: 'a' }, b: Expr = { column: 'b' };
         const out = e.run({ steps: [{ from: 't' }, { select: 'step 1', columns: [
-            { name: 'x', value: { fn: '=', args: [{ fn: 'TEXT', args: [a] }, b] } },
-            { name: 'y', value: { fn: '=', args: [{ fn: 'NUMERIC', args: [a] }, b] } },
-            { name: 'z', value: { fn: '<', args: [b, { fn: 'TEXT', args: [a] }] } },
-            // (against a constant, which has no affinity: TEXT's text affinity turns 42 into "42")
-            { name: 'w', value: { fn: '=', args: [{ fn: 'TEXT', args: [a] }, { value: 42 }] } },
-            { name: 'v', value: { fn: '=', args: [{ fn: 'NUMERIC', args: [a] }, { value: '42' }] } }
+            { name: 'textA_is_b', value: { fn: '=', args: [{ fn: 'TEXT', args: [a] }, b] } },
+            { name: 'textA_is_42', value: { fn: '=', args: [{ fn: 'TEXT', args: [a] }, { value: 42 }] } },
+            { name: 'numA_is_b', value: { fn: '=', args: [{ fn: 'NUMERIC', args: [a] }, b] } },
+            { name: 'numA_is_text42', value: { fn: '=', args: [{ fn: 'NUMERIC', args: [a] }, { value: '42' }] } },
+            { name: 'numA_is_numB', value: { fn: '=', args: [{ fn: 'NUMERIC', args: [a] }, { fn: 'NUMBER', args: [b] }] } }
         ] }] });
         assert.ok('result' in out);
-        assert.deepStrictEqual(e.read(out.result, 0, rows.length).rows, want);
-        const step2 = e.run({ steps: [{ from: 't', as: 't1' }, { as: 's', select: 't1', columns: [{ name: 'x', value: { fn: 'TEXT', args: [a] } }, { name: 'b', value: b }] }, { select: 's', columns: [{ name: 'q', value: { fn: '=', args: [{ column: 'x' }, { column: 'b' }] } }] }] });
-        assert.ok('result' in step2);
-        assert.deepStrictEqual(e.read(step2.result, 0, rows.length).rows.map(r => r[0]), later);
+        assert.deepStrictEqual(e.read(out.result, 0, 9).rows, [
+            [1, 0, 0, 0, 1],
+            [0, 0, 1, 0, 1],
+            [0, 0, 0, 0, 1],
+            [1, 0, 0, 0, 1]
+        ]);
     });
 
     it('tables come in, in pieces, and are read a window at a time; a table still loading is refused', () => {
