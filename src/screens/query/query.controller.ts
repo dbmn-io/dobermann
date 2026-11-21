@@ -1295,10 +1295,16 @@ export class QueryController {
         const source = this.query?.sources.find(s => s.id === id);
         if (!source) return [];
         // (read again from storage: said where the user is looking, the footer and Results' working line)
-        const again = await this.readView(source, (text, done, total) => {
-            this.post({ type: 'query.progress', text, done, total });
-            this.post({ type: 'query.reading', stage: text, done, total });
-        });
+        let again: LoadedView;
+        try {
+            again = await this.readView(source, (text, done, total) => {
+                this.post({ type: 'query.progress', text, done, total });
+                this.post({ type: 'query.reading', stage: text, done, total });
+            });
+        } finally {
+            // (the page is told the reading is over: its step bar stops working, Next and Back work again)
+            this.post({ type: 'query.idle' });
+        }
         // (its rows were here before: not finding them now is said, never run as an empty view)
         if (again.error) throw new Error(`${source.name}: ${again.error}`);
         return again.rows;
