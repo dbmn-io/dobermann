@@ -25,7 +25,11 @@
  *
  * A column: { id, name, numbers, type, className (on its heading and its cells: a colour the screen
  * owns), render(value, row), pinned, group, head(th) }.
- *   pinned: true            it stays where it is (a key, a status): never moved or removed, nothing moves past it
+ *   pinned: true            it stays where it is (a key, a status): never moved or removed, nothing moves past it;
+ *                           and it keeps its measured width when a narrow table stretches to fill its box
+ *   width: 160              its starting width in px (the screen measured what it needs: a status of
+ *                           several tags), never stretched; the user's resize still wins
+ *   wrap: true              its cells wrap onto a second line rather than widening it (a status of DIFF and Missing)
  *   group: { id, name, head(th) }   consecutive columns with one group share a heading over theirs (a field,
  *                           and BL, C1, C2 under it): the group moves and is removed as one, and its
  *                           right edge sizes its columns evenly; each column under it sorts and resizes on its own
@@ -976,7 +980,7 @@
             const tr = make('tr');
             this._columns.forEach(column => {
                 const value = this._totals[column.id];
-                const td = make('td', (column.numbers || typeof value === 'number' ? 'text-right' : '') + (column.className ? ` ${column.className}` : ''), value === undefined || value === null ? '' : typeof value === 'number' ? count(value) : String(value));
+                const td = make('td', (column.numbers || typeof value === 'number' ? 'text-right' : '') + (column.wrap ? ' dbmn-cell-wrap' : '') + (column.className ? ` ${column.className}` : ''), value === undefined || value === null ? '' : typeof value === 'number' ? count(value) : String(value));
                 tr.append(td);
             });
             this._foot.replaceChildren(tr);
@@ -1015,13 +1019,20 @@
             if (this._body.firstChild) this._rowH = this._body.firstChild.getBoundingClientRect().height || ROW_H;
             // Each column's own heading (under its group's, when it has one), in column order
             let widths = this._columns.map(c => {
+                if (Number(c.width) > 0) return Math.round(Number(c.width));
                 const th = this._head.querySelector(`th[data-col="${CSS.escape(c.id)}"]`);
                 return th ? Math.min(420, Math.ceil(th.getBoundingClientRect().width)) : 80;
             });
             const sum = widths.reduce((a, b) => a + b, 0);
             const room = this._scroll.clientWidth;
-            // A table narrower than its box fills it
-            if (sum < room) widths = widths.map(w => Math.floor(w * room / sum));
+            // A table narrower than its box fills it: the room goes to the data columns. A pinned
+            // column (a status, a key, the row numbers) or one given its width keeps what it needs:
+            // stretched in proportion, the widest (a status of many tags) would grow the most
+            const stays = this._columns.map(c => !!c.pinned || Number(c.width) > 0);
+            const fixed = widths.reduce((a, w, i) => a + (stays[i] ? w : 0), 0);
+            const grows = sum - fixed;
+            if (sum < room && grows > 0) widths = widths.map((w, i) => (stays[i] ? w : Math.floor(w * (room - fixed) / grows)));
+            else if (sum < room) widths = widths.map(w => Math.floor(w * room / sum));
             this._columns.forEach((column, i) => { if (!this._widths[column.id]) this._widths[column.id] = widths[i]; });
             this._sized = true;
             this._table.classList.add('is-sized');
@@ -1073,7 +1084,7 @@
             if (row && this._picked && this._picked.has(row)) tr.classList.add('is-picked');
             this._columns.forEach(column => {
                 const value = row ? row[column.id] : null;
-                const td = make('td', (column.numbers || typeof value === 'number' ? 'text-right' : '') + (column.className ? ` ${column.className}` : ''));
+                const td = make('td', (column.numbers || typeof value === 'number' ? 'text-right' : '') + (column.wrap ? ' dbmn-cell-wrap' : '') + (column.className ? ` ${column.className}` : ''));
                 if (!row) { td.textContent = '\u00a0'; tr.append(td); return; }
                 // Editable: a cell that takes no typing is drawn plain; a yes/no one turns over on a click
                 if (this._editable() && !this._canEdit(column, row)) td.classList.add('dbmn-cell-readonly');

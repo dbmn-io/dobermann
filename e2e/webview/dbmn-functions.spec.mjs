@@ -115,6 +115,22 @@ test('a lookup table is picked from the saved ones, and Open closes the dialog a
     await expect.poll(() => p.evaluate(() => [window.opened, window.result])).toEqual([['uom'], null]);
 });
 
+test('+ New lookup table… at the end of the picker: the dialog closes, and the screen is asked to make one', async ({ page: p }) => {
+    await p.setContent(page());
+    await p.evaluate(() => { window.made = 0; window.openIt({ onNewLookup: () => { window.made += 1; } }); });
+    const pick = line(p, 'Translate values').locator('select.dbmn-fx-lookup');
+    await expect(pick.locator('option').last()).toHaveText('+ New lookup table…');
+    await pick.selectOption('__new__');
+    await expect(p.locator('.dbmn-modal')).toHaveCount(0);
+    await expect.poll(() => p.evaluate(() => [window.made, window.result])).toEqual([1, null]);
+});
+
+test('no onNewLookup given: no + New lookup table… in the picker', async ({ page: p }) => {
+    await p.setContent(page());
+    await p.evaluate(() => window.openIt({}));
+    await expect(line(p, 'Translate values').locator('select.dbmn-fx-lookup option', { hasText: 'New lookup table' })).toHaveCount(0);
+});
+
 test('a lookup table that has been deleted shows as missing, never quietly another', async ({ page: p }) => {
     await p.setContent(page());
     await p.evaluate(() => window.openIt({ applied: [{ id: 'translate', params: { table: 'gone' } }] }));

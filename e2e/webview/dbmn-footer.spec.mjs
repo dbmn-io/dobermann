@@ -422,3 +422,28 @@ test('the design system page draws every section from the real files, with no er
 
     expect(errors).toEqual([]);
 });
+
+test('a status in a page (inline): its tone\'s colour outside any footer, edged in it, no fixed height, and a long sentence wraps', async ({ page }) => {
+    await page.setContent(`<!doctype html><html><head>
+<style>:root{--vscode-foreground:#cccccc;--vscode-editorWarning-foreground:#cca700;--vscode-testing-iconPassed:#3fa35c}
+body{margin:0;padding:16px;font:13px sans-serif;width:400px;background:#1e1e1e;color:#ccc}
+${read('shared/atomic.css')}
+${read('shared/dbmn-footer.css')}</style>
+<script>${read('shared/dbmn-footer.js')}</script></head><body>
+<div><dbmn-status id="plain" inline>Nothing to say yet</dbmn-status></div>
+<div><dbmn-status id="warn" inline tone="warn">36 values repeat in C3: BL's record is compared with each of them, so Results shows extra rows and differences that are not real.</dbmn-status></div>
+</body></html>`);
+    const s = await page.evaluate(() => {
+        const of = id => getComputedStyle(document.getElementById(id));
+        const warn = document.getElementById('warn');
+        return {
+            plainColour: of('plain').color, warnColour: of('warn').color, border: of('warn').borderTopStyle,
+            wraps: of('warn').whiteSpace, tall: warn.getBoundingClientRect().height, margin: of('warn').marginLeft
+        };
+    });
+    expect(s.warnColour).not.toBe(s.plainColour);
+    expect(s.border).toBe('solid');
+    expect(s.wraps).toBe('normal');
+    expect(s.tall).toBeGreaterThan(40);   // two lines or more, not the footer's 32px row
+    expect(s.margin).toBe('0px');
+});

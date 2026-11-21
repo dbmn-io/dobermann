@@ -31,6 +31,8 @@
  *                                             // (the row whose From is `value`, this record's, is lit)
  *                                             // asked each time the ticks or values change; an answer
  *                                             // to an older ask is dropped; null: nothing to show
+ *       onNewLookup: () => …                  // "+ New lookup table…" at the end of the table picker: the
+ *                                             // dialog closes first, then the screen makes one (Reporting)
  *       onOpenLookup: id => …                 // "Open" beside a lookup table: the dialog closes first
  *                                             // (an applied table that is not among the options shows as
  *                                             // missing: never quietly another; the screen refuses to run it)
@@ -107,6 +109,7 @@
         // The ticked ones, in the order they were ticked
         let order = (o.applied || []).map(a => a.id).filter(id => functions.some(f => f.id === id));
         let lookupAsked = null;
+        let newLookupAsked = false;
         const lines = functions.map(def => {
             const had = (o.applied || []).find(a => a.id === def.id);
             const row = el('label', 'dbmn-fx-line');
@@ -144,6 +147,18 @@
                         pick.append(gone);
                         pick.classList.add('is-missing');
                         pick.title = 'This lookup table no longer exists: pick another, or untick Translate values';
+                    }
+                    // A new table, made in Reporting: picking it closes the dialog (as Open does)
+                    if (typeof o.onNewLookup === 'function') {
+                        const make = el('option', 'dbmn-fx-new', '+ New lookup table…');
+                        make.value = '__new__';
+                        pick.append(make);
+                        pick.addEventListener('change', () => {
+                            if (pick.value !== '__new__') return;
+                            newLookupAsked = true;
+                            const close = body.closest('.dbmn-modal') && body.closest('.dbmn-modal').querySelector('.dbmn-modal-close');
+                            if (close) close.click();
+                        });
                     }
                     pick.value = start || '';
                     pick.addEventListener('change', () => { pick.classList.toggle('is-missing', !!pick.selectedOptions[0] && pick.selectedOptions[0].classList.contains('dbmn-fx-missing')); });
@@ -348,6 +363,10 @@
             actions: [{ id: 'cancel', label: 'Cancel', variant: 'secondary' }, { id: 'ok', label: 'Apply', variant: 'primary' }]
         });
         seq += 1;   // (an answer still on its way is for a dialog that has gone)
+        if (newLookupAsked) {
+            o.onNewLookup();
+            return null;
+        }
         if (lookupAsked !== null) {
             if (typeof o.onOpenLookup === 'function') o.onOpenLookup(lookupAsked);
             return null;

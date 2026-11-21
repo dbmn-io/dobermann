@@ -15,15 +15,20 @@
  * --dbmn-* colours reach them as they reach everything else.
  */
 
-dbmn-footer {
-    --foot-row: 32px;
-    --foot-accent: var(--dbmn-textLink-foreground);
-    /* (as text, a status colour leans a little toward the text's own: readable on a light theme and a dark one) */
+/* The footer's colours. As text, a status colour leans a little toward the text's own: readable on
+   a light theme and a dark one. The tones are the status's own too: a <dbmn-status> in a page,
+   outside any footer, has them */
+dbmn-footer,
+dbmn-status {
     --foot-ok: color-mix(in srgb, var(--dbmn-testing-iconPassed, #3fa35c) 78%, var(--dbmn-foreground));
     --foot-warn: color-mix(in srgb, var(--dbmn-editorWarning-foreground, #cca700) 78%, var(--dbmn-foreground));
     --foot-error: color-mix(in srgb, var(--dbmn-errorForeground, #f14c4c) 85%, var(--dbmn-foreground));
     --foot-dim: color-mix(in srgb, var(--dbmn-foreground) 62%, transparent);
     --foot-line: var(--dbmn-panel-border, rgba(128, 128, 128, 0.35));
+    --foot-row: 32px;
+}
+dbmn-footer {
+    --foot-accent: var(--dbmn-textLink-foreground);
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -75,6 +80,19 @@ dbmn-status[tone="ok"] { color: var(--foot-ok); }
 dbmn-status[tone="warn"] { color: var(--foot-warn); }
 dbmn-status[tone="error"] { color: var(--foot-error); }
 dbmn-status:empty { display: none; }
+/* In a page (a verdict under a join): the words in the tone's colour, in a box edged in it, wrapping.
+   With no tone, quiet. */
+dbmn-status[inline] {
+    display: block;
+    height: auto;
+    margin: 0;
+    padding: 6px 10px;
+    border: 1px solid color-mix(in srgb, currentColor 45%, transparent);
+    border-radius: var(--dbmn-radius, 4px);
+    white-space: normal;
+    font-size: 12.5px;
+    line-height: 1.45;
+}
 
 /* ── Progress: the box is the bar ── */
 dbmn-progress {

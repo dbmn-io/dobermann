@@ -47,6 +47,8 @@
  *   The box asks with 'dbmn-progress-change' ({ id, value }); the screen decides (its controller
  *   keeps the limits) and sets the figure it settles on.
  * ── <dbmn-status tone="ok|warn|error">Saved</dbmn-status> ──
+ *   (inline: in a page, not the footer: the words in the tone's colour, edged in it, wrapping:
+ *    <dbmn-status inline tone="warn">36 values repeat in C3: BL's record is compared with each.</dbmn-status>)
  */
 (function () {
     'use strict';

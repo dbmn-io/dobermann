@@ -1311,3 +1311,36 @@ test('a column searched but not shown is told apart: its own colour in the box, 
     expect(texts).toContain('@customer');
     await expect(page.locator('#t .column-suggest-option.is-hidden').last()).toContainText('@bodytext · not shown');
 });
+
+/* ── Widths when a narrow table fills its box ── */
+
+const widthPage = cols => `<!doctype html><html><head>
+<style>:root{--vscode-foreground:#ccc;--vscode-editor-background:#1e1e1e;--vscode-panel-border:#444;--vscode-input-background:#2a2a2a}
+${STYLES.map(read).join('\n')}
+body{margin:0;padding:16px;width:1200px;background:#1e1e1e;color:#ccc;font:13px sans-serif}</style>
+${SCRIPTS.map(rel => `<script>${read(rel)}</script>`).join('\n')}</head><body>
+<dbmn-table id="t" label="Results"></dbmn-table>
+<script>
+  const t = document.getElementById('t');
+  const tags = n => Array.from({ length: n }, (_, i) => 'C' + (i + 1)).join(' ');
+  t.columns = ${cols};
+  t.rows = Array.from({ length: 30 }, (_, i) => ({ status: i === 3 ? 'DIFF ' + tags(9) + ' Missing ' + tags(9) : 'Same', sku: 'SKU-' + i, qty: i }));
+</script></body></html>`;
+const widthOf = (p, id) => p.evaluate(i => Math.round(document.querySelector(`#t th[data-col="${i}"]`).getBoundingClientRect().width), id);
+
+test('a narrow table fills its box with its data columns: a pinned status keeps what its rows need, never stretched past it', async ({ page }) => {
+    await page.setContent(widthPage(`[{ id: 'status', name: 'Status', pinned: true }, { id: 'sku', name: 'sku' }, { id: 'qty', name: 'qty', numbers: true }]`));
+    await expect(page.locator('#t .dbmn-table-body tr').first()).toBeVisible();
+    const status = await widthOf(page, 'status');
+    expect(status).toBeLessThanOrEqual(420);
+    expect(await widthOf(page, 'sku')).toBeGreaterThan(status);   // the room went to the data
+});
+
+test('a column given its width keeps it; wrap puts a long status on a second line rather than widening it', async ({ page }) => {
+    await page.setContent(widthPage(`[{ id: 'status', name: 'Status', pinned: true, width: 160, wrap: true }, { id: 'sku', name: 'sku' }, { id: 'qty', name: 'qty', numbers: true }]`));
+    await expect(page.locator('#t .dbmn-table-body tr').first()).toBeVisible();
+    expect(Math.abs(await widthOf(page, 'status') - 160)).toBeLessThanOrEqual(1);
+    const cell = page.locator('#t .dbmn-table-body tr').nth(3).locator('td').first();
+    await expect(cell).toHaveClass(/dbmn-cell-wrap/);
+    expect(await cell.evaluate(td => getComputedStyle(td).whiteSpace)).toBe('normal');
+});

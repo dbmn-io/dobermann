@@ -35,6 +35,8 @@ dbmn-table [hidden] { display: none !important; }
 .dbmn-table-grid th .column-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .dbmn-table-grid th .header-actions { padding-right: 6px; }
 .dbmn-table-grid td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* A column given wrap: its cells take a second line rather than a wider column (a status of DIFF and Missing) */
+.dbmn-table-grid td.dbmn-cell-wrap { white-space: normal; }
 .dbmn-table-body tr { height: 22px; }
 .dbmn-table-spacer td { padding: 0; border: 0; }
 .dbmn-table-none { padding: 16px 12px; color: var(--dbmn-descriptionForeground); }
