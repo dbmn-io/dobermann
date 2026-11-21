@@ -858,8 +858,9 @@ export async function runHeld(engineIn: QueryEngine | EngineHost, spec: QuerySpe
     const engine = hostOf(engineIn);
     const built = pagedQuery(spec, null, undefined, { ...status, filter: undefined });
     const { layout } = built;
-    // The whole compare: with it the figures Join and Columns only had for a sample (the join figures, rows alike, numbers counted)
-    const query = spec.distinct ? built.query : withAlike(built.query, layout);
+    // The whole compare: with it the figures Join and Columns only had for a sample (the join figures, numbers counted;
+    // the rows alike afterwards, countAlike, so the first page doesn't wait for them)
+    const query = built.query;
     const counted = readsNumbersColumns(built.query);
     // (status from expressions: every column held; from the compare step's own columns: its status columns only, holdStatus)
     const out = await engine.run(query, { onProgress, ...(counted.length ? { countNotNumbers: counted } : {}), ...(layout.status?.native ? {} : { hold: true }) });
@@ -867,7 +868,7 @@ export async function runHeld(engineIn: QueryEngine | EngineHost, spec: QuerySpe
     if ('problems' in out) throw new Error(out.problems.map(p => p.message).join(' '));
     const figures: FullFigures = {
         stats: await joinFigures(spec, layout.places, async step => await engine.stats(out.result, step) as JoinStats | CompareStats, (step, st) => plainJoinStats(engine, out.result, step, st)),
-        duplicates: spec.distinct ? 0 : (out.steps?.rows ?? out.total) - (out.steps?.alike ?? out.steps?.rows ?? out.total),
+        duplicates: spec.distinct ? 0 : undefined,
         notNumbers: notNumbersOf(out.notNumbers, query),
         total: out.total
     };
@@ -883,13 +884,24 @@ export async function runHeld(engineIn: QueryEngine | EngineHost, spec: QuerySpe
 /** A compare's figures from its whole run (runHeld): what Join showed for a sample until then. */
 export interface FullFigures {
     stats: Map<string, QueryJoinStats>;
-    duplicates: number;
+    /** Rows alike in every column shown (Distinct's count): undefined until counted (countAlike). */
+    duplicates: number | undefined;
     notNumbers: NotNumbers;
     total: number;
 }
 
 /** A compare's sample (Join and Columns): the Baseline's first records, how many there are in all, how many have their key in every view and in each. */
 export type SampleFacts = { rows: number; of: number; inEvery: number; byInput: number[] };
+
+/** Distinct's count for a compare held for Results: its rows alike in every column shown, counted from it (no compare again). */
+export async function countAlike(engineIn: QueryEngine | EngineHost, held: PagedResult): Promise<number | undefined> {
+    const engine = hostOf(engineIn);
+    const by = held.layout.columns.map((_, i) => ({ name: `c${i}`, value: { column: `c${i}` } as Expr }));
+    const out = await engine.run({ steps: [{ as: 'held', from: held.id }, { as: 'alike', group: 'held', by, aggregates: [] }], result: 'alike' });
+    if (!('result' in out)) return undefined;
+    await engine.release(out.result);
+    return held.total - out.total;
+}
 
 /** The rows alike in every column shown (Distinct's count), as a step after the rows. */
 function withAlike(query: Query, layout: CompareLayout): Query {

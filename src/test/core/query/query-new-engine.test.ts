@@ -14,7 +14,7 @@ import { COLUMN_FUNCTIONS, columnFnSql, type ColumnFn } from '../../../services/
 import { QueryEngine } from '../../../services/engine/engine';
 import { localEngineHost, remoteEngineHost, serveEngine, type EnginePort } from '../../../services/engine/engine-host';
 import { QuerySession } from '../../../services/query/query-engine';
-import { buildQuery, resultsKey, runHeld, fromKeptCompare, sampleQueries, pagedCounts, readStatusPage, eachPage, loadViewInto, pagedTotals, readPage, runOnEngine, runPaged, TooManyOnEngine, compareKeyExprs, compareQuery, fnExpr, fnSampleQueries, formulaExpr, labelExpr, loadLookupTable, loadView, queryWithColumns, recordQuery, resultRows, onSqliteLine, runCompareOnEngine, whyNotOnEngine } from '../../../services/query/query-new-engine';
+import { buildQuery, resultsKey, runHeld, fromKeptCompare, countAlike, sampleQueries, pagedCounts, readStatusPage, eachPage, loadViewInto, pagedTotals, readPage, runOnEngine, runPaged, TooManyOnEngine, compareKeyExprs, compareQuery, fnExpr, fnSampleQueries, formulaExpr, labelExpr, loadLookupTable, loadView, queryWithColumns, recordQuery, resultRows, onSqliteLine, runCompareOnEngine, whyNotOnEngine } from '../../../services/query/query-new-engine';
 import { formulaSql, parseFormula, FORMULA_FUNCTIONS } from '../../../services/query/formula';
 import type { Query, Value } from '../../../services/engine/engine-types';
 import { compareKeySql, resultColumns } from '../../../services/query/query-sql';
@@ -700,5 +700,8 @@ describe('Query compare on the new engine', () => {
             assert.deepStrictEqual(await readStatusPage(engine, fromHeld, 0, 400, st), await readStatusPage(engine, whole, 0, 400, st));
         }
         assert.deepStrictEqual(await pagedCounts(engine, spec, undefined, status, held.id), await pagedCounts(engine, spec, undefined, status));
+        // Distinct's count, from the held rows after the first page: as a whole run counts it
+        const whole = (await runOnEngine(engine, spec, undefined, { keep: true, sort: null, status }))!;
+        assert.strictEqual(await countAlike(engine, held), whole.duplicates);
     });
 });

@@ -48,7 +48,7 @@ import type { QueryFileStore } from '../../services/query/query-file-store';
 import { localEngineHost, type EngineHost } from '../../services/engine/engine-host';
 import { QueryEngine } from '../../services/engine/engine';
 import { QUERY_ROW_TESTS, searchColumns, searchTest, type SearchArg } from './query-search';
-import { compareKeyExprs, resultsKey, sampleQueries, pagedCounts, readPagedRow, readStatusPage, type PagedStatus, eachPage, runHeld, holdStatus, fromKeptCompare, compareStepKey, buildQuery, SAMPLE_ROWS, type FullFigures, type SampleFacts, fnSampleQueries, formulaExpr, labelExpr, loadLookupInto, loadViewInto, onSqliteLine, pagedTotals, readPage, runPaged, spreadPage, type NotNumbers, type PagedResult, type ShownSort, queryWithColumns, recordQuery, runOnEngine, TooManyOnEngine, whyNotQueryOnEngine } from '../../services/query/query-new-engine';
+import { compareKeyExprs, resultsKey, sampleQueries, pagedCounts, readPagedRow, readStatusPage, type PagedStatus, eachPage, runHeld, holdStatus, countAlike, fromKeptCompare, compareStepKey, buildQuery, SAMPLE_ROWS, type FullFigures, type SampleFacts, fnSampleQueries, formulaExpr, labelExpr, loadLookupInto, loadViewInto, onSqliteLine, pagedTotals, readPage, runPaged, spreadPage, type NotNumbers, type PagedResult, type ShownSort, queryWithColumns, recordQuery, runOnEngine, TooManyOnEngine, whyNotQueryOnEngine } from '../../services/query/query-new-engine';
 import type { Progress, Query as EngineQuery, TableWindow } from '../../services/engine/engine-types';
 
 
@@ -1652,6 +1652,10 @@ export class QueryController {
             shown: shown.shown, total: shown.total,
             ...totals
         });
+        // Distinct's count waits for this page: now it is sent, counted
+        const next = this.alikeNext;
+        this.alikeNext = undefined;
+        next?.();
         if (this.engineOn) console.log(`[query-results] rows ${offset}+${limit} (${shown.shown} of ${shown.total}) in ${Math.round(performance.now() - started)} ms: ${laps.join(' · ')} (ms)`);
         this.lap = () => undefined;
     }
@@ -1841,11 +1845,24 @@ export class QueryController {
         return `${this.engineKey}\n${compareStepKey(buildQuery(spec).query)}`;
     }
 
+    /** Distinct's count to work out once Results' page is sent (heldFor). */
+    private alikeNext: (() => void) | undefined;
+
+    /** Distinct's count for a held compare, worked out after Results' first page and then told (still this query). */
+    private async alikeLater(spec: QuerySpec, host: EngineHost, held: PagedResult): Promise<void> {
+        const key = engineKey(spec);
+        const duplicates = await countAlike(host, held).catch(() => undefined);
+        if (duplicates === undefined || this.closed || this.fullFigures?.spec !== key) return;
+        this.fullFigures.duplicates = duplicates;
+        this.engineDuplicates = duplicates;
+        this.post({ type: 'query.figures', duplicates });
+    }
+
     /** Results has worked out the whole compare: kept, and the page told (the Join step's figures, rows alike, numbers counted). */
     private tellFigures(spec: QuerySpec, figures: FullFigures): void {
         this.fullFigures = { ...figures, compare: this.compareKeyOf(spec), spec: engineKey(spec) };
         this.engineStats = figures.stats;
-        this.engineDuplicates = figures.duplicates;
+        this.engineDuplicates = figures.duplicates ?? 0;
         this.engineNotNumbers = figures.notNumbers;
         this.engineSampleFacts = undefined;
         this.pagedAll = { key: engineKey(spec), total: figures.total };
@@ -1864,7 +1881,11 @@ export class QueryController {
         } finally {
             this.pagedRunning = undefined;
         }
-        if (held?.figures) this.tellFigures(spec, held.figures);
+        if (held?.figures) {
+            this.tellFigures(spec, held.figures);
+            // (Distinct's count, once the first page is sent: counted from the held rows, told when known)
+            if (held.figures.duplicates === undefined) this.alikeNext = () => void this.alikeLater(spec, host, held!);
+        }
         if (held) this.holdPaged({ key, result: held, host });
         return held;
     }
@@ -2219,7 +2240,7 @@ export class QueryController {
         if (full) {
             this.engineStats = full.stats;
             this.engineSampleFacts = undefined;
-            if (full.spec === engineKey(spec)) { this.engineDuplicates = full.duplicates; this.engineNotNumbers = full.notNumbers; }
+            if (full.spec === engineKey(spec)) { this.engineDuplicates = full.duplicates ?? 0; this.engineNotNumbers = full.notNumbers; }
         }
         if (!keptStatus) {
             this.retirePaged(host);

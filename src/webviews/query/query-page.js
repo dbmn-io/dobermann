@@ -2266,10 +2266,13 @@
             // Results has worked out the whole compare: the Join step's true figures (no longer a sample's), rows alike, numbers counted
             case 'query.figures':
                 if (!ui.state) break;
-                (ui.state.joins || []).forEach(j => { if (Object.prototype.hasOwnProperty.call(m.stats || {}, j.view)) j.stats = m.stats[j.view]; });
-                ui.state.duplicates = m.duplicates;
-                ui.state.notNumbers = m.notNumbers;
-                ui.state.sample = null;
+                // (each figure as it is known: the join figures and numbers counted first, Distinct's count after)
+                if (m.stats) {
+                    (ui.state.joins || []).forEach(j => { if (Object.prototype.hasOwnProperty.call(m.stats, j.view)) j.stats = m.stats[j.view]; });
+                    ui.state.sample = null;
+                }
+                if (typeof m.duplicates === 'number') ui.state.duplicates = m.duplicates;
+                if (m.notNumbers) ui.state.notNumbers = m.notNumbers;
                 renderFigures(ui.state);
                 renderJoins();
                 break;
