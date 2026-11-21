@@ -118,32 +118,8 @@ export interface CompareLayout {
     keyParts: { at: number[]; separator: string }[];
     /** For a Results column that is the compare's key (shown from whichever view has the record): the key's place pair. */
     keyColumnOf: (number | undefined)[];
-    /** Each row's status from the engine's compare (statusPlan), when asked for: where its columns start, and its compared columns. */
-    status?: { at: number; groups: string[] };
-}
-
-/**
- * Results' compared columns as the engine's compare columns: each a value per compare view (none
- * where it has no cell). Undefined when the engine can't give this query's status (a compared
- * cell that is a calculation or not a compare view's, two cells of one view): Results then holds
- * its rows and works the status out itself (rowStatus).
- */
-export function statusPlan(spec: QuerySpec): { name: string; values: (ColumnRef | null)[] }[] | undefined {
-    const places = compareKeysByView(spec).map(v => v.view);
-    if (!places.length) return undefined;
-    const columns = resultColumns(spec);
-    const out: { name: string; values: (ColumnRef | null)[] }[] = [];
-    for (const g of comparedGroups(columns)) {
-        const values: (ColumnRef | null)[] = places.map(() => null);
-        for (const i of g.cells) {
-            const c = columns[i];
-            const p = places.indexOf(c.view);
-            if (c.view === CALC_VIEW || p < 0 || values[p]) return undefined;
-            values[p] = c;
-        }
-        out.push({ name: g.name, values });
-    }
-    return out;
+    /** A compare's status columns (statusColumns), when asked for. */
+    status?: StatusLayout;
 }
 
 /** The spec as an engine Query: the compare, then a select of Results' columns and each view's key parts. */
@@ -417,19 +393,14 @@ export function whyNotQueryOnEngine(spec: QuerySpec): string | undefined {
  * their formula, a compare's key from whichever view has the record) and each compare view's key;
  * Distinct a group by every column.
  */
-export function buildQuery(spec: QuerySpec, options?: { status?: { notCompared: string[] } }): { query: Query; layout: CompareLayout } {
+export function buildQuery(spec: QuerySpec, options?: { status?: StatusPlaces }): { query: Query; layout: CompareLayout } {
     const steps: Query['steps'] = [];
     const byView = compareKeysByView(spec);
     const places = byView.map(v => v.view);
     let base = spec.views[0].id;
     const keyExprs = byView.map(v => v.keys.flatMap(k => k.parts.map(p => (k.fns ?? []).reduce<Expr>((x, f) => fnExpr(x, f), refExpr(p)))));
-    const plan = options?.status && byView.length ? statusPlan(spec) : undefined;
     if (byView.length) {
-        steps.push({
-            as: 'compare', compare: places, on: keyExprs,
-            columns: (plan ?? []).map(g => ({ name: g.name, values: g.values.map(c => (c ? refExpr(c) : null)) })),
-            ...(plan && options?.status?.notCompared.length ? { notCompared: options.status.notCompared.filter(v => places.indexOf(v) > 0) } : {})
-        });
+        steps.push({ as: 'compare', compare: places, on: keyExprs, columns: [] });
         base = 'compare';
     }
     spec.joins.filter(j => j.kind !== 'compare').forEach((j, i) => {
@@ -464,15 +435,12 @@ export function buildQuery(spec: QuerySpec, options?: { status?: { notCompared: 
         const at = keyExprs[p].map((e, i) => { select.push({ name: `k${p}_${i}`, value: e }); return select.length - 1; });
         return { at, separator: v.keys.length === 1 && v.keys[0].parts.length > 1 ? v.keys[0].separator ?? '' : '' };
     });
-    // Each row's status, as the engine's compare gives it: status, relation, then missing, diff and repeated by view, then differs by compared column
-    let status: CompareLayout['status'];
-    if (plan) {
-        const own = (name: string): Expr => ({ column: name, of: 'compare' });
-        const at = select.length;
-        select.push({ name: 's_status', value: own('status') }, { name: 's_relation', value: own('relation') });
-        for (const kind of ['missing', 'diff', 'repeated']) places.forEach((p, i) => select.push({ name: `s_${kind}${i}`, value: own(`${kind}:${p}`) }));
-        plan.forEach((g, i) => select.push({ name: `s_differs${i}`, value: own(`differs:${g.name}`) }));
-        status = { at, groups: plan.map(g => g.name) };
+    // Each row's status, worked out as Results works it out (statusColumns), when asked for
+    let status: StatusLayout | undefined;
+    if (options?.status && byView.length) {
+        const made = statusColumns(spec, select.slice(0, columns.length).map(c => c.value), places, options.status);
+        select.push(...made.columns);
+        status = made.layout;
     }
     steps.push({ as: 'rows', select: base, columns: select });
     if (spec.distinct) steps.push({ as: 'distinct', group: 'rows', by: select.map(c => ({ name: c.name, value: { column: c.name } })), aggregates: [] });
@@ -484,79 +452,146 @@ export function buildQuery(spec: QuerySpec, options?: { status?: { notCompared: 
 }
 
 /**
- * A row's status for Results from the engine's columns (layout.status), as rowStatus gave it:
- * `label` names a view's place (BL, C1…); `hidden` places are left out.
+ * A compare's status on Results, worked out by the engine as Results has always worked it out
+ * (query-status.ts rowStatus), but exact by type (James: 123 is not "123"): each compared column's
+ * cells measured against its first cell that is shown and whose view has the record; which places
+ * differ, which compare views lack the record, which repeat the key, the relation. Cells may be any
+ * column of the query: a compare view's, a view joined beside it, a COMPARE calculation's side.
  */
-export function statusOfRow(row: Value[], layout: CompareLayout, label: (view: string) => string, hidden: string[]): RowStatus {
-    const st = layout.status!;
-    const n = layout.places.length;
-    const shown = layout.places.map(v => !hidden.includes(label(v)));
-    const flag = (kind: number, p: number) => row[st.at + 2 + kind * n + p] === 1;
-    const pick = (kind: number) => layout.places.filter((v, p) => shown[p] && flag(kind, p)).map(label);
-    const out: RowStatus = { diff: pick(1), missing: pick(0), groups: st.groups.filter((_, g) => row[st.at + 2 + 3 * n + g] === 1) };
-    out.relation = row[st.at + 1] as RelationKind;
-    const repeated = pick(2);
+export interface StatusPlaces {
+    /** A compare view's place on Results (BL, C1…). */
+    label: (view: string) => string;
+    /** A Results column's place, as rowStatus names it (a view's place, a calculation's side). */
+    placeOfColumn: (column: number) => string;
+    /** Places hidden on Results: left out of every status. */
+    hidden: string[];
+}
+
+/** The status columns a select adds (statusColumns) and where they are. */
+export interface StatusLayout {
+    /** Compare views (ids), their places. */
+    places: string[];
+    labels: string[];
+    /** Places a cell can differ in, in order. */
+    diffPlaces: string[];
+    groups: string[];
+    hidden: string[];
+}
+
+const known = (e: Expr): Expr => ({ fn: '=', args: [e, e] });
+const not = (e: Expr): Expr => ({ fn: 'NOT', args: [e] });
+const and = (parts: Expr[]): Expr => (parts.length === 0 ? { value: 1 } : parts.length === 1 ? parts[0] : { fn: 'AND', args: parts });
+const or = (parts: Expr[]): Expr => (parts.length === 0 ? { value: 0 } : parts.length === 1 ? parts[0] : { fn: 'OR', args: parts });
+const ifThen = (test: Expr, then: Expr, otherwise: Expr): Expr => ({ fn: 'IF', args: [test, then, otherwise] });
+/** Two cells differ: by type and value; a blank and a value differ; two blanks don't. 1 or 0, never blank. */
+const differ = (a: Expr, b: Expr): Expr => ifThen(known(a), ifThen(known(b), { fn: '<>', args: [a, b] }, { value: 1 }), ifThen(known(b), { value: 1 }, { value: 0 }));
+const yes = (e: Expr): Expr => ifThen(e, { value: 1 }, { value: 0 });
+
+/** The status columns for a select over a compare (named s_…), from Results' columns' values. */
+function statusColumns(spec: QuerySpec, values: Expr[], places: string[], where: StatusPlaces): { columns: { name: string; value: Expr }[]; layout: StatusLayout } {
+    const labels = places.map(where.label);
+    const shown = (place: string) => !where.hidden.includes(place);
+    const own = (name: string): Expr => ({ column: name, of: 'compare' });
+    const missing = (p: number): Expr => ({ fn: '=', args: [own(`missing:${places[p]}`), { value: 1 }] });
+    const columns: { name: string; value: Expr }[] = [];
+    const resultCols = resultColumns(spec);
+    // Each compared column: its cells (shown), each present when its view has the record; a cell differs from the first present
+    const groups = comparedGroups(resultCols);
+    const diffPlaces: string[] = [];
+    const placeFlags = new Map<string, Expr[]>();
+    groups.forEach((g, gi) => {
+        const cells = g.cells.filter(i => shown(where.placeOfColumn(i)));
+        const present = cells.map(i => { const p = places.indexOf(resultCols[i].view); return p >= 0 ? not(missing(p)) : { value: 1 } as Expr; });
+        const flags = cells.map((i, k) => {
+            if (k === 0) return { value: 0 } as Expr;
+            const firstIs = (j: number) => and([present[j], not(or(present.slice(0, j)))]);
+            return yes(and([present[k], or(cells.slice(0, k).map((jCol, j) => and([firstIs(j), differ(values[i], values[jCol])])))]));
+        });
+        columns.push({ name: `s_g${gi}`, value: yes(or(flags)) });
+        cells.forEach((i, k) => {
+            const place = where.placeOfColumn(i);
+            if (!placeFlags.has(place)) { placeFlags.set(place, []); diffPlaces.push(place); }
+            placeFlags.get(place)!.push(flags[k]);
+        });
+    });
+    diffPlaces.forEach((place, k) => columns.push({ name: `s_dp${k}`, value: yes(or(placeFlags.get(place)!)) }));
+    places.forEach((v, p) => {
+        columns.push({ name: `s_missing${p}`, value: own(`missing:${v}`) });
+        columns.push({ name: `s_repeated${p}`, value: own(`repeated:${v}`) });
+    });
+    const shownMissing = places.map((_, p) => p).filter(p => shown(labels[p])).map(missing);
+    const shownRepeated = places.map((_, p) => p).filter(p => shown(labels[p])).map(p => ({ fn: '=', args: [own(`repeated:${places[p]}`), { value: 1 }] } as Expr));
+    const anyDiff = or(groups.map((_, gi) => ({ fn: '=', args: [{ column: `s_g${gi}` }, { value: 1 }] } as Expr)));
+    // (worked out from the columns above: the select's own columns can't be read in it, so again from their parts)
+    const groupFlags = columns.filter(c => /^s_g\d+$/.test(c.name)).map(c => ({ fn: '=', args: [c.value, { value: 1 }] } as Expr));
+    void anyDiff;
+    columns.push({ name: 's_diff', value: yes(or(groupFlags)) });
+    columns.push({ name: 's_same', value: yes(and([not(or(groupFlags)), not(or(shownMissing))])) });
+    // Relation: a shown Baseline without the record, only in another; a shown view without it, only in the Baseline; a shown view repeating the key, one to many
+    const baseShown = shown(labels[0]);
+    columns.push({
+        name: 's_relation',
+        value: ifThen(baseShown ? missing(0) : { value: 0 }, { value: 'onlyOther' }, ifThen(or(shownMissing), { value: 'onlyBase' }, ifThen(or(shownRepeated), { value: 'oneToMany' }, { value: 'oneToOne' })))
+    });
+    return { columns, layout: { places, labels, diffPlaces, groups: groups.map(g => g.name), hidden: where.hidden } };
+}
+
+/** A row's status (rowStatus's shape) from its status columns, by name. */
+export function statusOfRow(get: (name: string) => Value, st: StatusLayout): RowStatus {
+    const shown = (place: string) => !st.hidden.includes(place);
+    const out: RowStatus = {
+        diff: st.diffPlaces.filter((_, k) => get(`s_dp${k}`) === 1),
+        missing: st.labels.filter((l, p) => shown(l) && get(`s_missing${p}`) === 1),
+        groups: st.groups.filter((_, g) => get(`s_g${g}`) === 1)
+    };
+    out.relation = get('s_relation') as RelationKind;
+    const repeated = st.labels.filter((l, p) => shown(l) && get(`s_repeated${p}`) === 1);
     if (repeated.length) out.repeated = repeated;
     return out;
 }
 
 /** Results' status filter (the Status ticks, a column's DIFF pill, the relations) as an engine filter over the status columns. */
-export function statusFilterExpr(filter: StatusFilter, layout: CompareLayout, label: (view: string) => string): Expr | undefined {
-    const st = layout.status;
-    if (!st) return undefined;
-    const n = layout.places.length;
-    const col = (i: number): Expr => ({ column: select(i) });
-    const select = (i: number): string => {
-        const k = i - st.at;
-        if (k === 0) return 's_status';
-        if (k === 1) return 's_relation';
-        const f = k - 2;
-        if (f < 3 * n) return `s_${['missing', 'diff', 'repeated'][Math.floor(f / n)]}${f % n}`;
-        return `s_differs${f - 3 * n}`;
-    };
-    const is = (e: Expr, v: Value): Expr => ({ fn: '=', args: [e, { value: v }] });
-    const any = (parts: Expr[]): Expr => (parts.length === 1 ? parts[0] : parts.length ? { fn: 'OR', args: parts } : { value: 0 });
+export function statusFilterExpr(filter: StatusFilter, st: StatusLayout): Expr | undefined {
+    const is = (column: string, v: Value): Expr => ({ fn: '=', args: [{ column }, { value: v }] });
     const all: Expr[] = [];
     if (filter.kinds) {
         const kinds: Expr[] = [];
-        if (filter.kinds.includes('diff')) kinds.push(is(col(st.at), 'diff'));
-        if (filter.kinds.includes('same')) kinds.push(is(col(st.at), 'same'));
-        layout.places.forEach((v, p) => { if (filter.kinds!.includes(`missing:${label(v)}`)) kinds.push(is(col(st.at + 2 + p), 1)); });
-        all.push(any(kinds));
+        if (filter.kinds.includes('diff')) kinds.push(is('s_diff', 1));
+        if (filter.kinds.includes('same')) kinds.push(is('s_same', 1));
+        st.labels.forEach((l, p) => { if (!st.hidden.includes(l) && filter.kinds!.includes(`missing:${l}`)) kinds.push(is(`s_missing${p}`, 1)); });
+        all.push(or(kinds));
     }
-    if (filter.columns?.length) all.push(any(filter.columns.map(c => st.groups.indexOf(c)).filter(g => g >= 0).map(g => is(col(st.at + 2 + 3 * n + g), 1))));
-    if (filter.relations) all.push(any(filter.relations.map(r => is(col(st.at + 1), r))));
-    if (!all.length) return undefined;
-    return all.length === 1 ? all[0] : { fn: 'AND', args: all };
+    if (filter.columns?.length) all.push(or(filter.columns.map(c => st.groups.indexOf(c)).filter(g => g >= 0).map(g => is(`s_g${g}`, 1))));
+    if (filter.relations) all.push(or(filter.relations.map(r => is('s_relation', r))));
+    return all.length ? and(all) : undefined;
 }
 
-/** The status columns' counts (statusCounts'), as a group over them: one row of sums. */
-export function statusCountsStep(input: string, layout: CompareLayout): Query['steps'][number] {
-    const st = layout.status!;
-    const n = layout.places.length;
+const RELATIONS: RelationKind[] = ['oneToOne', 'oneToMany', 'onlyBase', 'onlyOther'];
+
+/** The Status menu's counts (statusCounts'), as a group over the status columns: one row of sums. */
+export function statusCountsStep(input: string, st: StatusLayout): Query['steps'][number] {
     const sumOf = (name: string, e: Expr) => ({ name, fn: 'sum' as const, value: e });
     const is = (column: string, v: Value): Expr => ({ fn: '=', args: [{ column }, { value: v }] });
     return {
         as: 'counts', group: input, by: [],
         aggregates: [
             { name: 'all', fn: 'count' },
-            sumOf('diff', is('s_status', 'diff')),
-            sumOf('same', is('s_status', 'same')),
-            ...layout.places.map((_, p) => sumOf(`missing${p}`, { column: `s_missing${p}` })),
-            ...(['oneToOne', 'oneToMany', 'onlyBase', 'onlyOther'] as RelationKind[]).map(r => sumOf(`rel_${r}`, is('s_relation', r))),
-            ...st.groups.map((_, g) => sumOf(`differs${g}`, { column: `s_differs${g}` }))
+            sumOf('diff', { column: 's_diff' }),
+            sumOf('same', { column: 's_same' }),
+            ...st.places.map((_, p) => sumOf(`missing${p}`, { column: `s_missing${p}` })),
+            ...RELATIONS.map(r => sumOf(`rel_${r}`, is('s_relation', r))),
+            ...st.groups.map((_, g) => sumOf(`g${g}`, { column: `s_g${g}` }))
         ]
     };
 }
 
 /** The counts' row as statusCounts gave them (a count only where there is one). */
-export function statusCountsOf(row: Value[], layout: CompareLayout, label: (view: string) => string, hidden: string[]): StatusCounts {
-    const st = layout.status!;
-    const n = layout.places.length;
+export function statusCountsOf(row: Value[], st: StatusLayout): StatusCounts {
+    const n = st.places.length;
     const num = (v: Value) => (typeof v === 'number' ? v : 0);
     const out: StatusCounts = { all: num(row[0]), diff: num(row[1]), same: num(row[2]), missing: {}, relations: {}, columns: {} };
-    layout.places.forEach((v, p) => { const k = num(row[3 + p]); if (k && !hidden.includes(label(v))) out.missing[label(v)] = k; });
-    (['oneToOne', 'oneToMany', 'onlyBase', 'onlyOther'] as RelationKind[]).forEach((r, i) => { const k = num(row[3 + n + i]); if (k) out.relations[r] = k; });
+    st.labels.forEach((l, p) => { const k = num(row[3 + p]); if (k && !st.hidden.includes(l)) out.missing[l] = k; });
+    RELATIONS.forEach((r, i) => { const k = num(row[3 + n + i]); if (k) out.relations[r] = k; });
     st.groups.forEach((g, i) => { const k = num(row[3 + n + 4 + i]); if (k) out.columns[g] = k; });
     return out;
 }
@@ -624,7 +659,7 @@ export interface ShownSort { column: number; dir: 'asc' | 'desc' }
  * "search" row test, given `search`: query-search.ts); then sorted as Results sorts when a column is picked.
  */
 export function pagedQuery(spec: QuerySpec, sort?: ShownSort | null, search?: unknown, status?: PagedStatus): { query: Query; layout: CompareLayout } {
-    const { query, layout } = buildQuery(spec, status ? { status: { notCompared: status.notCompared } } : undefined);
+    const { query, layout } = buildQuery(spec, status ? { status } : undefined);
     let base = query.result ?? 'rows';
     const steps = [...query.steps];
     if (search !== undefined) {
@@ -632,7 +667,7 @@ export function pagedQuery(spec: QuerySpec, sort?: ShownSort | null, search?: un
         base = 'found';
     }
     // Results' status filter, over the engine's status columns
-    const kept = status?.filter && layout.status ? statusFilterExpr(status.filter, layout, status.label) : undefined;
+    const kept = status?.filter && layout.status ? statusFilterExpr(status.filter, layout.status) : undefined;
     if (kept) {
         steps.push({ as: 'kept', filter: base, where: kept });
         base = 'kept';
@@ -644,12 +679,9 @@ export function pagedQuery(spec: QuerySpec, sort?: ShownSort | null, search?: un
     return { query: { steps, result: base }, layout };
 }
 
-/** A compare's status on Results' pages: the views hidden on Results (by id: not compared), its filter, and each view's place name. */
-export interface PagedStatus {
-    notCompared: string[];
+/** A compare's status on Results' pages: its places (StatusPlaces: names, hidden ones) and the Status filter. */
+export interface PagedStatus extends StatusPlaces {
     filter?: StatusFilter;
-    label: (view: string) => string;
-    hidden: string[];
 }
 
 /** The status counts (statusCounts') among the rows the search finds: the paged query up to its search, then a group over its status columns. */
@@ -657,11 +689,11 @@ export async function pagedCounts(engineIn: QueryEngine | EngineHost, spec: Quer
     const engine = hostOf(engineIn);
     const { query, layout } = pagedQuery(spec, null, search, { ...status, filter: undefined });
     if (!layout.status) return undefined;
-    const out = await engine.run({ steps: [...query.steps, statusCountsStep(query.result ?? 'rows', layout)], result: 'counts' });
+    const out = await engine.run({ steps: [...query.steps, statusCountsStep(query.result ?? 'rows', layout.status)], result: 'counts' });
     if (!('result' in out)) return undefined;
     try {
         const row = (await engine.read(out.result, 0, 1)).rows[0];
-        return row ? statusCountsOf(row, layout, status.label, status.hidden) : undefined;
+        return row ? statusCountsOf(row, layout.status) : undefined;
     } finally {
         await engine.release(out.result);
     }
@@ -671,7 +703,9 @@ export async function pagedCounts(engineIn: QueryEngine | EngineHost, spec: Quer
 export async function readStatusPage(engineIn: QueryEngine | EngineHost, paged: PagedResult, offset: number, limit: number, status: PagedStatus): Promise<{ rows: unknown[][]; status: RowStatus[]; index: number[] }> {
     const window = await hostOf(engineIn).read(paged.id, offset, limit);
     const { rows } = resultRows(window.rows, paged.layout);
-    return { rows, status: window.rows.map(r => statusOfRow(r, paged.layout, status.label, status.hidden)), index: window.rows.map((_, i) => offset + i) };
+    const at = new Map(window.columns.map((c, i) => [c, i]));
+    void status;
+    return { rows, status: window.rows.map(r => statusOfRow(name => r[at.get(name) ?? -1] ?? null, paged.layout.status!)), index: window.rows.map((_, i) => offset + i) };
 }
 
 /** One row of a paged result by its place: Results' row and its key in each compare view (the record window). */

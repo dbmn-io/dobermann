@@ -48,7 +48,7 @@ import type { QueryFileStore } from '../../services/query/query-file-store';
 import { localEngineHost, type EngineHost } from '../../services/engine/engine-host';
 import { QueryEngine } from '../../services/engine/engine';
 import { QUERY_ROW_TESTS, searchColumns, searchTest, type SearchArg } from './query-search';
-import { compareKeyExprs, pagedCounts, readPagedRow, readStatusPage, statusPlan, type PagedStatus, eachPage, fnSampleQueries, formulaExpr, labelExpr, loadLookupInto, loadViewInto, onSqliteLine, pagedTotals, readPage, runPaged, spreadPage, type PagedResult, type ShownSort, queryWithColumns, recordQuery, runOnEngine, TooManyOnEngine, whyNotQueryOnEngine } from '../../services/query/query-new-engine';
+import { compareKeyExprs, pagedCounts, readPagedRow, readStatusPage, type PagedStatus, eachPage, fnSampleQueries, formulaExpr, labelExpr, loadLookupInto, loadViewInto, onSqliteLine, pagedTotals, readPage, runPaged, spreadPage, type PagedResult, type ShownSort, queryWithColumns, recordQuery, runOnEngine, TooManyOnEngine, whyNotQueryOnEngine } from '../../services/query/query-new-engine';
 import type { Query as EngineQuery, TableWindow } from '../../services/engine/engine-types';
 
 
@@ -1564,9 +1564,9 @@ export class QueryController {
      * search is the engine's filter by the search box's own rules (query-search.ts).
      */
     private pagedOn(spec: QuerySpec, _search: string): boolean {
-        // A compare's status comes from the engine's compare (statusPlan); a plain query with compared
-        // columns has a status per row the engine doesn't give: those stay held (rowStatus)
-        const statusable = isCompare(spec.joins) ? !!statusPlan(spec) : !comparedGroups(resultColumnRefs(spec)).length;
+        // A compare's status the engine works out (query-new-engine.ts statusColumns); a plain query
+        // with compared columns (no compare: no record to miss) stays held, its status rowStatus'
+        const statusable = isCompare(spec.joins) || !comparedGroups(resultColumnRefs(spec)).length;
         return statusable && this.onEngine(spec);
     }
 
@@ -1579,13 +1579,16 @@ export class QueryController {
     private pagedStatus(spec: QuerySpec, filter: StatusFilter | undefined): PagedStatus | undefined {
         if (!isCompare(spec.joins)) return undefined;
         const label = this.placeLabel(spec);
-        const hidden = filter?.hidden ?? [];
-        return { notCompared: spec.views.filter(v => hidden.includes(label(v.id))).map(v => v.id), filter, label, hidden };
+        const columns = resultColumnRefs(spec);
+        // A column's place as rowStatus names it: a calculation's side by compareSides, else its view's place
+        const sides = compareSides(spec, label);
+        const placeOfColumn = (i: number): string => (columns[i].view === CALC_VIEW ? (sides(columns[i].column) ?? / (\d+)$/.exec(columns[i].column)?.[1] ?? columns[i].column) : label(columns[i].view));
+        return { filter, label, placeOfColumn, hidden: filter?.hidden ?? [] };
     }
 
     /** Results' rows in the engine for this query and sort (run again only when either changes). */
     private async pagedFor(spec: QuerySpec, sort: ShownSort | null, onStage?: (stage: string) => void, search = '', status?: PagedStatus): Promise<PagedResult | undefined> {
-        const key = `${engineKey(spec)}\n${JSON.stringify(sort)}${search ? `\n${search}` : ''}${status ? `\n${JSON.stringify([status.notCompared, status.filter ?? null])}` : ''}`;
+        const key = `${engineKey(spec)}\n${JSON.stringify(sort)}${search ? `\n${search}` : ''}${status ? `\n${JSON.stringify([status.hidden, status.filter ?? null])}` : ''}`;
         const host = await this.engineFor(spec);
         if (this.paged && this.paged.key === key && this.paged.host === host) return this.paged.result;
         if (this.paged && this.paged.host === host) void host.release(this.paged.result.id);
@@ -1613,9 +1616,7 @@ export class QueryController {
         const { spec } = this.spec();
         const search = String(message.search ?? '').trim();
         const status = spec.views.length ? this.pagedStatus(spec, message.filter ?? undefined) : undefined;
-        // (a Baseline hidden on Results is the held rows' case: the engine always compares its Baseline)
-        const baselineHidden = !!status && spec.views.length > 0 && status.hidden.includes(status.label(queryCompare(spec.joins, spec.views[0].id)?.baseline ?? ''));
-        if (spec.views.length && this.pagedOn(spec, search) && !baselineHidden) {
+        if (spec.views.length && this.pagedOn(spec, search)) {
             const columns = resultColumnRefs(spec);
             const sort = message.sort && Number.isInteger(message.sort.column) && message.sort.column >= 0 && message.sort.column < columns.length ? { column: message.sort.column, dir: message.sort.dir === 'desc' ? 'desc' as const : 'asc' as const } : null;
             await this.remember(search, sort);

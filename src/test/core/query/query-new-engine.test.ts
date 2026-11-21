@@ -486,7 +486,7 @@ describe('Query compare on the new engine', () => {
         const data = { bl: runRows(0, 400), c1: runRows(1, 400), c2: runRows(2, 400) };
         for (const r of [...data.bl, ...data.c1, ...data.c2]) r.sku = String(r.sku);
         const label = (v: string) => ({ bl: 'BL', c1: 'C1', c2: 'C2' } as Record<string, string>)[v];
-        const status = (hidden: string[], filter?: StatusFilter) => ({ notCompared: ['bl', 'c1', 'c2'].filter(v => hidden.includes(label(v))), filter, label, hidden });
+        const status = (hidden: string[], filter?: StatusFilter) => ({ filter, label, placeOfColumn: (i: number) => label(resultColumns(runsSpec())[i].view), hidden });
 
         async function held(hidden: string[]) {
             const spec = runsSpec();
@@ -498,7 +498,7 @@ describe('Query compare on the new engine', () => {
         }
         const same = (a: { diff: string[]; missing: string[]; groups: string[]; relation?: string }) => JSON.stringify([[...a.diff].sort(), a.missing, a.groups, a.relation]);
 
-        for (const hidden of [[], ['C2']]) {
+        for (const hidden of [[], ['C2'], ['BL']]) {
             it(`each row's status, the filters and the counts, as rowStatus gave them${hidden.length ? ', a run hidden' : ''}`, async () => {
                 const { spec, engine, all, st } = await held(hidden);
                 const paged = (await runPaged(engine, spec, null, undefined, undefined, status(hidden)))!;
@@ -516,5 +516,30 @@ describe('Query compare on the new engine', () => {
                 assert.deepStrictEqual(counts, statusCounts(st.rows, st.rows.map((_, i) => i)));
             });
         }
+
+        it('compared columns of every kind: a view joined beside the compare, a COMPARE calculation\'s sides', async () => {
+            const spec = runsSpec();
+            spec.views.push({ id: 'ref', name: 'reference', columns: ['sku', 'qty'] });
+            spec.joins.push({ view: 'ref', kind: 'left', on: [{ left: { parts: [{ view: 'bl', column: 'sku' }] }, right: { parts: [{ view: 'ref', column: 'sku' }] } }] });
+            // (a compared column's cells side by side: the reference's qty beside the runs')
+            spec.select.splice(4, 0, { view: 'ref', column: 'qty', group: 'qty' });
+            spec.select.push({ view: '', column: 'both' });
+            spec.views.forEach(v => { if (v.run) v.runOfName = 'stock'; });
+            spec.calc = [{ name: 'both', expr: '', formula: 'COMPARE(@stock.BL.qty, @stock.C1.qty)' }];
+            const ref = data.bl.filter((_, i) => i % 3).map((r, i) => ({ sku: r.sku, qty: i % 4 ? r.qty : 999 }));
+            const engine = new QueryEngine();
+            for (const v of spec.views) loadView(engine, v.id, v.columns, v.id === 'ref' ? ref : data[v.id as keyof typeof data]);
+            const columns = resultColumns(spec);
+            const place = (i: number) => (columns[i].view === '' ? / (\d+)$/.exec(columns[i].column)![1] : label(columns[i].view) ?? 'reference');
+            const labelAll = (v: string) => label(v) ?? 'reference';
+            const st = { filter: undefined, label: labelAll, placeOfColumn: place, hidden: [] as string[] };
+            const all = (await runOnEngine(engine, spec))!;
+            const want = rowStatus(columns, all.rows, ['BL', 'C1', 'C2'], all.keyValues, labelAll, [], c => / (\d+)$/.exec(c)?.[1])!;
+            const paged = (await runPaged(engine, spec, null, undefined, undefined, st))!;
+            const page = await readStatusPage(engine, paged, 0, paged.total, st);
+            assert.deepStrictEqual(page.rows, all.rows);
+            assert.deepStrictEqual(page.status.map(same), want.rows.map(same));
+            assert.ok(page.status.some(x => x.groups.includes('both')) && page.status.some(x => x.diff.includes('reference')), JSON.stringify([columns, page.status.slice(0, 5)]));
+        });
     });
 });
