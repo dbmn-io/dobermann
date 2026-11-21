@@ -1833,7 +1833,10 @@
     }
     function sortOf() {
         const c = ui.sort && resultCols()[ui.sort.column];
-        return c ? { id: colId(c), dir: ui.sort.dir } : null;
+        if (!c) return null;
+        // (a compared column shown compact: its arrow on the compact column, which sorts by its first cell)
+        const compact = c.group && (table.columns || []).some(t => t.id === `compact:${c.group}`) ? `compact:${c.group}` : '';
+        return { id: compact || colId(c), dir: ui.sort.dir };
     }
 
     /** Give the table its columns when they are not the ones it has, with the widths and sort kept for them. */
@@ -1958,7 +1961,9 @@
         const at = id => resultCols().findIndex(c => colId(c) === id);
         if (detail.change === 'sorted') {
             const sort = detail.layout && detail.layout.sort;
-            ui.sort = sort && at(sort.id) >= 0 ? { column: at(sort.id), dir: sort.dir } : null;
+            // A compact column (every cell of a compared column together) sorts by its first cell (the Baseline's; blank where it lacks the record)
+            const column = !sort ? -1 : sort.id.indexOf('compact:') === 0 ? resultCols().findIndex(c => c.group === sort.id.slice(8)) : at(sort.id);
+            ui.sort = sort && column >= 0 ? { column, dir: sort.dir } : null;
             grid.sorting = true;
             setBusy(`Sorting ${count(ui.shown)} rows…`);
         } else if (detail.change === 'moved' && (hasStatus() || resultCols().some(c => c.group))) {
