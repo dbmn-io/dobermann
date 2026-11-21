@@ -49,7 +49,7 @@ import { localEngineHost, type EngineHost } from '../../services/engine/engine-h
 import { QueryEngine } from '../../services/engine/engine';
 import { QUERY_ROW_TESTS, searchColumns, searchTest, type SearchArg } from './query-search';
 import { compareKeyExprs, resultsKey, sampleQueries, pagedCounts, readPagedRow, readStatusPage, type PagedStatus, eachPage, runHeld, fnSampleQueries, formulaExpr, labelExpr, loadLookupInto, loadViewInto, onSqliteLine, pagedTotals, readPage, runPaged, spreadPage, type NotNumbers, type PagedResult, type ShownSort, queryWithColumns, recordQuery, runOnEngine, TooManyOnEngine, whyNotQueryOnEngine } from '../../services/query/query-new-engine';
-import type { Query as EngineQuery, TableWindow } from '../../services/engine/engine-types';
+import type { Progress, Query as EngineQuery, TableWindow } from '../../services/engine/engine-types';
 
 
 /** Query needs what Compare needs, and SQLite: the host starts sql.js its own way. */
@@ -1283,6 +1283,8 @@ export class QueryController {
                         total = kept.total;
                         preview = await readPage(this.engine, kept, 0, PREVIEW_ROWS);
                         resultTypes = columnTypes(await spreadPage(this.engine, kept, TYPE_SAMPLE), resultColumns.length);
+                        // (a compare's rows here were for the step only: Results holds its own, runHeld)
+                        if (isCompare(spec.joins) && this.paged?.result.id !== kept.id) void this.engine.release(kept.id).catch(() => undefined);
                     } else if (result) {
                         total = result.rows.length;
                         preview = result.rows.slice(0, PREVIEW_ROWS);
@@ -1681,13 +1683,13 @@ export class QueryController {
     }
 
     /** The held compare for this query and these hidden views: made when there is none (or another). */
-    private async heldFor(spec: QuerySpec, host: EngineHost, status: PagedStatus, onStage?: (stage: string) => void): Promise<PagedResult | undefined> {
+    private async heldFor(spec: QuerySpec, host: EngineHost, status: PagedStatus, onStage?: (p: Progress) => void): Promise<PagedResult | undefined> {
         const key = resultsKey(engineKey(spec), null, '', { ...status, filter: undefined });
         if (this.pagedHeld && this.pagedHeld.key === key && this.pagedHeld.host === host) return this.pagedHeld.result;
         let held: PagedResult | undefined;
         try {
             if (this.pagedRunning) host.cancel(this.pagedRunning);
-            held = await runHeld(host, spec, status, p => { this.pagedRunning = p.result; onStage?.(p.stage); });
+            held = await runHeld(host, spec, status, p => { this.pagedRunning = p.result; onStage?.(p); });
         } finally {
             this.pagedRunning = undefined;
         }
@@ -1696,7 +1698,7 @@ export class QueryController {
     }
 
     /** Results' rows in the engine for this query and sort (run again only when either changes). */
-    private async pagedFor(spec: QuerySpec, sort: ShownSort | null, onStage?: (stage: string) => void, search = '', status?: PagedStatus): Promise<PagedResult | undefined> {
+    private async pagedFor(spec: QuerySpec, sort: ShownSort | null, onStage?: (p: Progress) => void, search = '', status?: PagedStatus): Promise<PagedResult | undefined> {
         const key = resultsKey(engineKey(spec), sort, search, status);
         const host = await this.engineFor(spec);
         if (this.paged && this.paged.key === key && this.paged.host === host) return this.paged.result;
@@ -1712,7 +1714,7 @@ export class QueryController {
             if (held && !sort && !search && !status?.filter) result = held;
             else {
                 if (this.pagedRunning) host.cancel(this.pagedRunning);
-                result = await runPaged(host, spec, sort, p => { this.pagedRunning = p.result; onStage?.(p.stage); }, search ? this.searchArg(resultColumnRefs(spec), search) : undefined, status, held?.id);
+                result = await runPaged(host, spec, sort, p => { this.pagedRunning = p.result; onStage?.(p); }, search ? this.searchArg(resultColumnRefs(spec), search) : undefined, status, held?.id);
             }
         } finally {
             this.pagedRunning = undefined;
@@ -1735,9 +1737,14 @@ export class QueryController {
             const columns = resultColumnRefs(spec);
             const sort = message.sort && Number.isInteger(message.sort.column) && message.sort.column >= 0 && message.sort.column < columns.length ? { column: message.sort.column, dir: message.sort.dir === 'desc' ? 'desc' as const : 'asc' as const } : null;
             await this.remember(search, sort);
+            // (the step's count still going: waited for, never run twice at once)
+            await this.engineLoading;
+            await this.counting;
+            // What Results is working on, said on it as it goes (stage, rows done of rows to do)
+            const reading = (p: Progress) => this.post({ type: 'query.reading', stage: p.stage, done: p.done, total: p.total });
             // (the rows before the search and the filter: counted once, when not known yet)
-            if ((search || status?.filter) && this.pagedAll?.key !== engineKey(spec)) await this.pagedFor(spec, null);
-            const paged = await this.pagedFor(spec, sort, undefined, search, status);
+            if ((search || status?.filter) && this.pagedAll?.key !== engineKey(spec)) await this.pagedFor(spec, null, reading);
+            const paged = await this.pagedFor(spec, sort, reading, search, status);
             const host = this.engine;
             if (!paged || !host) return null;
             const total = search || status?.filter ? this.pagedAll?.total ?? paged.total : paged.total;
@@ -1956,6 +1963,8 @@ export class QueryController {
     /** The engine with this spec's views loaded (loaded again only when the views change). */
     /** One load at a time: a second call waits for the first, then finds its views in. */
     private engineLoading: Promise<unknown> = Promise.resolve();
+    /** The step's run on the engine still going: Results waits for it, never runs beside it. */
+    private counting: Promise<unknown> = Promise.resolve();
 
     private engineFor(spec: QuerySpec): Promise<EngineHost> {
         const next = this.engineLoading.then(() => this.engineLoad(spec));
@@ -2002,7 +2011,10 @@ export class QueryController {
         let run;
         try {
             // Kept as Results first asks for them (its remembered sort, a compare's status, nothing hidden or filtered): one run for both
-            run = await runOnEngine(host, spec, p => { this.engineRunning = p.result; onStage?.(p.stage); }, { keep: true, sort: keptSort, status: keptStatus });
+            // (a compare: its rows for the step's figures and first rows only; Results holds it when it is opened, runHeld)
+            const going = runOnEngine(host, spec, p => { this.engineRunning = p.result; onStage?.(p.stage); }, { keep: true, sort: keptStatus ? null : keptSort, status: keptStatus });
+            this.counting = going.catch(() => undefined);
+            run = await going;
         } finally {
             this.engineRunning = undefined;
         }
@@ -2012,9 +2024,10 @@ export class QueryController {
         this.engineStats = run.stats;
         this.engineDuplicates = run.duplicates;
         this.engineNotNumbers = run.notNumbers;
-        this.retirePaged(host);
-        this.paged = { key: resultsKey(engineKey(spec), keptSort, '', keptStatus), result: run.kept, host };
-        if (run.held && keptStatus) this.holdPaged({ key: resultsKey(engineKey(spec), null, '', { ...keptStatus, filter: undefined }), result: run.held, host });
+        if (!keptStatus) {
+            this.retirePaged(host);
+            this.paged = { key: resultsKey(engineKey(spec), keptSort, '', keptStatus), result: run.kept, host };
+        }
         this.pagedAll = { key: engineKey(spec), total: run.kept.total };
         console.log(`[query-engine] ${run.total} rows of ${spec.views.length} views, kept in the engine, in ${Math.round(performance.now() - started)} ms: ${laps.join(' · ')} (ms)`);
         return run.kept;

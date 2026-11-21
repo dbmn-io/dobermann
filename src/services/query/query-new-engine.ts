@@ -284,7 +284,7 @@ async function joinFigures(spec: QuerySpec, places: string[], get: (step: string
 /** An engine as an EngineHost (tests and the VS Code host hand in the engine itself). */
 const hostOf = (engine: QueryEngine | EngineHost): EngineHost => (engine instanceof QueryEngine ? localEngineHost(engine) : engine);
 
-export async function runOnEngine(engineIn: QueryEngine | EngineHost, spec: QuerySpec, onProgress?: (p: Progress) => void, options?: { keep?: boolean; sort?: ShownSort | null; status?: PagedStatus }): Promise<(CompareOnEngine & { timings: [string, number][]; duplicates: number; notNumbers: NotNumbers; kept?: PagedResult; held?: PagedResult }) | undefined> {
+export async function runOnEngine(engineIn: QueryEngine | EngineHost, spec: QuerySpec, onProgress?: (p: Progress) => void, options?: { keep?: boolean; sort?: ShownSort | null; status?: PagedStatus; hold?: boolean }): Promise<(CompareOnEngine & { timings: [string, number][]; duplicates: number; notNumbers: NotNumbers; kept?: PagedResult; held?: PagedResult }) | undefined> {
     const timings: [string, number][] = [];
     let at = now();
     const lap = (what: string) => { const t = now(); timings.push([what, Math.round(t - at)]); at = t; };
@@ -292,7 +292,7 @@ export async function runOnEngine(engineIn: QueryEngine | EngineHost, spec: Quer
     // Kept for Results' pages: as Results first asks for them (its sort, a compare's status columns), and in the
     // same run the rows alike in every column shown (Distinct's count): one run serves the Join step and Results
     // (a compare: held without its sort, its status worked out once; the sort then a run from it)
-    const holding = !!options?.keep && !!options.status;
+    const holding = !!options?.keep && !!options.status && !!options.hold;
     const built = options?.keep ? pagedQuery(spec, holding ? null : options.sort, undefined, holding ? { ...options.status!, filter: undefined } : options.status) : buildQuery(spec);
     const { layout } = built;
     const shownColumns = layout.columns.map((_, i) => ({ name: `c${i}`, value: { column: `c${i}` } as Expr }));

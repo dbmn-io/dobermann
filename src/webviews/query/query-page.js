@@ -1810,6 +1810,7 @@
     /** One page of rows, asked of the host: the answer comes back as query.rowsData. */
     function page(start, limit) {
         const id = ++grid.asked;
+        if (start === 0) reading('Reading the rows');
         post({ type: 'query.rows', seq: id, offset: start, limit, search: ui.search, sort: ui.sort, totals: ui.totals, ...(hasStatus() ? { filter: ui.filter } : {}) });
         return new Promise(resolve => grid.waiting.set(id, { resolve, ids: resultCols().map(colId) }));
     }
@@ -1822,10 +1823,31 @@
         else table.reload(keep ? { keep: true } : undefined);
     }
 
+    /**
+     * Results working on its rows (the first page asked, not in yet): the line above the table says what and
+     * how far, and the table's own "No rows." from before is not shown meanwhile. Null: the rows are in.
+     */
+    function reading(text) {
+        const line = $('queryReading');
+        line.classList.toggle('hidden', !text);
+        if (text) line.textContent = `${text}…`;
+        table.classList.toggle('is-reading', !!text);
+    }
+
+    /** A stage of the engine's work, in words, with how far along it is. */
+    function readingStage(stage, done, total) {
+        const what = stage === 'Done' ? 'Reading the first rows'
+            : /^Comparing/.test(stage) ? 'Comparing the records'
+                : stage === 'Holding the rows' ? 'Working out each row\'s status'
+                    : /^Sorting/.test(stage) ? 'Sorting' : /^Filtering/.test(stage) ? 'Filtering' : /^Grouping/.test(stage) ? 'Counting' : stage;
+        return total > 0 && done < total ? `${what}: ${Math.floor((100 * done) / total)}%` : what;
+    }
+
     function rowsArrived(m) {
         const asked = grid.waiting.get(m.seq);
         if (!asked) return;
         grid.waiting.delete(m.seq);
+        if (m.offset === 0 && ![...grid.waiting.keys()].some(k => k > m.seq)) reading(null);
         ui.shown = m.shown;
         ui.total = m.total;
         if (grid.sorting) { grid.sorting = false; setBusy(''); }
@@ -2153,12 +2175,16 @@
             // The host's counting: its stage as it starts one, or stopped (since: null)
             case 'query.counting':
                 ui.counting = m.since ? { since: m.since, stage: m.stage } : { stopped: true, stage: m.stage };
+                // (Results waiting on the step's count: it says so too)
+                if (m.since && m.stage && !$('queryReading').classList.contains('hidden')) reading(m.stage);
                 if (!m.since) setBusy('');
                 if (ui.step === 2) renderJoins();
                 break;
             case 'query.named': if (ui.state) ui.state.name = m.name; showName(m.name); renderBar(); break;
             case 'query.fileSheets': setBusy(''); pickSheets(m); break;
             case 'query.rowsData': rowsArrived(m); break;
+            // Results' work as it goes (the first page not in yet)
+            case 'query.reading': if (!$('queryReading').classList.contains('hidden')) reading(readingStage(m.stage, m.done, m.total)); break;
             // A column moved: the SQL and Columns say the new order (Results already shows it)
             case 'query.arranged':
                 if (!ui.state) break;
@@ -2175,6 +2201,8 @@
             case 'query.recordDetail': compareResults.recordDetail(m); break;
             case 'query.viewRowsData': if (ui.viewRows) ui.viewRows(m); break;
             case 'query.error':
+                // (Results' work ended in an error: no longer reading)
+                reading(null);
                 // A sort that failed leaves the table as it was
                 if (grid.sorting) { grid.sorting = false; ui.sort = null; grid.key = ''; loadRows(true); }
                 setBusy('');

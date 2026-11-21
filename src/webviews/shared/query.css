@@ -353,3 +353,5 @@
 .query-counting-time { color: var(--vscode-descriptionForeground); font-size: 11px; }
 /* "New compare engine (testing)": the Join step's line when a query runs on SQLite instead */
 .query-engine-note { display: block; margin: 0 0 8px; }
+/* Results working: the table's "No rows." from before is not its answer yet */
+dbmn-table.is-reading .dbmn-table-none { visibility: hidden; }

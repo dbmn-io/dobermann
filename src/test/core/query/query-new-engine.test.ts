@@ -14,7 +14,7 @@ import { COLUMN_FUNCTIONS, columnFnSql, type ColumnFn } from '../../../services/
 import { QueryEngine } from '../../../services/engine/engine';
 import { localEngineHost, remoteEngineHost, serveEngine, type EnginePort } from '../../../services/engine/engine-host';
 import { QuerySession } from '../../../services/query/query-engine';
-import { buildQuery, resultsKey, sampleQueries, pagedCounts, readStatusPage, eachPage, loadViewInto, pagedTotals, readPage, runOnEngine, runPaged, TooManyOnEngine, compareKeyExprs, compareQuery, fnExpr, fnSampleQueries, formulaExpr, labelExpr, loadLookupTable, loadView, queryWithColumns, recordQuery, resultRows, onSqliteLine, runCompareOnEngine, whyNotOnEngine } from '../../../services/query/query-new-engine';
+import { buildQuery, resultsKey, runHeld, sampleQueries, pagedCounts, readStatusPage, eachPage, loadViewInto, pagedTotals, readPage, runOnEngine, runPaged, TooManyOnEngine, compareKeyExprs, compareQuery, fnExpr, fnSampleQueries, formulaExpr, labelExpr, loadLookupTable, loadView, queryWithColumns, recordQuery, resultRows, onSqliteLine, runCompareOnEngine, whyNotOnEngine } from '../../../services/query/query-new-engine';
 import { formulaSql, parseFormula, FORMULA_FUNCTIONS } from '../../../services/query/formula';
 import type { Value } from '../../../services/engine/engine-types';
 import { compareKeySql, resultColumns } from '../../../services/query/query-sql';
@@ -633,19 +633,15 @@ describe('Query compare on the new engine', () => {
         const data = { bl: runRows(0, 300), c1: runRows(1, 300), c2: runRows(2, 300) };
         const engine = new QueryEngine();
         for (const v of spec.views) loadView(engine, v.id, v.columns, data[v.id as keyof typeof data]);
-        // A host that counts its runs over the views (a sort of the held compare reads no view: not counted)
+        // A host that counts its runs
         const inner = localEngineHost(engine);
         let runs = 0;
-        let fromHeld = 0;
-        const host = { ...inner, run: (...args: Parameters<typeof inner.run>) => { if ((args[0].steps[0] as { as?: string }).as === 'held') fromHeld++; else runs++; return inner.run(...args); } };
+        const host = { ...inner, run: (...args: Parameters<typeof inner.run>) => { runs++; return inner.run(...args); } };
         const label = (v: string) => ({ bl: 'BL', c1: 'C1', c2: 'C2' } as Record<string, string>)[v];
         const status = { filter: undefined, label, placeOfColumn: (i: number) => label(resultColumns(spec)[i].view), hidden: [] as string[] };
         const sort = { column: 0, dir: 'desc' as const };
         const kept = (await runOnEngine(host, spec, undefined, { keep: true, sort, status }))!;
         assert.strictEqual(runs, 1, 'the Join step\'s figures and Distinct\'s count in one run');
-        // (a compare is held, its status worked out once; Results' remembered sort is a run from it)
-        assert.strictEqual(fromHeld, 1);
-        assert.ok(kept.held && kept.held.id !== kept.kept!.id);
         assert.ok(kept.kept && kept.stats.get('c1'));
         // Distinct's count: the rows alike in every column shown, as counted on the rows themselves
         const all = (await runOnEngine(engine, spec))!;
@@ -656,5 +652,24 @@ describe('Query compare on the new engine', () => {
         const own = (await runPaged(engine, spec, sort, undefined, undefined, status))!;
         assert.deepStrictEqual(await readStatusPage(host, kept.kept!, 0, 50, status), await readStatusPage(engine, own, 0, 50, status));
         assert.strictEqual(runs, 1);
+    });
+
+    it('a compare held once (runHeld): a sort, a Status filter and the counts from it are the rows, status and counts a whole run gives', async () => {
+        const spec = runsSpec();
+        const data = { bl: runRows(0, 300), c1: runRows(1, 300), c2: runRows(2, 300) };
+        const engine = new QueryEngine();
+        for (const v of spec.views) loadView(engine, v.id, v.columns, data[v.id as keyof typeof data]);
+        const label = (v: string) => ({ bl: 'BL', c1: 'C1', c2: 'C2' } as Record<string, string>)[v];
+        const status = { filter: undefined, label, placeOfColumn: (i: number) => label(resultColumns(spec)[i].view), hidden: [] as string[] };
+        const held = (await runHeld(engine, spec, status))!;
+        const sort = { column: 1, dir: 'desc' as const };
+        const filtered = { ...status, filter: { kinds: ['diff', 'missing:C2'] } };
+        for (const [s, st] of [[sort, status], [null, filtered], [sort, filtered]] as const) {
+            const fromHeld = (await runPaged(engine, spec, s, undefined, undefined, st, held.id))!;
+            const whole = (await runPaged(engine, spec, s, undefined, undefined, st))!;
+            assert.strictEqual(fromHeld.total, whole.total);
+            assert.deepStrictEqual(await readStatusPage(engine, fromHeld, 0, 400, st), await readStatusPage(engine, whole, 0, 400, st));
+        }
+        assert.deepStrictEqual(await pagedCounts(engine, spec, undefined, status, held.id), await pagedCounts(engine, spec, undefined, status));
     });
 });
