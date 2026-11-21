@@ -830,10 +830,33 @@ export async function runPaged(engineIn: QueryEngine | EngineHost, spec: QuerySp
 export async function runHeld(engineIn: QueryEngine | EngineHost, spec: QuerySpec, status: PagedStatus, onProgress?: (p: Progress) => void): Promise<PagedResult | undefined> {
     const engine = hostOf(engineIn);
     const { query, layout } = pagedQuery(spec, null, undefined, { ...status, filter: undefined });
-    const out = await engine.run(query, { onProgress, hold: true });
+    // (status from expressions: every column held; from the compare step's own columns: its status columns only, holdStatus)
+    const out = await engine.run(query, { onProgress, ...(layout.status?.native ? {} : { hold: true }) });
     if ('cancelled' in out) return undefined;
     if ('problems' in out) throw new Error(out.problems.map(p => p.message).join(' '));
-    return { id: out.result, total: out.total, layout };
+    const run = { id: out.result, total: out.total, layout };
+    if (!layout.status?.native) return run;
+    try {
+        return await holdStatus(engine, run);
+    } finally {
+        await engine.release(out.result);
+    }
+}
+
+/** The status columns statusColumns adds, by name. */
+export function statusNames(st: StatusLayout): string[] {
+    return [...st.groups.map((_, g) => `s_g${g}`), ...st.diffPlaces.map((_, k) => `s_dp${k}`), ...st.places.flatMap((_, p) => [`s_missing${p}`, `s_repeated${p}`]), 's_diff', 's_same', 's_nokey', 's_relation'];
+}
+
+/**
+ * A compare's rows with their status columns worked out once and stored (the engine's hold): the
+ * rows' values are read from the compare as they are, a page at a time. Results' sorts, filters,
+ * searches and counts start from it.
+ */
+export async function holdStatus(engineIn: QueryEngine | EngineHost, run: PagedResult): Promise<PagedResult> {
+    const engine = hostOf(engineIn);
+    const id = await engine.hold(run.id, run.layout.status ? statusNames(run.layout.status) : []);
+    return { id, total: run.total, layout: run.layout };
 }
 
 /** One page of Results from a paged result: the rows as Results shows them (keys left out). */

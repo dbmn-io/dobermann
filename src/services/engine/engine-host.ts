@@ -23,6 +23,8 @@ export interface EngineHost {
     readRows(result: ResultId, rows: number[]): Promise<TableWindow>;
     stats(result: ResultId, step: string, window?: StatsWindow): Promise<JoinStats | CompareStats | Table>;
     release(result: ResultId): Promise<void>;
+    /** A result with these columns stored (QueryEngine.hold): its id. */
+    hold(result: ResultId, columns: string[]): Promise<ResultId>;
     /** Ends it (a worker is stopped). */
     close(): void;
     /** False once it has stopped working (its worker died): every call is refused, and a new one is needed. */
@@ -41,6 +43,7 @@ export function localEngineHost(engine: QueryEngine = new QueryEngine()): Engine
         readRows: async (result, rows) => engine.readRows(result, rows),
         stats: async (result, step, window) => engine.stats(result, step, window),
         release: async result => engine.release(result),
+        hold: async (result, columns) => engine.hold(result, columns),
         close: () => undefined,
         alive: () => true
     };
@@ -93,6 +96,7 @@ export function remoteEngineHost(port: EnginePort): EngineHost {
         readRows: (result, rows) => call('readRows', [result, rows]),
         stats: (result, step, window) => call('stats', [result, step, window]),
         release: result => call('release', [result]),
+        hold: (result, columns) => call('hold', [result, columns]),
         close: () => { for (const w of waiting.values()) w.reject(new Error('The engine was closed')); waiting.clear(); port.close?.(); },
         alive: () => !failed
     };
@@ -114,6 +118,7 @@ export function serveEngine(port: EnginePort, engine: QueryEngine = new QueryEng
                 case 'readRows': value = engine.readRows(args[0] as ResultId, args[1] as number[]); break;
                 case 'stats': value = engine.stats(args[0] as ResultId, args[1] as string, args[2] as StatsWindow | undefined); break;
                 case 'release': engine.release(args[0] as ResultId); break;
+                case 'hold': value = engine.hold(args[0] as ResultId, args[1] as string[]); break;
                 default: throw new Error(`Engine: no call "${call}"`);
             }
             port.post({ id, ok: true, value } satisfies Answer);

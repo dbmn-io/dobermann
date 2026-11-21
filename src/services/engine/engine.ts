@@ -604,7 +604,7 @@ export class QueryEngine implements Engine {
         if (known) return known;
         const args = e.args.map(a => this.compile(a, rel, input, memo));
         const name: FunctionName = e.fn;
-        const f = (row: number) => callFunction(name, args.map(a => a(row)), this.ctx);
+        const f = this.call(name, args);
         if (!memo) return f;
         // Its value for the last row asked, kept (functions give the same value for the same row). Not while
         // text that isn't a number is being counted: each column's own readings are counted, as without it
@@ -617,6 +617,44 @@ export class QueryEngine implements Engine {
         };
         memo.fns.set(key, once);
         return once;
+    }
+
+    /**
+     * A function part as a function of a row: its arguments read into one array kept for it (no array a
+     * row). IF, IFBLANK, AND and OR read only what decides them, as SQLite's CASE and AND/OR do; while
+     * text that isn't a number is being counted, every argument is read, as before.
+     */
+    private call(name: FunctionName, args: ((row: number) => V)[]): (row: number) => V {
+        const n = args.length;
+        const values = new Array<V>(n);
+        const every = (row: number): V => {
+            for (let i = 0; i < n; i++) values[i] = args[i](row);
+            return callFunction(name, values, this.ctx);
+        };
+        switch (name) {
+            case 'IF': return row => {
+                if (notNumbers.on) return every(row);
+                return truthy(args[0](row)) ? args[1](row) : n > 2 ? args[2](row) : null;
+            };
+            case 'IFBLANK': return row => {
+                if (notNumbers.on) return every(row);
+                const v = args[0](row);
+                return v === null || v === '' ? args[1](row) : v;
+            };
+            case 'AND': return row => {
+                if (notNumbers.on) return every(row);
+                let unknown = false;
+                for (let i = 0; i < n; i++) { const t = truthy(args[i](row)); if (t === false) return 0; if (t === null) unknown = true; }
+                return unknown ? null : 1;
+            };
+            case 'OR': return row => {
+                if (notNumbers.on) return every(row);
+                let unknown = false;
+                for (let i = 0; i < n; i++) { const t = truthy(args[i](row)); if (t === true) return 1; if (t === null) unknown = true; }
+                return unknown ? null : 0;
+            };
+            default: return every;
+        }
     }
 
     cancel(result: ResultId): void {
@@ -666,6 +704,21 @@ export class QueryEngine implements Engine {
     release(result: ResultId): void {
         this.results.delete(result);
         this.stepStats.delete(result);
+    }
+
+    /**
+     * A result with some of its columns worked out once and stored (a compare's status columns): a new
+     * result over the same rows, its other columns read as before. Later runs can start from it.
+     */
+    hold(result: ResultId, columns: string[]): ResultId {
+        const rel = this.results.get(result);
+        if (!rel) throw new Error(`Engine: no result "${result}"`);
+        const n = rel.rowCount;
+        const stored = rel.cols.map(c => (columns.includes(c.name) ? new Array<V>(n) : undefined));
+        stored.forEach((list, c) => { if (list) for (let r = 0; r < n; r++) list[r] = rel.value(r, c); });
+        const id = `r${this.nextResult++}`;
+        this.results.set(id, { cols: rel.cols, rowCount: n, value: (row, c) => { const list = stored[c]; return list ? list[row] : rel.value(row, c); } });
+        return id;
     }
 
     /** Roughly what the loaded tables hold, in bytes (the memory checks). */

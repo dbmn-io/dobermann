@@ -34,7 +34,7 @@ import { columnTypes, spread, TYPE_SAMPLE, type ColumnType } from '../../service
 import { CALC_VIEW, QUERY_JOIN_KINDS } from '../../services/query/query-types';
 import { comparableRuns, type RequestTemplates, type RunHeaderValue } from '../../services/compare/compare-runs';
 import { alignCompareJoins, groupCompare, isCompare, MAX_COMPARE_VIEWS, queryCompare, runJoin } from '../../services/query/query-compare';
-import { columnCellDiffs, comparedGroups, passes, rowStatus, statusCounts, type RowStatus, type StatusFilter } from '../../services/query/query-status';
+import { columnCellDiffs, comparedGroups, passes, rowStatus, statusCounts, type RowStatus, type StatusCounts, type StatusFilter } from '../../services/query/query-status';
 import { lookupsIn } from '../../services/column-functions/column-functions';
 import type { LookupTablesReader, LookupTableSummary } from '../../services/lookup-tables/lookup-tables';
 import type { ColumnRef, QueryFn, QueryJoin, QueryJoinKind, QueryJoinStats, QueryKey, QuerySpec } from '../../services/query/query-types';
@@ -48,7 +48,7 @@ import type { QueryFileStore } from '../../services/query/query-file-store';
 import { localEngineHost, type EngineHost } from '../../services/engine/engine-host';
 import { QueryEngine } from '../../services/engine/engine';
 import { QUERY_ROW_TESTS, searchColumns, searchTest, type SearchArg } from './query-search';
-import { compareKeyExprs, resultsKey, sampleQueries, pagedCounts, readPagedRow, readStatusPage, type PagedStatus, eachPage, runHeld, fnSampleQueries, formulaExpr, labelExpr, loadLookupInto, loadViewInto, onSqliteLine, pagedTotals, readPage, runPaged, spreadPage, type NotNumbers, type PagedResult, type ShownSort, queryWithColumns, recordQuery, runOnEngine, TooManyOnEngine, whyNotQueryOnEngine } from '../../services/query/query-new-engine';
+import { compareKeyExprs, resultsKey, sampleQueries, pagedCounts, readPagedRow, readStatusPage, type PagedStatus, eachPage, runHeld, holdStatus, fnSampleQueries, formulaExpr, labelExpr, loadLookupInto, loadViewInto, onSqliteLine, pagedTotals, readPage, runPaged, spreadPage, type NotNumbers, type PagedResult, type ShownSort, queryWithColumns, recordQuery, runOnEngine, TooManyOnEngine, whyNotQueryOnEngine } from '../../services/query/query-new-engine';
 import type { Progress, Query as EngineQuery, TableWindow } from '../../services/engine/engine-types';
 
 
@@ -1283,8 +1283,6 @@ export class QueryController {
                         total = kept.total;
                         preview = await readPage(this.engine, kept, 0, PREVIEW_ROWS);
                         resultTypes = columnTypes(await spreadPage(this.engine, kept, TYPE_SAMPLE), resultColumns.length);
-                        // (a compare's rows here were for the step only: Results holds its own, runHeld)
-                        if (isCompare(spec.joins) && this.paged?.result.id !== kept.id) void this.engine.release(kept.id).catch(() => undefined);
                     } else if (result) {
                         total = result.rows.length;
                         preview = result.rows.slice(0, PREVIEW_ROWS);
@@ -1687,6 +1685,10 @@ export class QueryController {
      * searches, Status filters and counts are runs from it. Which query and hidden views it is for.
      */
     private pagedHeld: { key: string; result: PagedResult; host: EngineHost } | undefined;
+    /** The Status menu's counts for a held compare and a search (shownRows). */
+    private countsKept: { key: string; counts: { counts: StatusCounts; countsAll: StatusCounts } } | undefined;
+    /** A compare as the step last ran it (engineKept): Results holds its status from it when it is the same query. */
+    private pagedBase: { key: string; result: PagedResult; host: EngineHost } | undefined;
 
     /** Keep `held` as the compare Results reads from; the one before is let go (unless Results' rows are still it). */
     private holdPaged(held: { key: string; result: PagedResult; host: EngineHost } | undefined): void {
@@ -1703,7 +1705,12 @@ export class QueryController {
         const key = resultsKey(engineKey(spec), null, '', { ...status, filter: undefined });
         if (this.pagedHeld && this.pagedHeld.key === key && this.pagedHeld.host === host) return this.pagedHeld.result;
         let held: PagedResult | undefined;
-        try {
+        const base = this.pagedBase;
+        if (base && base.key === key && base.host === host && base.result.layout.status?.native) {
+            // (the step's own compare, its status stored: no second run)
+            onStage?.({ result: base.result.id, stage: 'Holding the rows', done: 0, total: base.result.total });
+            held = await holdStatus(host, base.result);
+        } else try {
             if (this.pagedRunning) host.cancel(this.pagedRunning);
             held = await runHeld(host, spec, status, p => { this.pagedRunning = p.result; onStage?.(p); });
         } finally {
@@ -1772,9 +1779,14 @@ export class QueryController {
             // The Status menu's counts: among the rows the search finds, and among them all (asked for with the first page only)
             const counts = status && paged.layout.status ? async () => {
                 const held = this.pagedHeld?.host === host ? this.pagedHeld.result.id : undefined;
+                // (they change with the search, not with the sort or the Status filter: counted once for each)
+                const key = held ? `${held}\n${search}` : '';
+                if (key && this.countsKept?.key === key) return this.countsKept.counts;
                 const found = await pagedCounts(host, spec, search ? this.searchArg(columns, search) : undefined, status, held);
                 const every = search ? await pagedCounts(host, spec, undefined, status, held) : found;
-                return found && every ? { counts: found, countsAll: every } : undefined;
+                const out = found && every ? { counts: found, countsAll: every } : undefined;
+                if (key && out) this.countsKept = { key, counts: out };
+                return out;
             } : undefined;
             return {
                 columns: paged.layout.columns, key: engineKey(spec), total, shown: paged.total,
@@ -1999,7 +2011,7 @@ export class QueryController {
         // (a new engine when the views changed in a way the key resets, or the last one stopped working)
         const reuse = this.engine && this.engineKey.startsWith('[') && this.engine.alive();
         const engine = reuse ? this.engine! : (this.ports.engineHost?.() ?? localEngineHost(new QueryEngine(undefined, QUERY_ROW_TESTS)));
-        if (!reuse) { this.paged = undefined; this.pagedAll = undefined; this.pagedHeld = undefined; }
+        if (!reuse) { this.paged = undefined; this.pagedAll = undefined; this.pagedHeld = undefined; this.pagedBase = undefined; }
         if (engine !== this.engine) { this.engine?.close(); this.engineLookups.clear(); }
         // (only the views not in it yet, or changed, go in again)
         const had = new Map<string, string>((JSON.parse(this.engineKey || '[]') as [string, string[], number][]).map(v => [v[0], JSON.stringify(v)]));
@@ -2048,6 +2060,11 @@ export class QueryController {
         if (!keptStatus) {
             this.retirePaged(host);
             this.paged = { key: resultsKey(engineKey(spec), keptSort, '', keptStatus), result: run.kept, host };
+        } else {
+            // A compare: kept as the step ran it, so Results stores its status from it rather than running it again (heldFor)
+            const before = this.pagedBase;
+            this.pagedBase = { key: resultsKey(engineKey(spec), null, '', { ...keptStatus, filter: undefined }), result: run.kept, host };
+            if (before && before.host.alive() && before.result.id !== run.kept.id) void before.host.release(before.result.id).catch(() => undefined);
         }
         this.pagedAll = { key: engineKey(spec), total: run.kept.total };
         console.log(`[query-engine] ${run.total} rows of ${spec.views.length} views, kept in the engine, in ${Math.round(performance.now() - started)} ms: ${laps.join(' · ')} (ms)`);
