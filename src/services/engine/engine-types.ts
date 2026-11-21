@@ -1,0 +1,157 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Flexion Tech Pty Ltd
+/**
+ * Query's engine: its interface. A library with no dependencies and no knowledge of screens, SQL,
+ * files, workers or storage (~/Projects/dbmn/engine-poc/DESIGN.md, "Final shape"). A Table in, a
+ * Query as plain data, a Table out.
+ *
+ * Built in pieces, each tested against SQLite (sql.js, as the app runs today) by the tester's
+ * reference harness. **Piece 1** implements: `load`, `append`, `drop`, `check` and `run` / `read`
+ * / `release` for a query of `from`, `select` and `filter` steps, and every function in FUNCTIONS
+ * with its operators. The other steps (`join`, `compare`, `group`, `sort`), `stats` and `cancel`
+ * are declared here as agreed and come in later pieces; until then `check` refuses them by name.
+ */
+
+/** A value in a table: text, a number, or blank (null). Yes/no comes in as the text "true" / "false". */
+export type Value = string | number | null;
+
+/** The one data shape, in and out: column names, and one array per row in column order. */
+export interface Table {
+    columns: string[];
+    rows: Value[][];
+}
+
+/** A window of a result: its rows from `from`, and how many rows the whole result has. */
+export interface TableWindow extends Table {
+    total: number;
+}
+
+/* ---------- Expressions ---------- */
+
+/**
+ * A value worked out for each row: a column (of an input, after a join), a constant, or a
+ * function of other expressions. Operators are functions by their sign (`+`, `=`, …): FUNCTIONS.
+ */
+export type Expr =
+    | { column: string; of?: string }
+    | { value: Value }
+    | { fn: FunctionName; args: Expr[] };
+
+/**
+ * Every function the engine carries, each as SQLite gives it today (DESIGN-review.md §3).
+ * The column functions of the ƒ dialog and the formula language's functions both end up here:
+ *
+ *   Operators      +  -  *  /  NEG  =  <>  >  <  >=  <=
+ *   Logic          IF  IFBLANK  AND  OR  NOT
+ *   Numbers        ROUND  ABS  FLOOR  CEIL  MIN  MAX
+ *   Text           CONCAT  UPPER  LOWER  TRIM  LTRIM  LEFT  RIGHT  SUBSTR  REPLACE  LENGTH
+ *   Convert        TEXT (CAST AS TEXT: "As text" and the formula's TEXT)
+ *                  NUMERIC (CAST AS NUMERIC: the ƒ dialog's "As a number")
+ *                  NUMBER (the formula's NUMBER: a plain number, else blank)
+ *   Lookup         TRANSLATE(value, table, fromColumn, toColumn): reads a loaded table
+ *
+ * The ƒ dialog's functions as expressions: Trim spaces TRIM(x); Upper case UPPER(x); Lower case
+ * LOWER(x); As text TEXT(x); As a number NUMERIC(x); Drop leading zeros LTRIM(x, '0'); First
+ * characters SUBSTR(x, 1, n); Last characters SUBSTR(x, -n); Replace text REPLACE(x, from, to);
+ * Translate values TRANSLATE(x, table, from, to).
+ */
+export const FUNCTIONS = [
+    '+', '-', '*', '/', 'NEG', '=', '<>', '>', '<', '>=', '<=',
+    'IF', 'IFBLANK', 'AND', 'OR', 'NOT',
+    'ROUND', 'ABS', 'FLOOR', 'CEIL', 'MIN', 'MAX',
+    'CONCAT', 'UPPER', 'LOWER', 'TRIM', 'LTRIM', 'LEFT', 'RIGHT', 'SUBSTR', 'REPLACE', 'LENGTH',
+    'TEXT', 'NUMERIC', 'NUMBER',
+    'TRANSLATE'
+] as const;
+export type FunctionName = typeof FUNCTIONS[number];
+
+/* ---------- Queries ---------- */
+
+export type JoinKind = 'inner' | 'left' | 'right' | 'outer';
+export type Aggregate = 'count' | 'countValues' | 'sum' | 'min' | 'max';
+
+/** One step of a query. `as` names it, when a later step reads it. */
+export type Step =
+    | { as?: string; from: string }
+    | { as?: string; join: JoinKind; left: string; right: string; on: { left: Expr; right: Expr }[] }
+    | { as?: string; compare: string[]; on: Expr[][]; columns: { name: string; values: Expr[] }[]; notCompared?: string[] }
+    | { as?: string; select: string; columns: { name: string; value: Expr }[] }
+    | { as?: string; filter: string; where: Expr }
+    | { as?: string; group: string; by: { name: string; value: Expr }[]; aggregates: { name: string; fn: Aggregate; value?: Expr }[] }
+    | { as?: string; sort: string; by: { value: Expr; descending?: boolean }[] };
+
+/** A query: its steps in order, and which step's table is the answer (its `as`, or the last step when left out). */
+export interface Query {
+    steps: Step[];
+    result?: string;
+}
+
+/** Why a query can't run, in words a user can read; `step` is the step's `as`, or its place ("step 3"). */
+export interface Problem {
+    step: string;
+    message: string;
+}
+
+export type ResultId = string;
+
+/* ---------- Statistics (later pieces) ---------- */
+
+export interface KindCounts { oneToOne: number; oneToMany: number; manyToOne: number; manyToMany: number }
+
+/** A join step's statistics: today's QueryJoinStats fields (src/services/query/query-types.ts). */
+export interface JoinStats {
+    leftRows: number;
+    leftMatched: number;
+    rightRows: number;
+    rightMatched: number;
+    rowsAfter: number;
+    relationship: 'none' | 'oneToOne' | 'oneToMany' | 'manyToOne' | 'manyToMany';
+    keys: KindCounts;
+    rows: KindCounts;
+    records: KindCounts;
+    typeMismatch: boolean;
+    leftBlank: number;
+    leftValues: number;
+    rightValues: number;
+    valuesTotal: number;
+}
+
+/** A compare step's statistics, per input: against the Baseline and against the whole compare. */
+export interface CompareStats {
+    perInput: {
+        name: string;
+        rows: number;
+        againstBaseline: { matched: number; oneToOne: number; repeatedKeys: number; repeatedRecords: number; only: number };
+        againstAll: { matched: number; repeatedKeys: number; repeatedRecords: number; onlyHere: number };
+    }[];
+    rows: number;
+}
+
+/** With a window, `stats` gives the values behind one count: key columns, then the rows each side holds. */
+export interface StatsWindow {
+    kind: keyof KindCounts | 'onlyLeft' | 'onlyRight';
+    side: 'left' | 'right';
+    from: number;
+    count: number;
+}
+
+/* ---------- The engine ---------- */
+
+export interface Engine {
+    /** Start a table (replaces one of the same name). `more`: pieces follow by `append`; it is loading until one says `last`. */
+    load(name: string, table: Table, options?: { more?: boolean }): void;
+    /** More rows of a table; `last`: it is complete (a query on a table still loading is refused). */
+    append(name: string, table: Table, options?: { last?: boolean }): void;
+    drop(name: string): void;
+    /** Why a query can't run, before any work: unknown table, column, function or step; a table still loading. */
+    check(query: Query): Problem[];
+    /** Run a query; its result stays inside the engine until released. */
+    run(query: Query): { result: ResultId; total: number } | { problems: Problem[] };
+    /** Abandon a result's work (a later piece: runs are synchronous until then). */
+    cancel(result: ResultId): void;
+    /** A window of a result. */
+    read(result: ResultId, from: number, count: number): TableWindow;
+    /** How a join or compare step's rows met (a later piece). */
+    stats(result: ResultId, step: string, window?: StatsWindow): JoinStats | CompareStats | Table;
+    release(result: ResultId): void;
+}
