@@ -396,9 +396,12 @@ export class QueryEngine implements Engine {
         const f = step as Extract<Step, { filter: string }>;
         let pass: (r: number) => boolean;
         if ('test' in f) {
-            const test = this.rowTests[f.test.name](f.test.arg, base.cols.map(c => c.name));
-            const n = base.cols.length;
-            pass = r => { const row = new Array<Value>(n); for (let c = 0; c < n; c++) row[c] = toValue(base.value(r, c)); return test(row); };
+            // (only the columns the test reads, when it says which: a row's other columns are never worked out for it)
+            const at = f.test.columns ? f.test.columns.map(name => base.cols.findIndex(c => c.name === name)).filter(i => i >= 0) : base.cols.map((_, i) => i);
+            const test = this.rowTests[f.test.name](f.test.arg, at.map(i => base.cols[i].name));
+            const n = at.length;
+            const row = new Array<Value>(n);
+            pass = r => { for (let c = 0; c < n; c++) row[c] = toValue(base.value(r, at[c])); return test(row); };
         } else {
             const where = this.compile(f.where, base, from);
             pass = r => truthy(where(r)) === true;

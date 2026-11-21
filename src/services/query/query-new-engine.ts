@@ -774,7 +774,8 @@ export function pagedQuery(spec: QuerySpec, sort?: ShownSort | null, search?: un
     let base = held ? 'held' : query.result ?? 'rows';
     const steps: Query['steps'] = held ? [{ as: 'held', from: held }] : [...query.steps];
     if (search !== undefined) {
-        steps.push({ as: 'found', filter: base, test: { name: 'search', arg: search } });
+        // (the search reads Results' columns only: c0, c1… in order, searchTest)
+        steps.push({ as: 'found', filter: base, test: { name: 'search', arg: search, columns: layout.columns.map((_, i) => `c${i}`) } });
         base = 'found';
     }
     // Results' status filter, over the engine's status columns

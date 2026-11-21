@@ -1689,7 +1689,7 @@ export class QueryController {
      */
     private pagedHeld: { key: string; result: PagedResult; host: EngineHost } | undefined;
     /** The Status menu's counts for a held compare and a search (shownRows). */
-    private countsKept: { key: string; counts: { counts: StatusCounts; countsAll: StatusCounts } } | undefined;
+    private countsKept = new Map<string, StatusCounts>();
     /** The compare step of the step's last run, kept (engineKept): the sample record and a calculation's first rows read from it (engineWindow). */
     private engineCompare: { id: string; step: string; host: EngineHost; views: string } | undefined;
     /** A compare as the step last ran it (engineKept): Results holds its status from it when it is the same query. */
@@ -1785,13 +1785,23 @@ export class QueryController {
             const counts = status && paged.layout.status ? async () => {
                 const held = this.pagedHeld?.host === host ? this.pagedHeld.result.id : undefined;
                 // (they change with the search, not with the sort or the Status filter: counted once for each)
-                const key = held ? `${held}\n${search}` : '';
-                if (key && this.countsKept?.key === key) return this.countsKept.counts;
-                const found = await pagedCounts(host, spec, search ? this.searchArg(columns, search) : undefined, status, held);
-                const every = search ? await pagedCounts(host, spec, undefined, status, held) : found;
-                const out = found && every ? { counts: found, countsAll: every } : undefined;
-                if (key && out) this.countsKept = { key, counts: out };
-                return out;
+                const counted = async (text: string): Promise<StatusCounts | undefined> => {
+                    const key = held ? `${held}\n${text}` : '';
+                    const had = key ? this.countsKept.get(key) : undefined;
+                    if (had) return had;
+                    // (the rows the search found are Results' rows when no Status filter is on: counted from them, not searched again)
+                    const out = text && !status.filter && text === search
+                        ? await pagedCounts(host, spec, undefined, status, paged.id)
+                        : await pagedCounts(host, spec, text ? this.searchArg(columns, text) : undefined, status, held);
+                    if (key && out) {
+                        if (this.countsKept.size > 20) this.countsKept.clear();
+                        this.countsKept.set(key, out);
+                    }
+                    return out;
+                };
+                const found = await counted(search);
+                const every = search ? await counted('') : found;
+                return found && every ? { counts: found, countsAll: every } : undefined;
             } : undefined;
             return {
                 columns: paged.layout.columns, key: engineKey(spec), total, shown: paged.total,

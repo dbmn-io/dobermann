@@ -131,7 +131,7 @@ export type Step =
      * (Results' search box: its text and columns). The rules live with the host, once
      * (search-matcher.js), not copied into expressions.
      */
-    | { as?: string; filter: string; test: { name: string; arg: unknown } }
+    | { as?: string; filter: string; test: { name: string; arg: unknown; columns?: string[] } }
     /**
      * Rows grouped by the `by` values (blank is a value; 1 and 1.0 one group), a row per group in
      * the order each first appears, as SQLite's GROUP BY would give them sorted. With no `by`, one
