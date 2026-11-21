@@ -95,7 +95,8 @@ export type Aggregate = 'count' | 'countValues' | 'sum' | 'min' | 'max';
 
 /** One step of a query. `as` names it, when a later step reads it. */
 export type Step =
-    | { as?: string; from: string }
+    /** `first`: only its first rows (a sample to pick from, never the whole of a large table). */
+    | { as?: string; from: string; first?: number }
     /**
      * Rows of two inputs matched on keys. A key with a blank in it matches nothing; keys match
      * by sameValue (42 and "42" match, "042" and 42 don't). Rows come out in the left input's order, each with its matches in the right
@@ -263,6 +264,8 @@ export interface RunOptions {
      * ResultId> }`), never work them out again.
      */
     hold?: boolean;
+    /** Steps whose rows are kept too, each a result of its own (RunOutcome's `kept`): a later run can start from one. */
+    keepSteps?: string[];
 }
 
 /**
@@ -276,7 +279,7 @@ export type RunOutcome =
      * Sum (its values left out), and the result's columns asked for (RunOptions.countNotNumbers).
      * Only counts above 0.
      */
-    | { result: ResultId; total: number; steps?: Record<string, number>; notNumbers?: Record<string, Record<string, number>> }
+    | { result: ResultId; total: number; steps?: Record<string, number>; notNumbers?: Record<string, Record<string, number>>; kept?: Record<string, ResultId> }
     | { problems: Problem[]; stats?: Record<string, JoinStats | CompareStats> }
     | { cancelled: true };
 

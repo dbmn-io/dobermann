@@ -14,9 +14,9 @@ import { COLUMN_FUNCTIONS, columnFnSql, type ColumnFn } from '../../../services/
 import { QueryEngine } from '../../../services/engine/engine';
 import { localEngineHost, remoteEngineHost, serveEngine, type EnginePort } from '../../../services/engine/engine-host';
 import { QuerySession } from '../../../services/query/query-engine';
-import { buildQuery, resultsKey, runHeld, sampleQueries, pagedCounts, readStatusPage, eachPage, loadViewInto, pagedTotals, readPage, runOnEngine, runPaged, TooManyOnEngine, compareKeyExprs, compareQuery, fnExpr, fnSampleQueries, formulaExpr, labelExpr, loadLookupTable, loadView, queryWithColumns, recordQuery, resultRows, onSqliteLine, runCompareOnEngine, whyNotOnEngine } from '../../../services/query/query-new-engine';
+import { buildQuery, resultsKey, runHeld, fromKeptCompare, sampleQueries, pagedCounts, readStatusPage, eachPage, loadViewInto, pagedTotals, readPage, runOnEngine, runPaged, TooManyOnEngine, compareKeyExprs, compareQuery, fnExpr, fnSampleQueries, formulaExpr, labelExpr, loadLookupTable, loadView, queryWithColumns, recordQuery, resultRows, onSqliteLine, runCompareOnEngine, whyNotOnEngine } from '../../../services/query/query-new-engine';
 import { formulaSql, parseFormula, FORMULA_FUNCTIONS } from '../../../services/query/formula';
-import type { Value } from '../../../services/engine/engine-types';
+import type { Query, Value } from '../../../services/engine/engine-types';
 import { compareKeySql, resultColumns } from '../../../services/query/query-sql';
 import { passes, rowStatus, statusCounts, type StatusFilter } from '../../../services/query/query-status';
 import type { QueryKey, QuerySpec } from '../../../services/query/query-types';
@@ -652,6 +652,35 @@ describe('Query compare on the new engine', () => {
         const own = (await runPaged(engine, spec, sort, undefined, undefined, status))!;
         assert.deepStrictEqual(await readStatusPage(host, kept.kept!, 0, 50, status), await readStatusPage(engine, own, 0, 50, status));
         assert.strictEqual(runs, 1);
+    });
+
+    it('the sample record and a calculation\'s first rows from the compare the step kept: the same rows as a whole run, no compare made again', async () => {
+        const spec = runsSpec();
+        const data = { bl: runRows(0, 300), c1: runRows(1, 300), c2: runRows(2, 300) };
+        const engine = new QueryEngine();
+        for (const v of spec.views) loadView(engine, v.id, v.columns, data[v.id as keyof typeof data]);
+        const label = (v: string) => ({ bl: 'BL', c1: 'C1', c2: 'C2' } as Record<string, string>)[v];
+        const status = { filter: undefined, label, placeOfColumn: (i: number) => label(resultColumns(spec)[i].view), hidden: [] as string[] };
+        const run = (await runOnEngine(engine, spec, undefined, { keep: true, sort: null, status }))!;
+        assert.ok(run.compare, 'the compare step kept');
+        const raw = spec.views.flatMap(v => v.columns.map(column => ({ view: v.id, column })));
+        const { everyView, any } = sampleQueries(spec, raw, resultColumns(spec));
+        const calc = queryWithColumns(spec, [{ fn: '-', args: [{ column: 'qty', of: 'c1' }, { column: 'qty', of: 'bl' }] }, { column: 'sku', of: 'c2' }]);
+        const rows = async (q: Query) => {
+            const out = await engine.run(q);
+            assert.ok('result' in out, JSON.stringify(out));
+            try { return engine.read(out.result, 0, 400).rows; } finally { engine.release(out.result); }
+        };
+        for (const q of [everyView, any, calc]) {
+            const fromKept = fromKeptCompare(q, run.compare);
+            assert.ok(fromKept.steps.some(st => 'from' in st && st.from === run.compare!.id), 'read from the kept compare');
+            assert.deepStrictEqual(await rows(fromKept), await rows(q));
+        }
+        // (a view's first rows only: the function dialog's few values)
+        const first = await engine.run({ steps: [{ from: 'bl', first: 5 }] });
+        assert.ok('result' in first && first.total === 5);
+        // (another compare: not read from it)
+        assert.strictEqual(fromKeptCompare(everyView, { ...run.compare!, step: '[]' }), everyView);
     });
 
     it('a compare held once (runHeld): a sort, a Status filter and the counts from it are the rows, status and counts a whole run gives', async () => {

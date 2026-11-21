@@ -214,7 +214,8 @@ export class QueryEngine implements Engine {
             } else {
                 const { input, cols } = inputs[0] as { input: string; cols: Col[] };
                 out = cols;
-                if (kind === 'from') out = cols.map(c => ({ name: c.name, owners: [input, ...(step.as ? [step.as] : [])] }));
+                // (a kept result's columns keep whose they were: { column, of: <a view> } still finds them)
+                if (kind === 'from') out = this.tables.has(input) ? cols.map(c => ({ name: c.name, owners: [input, ...(step.as ? [step.as] : [])] })) : cols.map(c => ({ ...c, owners: [...c.owners, ...(step.as ? [step.as] : [])] }));
                 else if (kind === 'select') {
                     const s = step as Extract<Step, { select: string }>;
                     if (!s.columns.length) say('A select step needs at least one column.');
@@ -255,7 +256,7 @@ export class QueryEngine implements Engine {
         if (!tableOnly && known.has(input)) return known.get(input)!;
         const t = this.tables.get(input);
         // (a result held from an earlier run: its columns as it has them)
-        if (!t && this.results.has(input)) return this.results.get(input)!.cols.map(c => ({ name: c.name, owners: [input] }));
+        if (!t && this.results.has(input)) return this.results.get(input)!.cols.map(c => ({ ...c, owners: [...c.owners, input] }));
         if (!t) return `There is no table or step called "${input}".`;
         if (!t.complete) return `"${input}" is still loading.`;
         return t.columns.map(name => ({ name, owners: [input] }));
@@ -318,7 +319,16 @@ export class QueryEngine implements Engine {
             this.results.set(id, kept);
             const steps: Record<string, number> = {};
             for (const [n, rel] of made) steps[n] = rel.rowCount;
-            return { result: id, total: answer.rowCount, steps, ...(Object.keys(noted).length ? { notNumbers: noted } : {}) };
+            // Steps asked to be kept too (RunOptions.keepSteps): results of their own, read or run from later
+            const keptSteps: Record<string, ResultId> = {};
+            for (const n of options?.keepSteps ?? []) {
+                const rel = made.get(n);
+                if (!rel) continue;
+                const stepId = `r${this.nextResult++}`;
+                this.results.set(stepId, rel);
+                keptSteps[n] = stepId;
+            }
+            return { result: id, total: answer.rowCount, steps, ...(Object.keys(noted).length ? { notNumbers: noted } : {}), ...(Object.keys(keptSteps).length ? { kept: keptSteps } : {}) };
         } catch (error) {
             const kept = this.stepStats.get(id);
             this.stepStats.delete(id);
@@ -372,7 +382,7 @@ export class QueryEngine implements Engine {
         slice: (stage: string, done: number, total: number) => Promise<void>, noted: Record<string, Record<string, number>>): Promise<Relation> {
         const from = inputsOf(step, kind)[0];
         const base = input(from);
-        if (kind === 'from') return { ...base, cols: base.cols.map(c => ({ name: c.name, owners: [from, ...(step.as ? [step.as] : [])] })) };
+        if (kind === 'from') return { ...base, ...(typeof (step as { first?: number }).first === 'number' ? { rowCount: Math.max(0, Math.min(base.rowCount, Math.floor((step as { first: number }).first))) } : {}), cols: this.tables.has(from) ? base.cols.map(c => ({ name: c.name, owners: [from, ...(step.as ? [step.as] : [])] })) : base.cols.map(c => ({ ...c, owners: [...c.owners, ...(step.as ? [step.as] : [])] })) };
         if (kind === 'select') {
             const s = step as Extract<Step, { select: string }>;
             // (one memo for all its columns: a part said again, in one column or another, is worked out once a row)
@@ -580,9 +590,9 @@ export class QueryEngine implements Engine {
     }
 
     private tableRelation(name: string): Relation {
-        // (a result held from an earlier run, read as a table: its owners are its name)
+        // (a result kept from an earlier run, read as a table: its columns keep whose they were, and are its name's too)
         const held = !this.tables.has(name) ? this.results.get(name) : undefined;
-        if (held) return { ...held, cols: held.cols.map(c => ({ name: c.name, owners: [name] })) };
+        if (held) return { ...held, cols: held.cols.map(c => ({ ...c, owners: [...c.owners, name] })) };
         const t = this.tables.get(name)!;
         // (a snapshot of its length: rows appended later are not in this result)
         const rowCount = t.rowCount;

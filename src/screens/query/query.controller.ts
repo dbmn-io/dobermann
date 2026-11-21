@@ -48,7 +48,7 @@ import type { QueryFileStore } from '../../services/query/query-file-store';
 import { localEngineHost, type EngineHost } from '../../services/engine/engine-host';
 import { QueryEngine } from '../../services/engine/engine';
 import { QUERY_ROW_TESTS, searchColumns, searchTest, type SearchArg } from './query-search';
-import { compareKeyExprs, resultsKey, sampleQueries, pagedCounts, readPagedRow, readStatusPage, type PagedStatus, eachPage, runHeld, holdStatus, fnSampleQueries, formulaExpr, labelExpr, loadLookupInto, loadViewInto, onSqliteLine, pagedTotals, readPage, runPaged, spreadPage, type NotNumbers, type PagedResult, type ShownSort, queryWithColumns, recordQuery, runOnEngine, TooManyOnEngine, whyNotQueryOnEngine } from '../../services/query/query-new-engine';
+import { compareKeyExprs, resultsKey, sampleQueries, pagedCounts, readPagedRow, readStatusPage, type PagedStatus, eachPage, runHeld, holdStatus, fromKeptCompare, fnSampleQueries, formulaExpr, labelExpr, loadLookupInto, loadViewInto, onSqliteLine, pagedTotals, readPage, runPaged, spreadPage, type NotNumbers, type PagedResult, type ShownSort, queryWithColumns, recordQuery, runOnEngine, TooManyOnEngine, whyNotQueryOnEngine } from '../../services/query/query-new-engine';
 import type { Progress, Query as EngineQuery, TableWindow } from '../../services/engine/engine-types';
 
 
@@ -214,6 +214,9 @@ export class QueryController {
     /** A few rows of a query on the engine (the Columns step's and the record window's small reads). */
     private async engineWindow(spec: QuerySpec, query: EngineQuery, count: number, extraView?: string): Promise<TableWindow> {
         const engine = await this.engineFor(spec);
+        // (the compare the step last ran, when it compares the same: read from it, not made again)
+        const kept = this.engineCompare && this.engineCompare.host === engine && this.engineCompare.views === this.engineKey ? this.engineCompare : undefined;
+        query = fromKeptCompare(query, kept);
         // (a view not joined yet is read on its own: it goes in too)
         if (extraView && !spec.views.some(v => v.id === extraView)) {
             const loaded = this.loaded.get(extraView);
@@ -1687,6 +1690,8 @@ export class QueryController {
     private pagedHeld: { key: string; result: PagedResult; host: EngineHost } | undefined;
     /** The Status menu's counts for a held compare and a search (shownRows). */
     private countsKept: { key: string; counts: { counts: StatusCounts; countsAll: StatusCounts } } | undefined;
+    /** The compare step of the step's last run, kept (engineKept): the sample record and a calculation's first rows read from it (engineWindow). */
+    private engineCompare: { id: string; step: string; host: EngineHost; views: string } | undefined;
     /** A compare as the step last ran it (engineKept): Results holds its status from it when it is the same query. */
     private pagedBase: { key: string; result: PagedResult; host: EngineHost } | undefined;
 
@@ -2011,7 +2016,7 @@ export class QueryController {
         // (a new engine when the views changed in a way the key resets, or the last one stopped working)
         const reuse = this.engine && this.engineKey.startsWith('[') && this.engine.alive();
         const engine = reuse ? this.engine! : (this.ports.engineHost?.() ?? localEngineHost(new QueryEngine(undefined, QUERY_ROW_TESTS)));
-        if (!reuse) { this.paged = undefined; this.pagedAll = undefined; this.pagedHeld = undefined; this.pagedBase = undefined; }
+        if (!reuse) { this.paged = undefined; this.pagedAll = undefined; this.pagedHeld = undefined; this.pagedBase = undefined; this.engineCompare = undefined; }
         if (engine !== this.engine) { this.engine?.close(); this.engineLookups.clear(); }
         // (only the views not in it yet, or changed, go in again)
         const had = new Map<string, string>((JSON.parse(this.engineKey || '[]') as [string, string[], number][]).map(v => [v[0], JSON.stringify(v)]));
@@ -2064,6 +2069,9 @@ export class QueryController {
             // A compare: kept as the step ran it, so Results stores its status from it rather than running it again (heldFor)
             const before = this.pagedBase;
             this.pagedBase = { key: resultsKey(engineKey(spec), null, '', { ...keptStatus, filter: undefined }), result: run.kept, host };
+            const was = this.engineCompare;
+            this.engineCompare = run.compare ? { ...run.compare, host, views: this.engineKey } : undefined;
+            if (was && was.host.alive() && was.id !== run.compare?.id) void was.host.release(was.id).catch(() => undefined);
             if (before && before.host.alive() && before.result.id !== run.kept.id) void before.host.release(before.result.id).catch(() => undefined);
         }
         this.pagedAll = { key: engineKey(spec), total: run.kept.total };

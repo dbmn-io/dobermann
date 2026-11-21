@@ -282,10 +282,25 @@ async function joinFigures(spec: QuerySpec, places: string[], get: (step: string
     return out;
 }
 
+/** A query's compare step as what it compares (its inputs and keys; not what it adds for a status): the same text, the same rows. */
+export function compareStepKey(query: Query): string {
+    const step = query.steps.find(s => 'compare' in s && s.as === 'compare') as Extract<Query['steps'][number], { compare: string[] }> | undefined;
+    return step ? JSON.stringify([step.compare, step.on]) : '';
+}
+
+/**
+ * The query with its compare step read from a compare kept from an earlier run (RunOptions.keepSteps),
+ * when that run compared the same (compareStepKey): no compare made again. Else as it is.
+ */
+export function fromKeptCompare(query: Query, kept: { id: string; step: string } | undefined): Query {
+    if (!kept || compareStepKey(query) !== kept.step) return query;
+    return { ...query, steps: query.steps.map(s => ('compare' in s && s.as === 'compare' ? { as: 'compare', from: kept.id } : s)) };
+}
+
 /** An engine as an EngineHost (tests and the VS Code host hand in the engine itself). */
 const hostOf = (engine: QueryEngine | EngineHost): EngineHost => (engine instanceof QueryEngine ? localEngineHost(engine) : engine);
 
-export async function runOnEngine(engineIn: QueryEngine | EngineHost, spec: QuerySpec, onProgress?: (p: Progress) => void, options?: { keep?: boolean; sort?: ShownSort | null; status?: PagedStatus; hold?: boolean }): Promise<(CompareOnEngine & { timings: [string, number][]; duplicates: number; notNumbers: NotNumbers; kept?: PagedResult; held?: PagedResult }) | undefined> {
+export async function runOnEngine(engineIn: QueryEngine | EngineHost, spec: QuerySpec, onProgress?: (p: Progress) => void, options?: { keep?: boolean; sort?: ShownSort | null; status?: PagedStatus; hold?: boolean }): Promise<(CompareOnEngine & { timings: [string, number][]; duplicates: number; notNumbers: NotNumbers; kept?: PagedResult; held?: PagedResult; compare?: { id: string; step: string } }) | undefined> {
     const timings: [string, number][] = [];
     let at = now();
     const lap = (what: string) => { const t = now(); timings.push([what, Math.round(t - at)]); at = t; };
@@ -302,7 +317,9 @@ export async function runOnEngine(engineIn: QueryEngine | EngineHost, spec: Quer
         : built.query;
     // Results' columns that read text as a number: their rows where it wasn't one, counted in the same run
     const counted = readsNumbersColumns(built.query);
-    const out = await engine.run(query, { onProgress: p => { onProgress?.(p); }, ...(counted.length ? { countNotNumbers: counted } : {}), ...(holding ? { hold: true } : {}) });
+    // (a compare's own step kept too, when Results' rows are: the sample record and a calculation's first rows read from it)
+    const keepCompare = !!options?.keep && query.steps.some(s => 'compare' in s && s.as === 'compare');
+    const out = await engine.run(query, { onProgress: p => { onProgress?.(p); }, ...(counted.length ? { countNotNumbers: counted } : {}), ...(holding ? { hold: true } : {}), ...(keepCompare ? { keepSteps: ['compare'] } : {}) });
     lap('engine run');
     if ('cancelled' in out) return undefined;
     if ('problems' in out) {
@@ -333,7 +350,7 @@ export async function runOnEngine(engineIn: QueryEngine | EngineHost, spec: Quer
                 kept = sorted;
                 lap('sorted');
             }
-            return { rows: [], keyValues: [], stats, total: out.total, layout, timings, duplicates, notNumbers: notNumbersOf(out.notNumbers, query), kept, ...(held ? { held } : {}) };
+            return { rows: [], keyValues: [], stats, total: out.total, layout, timings, duplicates, notNumbers: notNumbersOf(out.notNumbers, query), kept, ...(held ? { held } : {}), ...(out.kept?.compare ? { compare: { id: out.kept.compare, step: compareStepKey(query) } } : {}) };
         }
         const read = await engine.read(out.result, 0, out.total);
         lap('read every row');
@@ -713,14 +730,18 @@ export function labelExpr(spec: QuerySpec, ref: ColumnRef): Expr {
     return coalesce([refExpr(ref), ...keys.slice(1).map(v => v.keys[first]).filter(Boolean).map(keyExpr)]);
 }
 
+/** The rows the function dialog's few values are taken from (the views' sample, James 2026-11-21). */
+export const FN_SAMPLE_ROWS = 1000;
+
 /** The function dialog's sample: a few different values of a view's column, as they are and as `fns` leave them; the record's own first. */
 export function fnSampleQueries(view: string, column: string, fns: ColumnFn[], record: string): { few: Query; own: Query | undefined } {
     const plain: Expr = { column, of: view };
     const made = fns.reduce<Expr>((x, f) => fnExpr(x, f), plain);
     const pick = { select: 'kept', columns: [{ name: 'plain', value: plain }, { name: 'made', value: made }] };
     return {
+        // (a few values to show: from the first rows of the view, never the whole of a large one)
         few: { steps: [
-            { from: view },
+            { from: view, first: FN_SAMPLE_ROWS },
             { as: 'kept', filter: 'step 1', where: { fn: 'AND', args: [{ fn: '=', args: [plain, plain] }, { fn: '<>', args: [plain, { value: '' }] }] } },
             { as: 'picked', ...pick },
             { group: 'picked', by: [{ name: 'plain', value: { column: 'plain' } }, { name: 'made', value: { column: 'made' } }], aggregates: [] }
