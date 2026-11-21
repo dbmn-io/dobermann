@@ -542,4 +542,15 @@ describe('Query compare on the new engine', () => {
             assert.ok(page.status.some(x => x.groups.includes('both')) && page.status.some(x => x.diff.includes('reference')), JSON.stringify([columns, page.status.slice(0, 5)]));
         });
     });
+
+    it('a worker that dies: the calls waiting on it and every call after are refused, in words, and it says it is no longer alive', async () => {
+        let fail: (reason: string) => void = () => undefined;
+        const host = remoteEngineHost({ post: () => undefined, listen: () => undefined, onFail: handler => { fail = handler; } });
+        assert.strictEqual(host.alive(), true);
+        const waiting = host.run({ steps: [{ from: 't' }] });
+        fail('out of memory');
+        await assert.rejects(waiting, /The query engine stopped \(out of memory\)/);
+        await assert.rejects(host.read('r1', 0, 1), /The query engine stopped/);
+        assert.strictEqual(host.alive(), false);
+    });
 });

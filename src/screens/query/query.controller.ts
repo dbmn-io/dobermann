@@ -1094,7 +1094,11 @@ export class QueryController {
         if (!loaded) return [];
         if (!loaded.dropped) return loaded.rows;
         const source = this.query?.sources.find(s => s.id === id);
-        return source ? (await this.readView(source)).rows : [];
+        if (!source) return [];
+        const again = await this.readView(source);
+        // (its rows were here before: not finding them now is said, never run as an empty view)
+        if (again.error) throw new Error(`${source.name}: ${again.error}`);
+        return again.rows;
     }
 
     /** How many rows a view has (held, or let go to the engine). */
@@ -1251,8 +1255,10 @@ export class QueryController {
                     };
                     try {
                         // Not a compare: its rows stay in the engine, Results reads them a page at a time
-                        if (this.pagedOn(spec, '')) kept = await this.engineKept(spec, onStage);
-                        else result = await this.engineRead(spec, engineKey(spec), onStage);
+                        // (Stop, or a newer change, while the views go into the engine: no run after)
+                        const wanted = () => version === this.version && !this.closed;
+                        if (this.pagedOn(spec, '')) kept = await this.engineKept(spec, onStage, wanted);
+                        else result = await this.engineRead(spec, engineKey(spec), onStage, wanted);
                     } catch (error) {
                         // Past the row limit: the joins' figures until then still show, and the step says why
                         if (error instanceof TooManyOnEngine) {
@@ -1886,7 +1892,10 @@ export class QueryController {
     private async engineLoad(spec: QuerySpec): Promise<EngineHost> {
         const key = JSON.stringify(spec.views.map(v => [v.id, v.columns, this.rowCount(v.id)]));
         if (this.engine && this.engineKey === key) return this.engine;
-        const engine = this.engine && this.engineKey.startsWith('[') ? this.engine : (this.ports.engineHost?.() ?? localEngineHost(new QueryEngine(undefined, QUERY_ROW_TESTS)));
+        // (a new engine when the views changed in a way the key resets, or the last one stopped working)
+        const reuse = this.engine && this.engineKey.startsWith('[') && this.engine.alive();
+        const engine = reuse ? this.engine! : (this.ports.engineHost?.() ?? localEngineHost(new QueryEngine(undefined, QUERY_ROW_TESTS)));
+        if (!reuse) { this.paged = undefined; this.pagedAll = undefined; }
         if (engine !== this.engine) { this.engine?.close(); this.engineLookups.clear(); }
         // (only the views not in it yet, or changed, go in again)
         const had = new Map<string, string>((JSON.parse(this.engineKey || '[]') as [string, string[], number][]).map(v => [v[0], JSON.stringify(v)]));
@@ -1903,7 +1912,7 @@ export class QueryController {
     }
 
     /** A query's run on the new engine, its rows kept there for Results' pages (with the figures and the rows alike); undefined when stopped. */
-    private async engineKept(spec: QuerySpec, onStage?: (stage: string) => void): Promise<PagedResult | undefined> {
+    private async engineKept(spec: QuerySpec, onStage?: (stage: string) => void, wanted: () => boolean = () => true): Promise<PagedResult | undefined> {
         const started = performance.now();
         let at = started;
         const laps: string[] = [];
@@ -1911,6 +1920,7 @@ export class QueryController {
         const host = await this.engineFor(spec);
         await this.loadEngineLookups(host, lookupsUsed(spec));
         lap('views into the engine');
+        if (!wanted()) return undefined;
         let run;
         try {
             run = await runOnEngine(host, spec, p => { this.engineRunning = p.result; onStage?.(p.stage); }, { keep: true });
@@ -1930,7 +1940,7 @@ export class QueryController {
     }
 
     /** Results from the new engine (run again only when the query changes): undefined when Stop stopped it. */
-    private async engineRead(spec: QuerySpec, key: string, onStage?: (stage: string) => void): Promise<QueryResult | undefined> {
+    private async engineRead(spec: QuerySpec, key: string, onStage?: (stage: string) => void, wanted: () => boolean = () => true): Promise<QueryResult | undefined> {
         if (this.result?.key === key) return this.result;
         // Stage timings (the setting is for testing): each part, in ms, in the console as "[query-engine] …"
         const started = performance.now();
@@ -1940,6 +1950,7 @@ export class QueryController {
         const engine = await this.engineFor(spec);
         await this.loadEngineLookups(engine, lookupsUsed(spec));
         lap('views into the engine');
+        if (!wanted()) return undefined;
         let run;
         try {
             run = await runOnEngine(engine, spec, p => { this.engineRunning = p.result; onStage?.(p.stage); });

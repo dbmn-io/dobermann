@@ -41,7 +41,16 @@ import { remoteEngineHost, type EngineHost } from '../../../src/services/engine/
 /** Query's new engine in a worker of its own (engine-worker.ts): a long run never holds the page. */
 function engineInWorker(): EngineHost {
     const worker = new Worker(new URL('./engine-worker.ts', import.meta.url), { type: 'module' });
-    return remoteEngineHost({ post: message => worker.postMessage(message), listen: handler => worker.addEventListener('message', event => handler(event.data)), close: () => worker.terminate() });
+    return remoteEngineHost({
+        post: message => worker.postMessage(message),
+        listen: handler => worker.addEventListener('message', event => handler(event.data)),
+        close: () => worker.terminate(),
+        // (a worker that fails to start or dies: its calls are refused, and the next run makes a new one)
+        onFail: handler => {
+            worker.addEventListener('error', event => handler(event.message || 'its worker failed'));
+            worker.addEventListener('messageerror', () => handler('a message could not be read'));
+        }
+    });
 }
 import initSqlJs from 'sql.js';
 import sqlWasmUrl from 'sql.js/dist/sql-wasm.wasm?url';

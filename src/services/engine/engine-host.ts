@@ -25,6 +25,8 @@ export interface EngineHost {
     release(result: ResultId): Promise<void>;
     /** Ends it (a worker is stopped). */
     close(): void;
+    /** False once it has stopped working (its worker died): every call is refused, and a new one is needed. */
+    alive(): boolean;
 }
 
 /** The engine in this thread. */
@@ -39,7 +41,8 @@ export function localEngineHost(engine: QueryEngine = new QueryEngine()): Engine
         readRows: async (result, rows) => engine.readRows(result, rows),
         stats: async (result, step, window) => engine.stats(result, step, window),
         release: async result => engine.release(result),
-        close: () => undefined
+        close: () => undefined,
+        alive: () => true
     };
 }
 
@@ -48,6 +51,8 @@ export interface EnginePort {
     post(message: unknown): void;
     listen(handler: (message: unknown) => void): void;
     close?(): void;
+    /** The other end has failed (a worker's error): what happened. */
+    onFail?(handler: (reason: string) => void): void;
 }
 
 type Call = { id: number; call: string; args: unknown[] };
@@ -56,7 +61,14 @@ type Answer = { id: number; ok: true; value: unknown } | { id: number; ok: false
 /** The engine in a worker, through its port. */
 export function remoteEngineHost(port: EnginePort): EngineHost {
     let next = 1;
+    let failed: string | undefined;
     const waiting = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void; onProgress?: (p: Progress) => void }>();
+    // A worker that dies answers nothing more: every call waiting is refused, and every call after
+    port.onFail?.(reason => {
+        failed = `The query engine stopped (${reason}). Run the query again.`;
+        for (const w of waiting.values()) w.reject(new Error(failed));
+        waiting.clear();
+    });
     port.listen(message => {
         const m = message as Answer;
         const w = waiting.get(m.id);
@@ -66,6 +78,7 @@ export function remoteEngineHost(port: EnginePort): EngineHost {
         if (m.ok) w.resolve(m.value); else w.reject(new Error(m.error));
     });
     const call = <T>(name: string, args: unknown[], onProgress?: (p: Progress) => void): Promise<T> => new Promise<T>((resolve, reject) => {
+        if (failed) { reject(new Error(failed)); return; }
         const id = next++;
         waiting.set(id, { resolve: v => resolve(v as T), reject, onProgress });
         port.post({ id, call: name, args } satisfies Call);
@@ -80,7 +93,8 @@ export function remoteEngineHost(port: EnginePort): EngineHost {
         readRows: (result, rows) => call('readRows', [result, rows]),
         stats: (result, step, window) => call('stats', [result, step, window]),
         release: result => call('release', [result]),
-        close: () => { for (const w of waiting.values()) w.reject(new Error('The engine was closed')); waiting.clear(); port.close?.(); }
+        close: () => { for (const w of waiting.values()) w.reject(new Error('The engine was closed')); waiting.clear(); port.close?.(); },
+        alive: () => !failed
     };
 }
 
