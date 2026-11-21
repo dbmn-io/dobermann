@@ -1460,6 +1460,24 @@
                     if (!n) cell.classList.add('is-zero');
                     // Under the Baseline, One to one is its record count, said quietly ("1,204 records")
                     if (kind === 'oneToOne' && v.id === baseline.id) { cell.textContent = `${count(n)} records`; cell.classList.add('is-zero'); }
+                    else if (n) {
+                        // A count is a button: it opens the values it counts (the Baseline's against the first view
+                        // joined to it, each other view's against the Baseline), as a join's counts do
+                        const isBase = v.id === baseline.id;
+                        const join = isBase ? first : joinOf(v.id);
+                        const st = join && join.stats;
+                        const which = kind === 'oneToOne' ? 'oneToOne'
+                            : kind === 'manyToMany' ? (isBase ? (st && st.keys.manyToOne ? 'manyToOne' : 'manyToMany') : (st && st.keys.oneToMany ? 'oneToMany' : 'manyToMany'))
+                                : isBase ? 'onlyBase' : 'onlyOther';
+                        if (join && st) {
+                            const show = el('button', 'query-count-btn', cell.textContent);
+                            show.type = 'button';
+                            show.dataset.side = isBase ? 'left' : 'right';
+                            show.title = 'Show the values behind this count';
+                            show.addEventListener('click', event => { event.stopPropagation(); showValues(join, which, isBase ? 'left' : 'right'); });
+                            cell.replaceChildren(show);
+                        }
+                    }
                     cells[v.id] = cell;
                 });
                 const tag = el('span', `query-kind query-lead-text${kind === 'manyToMany' ? ' query-warn' : ''}`, label);
