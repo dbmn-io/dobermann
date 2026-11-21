@@ -40,7 +40,7 @@ export function buildQueryPage(asset: AssetUrl, config: { queryId: string; name:
             <!-- The slots' row is a row of the grid every step's lines share (dbmn-lanes): the name in its gutter, a lane per view, its runs under one heading -->
             <div id="queryTop" class="dbmn-lanes query-top">
                 <div id="queryViews" class="dbmn-lanes-row query-slots" data-line="slots" role="group" aria-label="The views joined">
-                    <span id="queryHeadLead" class="dbmn-lanes-gutter is-name query-lead query-head-lead" data-gutter><dbmn-name id="queryName" label="Query name" max="30" value="${attr(config.name)}"></dbmn-name><span id="queryKindLabel" class="query-kind-label" role="status"></span></span>
+                    <span id="queryHeadLead" class="dbmn-lanes-gutter query-lead query-head-lead" data-gutter><dbmn-name id="queryName" label="Query name" max="30" value="${attr(config.name)}"></dbmn-name><span id="queryKindLabel" class="query-kind-label" role="status"></span></span>
                 </div>
             </div>
             <!-- On their own line under the rows of Views and Join (placeAdds moves them there) -->

@@ -22,9 +22,9 @@
 /* A view's name is longer than BL or C1 */
 .query-page .compare-tag { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; }
 /* The top of the gutter: what the slots beside it are */
-.query-head-lead { align-self: center; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.query-head-lead { align-self: center; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
 /* The query's name sits in the gutter the lines' headings use: cut short to fit, whole on hover */
-.query-head-lead dbmn-name { --name-width: 210px; }
+.query-head-lead dbmn-name { --name-width: 160px; }
 /* A view's age: a week old is a warning, a month old is out of date. On its slot and on Views */
 .query-age { display: inline-flex; align-items: center; gap: 5px; }
 .query-age-icon { display: inline-flex; margin-right: 5px; vertical-align: -2px; }
@@ -395,3 +395,17 @@
 /* A view brought in beside a compare: its bar a sentence across the lanes */
 .query-join-said { display: flex; align-items: center; justify-content: space-between; gap: 14px; min-width: 0; overflow: hidden; white-space: nowrap; cursor: pointer; }
 .query-join-said > * { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* The gutter's words wrap onto a second line rather than being cut, at any width */
+.query-lead .query-lead-text { white-space: normal; text-align: right; overflow-wrap: anywhere; }
+.query-lead { min-width: 0; }
+/* The Join step counting: what it is doing, for how long, and Stop */
+.query-counting { display: inline-flex; align-items: center; gap: 10px; min-width: 0; }
+.query-counting-stage { position: relative; padding-right: 22px; color: var(--vscode-descriptionForeground); }
+/* (dbmn-lanes' pending spinner, on the words) */
+.query-counting-stage::after {
+    content: ''; position: absolute; right: 4px; top: 50%; width: 10px; height: 10px; margin-top: -6px;
+    border: 2px solid color-mix(in srgb, currentColor 25%, transparent); border-top-color: currentColor; border-radius: 50%;
+    animation: dbmn-lanes-spin 0.8s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) { .query-counting-stage::after { animation: none; border-style: dashed; } }
+.query-counting-time { color: var(--vscode-descriptionForeground); font-size: 11px; }

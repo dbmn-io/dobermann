@@ -113,7 +113,8 @@
     function views() { return laneGroups().flat(); }
     /** Set the grid's tracks on a lanes container: a lane per view, as wide as its runs. */
     function applyLanes(box) {
-        if (box && window.DbmnLanes) window.DbmnLanes.apply(box, laneGroups().map(g => ({ runs: g.length })));
+        // (a gutter a bit narrower than dbmn-lanes' 230px, as James asked: its own option)
+        if (box && window.DbmnLanes) window.DbmnLanes.apply(box, laneGroups().map(g => ({ runs: g.length })), { gutter: 180 });
     }
     /** The lookup tables Translate values can read: { id, name, count, columns }. */
     function lookupTables() { return (ui.state && ui.state.lookupTables) || []; }
@@ -1013,6 +1014,44 @@
         if (!v.left) return 'onlyOther';
         return v.left > 1 ? (v.right > 1 ? 'manyToMany' : 'manyToOne') : v.right > 1 ? 'oneToMany' : 'oneToOne';
     }
+    /**
+     * The Join step while the host counts (its state's `counting`, and each `query.counting` stage):
+     * what it is doing, for how long (counted here, a second at a time), and Stop. Stopped, it says so
+     * and offers to count again.
+     */
+    function countingSays(records) {
+        const box = el('span', 'query-counting');
+        const c = ui.counting || {};
+        if (c.stopped) {
+            box.append(el('span', 'query-note', c.stage || 'Stopped'));
+            const again = el('button', 'compare-tool-btn text-link font-size-12', 'Count again');
+            again.type = 'button';
+            again.addEventListener('click', event => { event.stopPropagation(); ui.counting = null; setBusy('Joining…'); post({ type: 'query.recount' }); });
+            box.append(again);
+            return box;
+        }
+        const stage = c.stage && /^Counting how the records meet/.test(c.stage) && records
+            ? c.stage.replace('Counting how the records meet', `Counting how ${count(records)} records meet`) : (c.stage || 'Counting how the records meet');
+        const words = el('span', 'query-counting-stage is-pending', `${stage}…`);
+        const time = el('span', 'query-counting-time font-mono');
+        time.dataset.since = c.since || '';
+        time.textContent = secondsSince(c.since);
+        const stop = el('button', 'compare-tool-btn text-link font-size-12', 'Stop');
+        stop.type = 'button';
+        stop.title = 'Stop counting: the counts are left out until you count again';
+        stop.addEventListener('click', event => { event.stopPropagation(); post({ type: 'query.stopCounting' }); });
+        box.append(words, time, stop);
+        return box;
+    }
+    function secondsSince(iso) {
+        const t = new Date(iso || '').getTime();
+        if (isNaN(t)) return '';
+        const s = Math.max(0, Math.round((Date.now() - t) / 1000));
+        return s < 60 ? `${s} s` : `${Math.floor(s / 60)} min ${s % 60} s`;
+    }
+    // (the seconds go on while the page is free to count them)
+    setInterval(() => document.querySelectorAll('.query-counting-time').forEach(t => { t.textContent = secondsSince(t.dataset.since); }), 1000);
+
     /** A count under the view it counts. */
     function counted(id, n, warn) {
         const cell = at(id, 'query-count compare-match-count');
@@ -1143,7 +1182,7 @@
                 // Which earlier view its column comes from is said by the box it is picked in
                 and.addEventListener('click', () => { join.on.push({ left: { view: earlier[0].id, column: '' }, right: { column: '' }, picked: true }); renderJoins(); });
                 says.push(and);
-            } else lead.push(el('span', `query-and ${KW}`, 'AND'));
+            }
             // A pair can always be taken out: the last one leaves the join asking for its columns, from any earlier view
             if (join.on.length > 1 || pair.left.column || pair.right.column) {
                 const drop = el('button', 'compare-tool-btn icon');
@@ -1218,7 +1257,11 @@
         more.setAttribute('aria-label', `How the rows meet ${v.name}`);
         more.title = open ? 'Hide how the rows meet this view' : 'Show how the rows meet this view';
         more.addEventListener('click', () => { ui.statsOpen[v.id] = !open; renderJoins(); });
-        const made = sentence
+        // (while the host counts, a made join says so, as the compare does)
+        const counting = !stats && !!ui.counting && !ui.counting.stopped && join.on.some(p => p.left.column && p.right.column);
+        const made = counting
+            ? line('query-made-line', { __span: countingSays(0) }, [], [el('span', 'query-lead-text', 'Rows after this join'), more])
+            : sentence
             ? line('query-made-line', { __span: sentence }, [el('span', 'query-made query-compare-rows', `${count(stats.rowsAfter)} rows`)], [el('span', 'query-lead-text', 'Rows after this join'), more])
             : line('query-made-line', after, [v.error ? errorLine(v) : joinNote(join, stats)], [el('span', 'query-lead-text', 'Rows after this join'), more]);
         made.dataset.kind = 'made';
@@ -1380,7 +1423,7 @@
                 and.addEventListener('click', () => { first.on.push({ left: { view: baseline.id, column: '' }, right: { column: '' }, picked: true }); renderJoins(); });
                 says.push(and);
             } else {
-                lead.push(el('span', `query-and ${KW}`, 'AND'));
+                // (a further key line: its gutter empty, its × at the end)
                 const drop = el('button', 'compare-tool-btn icon');
                 drop.type = 'button';
                 drop.title = 'Take this key column out';
@@ -1392,8 +1435,7 @@
             band.appendChild(line('query-pair query-compare-line', cells, says, lead));
         });
         // How many are in: said once, under the lanes
-        const inIt = el('span', 'form-hint query-compare-in', `${members.length} of ${max} in the compare${full ? ': take one out to put another in' : ''}`);
-        band.appendChild(line('query-compare-count', { __span: inIt }, [], []));
+        // (how many a compare takes is said where it matters: a full compare's other views offer their columns "(a compare takes 4)", disabled)
         // The summary: one bar across the lanes, as the mock has it. Closed: each later view's records that
         // meet the Baseline's one to one ("C1 1,198 · C2 1,199 one to one"), the repeats said once at its end,
         // the rows the compare leaves after it. While the counts are worked out it says so (is-pending)
@@ -1413,14 +1455,14 @@
         const inCompare = views().filter(v => members.includes(v.id));
         const others = inCompare.filter(v => v.id !== baseline.id);
         const keyed = first.on.length > 0 && first.on.every(p => p.left.column);
-        const pending = keyed && (!last || !last.stats || !!ui.busy);
+        const pending = keyed && (!!ui.counting || !last || !last.stats);
         const repeatedIn = new Map();
         inCompare.forEach(v => { const n = (summary[v.id] || {}).repeatedKeys || 0; if (n) repeatedIn.set(n, [...(repeatedIn.get(n) || []), nameOf(v)]); });
         const repeatWords = [...repeatedIn].map(([n, where]) => `${count(n)} ${n === 1 ? 'value repeats' : 'values repeat'} in ${where.join(', ')}`).join(' · ');
         const bar = el('div', 'query-after query-compare-said');
         if (pending) {
             bar.classList.add('is-pending');
-            bar.appendChild(el('span', 'query-compare-stat', 'Counting how the records meet…'));
+            bar.appendChild(countingSays(inCompare.reduce((n, v) => n + (v.rows || 0), 0)));
         } else if (keyed) {
             // Each later view's records that find one of the Baseline's (one to one or repeated: the chevron splits them)
             const found = others.filter(statsOf).map(v => `${nameOf(v)} ${count(statsOf(v).rightMatched || 0)} of ${count(statsOf(v).rightRows || 0)}`);
@@ -1440,7 +1482,7 @@
         const total = last && last.stats && !pending ? el('span', 'query-made query-compare-rows', `${count(last.stats.rowsAfter)} rows`) : null;
         // Its chevron opens how the records meet, a line per kind (closed to begin with), as a join's does
         const open = !!ui.statsOpen.__compare;
-        const ready = !!first.stats && !pending;
+        const ready = keyed;
         const more = el('button', 'compare-tool-btn icon');
         more.type = 'button';
         more.dataset.stats = '';
@@ -1455,7 +1497,16 @@
         made.classList.toggle('is-openable', ready);
         if (ready) bar.addEventListener('click', () => { ui.statsOpen.__compare = !open; renderJoins(); });
         band.appendChild(made);
-        if (open && ready) {
+        if (open && ready && pending) {
+            // Open while counting: the three lines, each count still being worked out
+            [['oneToOne', 'One to one'], ['manyToMany', 'Repeated'], ['onlyOther', 'Only in']].forEach(([kind, label]) => {
+                const cells = {};
+                inCompare.forEach(v => { const c = at(v.id, 'query-count compare-match-count is-pending'); c.textContent = '…'; cells[v.id] = c; });
+                const row = line('query-kind-line', cells, [], [window.RelationGlyph.svg(kind), el('span', 'query-kind query-lead-text', label)]);
+                row.dataset.kind = kind;
+                band.appendChild(row);
+            });
+        } else if (open && ready) {
             // Open: three lines, always, a count under each view (a nought quiet), as the mock has them. Under
             // the Baseline: its records, its own repeats, its records no other view has; under each other
             // view: against the Baseline (one to one, repeated), and its records no other view has
@@ -1896,6 +1947,8 @@
     }
 
     function applyState(m) {
+        // (counting: the step is drawn, its counts still to come; done: no longer)
+        ui.counting = m.counting ? { since: m.counting, stage: (ui.counting && ui.counting.since === m.counting && ui.counting.stage) || '' } : (ui.counting && ui.counting.stopped ? ui.counting : null);
         const firstState = !ui.state;
         // The first state with every view's rows read (the one before it lists the views as saved)
         const settled = !m.reading && !ui.settled;
@@ -2069,6 +2122,12 @@
             case 'query.sourceList': ui.sources = m.results || []; ui.sourceViews = m.views || {}; break;
             case 'query.progress': setBusy(m.total ? `${m.text} · ${count(m.done)} of ${count(m.total)}` : m.text); break;
             case 'query.state': applyState(m); break;
+            // The host's counting: its stage as it starts one, or stopped (since: null)
+            case 'query.counting':
+                ui.counting = m.since ? { since: m.since, stage: m.stage } : { stopped: true, stage: m.stage };
+                if (!m.since) setBusy('');
+                if (ui.step === 2) renderJoins();
+                break;
             case 'query.named': if (ui.state) ui.state.name = m.name; showName(m.name); renderBar(); break;
             case 'query.fileSheets': setBusy(''); pickSheets(m); break;
             case 'query.rowsData': rowsArrived(m); break;

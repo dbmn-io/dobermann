@@ -289,22 +289,7 @@ export class QueryController {
                     const join = q.joins.find(j => j.view === message.view);
                     if (!join) return;
                     const madeCompare = message.kind === 'compare' && join.kind !== 'compare';
-                    // Compare picked again on a view of the compare Delete join took apart: it comes back as it was
-                    const dropped = madeCompare ? q.droppedCompare : undefined;
-                    if (dropped && dropped.joins.some(j => j.view === join.view)) {
-                        dropped.joins.forEach(was => { const now = q.joins.find(j => j.view === was.view); if (now) { now.kind = 'compare'; now.on = was.on; } });
-                        dropped.runs.forEach(r => {
-                            const x = q.sources.find(s => s.id === r.id);
-                            if (!x || !q.sources.some(s => s.id === r.runOf)) return;
-                            x.runOf = r.runOf;
-                            if (r.run) x.run = r.run;
-                            if (!q.sources.some(s => s !== x && s.name.toLowerCase() === r.name.toLowerCase())) x.name = r.name;
-                        });
-                        delete q.droppedCompare;
-                        alignCompareJoins(q.joins, runsOf(q));
-                        return;
-                    }
-                    if (madeCompare) delete q.droppedCompare;
+                    // (Delete join deletes: Compare picked again starts a new, empty compare)
                     if (QUERY_JOIN_KINDS.includes(message.kind as QueryJoinKind)) {
                         const kind = message.kind as QueryJoinKind;
                         // A compare takes up to four views, the Baseline included
@@ -345,6 +330,14 @@ export class QueryController {
                 });
                 // Delete join (the join-type menu): the views go back to not joined, out of the report until joined again
                 // A compare's kind, from its one button: every join in it takes it, in one change
+                // Stop (the Join step's counting): what is being worked out is left; the step says the counts were stopped
+                // Count again, after Stop
+                case 'query.recount': return await this.refresh();
+                case 'query.stopCounting': {
+                    this.version++;
+                    this.post({ type: 'query.counting', since: null, stage: 'Stopped: the counts were not worked out' });
+                    return;
+                }
                 case 'query.setCompareKind': return await this.change(q => {
                     const kind = String(message.kind) as QueryJoinKind;
                     if (!QUERY_JOIN_KINDS.includes(kind)) return;
@@ -353,13 +346,6 @@ export class QueryController {
                 });
                 case 'query.deleteJoin': return await this.change(q => {
                     const gone = new Set((Array.isArray(message.views) ? message.views : [message.view]).map(String));
-                    // A compare taken apart is kept, so Compare picked again puts it back as it was (one step)
-                    if (q.joins.some(j => gone.has(j.view) && j.kind === 'compare')) {
-                        q.droppedCompare = {
-                            joins: JSON.parse(JSON.stringify(q.joins.filter(j => j.kind === 'compare'))) as QueryJoin[],
-                            runs: q.sources.filter(x => gone.has(x.id) && x.runOf).map(x => ({ id: x.id, runOf: x.runOf as string, run: x.run, name: x.name }))
-                        };
-                    }
                     q.joins.forEach(j => { if (gone.has(j.view)) { j.kind = 'left'; j.on = []; } });
                     // A run is only ever compared with its first run: out of the compare, it is a view of its own
                     q.sources.forEach(x => {
@@ -1100,17 +1086,34 @@ export class QueryController {
                 if (this.ports.lookups) this.lookupList = await this.ports.lookups.list();
                 await this.loadLookups(session, spec);
                 sql = session.sql();
+                // The step draws at once (its lines, samples from each view's own rows), saying it is counting
+                // and since when; then the counting, which on large results can take a while
+                const since = new Date().toISOString();
+                this.postState({ waiting, counting: since, columns, resultColumns, sql, stats: new Map() });
+                // Each stage said as it starts (the page counts the seconds); Stop, or any change, ends it between stages
+                const stage = async (text: string): Promise<boolean> => {
+                    this.post({ type: 'query.counting', since, stage: text });
+                    await new Promise<void>(resolve => setTimeout(resolve, 40));
+                    return version === this.version && !this.closed;
+                };
+                if (!await stage('Checking how many rows the joins make')) return;
                 // A join that would make far too many rows is never made: it would fill the page's memory
                 const tooMany = session.tooManyRows();
                 if (tooMany) {
                     stats = spec.joins.map((_, i) => (i <= tooMany.join ? session.joinStats(i) : null));
                     throw new Error(tooManyRowsText(tooMany, spec));
                 }
+                if (!await stage('Counting the rows')) return;
                 total = session.count();
                 // Rows alike in every column shown: what Distinct would fold (or has)
                 const other = Number(session.run(`SELECT COUNT(*) FROM (${writeSql({ ...spec, distinct: !spec.distinct })})`).rows[0]?.[0] ?? 0);
                 duplicates = Math.abs(other - total);
-                stats = spec.joins.map((_, i) => session.joinStats(i));
+                stats = [];
+                for (let i = 0; i < spec.joins.length; i++) {
+                    if (!await stage(spec.joins.length > 1 ? `Counting how the records meet: join ${i + 1} of ${spec.joins.length}` : 'Counting how the records meet')) return;
+                    stats.push(session.joinStats(i));
+                }
+                if (!await stage('Reading the first rows')) return;
                 preview = session.rows({ limit: PREVIEW_ROWS }).rows;
                 // (from rows across the whole result, so a column that changes further down is not mislabelled)
                 resultTypes = columnTypes(session.sample(TYPE_SAMPLE).rows, resultColumns.length);
@@ -1191,7 +1194,7 @@ export class QueryController {
     }
 
     /** Everything the steps show. `reading`: a view was just added and its rows are still being read. */
-    private postState(now: { reading?: boolean; waiting?: string[]; stats?: Map<string, QueryJoinStats | null>; columns?: ColumnRef[]; resultColumns?: ColumnRef[]; resultTypes?: ColumnType[]; sampleRow?: { view: string; column: string; value: string }[]; columnCells?: { value: string; differs: boolean }[]; duplicates?: number; sql?: string; total?: number; preview?: unknown[][]; error?: string; sqlError?: string }): void {
+    private postState(now: { reading?: boolean; counting?: string; waiting?: string[]; stats?: Map<string, QueryJoinStats | null>; columns?: ColumnRef[]; resultColumns?: ColumnRef[]; resultTypes?: ColumnType[]; sampleRow?: { view: string; column: string; value: string }[]; columnCells?: { value: string; differs: boolean }[]; duplicates?: number; sql?: string; total?: number; preview?: unknown[][]; error?: string; sqlError?: string }): void {
         const query = this.query;
         if (!query) return;
         const tables = tableNames(query.sources.map(s => ({ id: s.id, name: s.name, columns: [] })));
@@ -1221,6 +1224,8 @@ export class QueryController {
             columns: (now.columns ?? []).map(c => ({ view: c.view, column: c.column, ...(c.fns?.length ? { fns: c.fns } : {}), ...(c.group ? { group: c.group } : {}) })),
             // One row of the report, every view's columns: what Columns shows under each name
             sampleRow: now.sampleRow ?? [],
+            // Counting how the rows meet, since then (an ISO time): the step is drawn, its counts still to come
+            counting: now.counting ?? null,
             // Columns' cells, by report column: the value after its functions, and amber or not
             columnCells: now.columnCells ?? [],
             // A joining view's key, and the column it is matched to: not shown twice
