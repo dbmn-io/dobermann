@@ -516,9 +516,20 @@
             views().forEach(v => {
                 const cell = at(v.id, `query-view-cell${className ? ' ' + className : ''}`);
                 const value = text(v);
-                if (value instanceof Node) cell.appendChild(value); else cell.textContent = value;
+                // One line, shortened with "…" (the whole of it on hover): never into the next lane
+                if (value instanceof Node) cell.appendChild(value); else cell.appendChild(el('span', 'query-view-text', value));
                 cell.title = cell.textContent;
                 cells[v.id] = cell;
+            });
+            // A line that says the same for every run of a view (its request, its View) says it once, across the view's lane
+            laneGroups().forEach(group => {
+                if (group.length < 2) return;
+                const said = group.map(v => text(v));
+                if (said.some(x => x instanceof Node) || said.some(x => x !== said[0])) return;
+                const cell = at(group[0].id, `query-view-cell${className ? ' ' + className : ''}`);
+                cell.appendChild(el('span', 'query-view-text', said[0]));
+                cell.title = said[0];
+                cells['lane:' + group[0].id] = cell;
             });
             const made = line('query-view-line', cells, [], [el('span', 'query-lead-text', label)]);
             made.dataset.row = row;
@@ -925,6 +936,15 @@
             laneGroups().forEach((group, li) => {
                 const lane = el('div', `dbmn-lane dbmn-view-${li % 6} dbmn-runs-${group.length}`);
                 lane.dataset.lane = String(li);
+                // (one cell across a view's lane: what every run of it says alike, said once)
+                const whole = cells && cells['lane:' + group[0].id];
+                if (whole) {
+                    whole.classList.add('dbmn-lane-run', 'query-lane-whole');
+                    whole.dataset.view = group[0].id;
+                    lane.appendChild(whole);
+                    row.appendChild(lane);
+                    return;
+                }
                 group.forEach((v, ri) => {
                     const cell = (cells && cells[v.id]) || at(v.id);
                     cell.classList.add('dbmn-lane-run');
@@ -1365,9 +1385,10 @@
             bar.classList.add('is-pending');
             bar.appendChild(el('span', 'query-compare-stat', 'Counting how the records meet…'));
         } else if (keyed) {
-            const ones = others.filter(statsOf).map(v => `${nameOf(v)} ${count(statsOf(v).records.oneToOne || 0)}`);
-            const stat = el('span', 'query-made query-compare-stat', ones.length ? `${ones.join(' · ')} one to one` : '');
-            stat.title = `How many of each one's records meet one of ${nameOf(baseline)}'s (the Baseline) one to one. Open the chevron for every kind`;
+            // Each later view's records that find one of the Baseline's (one to one or repeated: the chevron splits them)
+            const found = others.filter(statsOf).map(v => `${nameOf(v)} ${count(statsOf(v).rightMatched || 0)} of ${count(statsOf(v).rightRows || 0)}`);
+            const stat = el('span', 'query-made query-compare-stat', found.length ? `${found.join(' · ')} match ${nameOf(baseline)}` : '');
+            stat.title = `How many of each one's records find a record of ${nameOf(baseline)}'s (the Baseline). Open the chevron for one to one, repeated and only in`;
             bar.appendChild(stat);
             if (repeatWords) {
                 const w = el('span', 'query-warn query-compare-repeat', repeatWords);

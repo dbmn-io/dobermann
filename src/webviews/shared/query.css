@@ -386,3 +386,11 @@
 .query-kind-line .compare-match-count.is-zero { color: var(--vscode-descriptionForeground); opacity: 0.6; }
 /* (a span's bar runs the whole width of the lanes) */
 .query-span > .query-after { box-sizing: border-box; width: 100%; }
+/* Views' cells: one line each, shortened with "…" (the whole of it on hover) */
+.query-view-cell { overflow: hidden; }
+.query-view-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* A cell across a view's whole lane (its runs alike) */
+.dbmn-lane > .query-lane-whole { grid-column: 1 / -1; }
+/* The key's sample sits under its picker, indented as the picker is */
+.query-compare-key .query-compare-value { padding-left: 8px; }
+.query-compare-key .query-compare-same { padding-left: 8px; }
