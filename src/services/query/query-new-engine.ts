@@ -224,6 +224,38 @@ export interface CompareOnEngine {
 }
 
 /**
+ * Runs any query (buildQuery): the views must be loaded (loadView). `onProgress` hears each stage;
+ * `cancel` stops it (undefined is returned). The Join step's figures: a compare's from CompareStats,
+ * each plain join's from its JoinStats (the values behind a count not yet: `values` empty). Throws
+ * with the engine's words when the query can't run (the row limit among them).
+ * `timings`: how long each part took, in ms, for the stage timings the setting logs.
+ */
+export async function runOnEngine(engine: QueryEngine, spec: QuerySpec, onProgress?: (p: Progress) => void): Promise<(CompareOnEngine & { timings: [string, number][] }) | undefined> {
+    const timings: [string, number][] = [];
+    let at = now();
+    const lap = (what: string) => { const t = now(); timings.push([what, Math.round(t - at)]); at = t; };
+    const { query, layout } = buildQuery(spec);
+    const out = await engine.run(query, { onProgress: p => { onProgress?.(p); } });
+    lap('engine run');
+    if ('cancelled' in out) return undefined;
+    if ('problems' in out) throw new Error(out.problems.map(p => p.message).join(' '));
+    try {
+        const stats = layout.places.length ? compareJoinStats(engine.stats(out.result, 'compare') as CompareStats, layout.places) : new Map<string, QueryJoinStats>();
+        spec.joins.filter(j => j.kind !== 'compare').forEach((j, i) => stats.set(j.view, { ...(engine.stats(out.result, `join${i + 1}`) as Omit<QueryJoinStats, 'values'>), values: [] }));
+        lap('statistics');
+        const read = engine.read(out.result, 0, out.total);
+        lap('read every row');
+        const { rows, keyValues } = resultRows(read.rows, layout);
+        lap('rows for Results');
+        return { rows, keyValues, stats, total: out.total, layout, timings };
+    } finally {
+        engine.release(out.result);
+    }
+}
+
+const now = (): number => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+
+/**
  * Runs the compare: the views must be loaded (loadView). `onProgress` hears each stage; `cancel`
  * stops it (undefined is returned). Throws with the engine's words when the query can't run.
  */

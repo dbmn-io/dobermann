@@ -2137,7 +2137,13 @@
                 break;
             case 'query.sourceList': ui.sources = m.results || []; ui.sourceViews = m.views || {}; break;
             case 'query.progress': setBusy(m.total ? `${m.text} · ${count(m.done)} of ${count(m.total)}` : m.text); break;
-            case 'query.state': applyState(m); break;
+            case 'query.state': {
+                // ("New compare engine (testing)": how long the page takes to draw what the engine gave)
+                const drawn = performance.now();
+                applyState(m);
+                if (m.onEngine) requestAnimationFrame(() => console.log(`[query-engine] page drew the step in ${Math.round(performance.now() - drawn)} ms (${m.total} rows)`));
+                break;
+            }
             // The host's counting: its stage as it starts one, or stopped (since: null)
             case 'query.counting':
                 ui.counting = m.since ? { since: m.since, stage: m.stage } : { stopped: true, stage: m.stage };

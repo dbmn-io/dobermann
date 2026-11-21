@@ -48,7 +48,7 @@ import type { QueryFileStore } from '../../services/query/query-file-store';
 import * as searchMatcherScript from '../../webviews/shared/search-matcher.js';
 import { sharedScript } from '../../utils/shared-script';
 import { QueryEngine } from '../../services/engine/engine';
-import { loadView, onSqliteLine, runCompareOnEngine, whyNotOnEngine } from '../../services/query/query-new-engine';
+import { loadView, onSqliteLine, runOnEngine, whyNotOnEngine, whyNotQueryOnEngine } from '../../services/query/query-new-engine';
 
 const { parseSearchExpression, matchesRow } = sharedScript<typeof searchMatcherScript>(searchMatcherScript, 'SearchMatcher');
 
@@ -1097,14 +1097,16 @@ export class QueryController {
         let duplicates = 0;
         if (spec.views.length) {
             try {
-                const session = await this.sessionFor(spec, version);
-                if (!session) return;
+                // On the new engine, sql.js is not touched: no views loaded into it, no SQL run
+                const onEngine = this.onEngine(spec);
+                const session = onEngine ? undefined : await this.sessionFor(spec, version);
+                if (!onEngine && !session) return;
                 // The report's columns (Columns' step); Results' own, a COMPARE calculation a column per side
                 columns = spec.select.length ? spec.select : defaultColumns(spec);
                 resultColumns = resultColumnRefs(spec);
                 if (this.ports.lookups) this.lookupList = await this.ports.lookups.list();
-                await this.loadLookups(session, spec);
-                sql = session.sql();
+                if (session) await this.loadLookups(session, spec);
+                sql = session ? session.sql() : '';
                 // The step draws at once (its lines, samples from each view's own rows), saying it is counting
                 // and since when; then the counting, which on large results can take a while
                 const since = new Date().toISOString();
@@ -1115,11 +1117,11 @@ export class QueryController {
                     await new Promise<void>(resolve => setTimeout(resolve, 40));
                     return version === this.version && !this.closed;
                 };
-                if (this.onEngine(spec)) {
-                    // A compare of runs on the new engine: its stages said as they come (Stop reaches it between slices)
+                if (onEngine) {
+                    // On the new engine: its stages said as they come (Stop reaches it between slices)
                     let said = '';
                     const words: Record<string, string> = { Starting: 'Starting', Done: 'Reading the rows' };
-                    const result = await this.engineRead(spec, `engine:${sql}`, stg => {
+                    const result = await this.engineRead(spec, engineKey(spec), stg => {
                         const text = words[stg] ?? (stg.startsWith('Comparing') ? `Comparing ${spec.views.length} views` : stg);
                         if (text !== said) { said = text; this.post({ type: 'query.counting', since, stage: text }); }
                     });
@@ -1128,7 +1130,7 @@ export class QueryController {
                     stats = spec.joins.map(j => this.engineStats?.get(j.view) ?? null);
                     preview = result.rows.slice(0, PREVIEW_ROWS);
                     resultTypes = columnTypes(spread(result.rows, TYPE_SAMPLE), resultColumns.length);
-                } else {
+                } else if (session) {
                     if (!await stage('Checking how many rows the joins make')) return;
                     // A join that would make far too many rows is never made: it would fill the page's memory
                     const tooMany = session.tooManyRows();
@@ -1441,17 +1443,20 @@ export class QueryController {
      * run yet. Null: a newer search took over.
      */
     private async found(message: Pick<RowsRequest, 'search' | 'sort' | 'filter'>): Promise<{ result: QueryResult; indices: number[]; searched?: number[]; statuses?: RowStatus[] } | undefined | null> {
-        const session = this.session;
         const { spec } = this.spec();
-        if (!session || !spec.views.length) return undefined;
+        if (!spec.views.length) return undefined;
         let result: QueryResult;
         try {
-            await this.loadLookups(session, spec);
             if (this.onEngine(spec)) {
-                const ran = await this.engineRead(spec, `engine:${session.sql()}`);
+                const ran = await this.engineRead(spec, engineKey(spec));
                 if (!ran) return undefined;
                 result = ran;
-            } else result = this.read(session, spec);
+            } else {
+                const session = this.session;
+                if (!session) return undefined;
+                await this.loadLookups(session, spec);
+                result = this.read(session, spec);
+            }
         } catch (error) {
             // The user's own SQL no longer runs (the page says why): no rows. The steps' SQL failing is an error
             if (this.query?.sql) return undefined;
@@ -1594,7 +1599,9 @@ export class QueryController {
      */
     private onEngine(spec: QuerySpec): boolean {
         const on = !!this.ports.newCompareEngine?.();
-        const why = on ? (this.query?.sql ? 'it has SQL of its own' : whyNotOnEngine(spec)) : undefined;
+        // (a query of one view, no joins yet, is the engine's too: the Views step never loads sql.js)
+        const single = !spec.joins.length && !whyNotQueryOnEngine(spec);
+        const why = on && !single ? (this.query?.sql ? 'it has SQL of its own' : whyNotOnEngine(spec)) : undefined;
         // (said only of a compare: a plain query, or a compare whose key is still to pick, is not one yet)
         const unsaid = why === 'it is not a compare' || why === 'its key is not picked yet';
         this.engineNote = on && why && !unsaid ? onSqliteLine(why) : '';
@@ -1606,8 +1613,14 @@ export class QueryController {
     private engineFor(spec: QuerySpec): QueryEngine {
         const key = JSON.stringify(spec.views.map(v => [v.id, v.columns, this.loaded.get(v.id)?.rows.length ?? 0]));
         if (this.engine && this.engineKey === key) return this.engine;
-        const engine = new QueryEngine();
-        for (const view of spec.views) loadView(engine, view.id, view.columns, this.loaded.get(view.id)?.rows ?? []);
+        const engine = this.engine && this.engineKey.startsWith('[') ? this.engine : new QueryEngine();
+        // (only the views not in it yet, or changed, go in again)
+        const had = new Map<string, string>((JSON.parse(this.engineKey || '[]') as [string, string[], number][]).map(v => [v[0], JSON.stringify(v)]));
+        for (const view of spec.views) {
+            const entry = JSON.stringify([view.id, view.columns, this.loaded.get(view.id)?.rows.length ?? 0]);
+            if (had.get(view.id) === entry && engine === this.engine) continue;
+            loadView(engine, view.id, view.columns, this.loaded.get(view.id)?.rows ?? []);
+        }
         this.engine = engine;
         this.engineKey = key;
         return engine;
@@ -1616,17 +1629,27 @@ export class QueryController {
     /** Results from the new engine (run again only when the query changes): undefined when Stop stopped it. */
     private async engineRead(spec: QuerySpec, key: string, onStage?: (stage: string) => void): Promise<QueryResult | undefined> {
         if (this.result?.key === key) return this.result;
+        // Stage timings (the setting is for testing): each part, in ms, in the console as "[query-engine] …"
+        const started = performance.now();
+        let at = started;
+        const laps: string[] = [];
+        const lap = (what: string) => { const t = performance.now(); laps.push(`${what} ${Math.round(t - at)}`); at = t; };
         const engine = this.engineFor(spec);
+        lap('views into the engine');
         let run;
         try {
-            run = await runCompareOnEngine(engine, spec, p => { this.engineRunning = p.result; onStage?.(p.stage); });
+            run = await runOnEngine(engine, spec, p => { this.engineRunning = p.result; onStage?.(p.stage); });
         } finally {
             this.engineRunning = undefined;
         }
         if (!run) return undefined;
+        at = performance.now();
+        laps.push(...run.timings.map(([what, ms]) => `${what} ${ms}`));
         this.engineStats = run.stats;
         this.result = this.compareResult(key, spec, run.layout.columns, run.rows, run.keyValues, run.layout.places);
+        lap('row status');
         this.filtered = undefined;
+        console.log(`[query-engine] ${run.total} rows of ${spec.views.length} views in ${Math.round(performance.now() - started)} ms: ${laps.join(' · ')} (ms)`);
         return this.result;
     }
 
@@ -1770,4 +1793,7 @@ interface QueryResult {
     statusOf?: (hidden: string[]) => RowStatus[];
 }
 
-
+/** Results' key on the new engine: the query as the engine sees it. */
+function engineKey(spec: QuerySpec): string {
+    return `engine:${JSON.stringify(spec)}`;
+}
