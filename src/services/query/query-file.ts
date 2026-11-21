@@ -42,13 +42,53 @@ export function readFileSheets(name: string, content: { text?: string; base64?: 
     }
     if (!content.base64) throw new Error(`${name} could not be read.`);
     // (cells as values only, each sheet as rows: a quarter of the memory and half the time of SheetJS's default on a large workbook)
-    const book = XLSX.read(content.base64, { type: 'base64', dense: true, cellText: false, cellHTML: false });
+    const book = XLSX.read(workbookBytes(content.base64), { type: 'array', ...VALUES_ONLY });
     const sheets = book.SheetNames
         .map(sheet => ({ sheet, table: XLSX.utils.sheet_to_json<unknown[]>(book.Sheets[sheet], { header: 1, raw: true, defval: null }) }))
         .filter(s => (s.table[0] ?? []).some(v => v !== null && v !== undefined && v !== ''))
         .map(s => ({ sheet: s.sheet, ...tableRows(s.table) }));
     if (!sheets.length) throw new Error(`${name} has no columns: a sheet's first row should name them.`);
     return sheets;
+}
+
+/** SheetJS reading values only, each sheet as rows (no formatted text, no HTML): the same rows, far less work. */
+const VALUES_ONLY = { dense: true, cellText: false, cellHTML: false } as const;
+
+/** A workbook's bytes from the base64 the page sends (SheetJS's own base64 decoding is half its time on a large workbook). */
+export function workbookBytes(base64: string): Uint8Array {
+    const text = atob(base64);
+    const bytes = new Uint8Array(text.length);
+    for (let i = 0; i < text.length; i++) bytes[i] = text.charCodeAt(i);
+    return bytes;
+}
+
+/** Is this file a workbook (read a sheet at a time), not a CSV? */
+export function isWorkbook(name: string): boolean {
+    return /\.(xlsx|xls)$/i.test(name);
+}
+
+/**
+ * A workbook's sheets for the picker, from each sheet's first rows only (about a second for a large
+ * workbook, not the whole of it): its name, its columns, and how many rows it has below them. A
+ * sheet with no first row of names is passed over, as readFileSheets passes it over.
+ */
+export function workbookSheets(bytes: Uint8Array): { sheet: string; columns: number; rows: number }[] {
+    const book = XLSX.read(bytes, { type: 'array', ...VALUES_ONLY, sheetRows: 2 });
+    return book.SheetNames.flatMap(sheet => {
+        const ws = book.Sheets[sheet];
+        const head = (XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, raw: true, defval: null })[0] ?? []);
+        if (!head.some(v => v !== null && v !== undefined && v !== '')) return [];
+        const full = ws['!fullref'] ?? ws['!ref'];
+        const range = full ? XLSX.utils.decode_range(full) : undefined;
+        return [{ sheet, columns: columnNames(head).length, rows: range ? Math.max(0, range.e.r - range.s.r) : 0 }];
+    });
+}
+
+/** One sheet of a workbook, read on its own (workbookSheets first, then each sheet picked). */
+export function readWorkbookSheet(bytes: Uint8Array, sheet: string): QueryFileSheet {
+    const book = XLSX.read(bytes, { type: 'array', ...VALUES_ONLY, sheets: sheet });
+    const table = XLSX.utils.sheet_to_json<unknown[]>(book.Sheets[sheet], { header: 1, raw: true, defval: null });
+    return { sheet, ...tableRows(table) };
 }
 
 function tableRows(table: unknown[][]): QueryFileRows {

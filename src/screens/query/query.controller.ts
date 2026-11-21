@@ -43,7 +43,7 @@ import type { ColumnDefinition } from '../../types/console-messages';
 import { ConsoleChainHandler } from '../console/console-chain-handler';
 import type { ChainHandoff } from '../../services/chain/chain-types';
 import type { APIEndpointConfig } from '../../apiConfigManager';
-import { readFileSheets, QueryFileRows, QueryFileSheet } from '../../services/query/query-file';
+import { isWorkbook, readFileSheets, readWorkbookSheet, workbookBytes, workbookSheets, QueryFileRows, QueryFileSheet } from '../../services/query/query-file';
 import type { QueryFileStore } from '../../services/query/query-file-store';
 import { localEngineHost, type EngineHost } from '../../services/engine/engine-host';
 import { QueryEngine } from '../../services/engine/engine';
@@ -712,13 +712,27 @@ export class QueryController {
      * A CSV is one view; a workbook is one per sheet, each named for its sheet.
      */
     /** A workbook read and waiting for the user to say which of its sheets become views. */
-    private pendingFile?: { name: string; sheets: QueryFileSheet[] };
+    private pendingFile?: { name: string; sheets: QueryFileSheet[]; bytes?: Uint8Array };
 
     private async addFile(message: FileMessage): Promise<void> {
         const query = this.query;
         if (!query) return;
         if (query.sources.length >= MAX_QUERY_VIEWS) throw new Error(`A query takes up to ${MAX_QUERY_VIEWS} views.`);
         const fileName = String(message.name || 'File');
+        if (isWorkbook(fileName) && message.base64) {
+            // A workbook: its sheets listed from their first rows (about a second), each picked one then read on its own
+            this.post({ type: 'query.progress', text: `Reading ${fileName}` });
+            const bytes = workbookBytes(String(message.base64));
+            const list = workbookSheets(bytes);
+            if (!list.length) throw new Error(`${fileName} has no columns: a sheet's first row should name them.`);
+            if (list.length > 1) {
+                this.pendingFile = { name: fileName, sheets: [], bytes };
+                this.post({ type: 'query.fileSheets', name: fileName, room: MAX_QUERY_VIEWS - query.sources.length, sheets: list });
+                return;
+            }
+            await this.addSheets(fileName, await this.readSheets(fileName, bytes, [list[0].sheet]));
+            return;
+        }
         const sheets = readFileSheets(fileName, message);
         // A workbook of several sheets: the user says which become views (query.addSheets answers)
         if (sheets.length > 1) {
@@ -737,7 +751,20 @@ export class QueryController {
         const pending = this.pendingFile;
         this.pendingFile = undefined;
         if (!pending || !names.length) return;
-        await this.addSheets(pending.name, pending.sheets.filter(s => names.includes(s.sheet)), true);
+        const room = MAX_QUERY_VIEWS - (this.query?.sources.length ?? 0);
+        const sheets = pending.bytes ? await this.readSheets(pending.name, pending.bytes, names.slice(0, room)) : pending.sheets.filter(s => names.includes(s.sheet));
+        await this.addSheets(pending.name, sheets, true);
+    }
+
+    /** A workbook's sheets read one at a time, saying which ("Reading sheet C2 (2 of 4)"), the page given way between them. */
+    private async readSheets(fileName: string, bytes: Uint8Array, names: string[]): Promise<QueryFileSheet[]> {
+        const out: QueryFileSheet[] = [];
+        for (const [i, sheet] of names.entries()) {
+            this.post({ type: 'query.progress', text: names.length > 1 ? `Reading sheet ${sheet} (${i + 1} of ${names.length})` : `Reading ${fileName}` });
+            await new Promise(resolve => setTimeout(resolve, 30));
+            out.push(readWorkbookSheet(bytes, sheet));
+        }
+        return out;
     }
 
     private async addSheets(fileName: string, sheets: QueryFileSheet[], bySheet = false): Promise<void> {
