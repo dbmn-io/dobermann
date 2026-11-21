@@ -160,6 +160,11 @@
 /* The name and the slots stay on one line, so the lanes stay under the slots; only Results' tools wrap */
 .query-page > .compare-results-tools { flex-wrap: nowrap; }
 .query-page > .compare-results-tools:has(#queryResultsControls:not(.hidden)) { flex-wrap: wrap; }
+/* Results' own tools wrap onto a second line rather than run past the page's edge (Chain, Totals, Export
+   stay reachable at a laptop's width); the search box gives way first, down to a usable width */
+#queryResultsControls { flex: 1 1 100%; min-width: 0; flex-wrap: wrap; row-gap: 6px; }
+#queryResultsControls > .search-container { flex: 1 1 220px; min-width: 180px; }
+#queryResultsControls .query-status-tools { flex-wrap: wrap; row-gap: 6px; }
 /* Totals stay in sight under the rows */
 .query-page tfoot td { position: sticky; bottom: 0; background: var(--vscode-editor-background); border-top: 1px solid var(--vscode-panel-border); }
 /* The SQL box is code (the modal input's own font would win) */
