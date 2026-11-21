@@ -799,6 +799,33 @@ export class QueryEngine implements Engine {
     }
 
     /**
+     * Results' totals over a result's first `count` columns, as Results works them out (query-new-engine
+     * pagedTotals): the numbers' sum, none for a column with any text, as many decimals as its values
+     * have (two at most), a blank left out. Worked out where the rows are: none is read out for it.
+     */
+    totals(result: ResultId, count: number): { totals: (number | null)[]; places: number[] } {
+        const rel = this.results.get(result);
+        if (!rel) throw new Error(`Engine: no result "${result}"`);
+        const n = Math.min(count, rel.cols.length);
+        const sums = new Array<number>(n).fill(0);
+        const any = new Array<boolean>(n).fill(false);
+        const text = new Array<boolean>(n).fill(false);
+        const decimals = new Array<number>(n).fill(0);
+        for (let c = 0; c < n; c++) {
+            for (let r = 0; r < rel.rowCount; r++) {
+                const v = toValue(rel.value(r, c));
+                if (v === null || v === '') continue;
+                if (typeof v !== 'number') { text[c] = true; break; }
+                sums[c] += v;
+                any[c] = true;
+                if (decimals[c] < 2 && !Number.isInteger(v)) decimals[c] = Math.max(decimals[c], Math.min(2, (String(v).split('.')[1] ?? '').length || 2));
+            }
+        }
+        const places = decimals.map((d, c) => (text[c] ? 0 : d));
+        return { totals: sums.map((sum, c) => (text[c] || !any[c] ? null : Math.round(sum * 10 ** places[c]) / 10 ** places[c])), places };
+    }
+
+    /**
      * A result with some of its columns worked out once and stored (a compare's status columns): a new
      * result over the same rows, its other columns read as before. Later runs can start from it.
      */

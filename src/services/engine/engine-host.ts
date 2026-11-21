@@ -23,6 +23,8 @@ export interface EngineHost {
     readRows(result: ResultId, rows: number[]): Promise<TableWindow>;
     stats(result: ResultId, step: string, window?: StatsWindow): Promise<JoinStats | CompareStats | Table>;
     release(result: ResultId): Promise<void>;
+    /** Results' totals over a result's first columns (QueryEngine.totals). */
+    totals(result: ResultId, count: number): Promise<{ totals: (number | null)[]; places: number[] }>;
     /** A result with these columns stored (QueryEngine.hold): its id. */
     hold(result: ResultId, columns: string[]): Promise<ResultId>;
     /** Ends it (a worker is stopped). */
@@ -44,6 +46,7 @@ export function localEngineHost(engine: QueryEngine = new QueryEngine()): Engine
         stats: async (result, step, window) => engine.stats(result, step, window),
         release: async result => engine.release(result),
         hold: async (result, columns) => engine.hold(result, columns),
+        totals: async (result, count) => engine.totals(result, count),
         close: () => undefined,
         alive: () => true
     };
@@ -97,6 +100,7 @@ export function remoteEngineHost(port: EnginePort): EngineHost {
         stats: (result, step, window) => call('stats', [result, step, window]),
         release: result => call('release', [result]),
         hold: (result, columns) => call('hold', [result, columns]),
+        totals: (result, count) => call('totals', [result, count]),
         close: () => { for (const w of waiting.values()) w.reject(new Error('The engine was closed')); waiting.clear(); port.close?.(); },
         alive: () => !failed
     };
@@ -119,6 +123,7 @@ export function serveEngine(port: EnginePort, engine: QueryEngine = new QueryEng
                 case 'stats': value = engine.stats(args[0] as ResultId, args[1] as string, args[2] as StatsWindow | undefined); break;
                 case 'release': engine.release(args[0] as ResultId); break;
                 case 'hold': value = engine.hold(args[0] as ResultId, args[1] as string[]); break;
+                case 'totals': value = engine.totals(args[0] as ResultId, args[1] as number); break;
                 default: throw new Error(`Engine: no call "${call}"`);
             }
             port.post({ id, ok: true, value } satisfies Answer);

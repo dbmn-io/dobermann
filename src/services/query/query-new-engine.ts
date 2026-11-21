@@ -949,6 +949,8 @@ export async function spreadPage(engineIn: QueryEngine | EngineHost, paged: Page
 /** Results' totals as they were worked out on its rows: per column, the numbers' sum (blank when a value is text), to two places at most. */
 export async function pagedTotals(engineIn: QueryEngine | EngineHost, paged: PagedResult): Promise<{ totals: (number | null)[]; places: number[] }> {
     const n = paged.layout.columns.length;
+    // (Results' columns as the engine has them, none filled from another view's key: added up in the engine, no row read out)
+    if (paged.layout.keyColumnOf.every(k => k === undefined)) return hostOf(engineIn).totals(paged.id, n);
     const sums = new Array<number>(n).fill(0);
     const any = new Array<boolean>(n).fill(false);
     const text = new Array<boolean>(n).fill(false);
