@@ -1877,7 +1877,7 @@
         const on = !!say;
         line.classList.toggle('hidden', !on);
         table.classList.toggle('is-reading', on);
-        if (!on) { line.removeAttribute('since'); return; }
+        if (!on) { line.removeAttribute('since'); line.removeAttribute('note'); line.removeAttribute('tone'); return; }
         const it = typeof say === 'string' ? { phase: say } : say;
         if (!line.hasAttribute('since')) line.setAttribute('since', String(Date.now()));
         line.setAttribute('phase', it.phase);
@@ -2277,7 +2277,12 @@
                 renderJoins();
                 break;
             // Results' work as it goes (the first page not in yet)
-            case 'query.reading': if (!grid.stopped && !$('queryReading').classList.contains('hidden')) reading(readingStage(m.stage, m.done, m.total)); break;
+            case 'query.reading':
+                if (grid.stopped || $('queryReading').classList.contains('hidden')) break;
+                // (a large compare: said once, before it starts, and kept beside the stages: "About 13 seconds")
+                if (m.note) { $('queryReading').setAttribute('note', m.note); $('queryReading').setAttribute('tone', 'warn'); }
+                reading(readingStage(m.stage, m.done, m.total));
+                break;
             // A column moved: the SQL and Columns say the new order (Results already shows it)
             case 'query.arranged':
                 if (!ui.state) break;

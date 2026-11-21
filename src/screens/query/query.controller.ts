@@ -81,6 +81,26 @@ export interface QueryConfig {
 
 export type QueryMessage = { type: string; [key: string]: unknown };
 
+/**
+ * A compare's records worked out per second, and what each value costs in memory, as measured in Node at
+ * 4 x 105k and 4 x 1M rows (engine-poc/drive-query-4x105k.cjs: 4M records compared and held in about 7 s),
+ * halved for a browser tab. For the estimate Results says before a large compare starts.
+ */
+const RECORDS_PER_SECOND = 300_000;
+const BYTES_PER_VALUE = 24;
+/** Past this the compare is refused in words: what a browser tab can hold, with room for the page. */
+const TAB_BYTES = 3_000_000_000;
+
+/** How large a compare is before it runs: its views, records, about how long and how much memory. */
+function compareSize(spec: QuerySpec, rows: (id: string) => number): { views: number; records: number; seconds: number; bytes: number } {
+    const views = spec.views.length;
+    const records = spec.views.reduce((n, v) => n + rows(v.id), 0);
+    const values = spec.views.reduce((n, v) => n + rows(v.id) * Math.max(1, v.columns.length), 0);
+    // (the views' values, and the compare's own per row: which record of each view, its status)
+    const bytes = values * BYTES_PER_VALUE + records * (16 + 4 * views);
+    return { views, records, seconds: Math.max(1, Math.round(records / RECORDS_PER_SECOND)), bytes };
+}
+
 /** A view's rows into the engine this many at a time (a file's, read whole: feedEngine). */
 const FEED_ROWS = 20_000;
 /** Search reads this many rows between giving way to the page. */
@@ -1874,6 +1894,14 @@ export class QueryController {
         const key = resultsKey(engineKey(spec), null, '', { ...status, filter: undefined });
         if (this.pagedHeld && this.pagedHeld.key === key && this.pagedHeld.host === host) return this.pagedHeld.result;
         let held: (PagedResult & { figures?: FullFigures }) | undefined;
+        // How large it is, said before it starts (and refused in words past what a browser tab can hold)
+        const size = compareSize(spec, id => this.rowCount(id));
+        if (size.bytes > TAB_BYTES) {
+            throw new Error(`Too large to compare here: ${size.views} views, ${size.records.toLocaleString('en-US')} records, about ${(size.bytes / 1e9).toFixed(1)} GB. A browser tab holds about ${(TAB_BYTES / 1e9).toFixed(0)} GB. Compare fewer records, or fewer columns.`);
+        }
+        if (size.seconds >= 3) {
+            this.post({ type: 'query.reading', stage: 'Comparing the records', done: 0, total: 0, note: `A large compare: ${size.views} views, ${size.records.toLocaleString('en-US')} records. About ${size.seconds} seconds.` });
+        }
         try {
             // The whole compare (Join and Columns had a sample): its rows, and with them the true figures
             if (this.pagedRunning) host.cancel(this.pagedRunning);
