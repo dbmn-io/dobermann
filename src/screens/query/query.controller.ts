@@ -1595,7 +1595,9 @@ export class QueryController {
     private onEngine(spec: QuerySpec): boolean {
         const on = !!this.ports.newCompareEngine?.();
         const why = on ? (this.query?.sql ? 'it has SQL of its own' : whyNotOnEngine(spec)) : undefined;
-        this.engineNote = on && why ? onSqliteLine(why) : '';
+        // (said only of a compare: a plain query, or a compare whose key is still to pick, is not one yet)
+        const unsaid = why === 'it is not a compare' || why === 'its key is not picked yet';
+        this.engineNote = on && why && !unsaid ? onSqliteLine(why) : '';
         this.engineOn = on && !why;
         return this.engineOn;
     }
