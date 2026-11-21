@@ -10,7 +10,7 @@ import * as assert from 'assert';
 import initSqlJs from 'sql.js';
 import type { Database, SqlJsStatic } from 'sql.js';
 import { QueryEngine } from '../../../services/engine/engine';
-import type { Expr, FunctionName, Value } from '../../../services/engine/engine-types';
+import type { Expr, FunctionName, Table, Value } from '../../../services/engine/engine-types';
 import { SQL_WASM_PATH } from '../fixtures/temp-storage';
 
 /** The values every function is tried on. */
@@ -191,6 +191,74 @@ describe('The engine, first piece: tables, select, filter, functions', () => {
                 await joinsAsSqlite(kind, [{ sql: 'UPPER(l.j) = UPPER(r.j)', left: { fn: 'UPPER', args: [j('l')] }, right: { fn: 'UPPER', args: [j('r')] } }]);
             });
         }
+
+        it('a join step\'s statistics as today\'s joinStats counts them in SQLite (query-engine.ts), one key and two', async () => {
+            for (const parts of [['k'], ['k', 'j']]) {
+                const db = new SQL_.Database();
+                db.run('CREATE TABLE l (k, j, name)'); db.run('CREATE TABLE r (k, j, name)');
+                L.forEach(row => db.run('INSERT INTO l VALUES (?, ?, ?)', row as (string | number | null)[]));
+                R.forEach(row => db.run('INSERT INTO r VALUES (?, ?, ?)', row as (string | number | null)[]));
+                const ks = parts.map((_, i) => `k${i}`);
+                const groups = `WITH _l AS (SELECT ${parts.map((p, i) => `${p} AS k${i}`).join(', ')} FROM l), _r AS (SELECT ${parts.map((p, i) => `${p} AS k${i}`).join(', ')} FROM r),
+_lg AS (SELECT ${ks.join(', ')}, COUNT(*) AS n FROM _l WHERE ${ks.map(k => `${k} IS NOT NULL`).join(' AND ')} GROUP BY ${ks.join(', ')}),
+_rg AS (SELECT ${ks.join(', ')}, COUNT(*) AS n FROM _r WHERE ${ks.map(k => `${k} IS NOT NULL`).join(' AND ')} GROUP BY ${ks.join(', ')})`;
+                const same = ks.map(k => `lg.${k} = rg.${k}`).join(' AND ');
+                const kinds = ['lg.n = 1 AND rg.n = 1', 'lg.n = 1 AND rg.n > 1', 'lg.n > 1 AND rg.n = 1', 'lg.n > 1 AND rg.n > 1'];
+                const t = db.exec(`${groups} SELECT (SELECT COUNT(*) FROM _l), (SELECT COUNT(*) FROM _r), (SELECT COALESCE(SUM(n), 0) FROM _lg),
+  COALESCE(SUM(lg.n), 0), COALESCE(SUM(rg.n), 0), COALESCE(SUM(lg.n * rg.n), 0),
+  ${kinds.map(k => `COALESCE(SUM(${k}), 0), COALESCE(SUM((${k}) * lg.n), 0), COALESCE(SUM((${k}) * rg.n), 0)`).join(', ')},
+  (SELECT COUNT(*) FROM _lg), (SELECT COUNT(*) FROM _rg) FROM _lg AS lg JOIN _rg AS rg ON ${same}`)[0].values[0].map(Number);
+                const onlyRight = Number(db.exec(`${groups} SELECT COUNT(*) FROM _rg AS rg WHERE NOT EXISTS (SELECT 1 FROM _lg AS lg WHERE ${same})`)[0].values[0][0]);
+                db.close();
+                const [leftRows, rightRows, leftKeyed, leftMatched, rightMatched, pairs] = t;
+                const kc = t.slice(6, 18);
+                const e = new QueryEngine();
+                e.load('l', { columns: ['k', 'j', 'name'], rows: L });
+                e.load('r', { columns: ['k', 'j', 'name'], rows: R });
+                const out = await e.run({ steps: [{ as: 'j', join: 'outer', left: 'l', right: 'r', on: parts.map(p => ({ left: { column: p, of: 'l' }, right: { column: p, of: 'r' } })) }] });
+                assert.ok('result' in out);
+                const st = e.stats(out.result, 'j') as import('../../../services/engine/engine-types').JoinStats;
+                assert.deepStrictEqual(
+                    [st.leftRows, st.rightRows, st.leftRows - st.leftBlank, st.leftMatched, st.rightMatched, st.rowsAfter - (st.leftRows - st.leftMatched) - (st.rightRows - st.rightMatched)],
+                    [leftRows, rightRows, leftKeyed, leftMatched, rightMatched, pairs], parts.join('+'));
+                assert.deepStrictEqual(st.keys, { oneToOne: kc[0], oneToMany: kc[3], manyToOne: kc[6], manyToMany: kc[9] });
+                assert.deepStrictEqual(st.rows, { oneToOne: kc[1], oneToMany: kc[4], manyToOne: kc[7], manyToMany: kc[10] });
+                assert.deepStrictEqual(st.records, { oneToOne: kc[2], oneToMany: kc[5], manyToOne: kc[8], manyToMany: kc[11] });
+                assert.deepStrictEqual([st.leftValues, st.rightValues, st.valuesTotal], [t[18], t[19], t[18] + onlyRight]);
+            }
+        });
+
+        it('the values behind a count, a page at a time; a key that is a number on one side and text on the other said', async () => {
+            const e = new QueryEngine();
+            e.load('l', { columns: ['k'], rows: [['a'], ['a'], ['b'], ['c'], [null], ['d'], ['d'], ['d']] });
+            e.load('r', { columns: ['k'], rows: [['a'], ['b'], ['b'], ['b'], ['x'], ['d'], ['d']] });
+            const out = await e.run({ steps: [{ as: 'j', join: 'left', left: 'l', right: 'r', on: [{ left: { column: 'k' }, right: { column: 'k' } }] }] });
+            assert.ok('result' in out);
+            const w = (kind: import('../../../services/engine/engine-types').StatsWindow['kind'], from = 0, count = 10) => (e.stats(out.result, 'j', { kind, side: 'left', from, count }) as Table);
+            assert.deepStrictEqual(w('manyToOne'), { columns: ['key', 'left', 'right'], rows: [['a', 2, 1]] });
+            assert.deepStrictEqual(w('oneToMany').rows, [['b', 1, 3]]);
+            assert.deepStrictEqual(w('manyToMany').rows, [['d', 3, 2]]);
+            assert.deepStrictEqual(w('onlyLeft').rows, [['c', 1, 0]]);
+            assert.deepStrictEqual(w('onlyRight').rows, [['x', 0, 1]]);
+            const st = e.stats(out.result, 'j') as import('../../../services/engine/engine-types').JoinStats;
+            assert.strictEqual(st.leftBlank, 1);
+            assert.strictEqual(st.relationship, 'manyToMany');
+            assert.strictEqual(st.typeMismatch, false);
+            const many = new QueryEngine();
+            many.load('l', { columns: ['k'], rows: [['a'], ['a'], ['b'], ['c'], ['c'], ['c']] });
+            many.load('r', { columns: ['k'], rows: [['a'], ['a'], ['b'], ['b'], ['c'], ['c'], [1]] });
+            const m = await many.run({ steps: [{ as: 'j', join: 'inner', left: 'l', right: 'r', on: [{ left: { column: 'k' }, right: { column: 'k' } }] }] });
+            assert.ok('result' in m);
+            // Rows they make first: c (3 × 2), then a (2 × 2); paged
+            assert.deepStrictEqual((many.stats(m.result, 'j', { kind: 'manyToMany', side: 'left', from: 0, count: 1 }) as Table).rows, [['c', 3, 2]]);
+            assert.deepStrictEqual((many.stats(m.result, 'j', { kind: 'manyToMany', side: 'left', from: 1, count: 5 }) as Table).rows, [['a', 2, 2]]);
+            const t = new QueryEngine();
+            t.load('l', { columns: ['k'], rows: [['1'], ['2']] });
+            t.load('r', { columns: ['k'], rows: [[1], [2]] });
+            const tm = await t.run({ steps: [{ as: 'j', join: 'left', left: 'l', right: 'r', on: [{ left: { column: 'k' }, right: { column: 'k' } }] }] });
+            assert.ok('result' in tm);
+            assert.strictEqual((t.stats(tm.result, 'j') as import('../../../services/engine/engine-types').JoinStats).typeMismatch, true);
+        });
 
         it('a join over the row limit is refused before any row is made; under it, made', async () => {
             const e = new QueryEngine(5);

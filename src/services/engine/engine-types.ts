@@ -6,11 +6,11 @@
  * Query as plain data, a Table out.
  *
  * Built in pieces, each tested against SQLite (sql.js, as the app runs today) by the tester's
- * reference harness. **Pieces 1 to 4** implement: `load`, `append`, `drop`, `check`, `run` (with
+ * reference harness. **Pieces 1 to 5** implement: `load`, `append`, `drop`, `check`, `run` (with
  * progress) / `cancel` / `read` / `release` for a query of `from`, `join`, `compare`, `select`,
- * `filter` and `sort` steps, `stats` for a compare step, and every function in FUNCTIONS
- * with its operators. The `group` step and a join step's `stats` are declared here as agreed and
- * come in later pieces; until then `check` refuses a group step by name.
+ * `filter` and `sort` steps, `stats` for a compare or join step, and every function in FUNCTIONS
+ * with its operators. The `group` step is declared here as agreed and comes in a later piece;
+ * until then `check` refuses it by name.
  */
 
 /*
@@ -141,7 +141,13 @@ export type ResultId = string;
 
 export interface KindCounts { oneToOne: number; oneToMany: number; manyToOne: number; manyToMany: number }
 
-/** A join step's statistics: today's QueryJoinStats fields (src/services/query/query-types.ts). */
+/**
+ * A join step's statistics: today's QueryJoinStats fields (src/services/query/query-types.ts),
+ * counted from the same keys the join matched on (blank keys left out, as they match nothing).
+ * keys: matched key values of each kind; rows: the left's rows with them; records: the right's.
+ * leftValues / rightValues: different key values on each side; valuesTotal: every key value of
+ * either side; typeMismatch: some key part holds only numbers on one side and only text on the other.
+ */
 export interface JoinStats {
     leftRows: number;
     leftMatched: number;
@@ -185,7 +191,14 @@ export interface CompareStats {
     status: { same: number; diff: number; missing: number; notInBaseline: number; duplicate: number };
 }
 
-/** With a window, `stats` gives the values behind one count: key columns, then the rows each side holds. */
+/**
+ * With a window, `stats` gives the values behind one count of a join step, a page at a time: a
+ * Table of the key's parts ("key", or "key 1", "key 2"…), then "left" and "right", how many rows
+ * each side holds with that key. `kind`: the matched keys of one kind, or the keys only the left
+ * (`onlyLeft`, no match) or only the right (`onlyRight`, not used) holds. Blank keys are not values
+ * (JoinStats.leftBlank counts them). Order, as today's Join step: rows they make first (left × the
+ * right's, at least 1), then the right's, then the key. `side` is the caller's; both counts are given.
+ */
 export interface StatsWindow {
     kind: keyof KindCounts | 'onlyLeft' | 'onlyRight';
     side: 'left' | 'right';

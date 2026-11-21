@@ -83,8 +83,8 @@ export class QueryEngine implements Engine {
     private readonly tables = new Map<string, StoredTable>();
     private readonly results = new Map<ResultId, Relation>();
     private readonly cancelled = new Set<ResultId>();
-    /** Each result's compare steps' statistics, by step name. */
-    private readonly compareStats = new Map<ResultId, Map<string, CompareStats>>();
+    /** Each result's compare and join steps' statistics, by step name (a join's with its values, for windows). */
+    private readonly stepStats = new Map<ResultId, Map<string, CompareStats | JoinFacts>>();
     private nextResult = 1;
     private readonly ctx: FunctionContext = {
         table: name => {
@@ -244,22 +244,23 @@ export class QueryEngine implements Engine {
                 const kind = kindOf(step)!;
                 const name = stepName(step, i);
                 const input = (n: string): Relation => (kind !== 'from' && made.get(n)) || this.tableRelation(n);
-                const rel = kind === 'compare'
-                    ? await this.compared(step as Extract<Step, { compare: string[] }>, name, input, slice, stats => {
-                        if (!this.compareStats.has(id)) this.compareStats.set(id, new Map());
-                        this.compareStats.get(id)!.set(name, stats);
-                    })
+                const keep = (stats: CompareStats | JoinFacts) => {
+                    if (!this.stepStats.has(id)) this.stepStats.set(id, new Map());
+                    this.stepStats.get(id)!.set(name, stats);
+                };
+                const rel = kind === 'compare' ? await this.compared(step as Extract<Step, { compare: string[] }>, name, input, slice, keep)
+                    : kind === 'join' ? await this.joined(step as Extract<Step, { join: JoinKind }>, name, input, slice, keep)
                     : await this.stepRelation(step, kind, name, input, slice);
                 made.set(name, rel);
                 last = rel;
             }
-            if (this.cancelled.has(id)) { this.compareStats.delete(id); return { cancelled: true }; }
+            if (this.cancelled.has(id)) { this.stepStats.delete(id); return { cancelled: true }; }
             const answer = query.result ? made.get(query.result)! : last!;
             progress('Done', answer.rowCount, answer.rowCount);
             this.results.set(id, answer);
             return { result: id, total: answer.rowCount };
         } catch (error) {
-            this.compareStats.delete(id);
+            this.stepStats.delete(id);
             if (error instanceof Cancelled) return { cancelled: true };
             if (error instanceof TooMany) return { problems: [error.problem] };
             throw error;
@@ -270,7 +271,6 @@ export class QueryEngine implements Engine {
 
     private async stepRelation(step: Step, kind: Kind, name: string, input: (n: string) => Relation,
         slice: (stage: string, done: number, total: number) => Promise<void>): Promise<Relation> {
-        if (kind === 'join') return this.joined(step as Extract<Step, { join: JoinKind }>, name, input, slice);
         const from = inputsOf(step, kind)[0];
         const base = input(from);
         if (kind === 'from') return { ...base, cols: base.cols.map(c => ({ name: c.name, owners: [from, ...(step.as ? [step.as] : [])] })) };
@@ -297,7 +297,7 @@ export class QueryEngine implements Engine {
      * the kind keeps); past the row limit it is refused, no row made.
      */
     private async joined(step: Extract<Step, { join: JoinKind }>, name: string, input: (n: string) => Relation,
-        slice: (stage: string, done: number, total: number) => Promise<void>): Promise<Relation> {
+        slice: (stage: string, done: number, total: number) => Promise<void>, keep: (facts: JoinFacts) => void): Promise<Relation> {
         const left = input(step.left);
         const right = input(step.right);
         const stage = `Joining ${step.right}`;
@@ -316,11 +316,14 @@ export class QueryEngine implements Engine {
         // The left's keys, and how many rows the join would make
         const leftKeys = new Array<string | null>(left.rowCount);
         const usedRight = new Uint8Array(right.rowCount);
+        // Each left key's rows, and its first row (for the values behind a count)
+        const leftHeld = new Map<string, { n: number; first: number }>();
         let pairs = 0, leftAlone = 0;
         for (let r = 0; r < left.rowCount; r++) {
             if (r && r % SLICE === 0) await slice(stage, right.rowCount + r, work);
             const key = keyOf(lk.map(f => f(r)));
             leftKeys[r] = key;
+            if (key !== null) { const h = leftHeld.get(key); if (h) h.n++; else leftHeld.set(key, { n: 1, first: r }); }
             const list = key === null ? undefined : byKey.get(key);
             if (list) { pairs += list.length; for (const x of list) usedRight[x] = 1; } else leftAlone++;
         }
@@ -329,6 +332,7 @@ export class QueryEngine implements Engine {
         const keepsLeft = step.join === 'left' || step.join === 'outer';
         const keepsRight = step.join === 'right' || step.join === 'outer';
         const rows = pairs + (keepsLeft ? leftAlone : 0) + (keepsRight ? rightAlone : 0);
+        keep(joinFacts(left, right, lk, rk, leftHeld, byKey, rows));
         if (rows > this.rowLimit) {
             throw new TooMany({ step: name, message: `Joining ${step.right} would make ${count(rows)} rows, more than the ${count(this.rowLimit)} a query can hold. Check its key columns.` });
         }
@@ -570,16 +574,18 @@ export class QueryEngine implements Engine {
         return { columns: rel.cols.map(c => c.shown ?? c.name), rows, total: rel.rowCount };
     }
 
-    stats(result: ResultId, step: string, _window?: StatsWindow): JoinStats | CompareStats | Table {
+    stats(result: ResultId, step: string, window?: StatsWindow): JoinStats | CompareStats | Table {
         if (!this.results.has(result)) throw new Error(`Engine: no result "${result}"`);
-        const found = this.compareStats.get(result)?.get(step);
-        if (found) return found;
-        throw new Error(`Engine: no statistics for "${step}" (a join step's come with their own piece)`);
+        const found = this.stepStats.get(result)?.get(step);
+        if (!found) throw new Error(`Engine: no statistics for "${step}": not a join or compare step of this result`);
+        if (found instanceof JoinFacts) return window ? found.window(window) : found.stats;
+        if (window) throw new Error('Engine: a compare step\'s statistics have no window yet');
+        return found;
     }
 
     release(result: ResultId): void {
         this.results.delete(result);
-        this.compareStats.delete(result);
+        this.stepStats.delete(result);
     }
 
     /** Roughly what the loaded tables hold, in bytes (the memory checks). */
@@ -626,4 +632,71 @@ function findColumn(e: { column: string; of?: string }, cols: Col[], input: stri
     if (found.length === 1) return found[0].i;
     if (!found.length) return e.of !== undefined && e.of !== input ? `There is no column "${e.column}" in "${e.of}".` : `There is no column "${e.column}".`;
     return `"${e.column}" is in more than one input (${found.map(x => x.c.owners[x.c.owners.length - 1]).join(', ')}): say which.`;
+}
+
+/** A join step's statistics, and what its windows read: each key value's rows on each side. */
+class JoinFacts {
+    constructor(
+        readonly stats: JoinStats,
+        /** Every key value: its rows on the left and the right, and a row holding it (on the left if it has one). */
+        private readonly values: { ln: number; rn: number; side: 'left' | 'right'; row: number }[],
+        private readonly partsOf: (value: { side: 'left' | 'right'; row: number }) => V[],
+        private readonly parts: number
+    ) {}
+
+    /** The values behind one count (engine-types.ts StatsWindow). */
+    window(w: StatsWindow): Table {
+        const of = (v: { ln: number; rn: number }): StatsWindow['kind'] =>
+            !v.rn ? 'onlyLeft' : !v.ln ? 'onlyRight'
+                : v.ln === 1 && v.rn === 1 ? 'oneToOne' : v.ln === 1 ? 'oneToMany' : v.rn === 1 ? 'manyToOne' : 'manyToMany';
+        const picked = this.values.filter(v => of(v) === w.kind).map(v => ({ v, key: this.partsOf(v) }));
+        picked.sort((a, b) => (b.v.ln * Math.max(b.v.rn, 1)) - (a.v.ln * Math.max(a.v.rn, 1)) || b.v.rn - a.v.rn
+            || a.key.reduce<number>((c, x, i) => c || compareValues(x, b.key[i]), 0));
+        const from = Math.max(0, Math.floor(w.from));
+        const columns = this.parts === 1 ? ['key'] : Array.from({ length: this.parts }, (_, i) => `key ${i + 1}`);
+        return {
+            columns: [...columns, 'left', 'right'],
+            rows: picked.slice(from, from + Math.max(0, Math.floor(w.count))).map(p => [...p.key.map(toValue), p.v.ln, p.v.rn])
+        };
+    }
+}
+
+/** A join's statistics from the keys it matched on: the left's held per key, the right's rows per key. */
+function joinFacts(left: Relation, right: Relation, lk: ((row: number) => V)[], rk: ((row: number) => V)[],
+    leftHeld: Map<string, { n: number; first: number }>, byKey: Map<string, number[]>, rowsAfter: number): JoinFacts {
+    const keys = { oneToOne: 0, oneToMany: 0, manyToOne: 0, manyToMany: 0 };
+    const rows = { ...keys };
+    const records = { ...keys };
+    let leftKeyed = 0, leftMatched = 0, rightMatched = 0;
+    const values: { ln: number; rn: number; side: 'left' | 'right'; row: number }[] = [];
+    for (const [key, h] of leftHeld) {
+        leftKeyed += h.n;
+        const rn = byKey.get(key)?.length ?? 0;
+        values.push({ ln: h.n, rn, side: 'left', row: h.first });
+        if (!rn) continue;
+        leftMatched += h.n;
+        rightMatched += rn;
+        const kind = h.n === 1 && rn === 1 ? 'oneToOne' : h.n === 1 ? 'oneToMany' : rn === 1 ? 'manyToOne' : 'manyToMany';
+        keys[kind]++;
+        rows[kind] += h.n;
+        records[kind] += rn;
+    }
+    for (const [key, list] of byKey) if (!leftHeld.has(key)) values.push({ ln: 0, rn: list.length, side: 'right', row: list[0] });
+    // Types on each side of each key part: no type in common means it can never match
+    const typesOf = (rel: Relation, fns: ((row: number) => V)[]) => fns.map(f => {
+        let num = false, text = false;
+        for (let r = 0; r < rel.rowCount && !(num && text); r++) { const v = f(r); if (v === null) continue; if (isNumber(v)) num = true; else text = true; }
+        return { num, text };
+    });
+    const lt = typesOf(left, lk), rt = typesOf(right, rk);
+    const typeMismatch = lt.some((l, i) => (l.num || l.text) && (rt[i].num || rt[i].text) && !((l.num && rt[i].num) || (l.text && rt[i].text)));
+    const relationship: JoinStats['relationship'] = keys.manyToMany || (keys.oneToMany && keys.manyToOne) ? 'manyToMany'
+        : keys.oneToMany ? 'oneToMany' : keys.manyToOne ? 'manyToOne' : keys.oneToOne ? 'oneToOne' : 'none';
+    const stats: JoinStats = {
+        leftRows: left.rowCount, leftMatched, rightRows: right.rowCount, rightMatched, rowsAfter, relationship,
+        keys, rows, records, typeMismatch,
+        leftBlank: left.rowCount - leftKeyed,
+        leftValues: leftHeld.size, rightValues: byKey.size, valuesTotal: values.length
+    };
+    return new JoinFacts(stats, values, v => (v.side === 'left' ? lk : rk).map(f => f(v.row)), lk.length);
 }
