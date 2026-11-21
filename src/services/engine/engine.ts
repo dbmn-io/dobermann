@@ -34,7 +34,11 @@ interface Relation {
 
 type Kind = 'from' | 'join' | 'compare' | 'select' | 'filter' | 'group' | 'sort';
 const KINDS: Kind[] = ['from', 'join', 'compare', 'select', 'filter', 'group', 'sort'];
-const RUNS_NOW = new Set<Kind>(['from', 'join', 'select', 'filter', 'sort']);
+const RUNS_NOW = new Set<Kind>(['from', 'join', 'compare', 'select', 'filter', 'sort']);
+
+/** A compare row's status, by code (Uint8Array), and its relation. */
+const STATUS = ['same', 'diff', 'missing', 'notInBaseline', 'duplicate'] as const;
+const RELATION = ['oneToOne', 'oneToMany', 'onlyBase', 'onlyOther'] as const;
 
 /** Rows worked between two give-ways. */
 const SLICE = 65_536;
@@ -55,6 +59,13 @@ function inputsOf(step: Step, kind: Kind): string[] {
     return [String(s[kind])];
 }
 
+/** A compare's key: as keyOf, but a blank is a key part like any other (the old Compare's rule). */
+function compareKeyOf(parts: V[]): string {
+    let key = '';
+    for (const v of parts) key += v === null ? 'z\u0001' : isNumber(v) ? `n${num(v)}\u0001` : `t${v.length}:${v}`;
+    return key;
+}
+
 /** A row's key, for matching: blank when any part is blank; numbers and text never alike. */
 function keyOf(parts: V[]): string | null {
     let key = '';
@@ -72,6 +83,8 @@ export class QueryEngine implements Engine {
     private readonly tables = new Map<string, StoredTable>();
     private readonly results = new Map<ResultId, Relation>();
     private readonly cancelled = new Set<ResultId>();
+    /** Each result's compare steps' statistics, by step name. */
+    private readonly compareStats = new Map<ResultId, Map<string, CompareStats>>();
     private nextResult = 1;
     private readonly ctx: FunctionContext = {
         table: name => {
@@ -132,7 +145,30 @@ export class QueryEngine implements Engine {
             if (missing.length) { missing.forEach(x => problems.push({ step: name, message: x.cols as string })); return; }
             const say = (message: string) => problems.push({ step: name, message });
             let out: Col[];
-            if (kind === 'join') {
+            if (kind === 'compare') {
+                const s = step as Extract<Step, { compare: string[] }>;
+                const ins = inputs as { input: string; cols: Col[] }[];
+                if (ins.length < 2) say('A compare needs at least two inputs.');
+                if (new Set(s.compare).size !== s.compare.length) say('An input is in the compare twice.');
+                if (s.on?.length !== ins.length) say('A compare needs a key for each input.');
+                else {
+                    const parts = s.on[0].length;
+                    if (!parts) say('A compare needs at least one key column.');
+                    s.on.forEach((key, i) => {
+                        if (key.length !== parts) say(`${ins[i].input}'s key has ${key.length} columns, the Baseline's ${parts}.`);
+                        key.forEach(e => this.checkExpr(e, ins[i].cols, ins[i].input, say));
+                    });
+                }
+                s.columns?.forEach(c => {
+                    if (c.values.length !== ins.length) say(`"${c.name}" needs a value for each input.`);
+                    else c.values.forEach((e, i) => this.checkExpr(e, ins[i].cols, ins[i].input, say));
+                });
+                (s.notCompared ?? []).forEach(n => {
+                    if (n === s.compare[0]) say('The Baseline is always compared.');
+                    else if (!s.compare.includes(n)) say(`"${n}" is not in the compare.`);
+                });
+                out = compareCols(ins.map(x => x.input), ins.map(x => x.cols), s.columns ?? []);
+            } else if (kind === 'join') {
                 const s = step as Extract<Step, { join: JoinKind }>;
                 const [l, r] = inputs as { input: string; cols: Col[] }[];
                 if (!['inner', 'left', 'right', 'outer'].includes(s.join)) say(`A join is inner, left, right or outer, not "${s.join}".`);
@@ -208,16 +244,22 @@ export class QueryEngine implements Engine {
                 const kind = kindOf(step)!;
                 const name = stepName(step, i);
                 const input = (n: string): Relation => (kind !== 'from' && made.get(n)) || this.tableRelation(n);
-                const rel = await this.stepRelation(step, kind, name, input, slice);
+                const rel = kind === 'compare'
+                    ? await this.compared(step as Extract<Step, { compare: string[] }>, name, input, slice, stats => {
+                        if (!this.compareStats.has(id)) this.compareStats.set(id, new Map());
+                        this.compareStats.get(id)!.set(name, stats);
+                    })
+                    : await this.stepRelation(step, kind, name, input, slice);
                 made.set(name, rel);
                 last = rel;
             }
-            if (this.cancelled.has(id)) return { cancelled: true };
+            if (this.cancelled.has(id)) { this.compareStats.delete(id); return { cancelled: true }; }
             const answer = query.result ? made.get(query.result)! : last!;
             progress('Done', answer.rowCount, answer.rowCount);
             this.results.set(id, answer);
             return { result: id, total: answer.rowCount };
         } catch (error) {
+            this.compareStats.delete(id);
             if (error instanceof Cancelled) return { cancelled: true };
             if (error instanceof TooMany) return { problems: [error.problem] };
             throw error;
@@ -315,6 +357,146 @@ export class QueryEngine implements Engine {
     }
 
     /**
+     * Compare, as the old Compare (compare-across.ts; the rule is on the step in engine-types.ts).
+     * Every key, the Baseline's first; the rows a key makes (one, or one per repeat in a later
+     * input, or one for a key the Baseline repeats); each row's status, relation and differs; and
+     * each input's statistics.
+     */
+    private async compared(step: Extract<Step, { compare: string[] }>, name: string, input: (n: string) => Relation,
+        slice: (stage: string, done: number, total: number) => Promise<void>, keep: (stats: CompareStats) => void): Promise<Relation> {
+        const names = step.compare;
+        const rels = names.map(n => input(n));
+        const places = rels.length;
+        const columns = step.columns ?? [];
+        const skipped = new Set((step.notCompared ?? []).map(n => names.indexOf(n)).filter(i => i > 0));
+        const stage = `Comparing ${names.length} inputs`;
+        const work = rels.reduce((n, r) => n + r.rowCount, 0) * 2;
+        let done = 0;
+        const keyFns = rels.map((rel, i) => step.on[i].map(e => this.compile(e, rel, names[i])));
+        const valueFns = rels.map((rel, i) => columns.map(c => this.compile(c.values[i], rel, names[i])));
+
+        // 1. Every key, the Baseline's first, then each input's in order; each row's key number
+        const keyIndex = new Map<string, number>();
+        const keyed: Int32Array[] = [];
+        for (let p = 0; p < places; p++) {
+            const rel = rels[p];
+            const at = new Int32Array(rel.rowCount);
+            for (let r = 0; r < rel.rowCount; r++) {
+                if (++done % SLICE === 0) await slice(stage, done, work);
+                const key = compareKeyOf(keyFns[p].map(f => f(r)));
+                let k = keyIndex.get(key);
+                if (k === undefined) { k = keyIndex.size; keyIndex.set(key, k); }
+                at[r] = k;
+            }
+            keyed.push(at);
+        }
+        const keys = keyIndex.size;
+        keyIndex.clear();
+        // Each input's rows for each key: how many, and (for keys on more than one row anywhere) which
+        const held = keyed.map(() => new Int32Array(keys));
+        const firstRow = keyed.map(() => new Int32Array(keys).fill(-1));
+        keyed.forEach((at, p) => at.forEach((k, r) => { if (held[p][k]++ === 0) firstRow[p][k] = r; }));
+        const many = new Map<number, number[][]>();
+        for (let k = 0; k < keys; k++) if (held.some(h => h[k] > 1)) many.set(k, names.map(() => []));
+        if (many.size) keyed.forEach((at, p) => at.forEach((k, r) => many.get(k)?.[p].push(r)));
+
+        // 2. The rows: one per key; a key repeated in a later input, one per record of the input holding it most
+        const rowsOf: number[][] = names.map(() => []);
+        const dupRow: number[] = [];
+        const repeatedRow: number[] = [];
+        let length = 0;
+        for (let k = 0; k < keys; k++) {
+            const each = many.get(k);
+            if (!each) { for (let p = 0; p < places; p++) rowsOf[p].push(firstRow[p][k]); length++; continue; }
+            if (each[0].length > 1) {
+                // Repeated in the Baseline: one row, not compared (each input's first record shown)
+                for (let p = 0; p < places; p++) rowsOf[p].push(each[p].length ? each[p][0] : -1);
+                dupRow.push(length++);
+                continue;
+            }
+            const n = Math.max(...each.map(list => list.length));
+            for (let i = 0; i < n; i++) {
+                for (let p = 0; p < places; p++) rowsOf[p].push(each[p].length ? each[p][Math.min(i, each[p].length - 1)] : -1);
+                repeatedRow.push(length++);
+            }
+        }
+        const rowAt = rowsOf.map(r => Int32Array.from(r));
+        const isDup = new Uint8Array(length); dupRow.forEach(r => { isDup[r] = 1; });
+        const isRepeated = new Uint8Array(length); repeatedRow.forEach(r => { isRepeated[r] = 1; });
+
+        // 3. Each row's status, relation, missing and differs
+        const status = new Uint8Array(length);
+        const relation = new Uint8Array(length);
+        const differs = columns.map(() => new Uint8Array(length));
+        const statusCounts = { same: 0, diff: 0, missing: 0, notInBaseline: 0, duplicate: 0 };
+        for (let row = 0; row < length; row++) {
+            if (++done % SLICE === 0) await slice(stage, done, work);
+            const base = rowAt[0][row];
+            let missing = false, changed = false;
+            for (let p = 1; p < places; p++) if (!skipped.has(p) && rowAt[p][row] < 0) missing = true;
+            relation[row] = base < 0 ? 3 : missing ? 2 : isRepeated[row] || isDup[row] ? 1 : 0;
+            if (isDup[row]) status[row] = 4;
+            else if (base < 0) status[row] = 3;
+            else {
+                for (let c = 0; c < columns.length; c++) {
+                    const b = valueFns[0][c](base);
+                    for (let p = 1; p < places; p++) {
+                        const r = rowAt[p][row];
+                        if (skipped.has(p) || r < 0) continue;
+                        if (compareValues(b, valueFns[p][c](r)) !== 0) { differs[c][row] = 1; changed = true; break; }
+                    }
+                }
+                status[row] = changed ? 1 : missing ? 2 : 0;
+            }
+            statusCounts[STATUS[status[row]]]++;
+        }
+
+        // 4. Each input's statistics
+        const compared = names.map((_, p) => p).filter(p => !skipped.has(p));
+        const perInput = names.map((n, p) => {
+            const h = held[p], b = held[0];
+            const ab = { matched: 0, oneToOne: 0, repeatedKeys: 0, repeatedRecords: 0, only: 0 };
+            const aa = { matched: 0, repeatedKeys: 0, repeatedRecords: 0, onlyHere: 0 };
+            for (let k = 0; k < keys; k++) {
+                const here = h[k];
+                if (!here) continue;
+                if (b[k]) {
+                    ab.matched += here;
+                    if (here === 1 && b[k] === 1) ab.oneToOne++;
+                    else { ab.repeatedKeys++; ab.repeatedRecords += here; }
+                } else ab.only += here;
+                const elsewhere = compared.some(q => q !== p && held[q][k] > 0);
+                if (elsewhere) aa.matched += here; else aa.onlyHere += here;
+                if (here > 1) { aa.repeatedKeys++; aa.repeatedRecords += here; }
+            }
+            return { name: n, rows: rels[p].rowCount, againstBaseline: ab, againstAll: aa };
+        });
+        keep({ perInput, rows: length, status: statusCounts });
+
+        const inputCols = rels.map(r => r.cols.length);
+        const starts: number[] = [];
+        inputCols.reduce((n, c) => { starts.push(n); return n + c; }, 0);
+        const own = inputCols.reduce((n, c) => n + c, 0);
+        return {
+            cols: compareCols(names, rels.map(r => r.cols), columns),
+            rowCount: length,
+            value: (row, c) => {
+                if (c < own) {
+                    let p = places - 1;
+                    while (starts[p] > c) p--;
+                    const r = rowAt[p][row];
+                    return r < 0 ? null : rels[p].value(r, c - starts[p]);
+                }
+                const extra = c - own;
+                if (extra === 0) return STATUS[status[row]];
+                if (extra === 1) return RELATION[relation[row]];
+                if (extra < 2 + places) return rowAt[extra - 2][row] < 0 ? 1 : 0;
+                return differs[extra - 2 - places][row];
+            }
+        };
+    }
+
+    /**
      * Sort: by each `by` in turn, in compareValues' order (blank first, then numbers, then text by
      * code points); `descending` reverses it, so blanks come last. Ties: rows equal on every `by`
      * keep the order they came in (a stable sort; SQLite promises no order for ties).
@@ -388,12 +570,16 @@ export class QueryEngine implements Engine {
         return { columns: rel.cols.map(c => c.shown ?? c.name), rows, total: rel.rowCount };
     }
 
-    stats(_result: ResultId, _step: string, _window?: StatsWindow): JoinStats | CompareStats | Table {
-        throw new Error('Engine: statistics come with their own piece');
+    stats(result: ResultId, step: string, _window?: StatsWindow): JoinStats | CompareStats | Table {
+        if (!this.results.has(result)) throw new Error(`Engine: no result "${result}"`);
+        const found = this.compareStats.get(result)?.get(step);
+        if (found) return found;
+        throw new Error(`Engine: no statistics for "${step}" (a join step's come with their own piece)`);
     }
 
     release(result: ResultId): void {
         this.results.delete(result);
+        this.compareStats.delete(result);
     }
 
     /** Roughly what the loaded tables hold, in bytes (the memory checks). */
@@ -414,6 +600,19 @@ function joinedCols(leftName: string, left: Col[], rightName: string, right: Col
         ...(other.has(c.name) ? { shown: `${input}.${c.name}` } : c.shown ? { shown: c.shown } : {})
     }));
     return [...side(left, leftName, r), ...side(right, rightName, l)];
+}
+
+/** A compare's columns: every input's (named by `of`; a name in two inputs shown "input.name"), then status, relation, missing:<input>, differs:<column>. */
+function compareCols(names: string[], cols: Col[][], columns: { name: string }[]): Col[] {
+    const seen = new Map<string, number>();
+    cols.forEach(list => list.forEach(c => seen.set(c.name, (seen.get(c.name) ?? 0) + 1)));
+    const own = cols.flatMap((list, p) => list.map(c => ({
+        name: c.name,
+        owners: [...c.owners, names[p]],
+        ...((seen.get(c.name) ?? 0) > 1 ? { shown: `${names[p]}.${c.name}` } : c.shown ? { shown: c.shown } : {})
+    })));
+    const added = ['status', 'relation', ...names.map(n => `missing:${n}`), ...columns.map(c => `differs:${c.name}`)];
+    return [...own, ...added.map(name => ({ name, owners: [] }))];
 }
 
 /**

@@ -6,11 +6,11 @@
  * Query as plain data, a Table out.
  *
  * Built in pieces, each tested against SQLite (sql.js, as the app runs today) by the tester's
- * reference harness. **Pieces 1 to 3** implement: `load`, `append`, `drop`, `check`, `run` (with
- * progress) / `cancel` / `read` / `release` for a query of `from`, `join`, `select`, `filter` and
- * `sort` steps, and every function in FUNCTIONS
- * with its operators. The other steps (`compare`, `group`), `stats` and `cancel`
- * are declared here as agreed and come in later pieces; until then `check` refuses them by name.
+ * reference harness. **Pieces 1 to 4** implement: `load`, `append`, `drop`, `check`, `run` (with
+ * progress) / `cancel` / `read` / `release` for a query of `from`, `join`, `compare`, `select`,
+ * `filter` and `sort` steps, `stats` for a compare step, and every function in FUNCTIONS
+ * with its operators. The `group` step and a join step's `stats` are declared here as agreed and
+ * come in later pieces; until then `check` refuses a group step by name.
  */
 
 /*
@@ -98,6 +98,24 @@ export type Step =
      * The columns: the left's, then the right's; `{ column, of }` names one by the input it came from.
      */
     | { as?: string; join: JoinKind; left: string; right: string; on: { left: Expr; right: Expr }[] }
+    /**
+     * Inputs compared on a key, the first the Baseline, as the old Compare did (compare-across.ts):
+     * a row per key, the Baseline's keys first in its order, then keys it lacks in input order. A
+     * key on several rows of a later input is a row for each (an input holding it once shows that
+     * record on each; one holding fewer shows its last again). A key on several rows of the
+     * Baseline is one row, status "duplicate", not compared. A blank key is a key like any other
+     * (the old Compare's rule; a join never matches one).
+     *
+     * `on[i]`: input i's key, one Expr per key part. `columns[c].values[i]`: input i's value for
+     * compared column c. `notCompared`: inputs kept in the rows but left out of status, relation and
+     * differs (Results' Hide); never the Baseline.
+     *
+     * Columns out: every input's columns (named by `of`), then `status` ("same", "diff",
+     * "missing", "notInBaseline", "duplicate": the first that applies, from the end), `relation`
+     * ("oneToOne", "oneToMany", "onlyBase", "onlyOther"), a `missing:<input>` per input and a
+     * `differs:<column>` per compared column, each 1 (yes) or 0. A value differs from the
+     * Baseline's when compareValues says so: exact by type. A row not in the Baseline is not compared.
+     */
     | { as?: string; compare: string[]; on: Expr[][]; columns: { name: string; values: Expr[] }[]; notCompared?: string[] }
     | { as?: string; select: string; columns: { name: string; value: Expr }[] }
     | { as?: string; filter: string; where: Expr }
@@ -141,7 +159,21 @@ export interface JoinStats {
     valuesTotal: number;
 }
 
-/** A compare step's statistics, per input: against the Baseline and against the whole compare. */
+/**
+ * A compare step's statistics, per input (records: the input's rows).
+ * againstBaseline (for the Baseline: its own keys)
+ *   matched          records whose key the Baseline has
+ *   oneToOne         records whose key is once here and once in the Baseline
+ *   repeatedKeys     keys the Baseline has that are on more than one row here or there
+ *   repeatedRecords  this input's records with those keys
+ *   only             records whose key the Baseline lacks
+ * againstAll (the other compared inputs, notCompared left out)
+ *   matched          records whose key another input has
+ *   repeatedKeys     keys on more than one row of this input
+ *   repeatedRecords  its records with those keys
+ *   onlyHere         records whose key no other input has
+ * rows: the compare's rows; and each status's rows.
+ */
 export interface CompareStats {
     perInput: {
         name: string;
@@ -150,6 +182,7 @@ export interface CompareStats {
         againstAll: { matched: number; repeatedKeys: number; repeatedRecords: number; onlyHere: number };
     }[];
     rows: number;
+    status: { same: number; diff: number; missing: number; notInBaseline: number; duplicate: number };
 }
 
 /** With a window, `stats` gives the values behind one count: key columns, then the rows each side holds. */
