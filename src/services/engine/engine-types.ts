@@ -211,6 +211,8 @@ export interface CompareStats {
         rows: number;
         againstBaseline: { matched: number; oneToOne: number; repeatedKeys: number; repeatedRecords: number; only: number };
         againstAll: { matched: number; repeatedKeys: number; repeatedRecords: number; onlyHere: number };
+        /** Its records whose key is blank (counted in `only` and `onlyHere` too): No key. */
+        noKey: number;
     }[];
     rows: number;
     status: { same: number; diff: number; missing: number; notInBaseline: number; noKey: number };

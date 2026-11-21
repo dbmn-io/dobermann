@@ -137,12 +137,18 @@ describe('The engine, compare: James\'s rule for repeats and blanks, the old Com
         assert.ok('result' in out);
         const stats = e.stats(out.result, 'cmp') as CompareStats;
         assert.deepStrictEqual(stats.perInput, [
-            { name: 'BL', rows: 4, againstBaseline: { matched: 4, oneToOne: 2, repeatedKeys: 1, repeatedRecords: 2, only: 0 }, againstAll: { matched: 2, repeatedKeys: 1, repeatedRecords: 2, onlyHere: 2 } },
-            { name: 'C1', rows: 4, againstBaseline: { matched: 3, oneToOne: 1, repeatedKeys: 1, repeatedRecords: 2, only: 1 }, againstAll: { matched: 4, repeatedKeys: 1, repeatedRecords: 2, onlyHere: 0 } },
-            { name: 'C2', rows: 3, againstBaseline: { matched: 1, oneToOne: 1, repeatedKeys: 0, repeatedRecords: 0, only: 2 }, againstAll: { matched: 2, repeatedKeys: 0, repeatedRecords: 0, onlyHere: 1 } }
+            { name: 'BL', rows: 4, againstBaseline: { matched: 4, oneToOne: 2, repeatedKeys: 1, repeatedRecords: 2, only: 0 }, againstAll: { matched: 2, repeatedKeys: 1, repeatedRecords: 2, onlyHere: 2 }, noKey: 0 },
+            { name: 'C1', rows: 4, againstBaseline: { matched: 3, oneToOne: 1, repeatedKeys: 1, repeatedRecords: 2, only: 1 }, againstAll: { matched: 4, repeatedKeys: 1, repeatedRecords: 2, onlyHere: 0 }, noKey: 0 },
+            { name: 'C2', rows: 3, againstBaseline: { matched: 1, oneToOne: 1, repeatedKeys: 0, repeatedRecords: 0, only: 2 }, againstAll: { matched: 2, repeatedKeys: 0, repeatedRecords: 0, onlyHere: 1 }, noKey: 0 }
         ]);
         // a, b, b, c, c (BL repeats it: a row each, compared), x, y
         assert.strictEqual(stats.rows, 7);
+        // Records with a blank key: counted per input as No key (and among its records with no match, as before)
+        e.load('C3', { columns: ['k'], rows: [['a'], [null], [null]] });
+        const blanks = await e.run({ steps: [{ as: 'cmp', compare: ['BL', 'C3'], on: [[col('k', 'BL')], [col('k', 'C3')]], columns: [] }] });
+        assert.ok('result' in blanks);
+        const withBlanks = e.stats(blanks.result, 'cmp') as CompareStats;
+        assert.deepStrictEqual(withBlanks.perInput.map(x => [x.name, x.noKey, x.againstBaseline.only]), [['BL', 0, 0], ['C3', 2, 2]]);
         assert.deepStrictEqual(stats.status, { same: 1, diff: 0, missing: 4, notInBaseline: 2, noKey: 0 });
     });
 

@@ -1453,9 +1453,11 @@
         const summaryOf = v => {
             const st = statsOf(v);
             if (!st) return {};
+            // (on the new engine a blank key is No key, as Results says: not counted as Only in)
+            const noKey = ui.state.onEngine ? (v.id === baseline.id ? st.leftBlank : st.rightBlank) || 0 : 0;
             return v.id === baseline.id
-                ? { records: v.rows, repeatedKeys: (st.keys.manyToOne || 0) + (st.keys.manyToMany || 0), repeatedRecords: (st.rows.manyToOne || 0) + (st.rows.manyToMany || 0), onlyHere: st.leftRows - st.leftMatched }
-                : { records: st.rightRows, repeatedKeys: (st.keys.oneToMany || 0) + (st.keys.manyToMany || 0), repeatedRecords: (st.records.oneToMany || 0) + (st.records.manyToMany || 0), onlyHere: st.rightRows - st.rightMatched };
+                ? { records: v.rows, repeatedKeys: (st.keys.manyToOne || 0) + (st.keys.manyToMany || 0), repeatedRecords: (st.rows.manyToOne || 0) + (st.rows.manyToMany || 0), onlyHere: st.leftRows - st.leftMatched - noKey, noKey }
+                : { records: st.rightRows, repeatedKeys: (st.keys.oneToMany || 0) + (st.keys.manyToMany || 0), repeatedRecords: (st.records.oneToMany || 0) + (st.records.manyToMany || 0), onlyHere: st.rightRows - st.rightMatched - noKey, noKey };
         };
         const summary = views().reduce((m, v) => { m[v.id] = summaryOf(v); return m; }, {});
         const inCompare = views().filter(v => members.includes(v.id));
@@ -1561,9 +1563,13 @@
                 const st = statsOf(v); return st ? (st.records.oneToMany || 0) + (st.records.manyToMany || 0) : null;
             });
             kindLine('onlyOther', 'Only in', `Records with no match in ${nameOf(baseline)} (under ${nameOf(baseline)}: no match in the view joined to it first): each shows as Missing`, v => (summary[v.id] || {}).onlyHere ?? null);
+            // A blank key matches nothing: Results counts its records as No key (only said when there are any)
+            const noKeys = inCompare.reduce((n, v) => n + ((summary[v.id] || {}).noKey || 0), 0);
+            if (noKeys) kindLine('noKey', 'No key', 'Records whose key is blank: they match nothing, and Results shows each as No key', v => (summary[v.id] || {}).noKey ?? null);
             // Then one sentence: what it all means, and what to do (dbmn-status's tones)
             const only = inCompare.reduce((n, v) => n + ((summary[v.id] || {}).onlyHere || 0), 0);
-            const words = [only ? `${count(only)} ${only === 1 ? 'record is' : 'records are'} in one view only: each shows as Missing in the others.` : '✓ Every view finds the Baseline\'s record.'];
+            const words = [only ? `${count(only)} ${only === 1 ? 'record is' : 'records are'} in one view only: each shows as Missing in the others.` : noKeys ? 'Every record with a key is in the Baseline.' : '✓ Every view finds the Baseline\'s record.'];
+            if (noKeys) words.push(`${count(noKeys)} ${noKeys === 1 ? 'record has' : 'records have'} no key: ${noKeys === 1 ? 'it matches' : 'they match'} nothing and ${noKeys === 1 ? 'shows' : 'show'} as No key.`);
             if (repeatWords) words.push(`${repeatWords}: a record on more than one row is compared with every row that has the same key, so Results shows extra rows and DIFFs that aren't real. Add a column to the key (+ AND) so each record has one row.`);
             const verdict = document.createElement('dbmn-status');
             verdict.className = 'query-compare-verdict-text';

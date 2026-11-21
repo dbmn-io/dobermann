@@ -137,6 +137,8 @@ export interface QueryJoinStats {
     records: { oneToOne: number; oneToMany: number; manyToOne: number; manyToMany: number };
     /** Rows with nothing to join on (a NULL in the key): they match nothing. */
     leftBlank: number;
+    /** The joining view's records with a blank key (a compare on the new engine: No key). */
+    rightBlank?: number;
     /** How many different values each side joins on (a NULL is not one). */
     leftValues: number;
     rightValues: number;

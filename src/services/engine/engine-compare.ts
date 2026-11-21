@@ -168,10 +168,11 @@ export async function runCompare(inputs: CompareInput[], columns: number, tick: 
         const h = held[p], bh = held[0];
         const ab = { matched: 0, oneToOne: 0, repeatedKeys: 0, repeatedRecords: 0, only: 0 };
         const aa = { matched: 0, repeatedKeys: 0, repeatedRecords: 0, onlyHere: 0 };
+        let noKey = 0;
         for (let k = 0; k < keys; k++) {
             const here = h[k];
             if (!here) continue;
-            if (blank[k]) { ab.only += here; aa.onlyHere += here; continue; }
+            if (blank[k]) { ab.only += here; aa.onlyHere += here; noKey += here; continue; }
             if (bh[k]) {
                 ab.matched += here;
                 if (here === 1 && bh[k] === 1) ab.oneToOne++;
@@ -180,7 +181,7 @@ export async function runCompare(inputs: CompareInput[], columns: number, tick: 
             if (compared.some(q => q !== p && held[q][k] > 0)) aa.matched += here; else aa.onlyHere += here;
             if (here > 1) { aa.repeatedKeys++; aa.repeatedRecords += here; }
         }
-        return { name: x.name, rows: x.rowCount, againstBaseline: ab, againstAll: aa };
+        return { name: x.name, rows: x.rowCount, againstBaseline: ab, againstAll: aa, noKey };
     });
     return { rowAt, status, relation, differs, diffBy, repeatedBy, stats: { perInput, rows: length, status: counts } };
 }
