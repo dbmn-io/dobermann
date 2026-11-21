@@ -47,8 +47,8 @@ import { readFileSheets, QueryFileRows, QueryFileSheet } from '../../services/qu
 import type { QueryFileStore } from '../../services/query/query-file-store';
 import * as searchMatcherScript from '../../webviews/shared/search-matcher.js';
 import { sharedScript } from '../../utils/shared-script';
-import { QueryEngine } from '../../services/engine/engine';
-import { compareKeyExprs, fnSampleQueries, formulaExpr, labelExpr, loadLookupTable, loadView, onSqliteLine, queryWithColumns, recordQuery, runOnEngine, TooManyOnEngine, whyNotQueryOnEngine } from '../../services/query/query-new-engine';
+import { localEngineHost, type EngineHost } from '../../services/engine/engine-host';
+import { compareKeyExprs, fnSampleQueries, formulaExpr, labelExpr, loadLookupInto, loadViewInto, onSqliteLine, queryWithColumns, recordQuery, runOnEngine, TooManyOnEngine, whyNotQueryOnEngine } from '../../services/query/query-new-engine';
 import type { Query as EngineQuery, TableWindow } from '../../services/engine/engine-types';
 
 const { parseSearchExpression, matchesRow } = sharedScript<typeof searchMatcherScript>(searchMatcherScript, 'SearchMatcher');
@@ -68,8 +68,10 @@ export interface QueryPorts extends ComparePorts {
     openLookup?(id: string): Promise<void>;
     /** A new lookup table, empty, opened in its own tab ("+ New lookup table…" in Translate values' table picker). */
     newLookup?(): Promise<void>;
-    /** Settings' "New compare engine (testing)", a development build's only: a compare of runs runs on the new engine. */
+    /** Settings' "New compare engine (testing)", a development build's only: Query runs on the new engine. */
     newCompareEngine?(): boolean;
+    /** Where the new engine runs: a worker of its own (the web app), or this thread when left out. */
+    engineHost?(): EngineHost;
 }
 
 export interface QueryConfig {
@@ -131,7 +133,7 @@ export class QueryController {
      * into it (again when they change, as the SQLite session's), the run under way (for Stop), the
      * Join step's figures from its last run, and why a query runs on SQLite instead (a line on Join).
      */
-    private engine: QueryEngine | undefined;
+    private engine: EngineHost | undefined;
     private engineKey = '';
     private engineRunning: string | undefined;
     private engineStats: Map<string, QueryJoinStats> | undefined;
@@ -187,33 +189,33 @@ export class QueryController {
     private readonly engineLookups = new Map<string, string>();
 
     /** The lookup tables these functions read, into the engine (again when one changed). */
-    private async loadEngineLookups(engine: QueryEngine, ids: string[]): Promise<void> {
+    private async loadEngineLookups(engine: EngineHost, ids: string[]): Promise<void> {
         if (!ids.length) return;
         if (!this.ports.lookups) throw new Error('This query translates values with a lookup table, and lookup tables are not available here.');
         for (const id of ids) {
             const table = await this.ports.lookups.get(id);
             if (!table) throw new Error('A lookup table this query translates with has been deleted, so it can\'t run. Untick Translate values on its column, or pick another table.');
             if (this.engineLookups.get(id) === table.updatedAt) continue;
-            loadLookupTable(engine, table);
+            await loadLookupInto(engine, table);
             this.engineLookups.set(id, table.updatedAt);
         }
     }
 
     /** A few rows of a query on the engine (the Columns step's and the record window's small reads). */
     private async engineWindow(spec: QuerySpec, query: EngineQuery, count: number, extraView?: string): Promise<TableWindow> {
-        const engine = this.engineFor(spec);
+        const engine = await this.engineFor(spec);
         // (a view not joined yet is read on its own: it goes in too)
         if (extraView && !spec.views.some(v => v.id === extraView)) {
             const loaded = this.loaded.get(extraView);
-            if (loaded) loadView(engine, extraView, loaded.columns, loaded.rows);
+            if (loaded) await loadViewInto(engine, extraView, loaded.columns, loaded.rows);
         }
         const out = await engine.run(query);
         if ('cancelled' in out) return { columns: [], rows: [], total: 0 };
         if ('problems' in out) throw new Error(out.problems.map(p => p.message).join(' '));
         try {
-            return engine.read(out.result, 0, count);
+            return await engine.read(out.result, 0, count);
         } finally {
-            engine.release(out.result);
+            await engine.release(out.result);
         }
     }
 
@@ -270,6 +272,8 @@ export class QueryController {
         this.session_.dismissAll();
         this.session?.close();
         this.session = undefined;
+        this.engine?.close();
+        this.engine = undefined;
     }
 
     private post(message: Record<string, unknown>): void {
@@ -867,7 +871,7 @@ export class QueryController {
         let rows: unknown[][] = [];
         let error: string | undefined;
         try {
-            await this.loadEngineLookups(this.engineFor(spec), lookupsIn(message.fns));
+            await this.loadEngineLookups(await this.engineFor(spec), lookupsIn(message.fns));
             if (message.column) {
                 const { few, own } = fnSampleQueries(message.view, message.column, message.fns ?? [], String(message.record ?? ''));
                 rows = (await this.engineWindow(spec, few, 6, message.view)).rows;
@@ -922,7 +926,7 @@ export class QueryController {
             if (this.onEngine(spec) && spec.views.length) {
                 // On the new engine: the formula's Expr on the query's first rows, the key beside each
                 const byKey = (k: string) => { const at = k.indexOf('\n'); return { column: k.slice(at + 1), of: k.slice(0, at) }; };
-                await this.loadEngineLookups(this.engineFor(spec), lookupsUsed(spec));
+                await this.loadEngineLookups(await this.engineFor(spec), lookupsUsed(spec));
                 const window = await this.engineWindow(spec, queryWithColumns(spec, [key ? labelExpr(spec, key) : { value: '' }, ...sides.map(side => formulaExpr(side, byKey))]), 4);
                 rows = window.rows;
             } else if (this.session && spec.views.length) {
@@ -1707,17 +1711,26 @@ export class QueryController {
     }
 
     /** The engine with this spec's views loaded (loaded again only when the views change). */
-    private engineFor(spec: QuerySpec): QueryEngine {
+    /** One load at a time: a second call waits for the first, then finds its views in. */
+    private engineLoading: Promise<unknown> = Promise.resolve();
+
+    private engineFor(spec: QuerySpec): Promise<EngineHost> {
+        const next = this.engineLoading.then(() => this.engineLoad(spec));
+        this.engineLoading = next.catch(() => undefined);
+        return next;
+    }
+
+    private async engineLoad(spec: QuerySpec): Promise<EngineHost> {
         const key = JSON.stringify(spec.views.map(v => [v.id, v.columns, this.loaded.get(v.id)?.rows.length ?? 0]));
         if (this.engine && this.engineKey === key) return this.engine;
-        const engine = this.engine && this.engineKey.startsWith('[') ? this.engine : new QueryEngine();
-        if (engine !== this.engine) this.engineLookups.clear();
+        const engine = this.engine && this.engineKey.startsWith('[') ? this.engine : (this.ports.engineHost?.() ?? localEngineHost());
+        if (engine !== this.engine) { this.engine?.close(); this.engineLookups.clear(); }
         // (only the views not in it yet, or changed, go in again)
         const had = new Map<string, string>((JSON.parse(this.engineKey || '[]') as [string, string[], number][]).map(v => [v[0], JSON.stringify(v)]));
         for (const view of spec.views) {
             const entry = JSON.stringify([view.id, view.columns, this.loaded.get(view.id)?.rows.length ?? 0]);
             if (had.get(view.id) === entry && engine === this.engine) continue;
-            loadView(engine, view.id, view.columns, this.loaded.get(view.id)?.rows ?? []);
+            await loadViewInto(engine, view.id, view.columns, this.loaded.get(view.id)?.rows ?? []);
         }
         this.engine = engine;
         this.engineKey = key;
@@ -1732,7 +1745,7 @@ export class QueryController {
         let at = started;
         const laps: string[] = [];
         const lap = (what: string) => { const t = performance.now(); laps.push(`${what} ${Math.round(t - at)}`); at = t; };
-        const engine = this.engineFor(spec);
+        const engine = await this.engineFor(spec);
         await this.loadEngineLookups(engine, lookupsUsed(spec));
         lap('views into the engine');
         let run;

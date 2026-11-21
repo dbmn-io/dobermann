@@ -12,8 +12,9 @@ import initSqlJs from 'sql.js';
 import type { SqlJsStatic } from 'sql.js';
 import { COLUMN_FUNCTIONS, columnFnSql, type ColumnFn } from '../../../services/column-functions/column-functions';
 import { QueryEngine } from '../../../services/engine/engine';
+import { remoteEngineHost, serveEngine, type EnginePort } from '../../../services/engine/engine-host';
 import { QuerySession } from '../../../services/query/query-engine';
-import { buildQuery, runOnEngine, TooManyOnEngine, compareKeyExprs, compareQuery, fnExpr, fnSampleQueries, formulaExpr, labelExpr, loadLookupTable, loadView, queryWithColumns, recordQuery, resultRows, onSqliteLine, runCompareOnEngine, whyNotOnEngine } from '../../../services/query/query-new-engine';
+import { buildQuery, loadViewInto, runOnEngine, TooManyOnEngine, compareKeyExprs, compareQuery, fnExpr, fnSampleQueries, formulaExpr, labelExpr, loadLookupTable, loadView, queryWithColumns, recordQuery, resultRows, onSqliteLine, runCompareOnEngine, whyNotOnEngine } from '../../../services/query/query-new-engine';
 import { formulaSql, parseFormula, FORMULA_FUNCTIONS } from '../../../services/query/formula';
 import type { Value } from '../../../services/engine/engine-types';
 import { compareKeySql, resultColumns } from '../../../services/query/query-sql';
@@ -404,5 +405,35 @@ describe('Query compare on the new engine', () => {
                 return true;
             });
         });
+    });
+
+    it('the engine behind a port, as in a worker: views in pieces, the same rows and figures, progress heard, Stop stops', async () => {
+        // Two ends of a channel, each message delivered after the sender's turn, as between a page and a worker
+        const ends = (): [EnginePort, EnginePort] => {
+            const handlers: [((m: unknown) => void)[], ((m: unknown) => void)[]] = [[], []];
+            const port = (me: 0 | 1): EnginePort => ({
+                post: message => { const copy = JSON.parse(JSON.stringify(message)); setTimeout(() => handlers[1 - me].forEach(h => h(copy)), 0); },
+                listen: handler => { handlers[me].push(handler); }
+            });
+            return [port(0), port(1)];
+        };
+        const [page, worker] = ends();
+        serveEngine(worker);
+        const host = remoteEngineHost(page);
+        const spec = runsSpec();
+        const data = { bl: runRows(0, 45_000), c1: runRows(1, 45_000), c2: runRows(2, 45_000) };
+        for (const v of spec.views) await loadViewInto(host, v.id, v.columns, data[v.id as keyof typeof data]);
+        const local = new QueryEngine();
+        for (const v of spec.views) loadView(local, v.id, v.columns, data[v.id as keyof typeof data]);
+        const heard: string[] = [];
+        const far = (await runOnEngine(host, spec, p => heard.push(p.stage)))!;
+        const near = (await runOnEngine(local, spec))!;
+        assert.deepStrictEqual(far.rows, near.rows);
+        assert.deepStrictEqual([...far.stats], [...near.stats]);
+        assert.ok(heard.includes('Comparing 3 inputs'), heard.join(' | '));
+        // Stop, the first time it says how far it has got
+        const stopped = await runOnEngine(host, spec, p => { if (p.done > 0) host.cancel(p.result); });
+        assert.strictEqual(stopped, undefined);
+        host.close();
     });
 });

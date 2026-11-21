@@ -15,6 +15,7 @@
  */
 import { asColumnValue, wholeNumber, type ColumnFn } from '../column-functions/column-functions';
 import { QueryEngine } from '../engine/engine';
+import { localEngineHost, type EngineHost } from '../engine/engine-host';
 import type { CompareStats, Expr, FunctionName, JoinStats, Progress, Query, StatsWindow, Table, Value } from '../engine/engine-types';
 import { ROW_LIMIT } from '../engine/engine-types';
 import { FUNCTIONS } from '../engine/engine-types';
@@ -214,6 +215,23 @@ export function loadView(engine: QueryEngine, viewId: string, columns: string[],
     engine.load(viewId, { columns, rows: rows.map(r => columns.map(c => asColumnValue(r[c]))) });
 }
 
+/** Rows a piece of a view carries to the engine (a worker's message stays small; the page gives way between pieces). */
+const PIECE = 20_000;
+
+/** A view's rows into an engine host, a piece at a time. */
+export async function loadViewInto(host: EngineHost, viewId: string, columns: string[], rows: Record<string, unknown>[]): Promise<void> {
+    const piece = (from: number) => ({ columns, rows: rows.slice(from, from + PIECE).map(r => columns.map(c => asColumnValue(r[c]))) });
+    if (rows.length <= PIECE) { await host.load(viewId, piece(0)); return; }
+    await host.load(viewId, piece(0), { more: true });
+    for (let from = PIECE; from < rows.length; from += PIECE) await host.append(viewId, piece(from), { last: from + PIECE >= rows.length });
+}
+
+/** A lookup table into an engine host (loadLookupTable's rows). */
+export async function loadLookupInto(host: EngineHost, table: { id: string; columns: { id: string }[]; rows: Array<Record<string, string>> }): Promise<void> {
+    const columns = table.columns.map(c => c.id);
+    await host.load(lookupTableName(table.id), { columns, rows: table.rows.map(r => columns.map(c => (r[c] === undefined ? null : String(r[c])))) });
+}
+
 /** A compare run on the engine: Results' rows and key values, the Join step's figures, and the total. */
 export interface CompareOnEngine {
     rows: unknown[][];
@@ -238,31 +256,36 @@ export class TooManyOnEngine extends Error {
 }
 
 /** A plain join's figures as the Join step reads them, with the values behind each count (the first 50 of each kind, as today). */
-function plainJoinStats(engine: QueryEngine, result: string, step: string, stats: JoinStats): QueryJoinStats {
+async function plainJoinStats(host: EngineHost, result: string, step: string, stats: JoinStats): Promise<QueryJoinStats> {
     const kinds: StatsWindow['kind'][] = ['onlyLeft', 'onlyRight', 'oneToOne', 'oneToMany', 'manyToOne', 'manyToMany'];
-    const values = kinds.flatMap(kind => {
-        const w = engine.stats(result, step, { kind, side: 'left', from: 0, count: 50 }) as Table;
+    const values = (await Promise.all(kinds.map(async kind => {
+        const w = await host.stats(result, step, { kind, side: 'left', from: 0, count: 50 }) as Table;
         const parts = w.columns.length - 2;
         return w.rows.map(r => ({ key: r.slice(0, parts), left: Number(r[parts]), right: Number(r[parts + 1]) }));
-    });
+    }))).flat();
     return { ...stats, values };
 }
 
 /** The Join step's figures from a run: a compare's from CompareStats, each plain join's (its spec index's view) from its JoinStats. */
-function joinFigures(spec: QuerySpec, places: string[], get: (step: string) => JoinStats | CompareStats | undefined, values?: (step: string, stats: JoinStats) => QueryJoinStats): Map<string, QueryJoinStats> {
-    const compare = places.length ? get('compare') as CompareStats | undefined : undefined;
+async function joinFigures(spec: QuerySpec, places: string[], get: (step: string) => Promise<JoinStats | CompareStats | undefined>, values?: (step: string, stats: JoinStats) => Promise<QueryJoinStats>): Promise<Map<string, QueryJoinStats>> {
+    const compare = places.length ? await get('compare') as CompareStats | undefined : undefined;
     const out = compare ? compareJoinStats(compare, places) : new Map<string, QueryJoinStats>();
-    spec.joins.filter(j => j.kind !== 'compare').forEach((j, i) => {
-        const st = get(`join${i + 1}`) as JoinStats | undefined;
-        if (st) out.set(j.view, values ? values(`join${i + 1}`, st) : { ...st, values: [] });
-    });
+    const plain = spec.joins.filter(j => j.kind !== 'compare');
+    for (const [i, j] of plain.entries()) {
+        const st = await get(`join${i + 1}`) as JoinStats | undefined;
+        if (st) out.set(j.view, values ? await values(`join${i + 1}`, st) : { ...st, values: [] });
+    }
     return out;
 }
 
-export async function runOnEngine(engine: QueryEngine, spec: QuerySpec, onProgress?: (p: Progress) => void): Promise<(CompareOnEngine & { timings: [string, number][]; duplicates: number }) | undefined> {
+/** An engine as an EngineHost (tests and the VS Code host hand in the engine itself). */
+const hostOf = (engine: QueryEngine | EngineHost): EngineHost => (engine instanceof QueryEngine ? localEngineHost(engine) : engine);
+
+export async function runOnEngine(engineIn: QueryEngine | EngineHost, spec: QuerySpec, onProgress?: (p: Progress) => void): Promise<(CompareOnEngine & { timings: [string, number][]; duplicates: number }) | undefined> {
     const timings: [string, number][] = [];
     let at = now();
     const lap = (what: string) => { const t = now(); timings.push([what, Math.round(t - at)]); at = t; };
+    const engine = hostOf(engineIn);
     const { query, layout } = buildQuery(spec);
     const out = await engine.run(query, { onProgress: p => { onProgress?.(p); } });
     lap('engine run');
@@ -273,15 +296,15 @@ export async function runOnEngine(engine: QueryEngine, spec: QuerySpec, onProgre
         if (failing && out.stats) {
             const plain = spec.joins.map((j, i) => ({ j, i })).filter(x => x.j.kind !== 'compare');
             const at = plain[Number(failing.step.slice(4)) - 1]?.i ?? 0;
-            const stats = joinFigures(spec, layout.places, step => out.stats?.[step]);
+            const stats = await joinFigures(spec, layout.places, async step => out.stats?.[step]);
             throw new TooManyOnEngine({ join: at, rows: (out.stats[failing.step] as JoinStats).rowsAfter, limit: ROW_LIMIT }, stats);
         }
         throw new Error(out.problems.map(p => p.message).join(' '));
     }
     try {
-        const stats = joinFigures(spec, layout.places, step => engine.stats(out.result, step) as JoinStats | CompareStats, (step, st) => plainJoinStats(engine, out.result, step, st));
+        const stats = await joinFigures(spec, layout.places, async step => await engine.stats(out.result, step) as JoinStats | CompareStats, (step, st) => plainJoinStats(engine, out.result, step, st));
         lap('statistics');
-        const read = engine.read(out.result, 0, out.total);
+        const read = await engine.read(out.result, 0, out.total);
         lap('read every row');
         const { rows, keyValues } = resultRows(read.rows, layout);
         lap('rows for Results');
@@ -292,7 +315,7 @@ export async function runOnEngine(engine: QueryEngine, spec: QuerySpec, onProgre
         lap('rows alike');
         return { rows, keyValues, stats, total: out.total, layout, timings, duplicates };
     } finally {
-        engine.release(out.result);
+        await engine.release(out.result);
     }
 }
 
@@ -302,18 +325,19 @@ const now = (): number => (typeof performance !== 'undefined' ? performance.now(
  * Runs the compare: the views must be loaded (loadView). `onProgress` hears each stage; `cancel`
  * stops it (undefined is returned). Throws with the engine's words when the query can't run.
  */
-export async function runCompareOnEngine(engine: QueryEngine, spec: QuerySpec, onProgress?: (p: Progress) => void): Promise<CompareOnEngine | undefined> {
+export async function runCompareOnEngine(engineIn: QueryEngine | EngineHost, spec: QuerySpec, onProgress?: (p: Progress) => void): Promise<CompareOnEngine | undefined> {
+    const engine = hostOf(engineIn);
     const { query, layout } = compareQuery(spec);
     const out = await engine.run(query, { onProgress });
     if ('cancelled' in out) return undefined;
     if ('problems' in out) throw new Error(out.problems.map(p => p.message).join(' '));
     try {
-        const stats = engine.stats(out.result, 'compare') as CompareStats;
-        const read = engine.read(out.result, 0, out.total);
+        const stats = await engine.stats(out.result, 'compare') as CompareStats;
+        const read = await engine.read(out.result, 0, out.total);
         const { rows, keyValues } = resultRows(read.rows, layout);
         return { rows, keyValues, stats: compareJoinStats(stats, layout.places), total: out.total, layout };
     } finally {
-        engine.release(out.result);
+        await engine.release(out.result);
     }
 }
 
