@@ -1495,7 +1495,13 @@ export class QueryController {
     /** One window of Results' rows, after the search and the sort. */
     private async rows(message: RowsRequest): Promise<void> {
         this.shown = { search: message.search, sort: message.sort, filter: message.filter };
+        // Each part's time, in the console as "[query-results] …" (the setting is for testing)
+        const started = performance.now();
+        let at = started;
+        const laps: string[] = [];
+        this.lap = (what: string) => { const t = performance.now(); laps.push(`${what} ${Math.round(t - at)}`); at = t; };
         const shown = await this.shownRows(message);
+        this.lap('rows found');
         if (shown === null) return;
         if (!shown) {
             this.post({ type: 'query.rowsData', seq: message.seq, offset: 0, rows: [], shown: 0, total: 0 });
@@ -1504,15 +1510,25 @@ export class QueryController {
         const offset = Math.max(0, Math.floor(Number(message.offset) || 0));
         const limit = Math.min(1000, Math.max(1, Math.floor(Number(message.limit) || 200)));
         const page = await shown.page(offset, limit);
+        this.lap('page read');
+        const counts = shown.counts && offset === 0 ? await shown.counts() ?? {} : {};
+        this.lap('counts');
+        const totals = message.totals && offset === 0 ? await shown.totals() : {};
+        this.lap('totals');
         this.post({
             type: 'query.rowsData', seq: message.seq, offset,
             ...page,
             // Every control's counts: among the rows the search finds, and among them all
-            ...(shown.counts && offset === 0 ? await shown.counts() ?? {} : {}),
+            ...counts,
             shown: shown.shown, total: shown.total,
-            ...(message.totals && offset === 0 ? await shown.totals() : {})
+            ...totals
         });
+        if (this.engineOn) console.log(`[query-results] rows ${offset}+${limit} (${shown.shown} of ${shown.total}) in ${Math.round(performance.now() - started)} ms: ${laps.join(' · ')} (ms)`);
+        this.lap = () => undefined;
     }
+
+    /** Results' request's parts timed (rows): a no-op between requests. */
+    private lap: (what: string) => void = () => undefined;
 
     /**
      * A column of Results dragged to a new place. The rows are the same ones, so nothing is read
@@ -1701,6 +1717,7 @@ export class QueryController {
     private async pagedFor(spec: QuerySpec, sort: ShownSort | null, onStage?: (p: Progress) => void, search = '', status?: PagedStatus): Promise<PagedResult | undefined> {
         const key = resultsKey(engineKey(spec), sort, search, status);
         const host = await this.engineFor(spec);
+        this.lap('the engine ready');
         if (this.paged && this.paged.key === key && this.paged.host === host) return this.paged.result;
         this.retirePaged(host);
         this.paged = undefined;
@@ -1710,6 +1727,7 @@ export class QueryController {
             // (a newer search or sort stops Results' run still going: its own, never the step's count)
             // (a compare: from its held rows, or the held rows themselves when nothing is sorted, searched or filtered)
             const held = status ? await this.heldFor(spec, host, status, onStage) : undefined;
+            this.lap('the compare held');
             if (status && !held) return undefined;
             if (held && !sort && !search && !status?.filter) result = held;
             else {
@@ -1739,12 +1757,15 @@ export class QueryController {
             await this.remember(search, sort);
             // (the step's count still going: waited for, never run twice at once)
             await this.engineLoading;
+            this.lap('waited for the views');
             await this.counting;
+            this.lap('waited for the step\'s count');
             // What Results is working on, said on it as it goes (stage, rows done of rows to do)
             const reading = (p: Progress) => this.post({ type: 'query.reading', stage: p.stage, done: p.done, total: p.total });
             // (the rows before the search and the filter: counted once, when not known yet)
             if ((search || status?.filter) && this.pagedAll?.key !== engineKey(spec)) await this.pagedFor(spec, null, reading);
             const paged = await this.pagedFor(spec, sort, reading, search, status);
+            this.lap('Results\' rows in the engine');
             const host = this.engine;
             if (!paged || !host) return null;
             const total = search || status?.filter ? this.pagedAll?.total ?? paged.total : paged.total;
