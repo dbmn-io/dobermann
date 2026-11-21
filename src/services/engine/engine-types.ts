@@ -98,19 +98,17 @@ export type Step =
      */
     | { as?: string; join: JoinKind; left: string; right: string; on: { left: Expr; right: Expr }[] }
     /**
-     * Inputs compared on a key, the first the Baseline, as the old Compare did (compare-across.ts):
-     * a row per key, the Baseline's keys first in its order, then keys it lacks in input order. A
-     * key on several rows of a later input is a row for each (an input holding it once shows that
-     * record on each; one holding fewer shows its last again). A key on several rows of the
-     * Baseline is one row, status "duplicate", not compared. A blank key is a key like any other
-     * (the old Compare's rule; a join never matches one).
+     * Inputs compared on a key, the first the Baseline. The rule for repeated and blank keys is at
+     * the top of engine-compare.ts (James, 2026-11-21): a row per repeat in any input, the Baseline
+     * included; an input with the key once shown and compared on each; several paired in order of
+     * appearance; a blank key matches nothing.
      *
      * `on[i]`: input i's key, one Expr per key part. `columns[c].values[i]`: input i's value for
      * compared column c. `notCompared`: inputs kept in the rows but left out of status, relation and
      * differs (Results' Hide); never the Baseline.
      *
      * Columns out: every input's columns (named by `of`), then `status` ("same", "diff",
-     * "missing", "notInBaseline", "duplicate": the first that applies, from the end), `relation`
+     * "missing", "notInBaseline": the first that applies, from the end), `relation`
      * ("oneToOne", "oneToMany", "onlyBase", "onlyOther"), a `missing:<input>` per input and a
      * `differs:<column>` per compared column, each 1 (yes) or 0. A value differs from the
      * Baseline's when compareValues says so: exact by type. A row not in the Baseline is not compared.
@@ -173,6 +171,7 @@ export interface JoinStats {
 
 /**
  * A compare step's statistics, per input (records: the input's rows).
+ * A blank key matches nothing: its records are "only" and "onlyHere".
  * againstBaseline (for the Baseline: its own keys)
  *   matched          records whose key the Baseline has
  *   oneToOne         records whose key is once here and once in the Baseline
@@ -194,7 +193,7 @@ export interface CompareStats {
         againstAll: { matched: number; repeatedKeys: number; repeatedRecords: number; onlyHere: number };
     }[];
     rows: number;
-    status: { same: number; diff: number; missing: number; notInBaseline: number; duplicate: number };
+    status: { same: number; diff: number; missing: number; notInBaseline: number };
 }
 
 /**

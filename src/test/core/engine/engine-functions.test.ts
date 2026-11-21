@@ -344,6 +344,20 @@ _rg AS (SELECT ${ks.join(', ')}, COUNT(*) AS n FROM _r WHERE ${ks.map(k => `${k}
         db.close();
     });
 
+    it('one dictionary of texts for every table: tables replaced and dropped, the texts left are cleared out, every value still right', async () => {
+        const e = new QueryEngine();
+        const rows = (tag: string, n: number): Value[][] => Array.from({ length: n }, (_, i) => [`${tag}${i}`, `shared${i % 10}`, i]);
+        e.load('a', { columns: ['t', 's', 'n'], rows: rows('a', 3000) });
+        e.load('b', { columns: ['t', 's', 'n'], rows: rows('b', 3000) }, { more: true });
+        e.append('b', { columns: ['t', 's', 'n'], rows: rows('c', 10) }, { last: true });
+        e.load('a', { columns: ['t', 's', 'n'], rows: rows('d', 2000) });   // replaced: a's old texts can go
+        e.drop('b');
+        e.load('c', { columns: ['t', 's', 'n'], rows: rows('e', 5) });
+        const read = async (name: string) => { const out = await e.run({ steps: [{ from: name }] }); assert.ok('result' in out); return e.read(out.result, 0, 9999).rows; };
+        assert.deepStrictEqual(await read('a'), rows('d', 2000));
+        assert.deepStrictEqual(await read('c'), rows('e', 5));
+    });
+
     it('tables come in, in pieces, and are read a window at a time; a table still loading is refused', async () => {
         const e = new QueryEngine();
         e.load('t', { columns: ['a', 'b'], rows: [[1, 'x']] }, { more: true });
