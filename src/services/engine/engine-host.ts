@@ -11,7 +11,7 @@
  * be copied to the worker in one message.
  */
 import { QueryEngine } from './engine';
-import type { CompareStats, JoinStats, Progress, Query, ResultId, RunOutcome, StatsWindow, Table, TableWindow } from './engine-types';
+import type { CompareStats, JoinStats, Progress, Query, ResultId, RunOutcome, StatsWindow, Table, TableWindow, Value } from './engine-types';
 
 export interface EngineHost {
     load(name: string, table: Table, options?: { more?: boolean }): Promise<void>;
@@ -23,6 +23,8 @@ export interface EngineHost {
     readRows(result: ResultId, rows: number[]): Promise<TableWindow>;
     stats(result: ResultId, step: string, window?: StatsWindow): Promise<JoinStats | CompareStats | Table>;
     release(result: ResultId): Promise<void>;
+    /** Figures over a result's rows by column (QueryEngine.measure). */
+    measure(result: ResultId, measures: { column: string; equals?: Value; known?: boolean }[]): Promise<{ rows: number; values: number[] }>;
     /** Results' totals over a result's first columns (QueryEngine.totals). */
     totals(result: ResultId, count: number): Promise<{ totals: (number | null)[]; places: number[] }>;
     /** A result with these columns stored (QueryEngine.hold): its id. */
@@ -47,6 +49,7 @@ export function localEngineHost(engine: QueryEngine = new QueryEngine()): Engine
         release: async result => engine.release(result),
         hold: async (result, columns) => engine.hold(result, columns),
         totals: async (result, count) => engine.totals(result, count),
+        measure: async (result, measures) => engine.measure(result, measures),
         close: () => undefined,
         alive: () => true
     };
@@ -101,6 +104,7 @@ export function remoteEngineHost(port: EnginePort): EngineHost {
         release: result => call('release', [result]),
         hold: (result, columns) => call('hold', [result, columns]),
         totals: (result, count) => call('totals', [result, count]),
+        measure: (result, measures) => call('measure', [result, measures]),
         close: () => { for (const w of waiting.values()) w.reject(new Error('The engine was closed')); waiting.clear(); port.close?.(); },
         alive: () => !failed
     };
@@ -124,6 +128,7 @@ export function serveEngine(port: EnginePort, engine: QueryEngine = new QueryEng
                 case 'release': engine.release(args[0] as ResultId); break;
                 case 'hold': value = engine.hold(args[0] as ResultId, args[1] as string[]); break;
                 case 'totals': value = engine.totals(args[0] as ResultId, args[1] as number); break;
+                case 'measure': value = engine.measure(args[0] as ResultId, args[1] as { column: string; equals?: Value; known?: boolean }[]); break;
                 default: throw new Error(`Engine: no call "${call}"`);
             }
             port.post({ id, ok: true, value } satisfies Answer);

@@ -614,8 +614,12 @@ function statusColumns(spec: QuerySpec, values: Expr[], places: string[], where:
         });
     });
     diffPlaces.forEach((place, k) => columns.push({ name: `s_dp${k}`, value: native ? own(`diff:${placeView.get(place)}`) : yes(or(placeFlags.get(place)!)) }));
+    // Compared by the compare step with every view shown: its own status and relation are Results' rule (a blank key
+    // its own row, never DIFF; Same where nothing differs and no view lacks the record): read as they are
+    const direct = native && !where.hidden.length;
+    const statusIs = (v: string): Expr => ({ fn: '=', args: [own('status'), { value: v }] });
     places.forEach((v, p) => {
-        columns.push({ name: `s_missing${p}`, value: ifThen(noKey, { value: 0 }, own(`missing:${v}`)) });
+        columns.push({ name: `s_missing${p}`, value: ifThen(direct ? statusIs('noKey') : noKey, { value: 0 }, own(`missing:${v}`)) });
         columns.push({ name: `s_repeated${p}`, value: own(`repeated:${v}`) });
     });
     const shownMissing = places.map((_, p) => p).filter(p => shown(labels[p])).map(missing);
@@ -624,15 +628,15 @@ function statusColumns(spec: QuerySpec, values: Expr[], places: string[], where:
     // (worked out from the columns above: the select's own columns can't be read in it, so again from their parts)
     const groupFlags = columns.filter(c => /^s_g\d+$/.test(c.name)).map(c => ({ fn: '=', args: [c.value, { value: 1 }] } as Expr));
     void anyDiff;
-    columns.push({ name: 's_diff', value: yes(or(groupFlags)) });
-    columns.push({ name: 's_same', value: yes(and([not(or(groupFlags)), not(or(shownMissing))])) });
+    columns.push({ name: 's_diff', value: direct ? yes(statusIs('diff')) : yes(or(groupFlags)) });
+    columns.push({ name: 's_same', value: direct ? yes(statusIs('same')) : yes(and([not(or(groupFlags)), not(or(shownMissing))])) });
     // (No key's place: the shown result holding the record)
     columns.push({ name: 's_nokey', value: holders.reduceRight<Expr>((rest, p) => ifThen(and([keyIsBlank, not(missing(p))]), { value: labels[p] }, rest), { value: null }) });
     // Relation: a shown Baseline without the record, only in another; a shown view without it, only in the Baseline; a shown view repeating the key, one to many
     const baseShown = shown(labels[0]);
     columns.push({
         name: 's_relation',
-        value: ifThen(baseShown ? missing(0) : { value: 0 }, { value: 'onlyOther' }, ifThen(or(shownMissing), { value: 'onlyBase' }, ifThen(or(shownRepeated), { value: 'oneToMany' }, { value: 'oneToOne' })))
+        value: direct ? own('relation') : ifThen(baseShown ? missing(0) : { value: 0 }, { value: 'onlyOther' }, ifThen(or(shownMissing), { value: 'onlyBase' }, ifThen(or(shownRepeated), { value: 'oneToMany' }, { value: 'oneToOne' })))
     });
     return { columns, layout: { places, labels, diffPlaces, groups: groups.map(g => g.name), hidden: where.hidden, ...(native ? { native } : {}) } };
 }
@@ -806,11 +810,18 @@ export async function pagedCounts(engineIn: QueryEngine | EngineHost, spec: Quer
     const engine = hostOf(engineIn);
     const { query, layout } = pagedQuery(spec, null, search, { ...status, filter: undefined }, held);
     if (!layout.status) return undefined;
-    const out = await engine.run({ steps: [...query.steps, statusCountsStep(query.result ?? 'rows', layout.status)], result: 'counts' });
+    const st = layout.status;
+    // The rows (the search's, or all of them), then each count in one pass over their status columns (statusCountsStep's, in its order)
+    const out = await engine.run(query);
     if (!('result' in out)) return undefined;
     try {
-        const row = (await engine.read(out.result, 0, 1)).rows[0];
-        return row ? statusCountsOf(row, layout.status) : undefined;
+        const { rows, values } = await engine.measure(out.result, [
+            { column: 's_diff' }, { column: 's_same' }, { column: 's_nokey', known: true },
+            ...st.places.map((_, p) => ({ column: `s_missing${p}` })),
+            ...RELATIONS.map(r => ({ column: 's_relation', equals: r })),
+            ...st.groups.map((_, g) => ({ column: `s_g${g}` }))
+        ]);
+        return statusCountsOf([rows, ...values], st);
     } finally {
         await engine.release(out.result);
     }

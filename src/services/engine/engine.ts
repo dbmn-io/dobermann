@@ -799,6 +799,32 @@ export class QueryEngine implements Engine {
     }
 
     /**
+     * Figures over a result's rows, one pass a figure, by column name: the sum of its values (numbers;
+     * anything else as 0), or with `equals` the rows whose value is that one, or with `known` the rows
+     * with a value. Read where the rows are (Results' Status counts from its stored status columns).
+     */
+    measure(result: ResultId, measures: { column: string; equals?: Value; known?: boolean }[]): { rows: number; values: number[] } {
+        const rel = this.results.get(result);
+        if (!rel) throw new Error(`Engine: no result "${result}"`);
+        const n = rel.rowCount;
+        const values = measures.map(m => {
+            const c = rel.cols.findIndex(col => col.name === m.column);
+            if (c < 0) throw new Error(`Engine: no column "${m.column}"`);
+            let out = 0;
+            if (m.equals !== undefined) {
+                const want = m.equals;
+                for (let r = 0; r < n; r++) if (toValue(rel.value(r, c)) === want) out++;
+            } else if (m.known) {
+                for (let r = 0; r < n; r++) if (rel.value(r, c) !== null) out++;
+            } else {
+                for (let r = 0; r < n; r++) { const v = toValue(rel.value(r, c)); if (typeof v === 'number') out += v; }
+            }
+            return out;
+        });
+        return { rows: n, values };
+    }
+
+    /**
      * Results' totals over a result's first `count` columns, as Results works them out (query-new-engine
      * pagedTotals): the numbers' sum, none for a column with any text, as many decimals as its values
      * have (two at most), a blank left out. Worked out where the rows are: none is read out for it.
