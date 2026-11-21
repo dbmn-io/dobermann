@@ -467,6 +467,12 @@ table.export td.x{mso-number-format:"\\@"}
      * exportToExcelMultiSheet writes them (widths, a filter on the headings, compressed). Large
      * results: no object a row, no cell objects kept apart (Query's export).
      */
+    /** A file's bytes made elsewhere (Query's export, made in the engine's worker), saved where the user chose. */
+    async saveBytes(targetUri: string, bytes: Uint8Array): Promise<string> {
+        await fs.promises.writeFile(targetUri, bytes);
+        return targetUri;
+    }
+
     async exportArraysToExcel(sheets: { sheetName: string; header: string[]; rows: unknown[][] }[], options: { targetUri?: string }): Promise<string> {
         const workbook = XLSX.utils.book_new();
         for (const sheet of sheets) {

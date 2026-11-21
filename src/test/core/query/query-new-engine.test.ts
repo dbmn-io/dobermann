@@ -13,6 +13,8 @@ import type { SqlJsStatic } from 'sql.js';
 import { COLUMN_FUNCTIONS, columnFnSql, type ColumnFn } from '../../../services/column-functions/column-functions';
 import { QueryEngine } from '../../../services/engine/engine';
 import { localEngineHost, remoteEngineHost, serveEngine, type EnginePort } from '../../../services/engine/engine-host';
+import * as XLSX from 'xlsx';
+import { resultWorkbook } from '../../../services/query/query-export';
 import { QuerySession } from '../../../services/query/query-engine';
 import { buildQuery, resultsKey, runHeld, fromKeptCompare, countAlike, sampleQueries, pagedCounts, readStatusPage, eachPage, loadViewInto, pagedTotals, readPage, runOnEngine, runPaged, TooManyOnEngine, compareKeyExprs, compareQuery, fnExpr, fnSampleQueries, formulaExpr, labelExpr, loadLookupTable, loadView, queryWithColumns, recordQuery, resultRows, onSqliteLine, runCompareOnEngine, whyNotOnEngine } from '../../../services/query/query-new-engine';
 import { formulaSql, parseFormula, FORMULA_FUNCTIONS } from '../../../services/query/formula';
@@ -681,6 +683,22 @@ describe('Query compare on the new engine', () => {
         assert.ok('result' in first && first.total === 5);
         // (another compare: not read from it)
         assert.strictEqual(fromKeptCompare(everyView, { ...run.compare!, step: '[]' }), everyView);
+    });
+
+    it('the export made where the rows are (the worker\'s workbook call): the cells Results\' rows give, every value as text', async () => {
+        const handlers: [((m: unknown) => void)[], ((m: unknown) => void)[]] = [[], []];
+        const port = (me: 0 | 1): EnginePort => ({ post: message => { const copy = structuredClone(message); setTimeout(() => handlers[1 - me].forEach(h => h(copy)), 0); }, listen: handler => { handlers[me].push(handler); } });
+        const engine = new QueryEngine();
+        serveEngine(port(1), engine, { workbook: (e, a) => resultWorkbook(e, a[0] as string, a[1] as number, a[2] as string[], a[3] as [string, string][]) });
+        const host = remoteEngineHost(port(0));
+        await host.load('t', { columns: ['a', 'b', 'c'], rows: [['x', 1, null], ['007', 2.5, 'y']] });
+        const out = await host.run({ steps: [{ from: 't' }] });
+        assert.ok('result' in out);
+        const bytes = await host.workbook!(out.result, 2, ['A', 'B'], [['Query', 'q']]);
+        const book = XLSX.read(bytes, { type: 'array' });
+        assert.deepStrictEqual(XLSX.utils.sheet_to_json(book.Sheets.Results, { header: 1, raw: true, defval: null }), [['A', 'B'], ['x', '1'], ['007', '2.5']]);
+        assert.deepStrictEqual(book.SheetNames, ['Results', 'Query']);
+        host.close();
     });
 
     it('a compare held once (runHeld): a sort, a Status filter and the counts from it are the rows, status and counts a whole run gives', async () => {

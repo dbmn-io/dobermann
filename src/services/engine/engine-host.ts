@@ -25,6 +25,8 @@ export interface EngineHost {
     release(result: ResultId): Promise<void>;
     /** Figures over a result's rows by column (QueryEngine.measure). */
     measure(result: ResultId, measures: { column: string; equals?: Value; known?: boolean }[]): Promise<{ rows: number; values: number[] }>;
+    /** Where the host can (the web app's worker): Results' export as a workbook's bytes, made from a result where it is. */
+    workbook?(result: ResultId, count: number, header: string[], about: [string, string][]): Promise<Uint8Array>;
     /** Results' totals over a result's first columns (QueryEngine.totals). */
     totals(result: ResultId, count: number): Promise<{ totals: (number | null)[]; places: number[] }>;
     /** A result with these columns stored (QueryEngine.hold): its id. */
@@ -104,6 +106,7 @@ export function remoteEngineHost(port: EnginePort): EngineHost {
         release: result => call('release', [result]),
         hold: (result, columns) => call('hold', [result, columns]),
         totals: (result, count) => call('totals', [result, count]),
+        workbook: (result, count, header, about) => call('workbook', [result, count, header, about]),
         measure: (result, measures) => call('measure', [result, measures]),
         close: () => { for (const w of waiting.values()) w.reject(new Error('The engine was closed')); waiting.clear(); port.close?.(); },
         alive: () => !failed
@@ -111,7 +114,7 @@ export function remoteEngineHost(port: EnginePort): EngineHost {
 }
 
 /** The worker's side: every call on its port answered by one engine; a run's progress sent as it comes. */
-export function serveEngine(port: EnginePort, engine: QueryEngine = new QueryEngine()): void {
+export function serveEngine(port: EnginePort, engine: QueryEngine = new QueryEngine(), extra: Record<string, (engine: QueryEngine, args: unknown[]) => unknown> = {}): void {
     port.listen(async message => {
         const { id, call, args } = message as Call;
         try {
@@ -129,7 +132,10 @@ export function serveEngine(port: EnginePort, engine: QueryEngine = new QueryEng
                 case 'hold': value = engine.hold(args[0] as ResultId, args[1] as string[]); break;
                 case 'totals': value = engine.totals(args[0] as ResultId, args[1] as number); break;
                 case 'measure': value = engine.measure(args[0] as ResultId, args[1] as { column: string; equals?: Value; known?: boolean }[]); break;
-                default: throw new Error(`Engine: no call "${call}"`);
+                default:
+                    // (the host's own calls: the web app's worker makes Query's export there)
+                    if (!extra[call]) throw new Error(`Engine: no call "${call}"`);
+                    value = extra[call](engine, args);
             }
             port.post({ id, ok: true, value } satisfies Answer);
         } catch (error) {

@@ -1763,9 +1763,6 @@ export class QueryController {
             return;
         }
         const headings = columnHeadings(found.columns, new Map(query.sources.map(s => [s.id, s.name])));
-        // (read a window at a time when the rows are in the engine; kept as the rows they are, no object a row)
-        const data: unknown[][] = [];
-        await found.each(rows => { for (const row of rows) data.push(row); });
         const search = String(message.search ?? '').trim();
         const about: [string, string][] = [
             ['Query', query.name],
@@ -1775,10 +1772,20 @@ export class QueryController {
             // (the SQL, when it ran on SQLite)
             ...(found.key.startsWith('engine:') ? [] : found.key.split('\n').map((line, i) => [i ? '' : 'SQL', line] as [string, string]))
         ];
-        const path = await new ConsoleExportService().exportArraysToExcel([
-            { sheetName: 'Results', header: headings, rows: data },
-            { sheetName: 'Query', header: ['', ''], rows: about }
-        ], { targetUri: target });
+        let path: string;
+        if (found.workbook) {
+            // Made in the engine's worker, where the rows are: the page only saves the file
+            this.post({ type: 'query.progress', text: `Exporting ${found.shown.toLocaleString('en-US')} rows` });
+            path = await new ConsoleExportService().saveBytes(target, await found.workbook(headings, about));
+        } else {
+            // (read a window at a time when the rows are in the engine; kept as the rows they are, no object a row)
+            const data: unknown[][] = [];
+            await found.each(rows => { for (const row of rows) data.push(row); });
+            path = await new ConsoleExportService().exportArraysToExcel([
+                { sheetName: 'Results', header: headings, rows: data },
+                { sheetName: 'Query', header: ['', ''], rows: about }
+            ], { targetUri: target });
+        }
         await files.exported?.(path);
         this.ports.toast.info(`Saved ${path.split(/[\\/]/).pop()}`);
         this.post({ type: 'query.exported' });
@@ -2001,6 +2008,8 @@ export class QueryController {
                 page: async (offset, limit) => (status && paged.layout.status ? await readStatusPage(host, paged, offset, limit, status) : { rows: await readPage(host, paged, offset, limit) }),
                 ...(counts ? { counts } : {}),
                 each: each => eachPage(host, paged, each),
+                ...(host.workbook && paged.layout.keyColumnOf.every(k => k === undefined)
+                    ? { workbook: (header: string[], about: [string, string][]) => host.workbook!(paged.id, paged.layout.columns.length, header, about) } : {}),
                 totals: () => pagedTotals(host, paged)
             };
         }
@@ -2450,6 +2459,8 @@ interface ShownRows {
     counts?: () => Promise<{ counts: ReturnType<typeof statusCounts>; countsAll: ReturnType<typeof statusCounts> } | undefined>;
     each(each: (rows: unknown[][], offset: number) => void | Promise<void>): Promise<void>;
     totals(): Promise<{ totals: (number | null)[]; places: number[] }>;
+    /** Where the engine can make it (the web app's worker): the export's workbook, made from the rows where they are. */
+    workbook?(header: string[], about: [string, string][]): Promise<Uint8Array>;
 }
 
 interface QueryResult {
