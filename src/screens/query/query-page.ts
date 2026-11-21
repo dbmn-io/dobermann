@@ -126,7 +126,7 @@ export function buildQueryPage(asset: AssetUrl, config: { queryId: string; name:
             <!-- New engine: a column where text read as a number wasn't one (left blank) says how many rows -->
             <dbmn-status id="queryNotNumbers" class="query-engine-note hidden" inline tone="warn"></dbmn-status>
             <!-- Results working (a compare worked out, a sort, a search): what, and how far, until its first rows are in -->
-            <dbmn-status id="queryReading" class="query-engine-note hidden" inline></dbmn-status>
+            <dbmn-progress id="queryReading" class="query-engine-note hidden" inline stop></dbmn-progress>
             <dbmn-table id="queryTable" class="query-results" label="Results" removable></dbmn-table>
         </div>
 

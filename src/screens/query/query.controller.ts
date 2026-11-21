@@ -405,6 +405,12 @@ export class QueryController {
                 // Stop (the Join step's counting): what is being worked out is left; the step says the counts were stopped
                 // Count again, after Stop
                 case 'query.recount': return await this.refresh();
+                // Stop on Results' working line: its run (and the step's count it waits for) ends between slices
+                case 'query.stopReading': {
+                    if (this.pagedRunning) this.engine?.cancel(this.pagedRunning);
+                    if (this.engineRunning) this.engine?.cancel(this.engineRunning);
+                    return;
+                }
                 case 'query.stopCounting': {
                     this.version++;
                     // (the new engine stops between its slices)

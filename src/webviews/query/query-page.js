@@ -1480,7 +1480,10 @@
             bar.appendChild(countingSays(inCompare.reduce((n, v) => n + (v.rows || 0), 0)));
         } else if (keyed && sample) {
             // A sample: how many of the Baseline's first records each other view has
-            const stat = asSample(el('span', 'query-made query-compare-stat', `In ${firstN} of ${nameOf(baseline)}: ${others.map(v => `${nameOf(v)} ${count(sampleFound(v))}`).join(' · ')} found`));
+            // (the sentence says it is of a sample: only its figures are marked, the design system's sample figure)
+            const stat = el('span', 'query-made query-compare-stat', `In ${firstN} of ${nameOf(baseline)}: `);
+            others.forEach((v, i) => { stat.append(`${i ? ' · ' : ''}${nameOf(v)} `, asSample(el('span', 'dbmn-lanes-figure', count(sampleFound(v))))); });
+            stat.append(' found');
             bar.appendChild(stat);
         } else if (keyed) {
             // Each later view's records that find one of the Baseline's (one to one or repeated: the chevron splits them)
@@ -1498,7 +1501,7 @@
             }
         }
         // The rows it leaves, at the end of the line: every record of every view in it, once
-        const total = last && last.stats && !pending ? asSample(el('span', 'query-made query-compare-rows', `${count(last.stats.rowsAfter)} rows`)) : null;
+        const total = last && last.stats && !pending ? asSample(el('span', `query-made query-compare-rows${sample ? ' dbmn-lanes-figure' : ''}`, `${count(last.stats.rowsAfter)} rows`)) : null;
         // Its chevron opens how the records meet, a line per kind (closed to begin with), as a join's does
         const open = !!ui.statsOpen.__compare;
         const ready = keyed;
@@ -1840,7 +1843,7 @@
     /** One page of rows, asked of the host: the answer comes back as query.rowsData. */
     function page(start, limit) {
         const id = ++grid.asked;
-        if (start === 0) reading('Reading the rows');
+        if (start === 0) { grid.stopped = false; readingStop(true); reading('Reading the rows'); }
         post({ type: 'query.rows', seq: id, offset: start, limit, search: ui.search, sort: ui.sort, totals: ui.totals, ...(hasStatus() ? { filter: ui.filter } : {}) });
         return new Promise(resolve => grid.waiting.set(id, { resolve, ids: resultCols().map(colId) }));
     }
@@ -1857,20 +1860,44 @@
      * Results working on its rows (the first page asked, not in yet): the line above the table says what and
      * how far, and the table's own "No rows." from before is not shown meanwhile. Null: the rows are in.
      */
-    function reading(text) {
+    function reading(say) {
+        // (the design system's working line, dbmn-progress inline: its stage, how far, the seconds it has taken, Stop)
         const line = $('queryReading');
-        line.classList.toggle('hidden', !text);
-        if (text) line.textContent = `${text}…`;
-        table.classList.toggle('is-reading', !!text);
+        const on = !!say;
+        line.classList.toggle('hidden', !on);
+        table.classList.toggle('is-reading', on);
+        if (!on) { line.removeAttribute('since'); return; }
+        const it = typeof say === 'string' ? { phase: say } : say;
+        if (!line.hasAttribute('since')) line.setAttribute('since', String(Date.now()));
+        line.setAttribute('phase', it.phase);
+        if (typeof it.value === 'number') { line.setAttribute('value', String(it.value)); line.removeAttribute('busy'); } else { line.removeAttribute('value'); line.setAttribute('busy', ''); }
     }
 
-    /** A stage of the engine's work, in words, with how far along it is. */
+    /** Stop on the working line, or (stopped) the link that asks again. */
+    function readingStop(on) {
+        const line = $('queryReading');
+        if (on) { line.setAttribute('stop', ''); line.removeAttribute('again'); } else { line.removeAttribute('stop'); line.setAttribute('again', 'Work them out'); }
+    }
+    $('queryReading').addEventListener('dbmn-progress-stop', () => {
+        // Stop: Results' run ends between its slices; the line says so and offers to start again
+        grid.stopped = true;
+        post({ type: 'query.stopReading' });
+        const line = $('queryReading');
+        line.setAttribute('phase', 'Stopped: Results\' rows not worked out');
+        line.removeAttribute('value');
+        line.removeAttribute('busy');
+        readingStop(false);
+    });
+    $('queryReading').addEventListener('dbmn-progress-again', () => { grid.key = ''; loadRows(); });
+
+    /** A stage of the engine's work, in words, with how far along it is (the engine's units of work: a share, not rows). */
     function readingStage(stage, done, total) {
-        const what = stage === 'Done' ? 'Reading the first rows'
+        const phase = stage === 'Done' ? 'Reading the first rows'
             : /^Comparing/.test(stage) ? 'Comparing the records'
                 : stage === 'Holding the rows' ? 'Working out each row\'s status'
-                    : /^Sorting/.test(stage) ? 'Sorting' : /^Filtering/.test(stage) ? 'Filtering' : /^Grouping/.test(stage) ? 'Counting' : stage;
-        return total > 0 && done < total ? `${what}: ${Math.floor((100 * done) / total)}%` : what;
+                    : /^Finding the keys/.test(stage) ? 'Finding the keys'
+                        : /^Sorting/.test(stage) ? 'Sorting' : /^Filtering/.test(stage) ? 'Filtering' : /^Grouping/.test(stage) ? 'Counting' : stage;
+        return total > 0 && done < total ? { phase, value: Math.floor((100 * done) / total) } : { phase };
     }
 
     function rowsArrived(m) {
@@ -2211,7 +2238,7 @@
             case 'query.counting':
                 ui.counting = m.since ? { since: m.since, stage: m.stage } : { stopped: true, stage: m.stage };
                 // (Results waiting on the step's count: it says so too)
-                if (m.since && m.stage && !$('queryReading').classList.contains('hidden')) reading(m.stage);
+                if (m.since && m.stage && !grid.stopped && !$('queryReading').classList.contains('hidden')) reading(m.stage);
                 if (!m.since) setBusy('');
                 if (ui.step === 2) renderJoins();
                 break;
@@ -2229,7 +2256,7 @@
                 renderJoins();
                 break;
             // Results' work as it goes (the first page not in yet)
-            case 'query.reading': if (!$('queryReading').classList.contains('hidden')) reading(readingStage(m.stage, m.done, m.total)); break;
+            case 'query.reading': if (!grid.stopped && !$('queryReading').classList.contains('hidden')) reading(readingStage(m.stage, m.done, m.total)); break;
             // A column moved: the SQL and Columns say the new order (Results already shows it)
             case 'query.arranged':
                 if (!ui.state) break;
