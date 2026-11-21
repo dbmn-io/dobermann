@@ -1475,7 +1475,18 @@
         // (each other view's count of the sample's keys it has: the engine's, the Baseline first)
         const sampleFound = v => (sample ? sample.byInput[inCompare.indexOf(v)] || 0 : 0);
         const bar = el('div', 'query-after query-compare-said');
-        if (pending) {
+        // A view of the compare still arriving: said in words (no compare of what has landed so far: its figures would change as the rest came in)
+        const arriving = inCompare.filter(v => v.reading);
+        if (arriving.length) {
+            const names = arriving.map(nameOf);
+            const it = arriving.length === 1 ? 'it' : 'them';
+            const far = (ui.busy || '').replace(/^Reading [^:]*: ?/, '');
+            const line = document.createElement('dbmn-status');
+            line.setAttribute('inline', '');
+            line.textContent = `Still reading ${names.join(', ')}${far && /^Reading /.test(ui.busy || '') ? `: ${far}` : ''}. The first ${count(SAMPLE_ROWS)} records of ${nameOf(baseline)} will be checked against ${it} when ${arriving.length === 1 ? 'it\'s' : 'they\'re'} in.`;
+            bar.classList.add('is-pending');
+            bar.appendChild(line);
+        } else if (pending) {
             bar.classList.add('is-pending');
             bar.appendChild(countingSays(inCompare.reduce((n, v) => n + (v.rows || 0), 0)));
         } else if (keyed && sample) {
@@ -1873,6 +1884,9 @@
         if (typeof it.value === 'number') { line.setAttribute('value', String(it.value)); line.removeAttribute('busy'); } else { line.removeAttribute('value'); line.setAttribute('busy', ''); }
     }
 
+    /** The records of the Baseline Join and Columns check (the host's SAMPLE_ROWS). */
+    const SAMPLE_ROWS = 1000;
+
     /** Stop on the working line, or (stopped) the link that asks again. */
     function readingStop(on) {
         const line = $('queryReading');
@@ -2226,7 +2240,11 @@
                 else goTo(m.start === 'results' && joinsReady() ? 4 : m.start === 'results' ? ui.step : 1);
                 break;
             case 'query.sourceList': ui.sources = m.results || []; ui.sourceViews = m.views || {}; break;
-            case 'query.progress': setBusy(m.total ? `${m.text} · ${count(m.done)} of ${count(m.total)}` : m.text); break;
+            case 'query.progress':
+                setBusy(m.total ? `${m.text} · ${count(m.done)} of ${count(m.total)}` : m.text);
+                // (the Join step says how far a view still arriving has got)
+                if (ui.step === 2 && ui.state && (ui.state.views || []).some(v => v.reading)) renderJoins();
+                break;
             case 'query.state': {
                 // ("New compare engine (testing)": how long the page takes to draw what the engine gave)
                 const drawn = performance.now();
