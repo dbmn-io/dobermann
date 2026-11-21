@@ -1467,10 +1467,21 @@
         const repeatedIn = new Map();
         inCompare.forEach(v => { const n = (summary[v.id] || {}).repeatedKeys || 0; if (n) repeatedIn.set(n, [...(repeatedIn.get(n) || []), nameOf(v)]); });
         const repeatWords = [...repeatedIn].map(([n, where]) => `${count(n)} ${n === 1 ? 'value repeats' : 'values repeat'} in ${where.join(', ')}`).join(' · ');
+        // A sample's figures (the Baseline's first records and their keys in the others) until Results has worked out the whole
+        const sample = ui.state.sample || null;
+        const firstN = sample ? (sample.rows < sample.of ? `the first ${count(sample.rows)} records` : `the ${count(sample.rows)} records`) : '';
+        const sampleTitle = sample ? `Of ${firstN} of ${nameOf(baseline)}, and their keys in the other views. The full counts come with Results.` : '';
+        const asSample = node => { if (sample && node) { node.classList.add('is-sample'); node.title = sampleTitle; } return node; };
+        // (each other view's count of the sample's keys it has: the engine's, the Baseline first)
+        const sampleFound = v => (sample ? sample.byInput[inCompare.indexOf(v)] || 0 : 0);
         const bar = el('div', 'query-after query-compare-said');
         if (pending) {
             bar.classList.add('is-pending');
             bar.appendChild(countingSays(inCompare.reduce((n, v) => n + (v.rows || 0), 0)));
+        } else if (keyed && sample) {
+            // A sample: how many of the Baseline's first records each other view has
+            const stat = asSample(el('span', 'query-made query-compare-stat', `In ${firstN} of ${nameOf(baseline)}: ${others.map(v => `${nameOf(v)} ${count(sampleFound(v))}`).join(' · ')} found`));
+            bar.appendChild(stat);
         } else if (keyed) {
             // Each later view's records that find one of the Baseline's (one to one or repeated: the chevron splits them)
             const found = others.filter(statsOf).map(v => `${nameOf(v)} ${count(statsOf(v).rightMatched || 0)} of ${count(statsOf(v).rightRows || 0)}`);
@@ -1487,7 +1498,7 @@
             }
         }
         // The rows it leaves, at the end of the line: every record of every view in it, once
-        const total = last && last.stats && !pending ? el('span', 'query-made query-compare-rows', `${count(last.stats.rowsAfter)} rows`) : null;
+        const total = last && last.stats && !pending ? asSample(el('span', 'query-made query-compare-rows', `${count(last.stats.rowsAfter)} rows`)) : null;
         // Its chevron opens how the records meet, a line per kind (closed to begin with), as a join's does
         const open = !!ui.statsOpen.__compare;
         const ready = keyed;
@@ -1524,6 +1535,7 @@
                     const n = of(v);
                     if (n === null || n === undefined) return;
                     const cell = counted(v.id, n, kind === 'manyToMany');
+                    asSample(cell);
                     if (!n) cell.classList.add('is-zero');
                     // Under the Baseline, One to one is its record count, said quietly ("1,204 records")
                     if (kind === 'oneToOne' && v.id === baseline.id) { cell.textContent = `${count(n)} records`; cell.classList.add('is-zero'); }
@@ -1568,13 +1580,25 @@
             if (noKeys) kindLine('noKey', 'No key', 'Records whose key is blank: they match nothing, and Results shows each as No key', v => (summary[v.id] || {}).noKey ?? null);
             // Then one sentence: what it all means, and what to do (dbmn-status's tones)
             const only = inCompare.reduce((n, v) => n + ((summary[v.id] || {}).onlyHere || 0), 0);
-            const words = [only ? `${count(only)} ${only === 1 ? 'record is' : 'records are'} in one view only: each shows as Missing in the others.` : noKeys ? 'Every record with a key is in the Baseline.' : '✓ Every view finds the Baseline\'s record.'];
+            let words = [only ? `${count(only)} ${only === 1 ? 'record is' : 'records are'} in one view only: each shows as Missing in the others.` : noKeys ? 'Every record with a key is in the Baseline.' : '✓ Every view finds the Baseline\'s record.'];
             if (noKeys) words.push(`${count(noKeys)} ${noKeys === 1 ? 'record has' : 'records have'} no key: ${noKeys === 1 ? 'it matches' : 'they match'} nothing and ${noKeys === 1 ? 'shows' : 'show'} as No key.`);
             if (repeatWords) words.push(`${repeatWords}: a record on more than one row is compared with every row that has the same key, so Results shows extra rows and DIFFs that aren't real. Add a column to the key (+ AND) so each record has one row.`);
+            let low = false;
+            if (sample) {
+                // Of a sample only, and said so: what was found in every view, repeats seen there, a key that looks wrong
+                const runs = others.every(v => v.run) ? 'run' : 'view';
+                const thin = others.filter(v => sampleFound(v) < sample.rows / 2);
+                low = thin.length > 0;
+                words = [`In ${firstN} of ${nameOf(baseline)}: ${count(sample.inEvery)} found in every ${runs}${repeatWords ? '' : `, none repeated in ${firstN}`}.`];
+                thin.forEach(v => words.push(`Only ${count(sampleFound(v))} of ${firstN.replace('records', 'keys')} of ${nameOf(baseline)} ${sampleFound(v) === 1 ? 'is' : 'are'} in ${nameOf(v)}: check the key.`));
+                if (repeatWords) words.push(`${repeatWords} in ${firstN}: a record on more than one row is compared with every row that has the same key. Add a column to the key (+ AND) so each record has one row.`);
+                if (!low && !repeatWords && sample.inEvery === sample.rows) words.push('Looks like a safe compare.');
+                words.push('The full counts come with Results.');
+            }
             const verdict = document.createElement('dbmn-status');
             verdict.className = 'query-compare-verdict-text';
             verdict.setAttribute('inline', '');
-            verdict.setAttribute('tone', repeatWords ? 'warn' : only ? 'warn' : 'ok');
+            verdict.setAttribute('tone', repeatWords || low ? 'warn' : only && !sample ? 'warn' : 'ok');
             verdict.textContent = words.join(' ');
             const vline = line('query-compare-verdict', { __span: verdict }, [], []);
             band.appendChild(vline);
@@ -1990,6 +2014,20 @@
         updatePeek();
     }
 
+    /** Distinct's line and the not-a-number line, from a state (or the whole compare's figures, once Results has them). */
+    function renderFigures(m) {
+        // Distinct is there only when rows repeat (or it is on): it says how many it folds
+        const repeats = m.duplicates || 0;
+        $('queryDistinctLabel').classList.toggle('hidden', !repeats && !m.distinct);
+        $('queryDistinctText').textContent = !repeats ? 'Distinct' : m.distinct ? `Distinct: ${count(repeats)} repeated ${repeats === 1 ? 'row' : 'rows'} folded` : `Distinct: fold ${count(repeats)} repeated ${repeats === 1 ? 'row' : 'rows'}`;
+        // Text read as a number that wasn't one is left blank, and said: how many rows, in which column (James, 2026-11-21)
+        const notNumbers = (m.notNumbers || []).filter(x => (m.resultColumns || [])[x.column]);
+        $('queryNotNumbers').classList.toggle('hidden', !notNumbers.length);
+        $('queryNotNumbers').textContent = notNumbers.length
+            ? `Text that isn't a number was left blank: ${notNumbers.map(x => `${count(x.rows)} ${x.rows === 1 ? 'row' : 'rows'} in ${m.resultColumns[x.column].column}`).join(', ')}.`
+            : '';
+    }
+
     function applyState(m) {
         // (counting: the step is drawn, its counts still to come; done: no longer)
         ui.counting = m.counting ? { since: m.counting, stage: (ui.counting && ui.counting.since === m.counting && ui.counting.stage) || '' } : (ui.counting && ui.counting.stopped ? ui.counting : null);
@@ -2012,16 +2050,7 @@
         if (!m.reading) { ui.busy = ''; ui.settled = true; }
         $('queryDistinct').checked = !!m.distinct;
         $('queryDistinct').disabled = !!m.ownSql;
-        // Distinct is there only when rows repeat (or it is on): it says how many it folds
-        const repeats = m.duplicates || 0;
-        $('queryDistinctLabel').classList.toggle('hidden', !repeats && !m.distinct);
-        $('queryDistinctText').textContent = !repeats ? 'Distinct' : m.distinct ? `Distinct: ${count(repeats)} repeated ${repeats === 1 ? 'row' : 'rows'} folded` : `Distinct: fold ${count(repeats)} repeated ${repeats === 1 ? 'row' : 'rows'}`;
-        // Text read as a number that wasn't one is left blank, and said: how many rows, in which column (James, 2026-11-21)
-        const notNumbers = (m.notNumbers || []).filter(x => (m.resultColumns || [])[x.column]);
-        $('queryNotNumbers').classList.toggle('hidden', !notNumbers.length);
-        $('queryNotNumbers').textContent = notNumbers.length
-            ? `Text that isn't a number was left blank: ${notNumbers.map(x => `${count(x.rows)} ${x.rows === 1 ? 'row' : 'rows'} in ${m.resultColumns[x.column].column}`).join(', ')}.`
-            : '';
+        renderFigures(m);
         if (firstState) {
             // Results as it was left: its search, its sort, its totals
             ui.search = m.search || '';
@@ -2189,6 +2218,16 @@
             case 'query.named': if (ui.state) ui.state.name = m.name; showName(m.name); renderBar(); break;
             case 'query.fileSheets': setBusy(''); pickSheets(m); break;
             case 'query.rowsData': rowsArrived(m); break;
+            // Results has worked out the whole compare: the Join step's true figures (no longer a sample's), rows alike, numbers counted
+            case 'query.figures':
+                if (!ui.state) break;
+                (ui.state.joins || []).forEach(j => { if (Object.prototype.hasOwnProperty.call(m.stats || {}, j.view)) j.stats = m.stats[j.view]; });
+                ui.state.duplicates = m.duplicates;
+                ui.state.notNumbers = m.notNumbers;
+                ui.state.sample = null;
+                renderFigures(ui.state);
+                renderJoins();
+                break;
             // Results' work as it goes (the first page not in yet)
             case 'query.reading': if (!$('queryReading').classList.contains('hidden')) reading(readingStage(m.stage, m.done, m.total)); break;
             // A column moved: the SQL and Columns say the new order (Results already shows it)

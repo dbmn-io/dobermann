@@ -20,7 +20,7 @@ import type { CompareStats, Expr, FunctionName, JoinStats, Progress, Query, Stat
 import { ROW_LIMIT } from '../engine/engine-types';
 import { FUNCTIONS } from '../engine/engine-types';
 import type { FormulaNode } from './formula';
-import { queryCompare } from './query-compare';
+import { isCompare, queryCompare } from './query-compare';
 import { formulaColumns, resultColumns } from './query-sql';
 import { comparedGroups, type RelationKind, type RowStatus, type StatusCounts, type StatusFilter } from './query-status';
 import { parseFormula } from './formula';
@@ -300,7 +300,7 @@ export function fromKeptCompare(query: Query, kept: { id: string; step: string }
 /** An engine as an EngineHost (tests and the VS Code host hand in the engine itself). */
 const hostOf = (engine: QueryEngine | EngineHost): EngineHost => (engine instanceof QueryEngine ? localEngineHost(engine) : engine);
 
-export async function runOnEngine(engineIn: QueryEngine | EngineHost, spec: QuerySpec, onProgress?: (p: Progress) => void, options?: { keep?: boolean; sort?: ShownSort | null; status?: PagedStatus; hold?: boolean }): Promise<(CompareOnEngine & { timings: [string, number][]; duplicates: number; notNumbers: NotNumbers; kept?: PagedResult; held?: PagedResult; compare?: { id: string; step: string } }) | undefined> {
+export async function runOnEngine(engineIn: QueryEngine | EngineHost, spec: QuerySpec, onProgress?: (p: Progress) => void, options?: { keep?: boolean; sort?: ShownSort | null; status?: PagedStatus; hold?: boolean; sample?: number }): Promise<(CompareOnEngine & { timings: [string, number][]; duplicates: number; notNumbers: NotNumbers; kept?: PagedResult; held?: PagedResult; compare?: { id: string; step: string }; sample?: SampleFacts }) | undefined> {
     const timings: [string, number][] = [];
     let at = now();
     const lap = (what: string) => { const t = now(); timings.push([what, Math.round(t - at)]); at = t; };
@@ -309,14 +309,13 @@ export async function runOnEngine(engineIn: QueryEngine | EngineHost, spec: Quer
     // same run the rows alike in every column shown (Distinct's count): one run serves the Join step and Results
     // (a compare: held without its sort, its status worked out once; the sort then a run from it)
     const holding = !!options?.keep && !!options.status && !!options.hold;
-    const built = options?.keep ? pagedQuery(spec, holding ? null : options.sort, undefined, holding ? { ...options.status!, filter: undefined } : options.status) : buildQuery(spec);
+    // (a compare's sample, for Join and Columns: no rows alike, no numbers counted; Results works them out, runHeld)
+    const sample = options?.sample !== undefined && isCompare(spec.joins) ? options.sample : undefined;
+    const built = options?.keep ? pagedQuery(spec, holding ? null : options.sort, undefined, holding ? { ...options.status!, filter: undefined } : options.status, undefined, sample) : buildQuery(spec);
     const { layout } = built;
-    const shownColumns = layout.columns.map((_, i) => ({ name: `c${i}`, value: { column: `c${i}` } as Expr }));
-    const query: Query = options?.keep && !spec.distinct
-        ? { steps: [...built.query.steps, { as: 'alike', group: 'rows', by: shownColumns, aggregates: [] }], result: built.query.result }
-        : built.query;
+    const query: Query = options?.keep && !spec.distinct && sample === undefined ? withAlike(built.query, layout) : built.query;
     // Results' columns that read text as a number: their rows where it wasn't one, counted in the same run
-    const counted = readsNumbersColumns(built.query);
+    const counted = sample === undefined ? readsNumbersColumns(built.query) : [];
     // (a compare's own step kept too, when Results' rows are: the sample record and a calculation's first rows read from it)
     const keepCompare = !!options?.keep && query.steps.some(s => 'compare' in s && s.as === 'compare');
     const out = await engine.run(query, { onProgress: p => { onProgress?.(p); }, ...(counted.length ? { countNotNumbers: counted } : {}), ...(holding ? { hold: true } : {}), ...(keepCompare ? { keepSteps: ['compare'] } : {}) });
@@ -350,7 +349,8 @@ export async function runOnEngine(engineIn: QueryEngine | EngineHost, spec: Quer
                 kept = sorted;
                 lap('sorted');
             }
-            return { rows: [], keyValues: [], stats, total: out.total, layout, timings, duplicates, notNumbers: notNumbersOf(out.notNumbers, query), kept, ...(held ? { held } : {}), ...(out.kept?.compare ? { compare: { id: out.kept.compare, step: compareStepKey(query) } } : {}) };
+            const facts = sample !== undefined ? (await engine.stats(out.result, 'compare') as CompareStats).sample : undefined;
+            return { rows: [], keyValues: [], stats, total: out.total, layout, timings, duplicates: sample !== undefined ? 0 : duplicates, notNumbers: notNumbersOf(out.notNumbers, query), kept, ...(held ? { held } : {}), ...(out.kept?.compare ? { compare: { id: out.kept.compare, step: compareStepKey(query) } } : {}), ...(facts ? { sample: facts } : {}) };
         }
         const read = await engine.read(out.result, 0, out.total);
         lap('read every row');
@@ -445,7 +445,7 @@ export function whyNotQueryOnEngine(spec: QuerySpec): string | undefined {
  * their formula, a compare's key from whichever view has the record) and each compare view's key;
  * Distinct a group by every column.
  */
-export function buildQuery(spec: QuerySpec, options?: { status?: StatusPlaces }): { query: Query; layout: CompareLayout } {
+export function buildQuery(spec: QuerySpec, options?: { status?: StatusPlaces; sample?: number }): { query: Query; layout: CompareLayout } {
     const steps: Query['steps'] = [];
     const byView = compareKeysByView(spec);
     const places = byView.map(v => v.view);
@@ -454,7 +454,7 @@ export function buildQuery(spec: QuerySpec, options?: { status?: StatusPlaces })
     // (a compare's status: its compared columns compared by the compare step itself when it can, nativeCompared)
     const native = options?.status && byView.length ? nativeCompared(spec, places, options.status) : undefined;
     if (byView.length) {
-        steps.push({ as: 'compare', compare: places, on: keyExprs, columns: native?.columns ?? [], ...(native?.notCompared.length ? { notCompared: native.notCompared } : {}) });
+        steps.push({ as: 'compare', compare: places, on: keyExprs, columns: native?.columns ?? [], ...(native?.notCompared.length ? { notCompared: native.notCompared } : {}), ...(options?.sample !== undefined ? { sample: options.sample } : {}) });
         base = 'compare';
     }
     spec.joins.filter(j => j.kind !== 'compare').forEach((j, i) => {
@@ -730,8 +730,13 @@ export function labelExpr(spec: QuerySpec, ref: ColumnRef): Expr {
     return coalesce([refExpr(ref), ...keys.slice(1).map(v => v.keys[first]).filter(Boolean).map(keyExpr)]);
 }
 
-/** The rows the function dialog's few values are taken from (the views' sample, James 2026-11-21). */
-export const FN_SAMPLE_ROWS = 1000;
+/**
+ * The sample Join and Columns work on (James, 2026-11-21: "we should only be using this subset of
+ * data... The only time it should be slow is when we are getting the results"): the Baseline's first
+ * rows, and their keys looked up in the other views. The function dialog's few values too.
+ */
+export const SAMPLE_ROWS = 1000;
+export const FN_SAMPLE_ROWS = SAMPLE_ROWS;
 
 /** The function dialog's sample: a few different values of a view's column, as they are and as `fns` leave them; the record's own first. */
 export function fnSampleQueries(view: string, column: string, fns: ColumnFn[], record: string): { few: Query; own: Query | undefined } {
@@ -768,8 +773,8 @@ export interface ShownSort { column: number; dir: 'asc' | 'desc' }
  * The query Results pages through: buildQuery; the search box's rows (a filter step by the host's
  * "search" row test, given `search`: query-search.ts); then sorted as Results sorts when a column is picked.
  */
-export function pagedQuery(spec: QuerySpec, sort?: ShownSort | null, search?: unknown, status?: PagedStatus, held?: string): { query: Query; layout: CompareLayout } {
-    const { query, layout } = buildQuery(spec, status ? { status } : undefined);
+export function pagedQuery(spec: QuerySpec, sort?: ShownSort | null, search?: unknown, status?: PagedStatus, held?: string, sample?: number): { query: Query; layout: CompareLayout } {
+    const { query, layout } = buildQuery(spec, { ...(status ? { status } : {}), ...(sample !== undefined ? { sample } : {}) });
     // (from a compare held in the engine, its status worked out once: runHeld; else the whole query again)
     let base = held ? 'held' : query.result ?? 'rows';
     const steps: Query['steps'] = held ? [{ as: 'held', from: held }] : [...query.steps];
@@ -849,20 +854,47 @@ export async function runPaged(engineIn: QueryEngine | EngineHost, spec: QuerySp
  * A compare held in the engine for Results (RunOptions.hold): every row and its status worked out
  * once, no sort, search or Status filter; Results' runs then start from it (pagedQuery's `held`).
  */
-export async function runHeld(engineIn: QueryEngine | EngineHost, spec: QuerySpec, status: PagedStatus, onProgress?: (p: Progress) => void): Promise<PagedResult | undefined> {
+export async function runHeld(engineIn: QueryEngine | EngineHost, spec: QuerySpec, status: PagedStatus, onProgress?: (p: Progress) => void): Promise<(PagedResult & { figures?: FullFigures }) | undefined> {
     const engine = hostOf(engineIn);
-    const { query, layout } = pagedQuery(spec, null, undefined, { ...status, filter: undefined });
+    const built = pagedQuery(spec, null, undefined, { ...status, filter: undefined });
+    const { layout } = built;
+    // The whole compare: with it the figures Join and Columns only had for a sample (the join figures, rows alike, numbers counted)
+    const query = spec.distinct ? built.query : withAlike(built.query, layout);
+    const counted = readsNumbersColumns(built.query);
     // (status from expressions: every column held; from the compare step's own columns: its status columns only, holdStatus)
-    const out = await engine.run(query, { onProgress, ...(layout.status?.native ? {} : { hold: true }) });
+    const out = await engine.run(query, { onProgress, ...(counted.length ? { countNotNumbers: counted } : {}), ...(layout.status?.native ? {} : { hold: true }) });
     if ('cancelled' in out) return undefined;
     if ('problems' in out) throw new Error(out.problems.map(p => p.message).join(' '));
+    const figures: FullFigures = {
+        stats: await joinFigures(spec, layout.places, async step => await engine.stats(out.result, step) as JoinStats | CompareStats, (step, st) => plainJoinStats(engine, out.result, step, st)),
+        duplicates: spec.distinct ? 0 : (out.steps?.rows ?? out.total) - (out.steps?.alike ?? out.steps?.rows ?? out.total),
+        notNumbers: notNumbersOf(out.notNumbers, query),
+        total: out.total
+    };
     const run = { id: out.result, total: out.total, layout };
-    if (!layout.status?.native) return run;
+    if (!layout.status?.native) return { ...run, figures };
     try {
-        return await holdStatus(engine, run);
+        return { ...await holdStatus(engine, run), figures };
     } finally {
         await engine.release(out.result);
     }
+}
+
+/** A compare's figures from its whole run (runHeld): what Join showed for a sample until then. */
+export interface FullFigures {
+    stats: Map<string, QueryJoinStats>;
+    duplicates: number;
+    notNumbers: NotNumbers;
+    total: number;
+}
+
+/** A compare's sample (Join and Columns): the Baseline's first records, how many there are in all, how many have their key in every view and in each. */
+export type SampleFacts = { rows: number; of: number; inEvery: number; byInput: number[] };
+
+/** The rows alike in every column shown (Distinct's count), as a step after the rows. */
+function withAlike(query: Query, layout: CompareLayout): Query {
+    const shown = layout.columns.map((_, i) => ({ name: `c${i}`, value: { column: `c${i}` } as Expr }));
+    return { steps: [...query.steps, { as: 'alike', group: 'rows', by: shown, aggregates: [] }], result: query.result };
 }
 
 /** The status columns statusColumns adds, by name. */

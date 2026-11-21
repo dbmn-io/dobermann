@@ -48,7 +48,7 @@ import type { QueryFileStore } from '../../services/query/query-file-store';
 import { localEngineHost, type EngineHost } from '../../services/engine/engine-host';
 import { QueryEngine } from '../../services/engine/engine';
 import { QUERY_ROW_TESTS, searchColumns, searchTest, type SearchArg } from './query-search';
-import { compareKeyExprs, resultsKey, sampleQueries, pagedCounts, readPagedRow, readStatusPage, type PagedStatus, eachPage, runHeld, holdStatus, fromKeptCompare, fnSampleQueries, formulaExpr, labelExpr, loadLookupInto, loadViewInto, onSqliteLine, pagedTotals, readPage, runPaged, spreadPage, type NotNumbers, type PagedResult, type ShownSort, queryWithColumns, recordQuery, runOnEngine, TooManyOnEngine, whyNotQueryOnEngine } from '../../services/query/query-new-engine';
+import { compareKeyExprs, resultsKey, sampleQueries, pagedCounts, readPagedRow, readStatusPage, type PagedStatus, eachPage, runHeld, holdStatus, fromKeptCompare, compareStepKey, buildQuery, SAMPLE_ROWS, type FullFigures, type SampleFacts, fnSampleQueries, formulaExpr, labelExpr, loadLookupInto, loadViewInto, onSqliteLine, pagedTotals, readPage, runPaged, spreadPage, type NotNumbers, type PagedResult, type ShownSort, queryWithColumns, recordQuery, runOnEngine, TooManyOnEngine, whyNotQueryOnEngine } from '../../services/query/query-new-engine';
 import type { Progress, Query as EngineQuery, TableWindow } from '../../services/engine/engine-types';
 
 
@@ -1225,6 +1225,7 @@ export class QueryController {
         let columnCells: { value: string; differs: boolean }[] = [];
         let duplicates = 0;
         let notNumbers: NotNumbers = [];
+        let sample: SampleFacts | undefined;
         if (spec.views.length) {
             try {
                 // On the new engine, sql.js is not touched: no views loaded into it, no SQL run
@@ -1277,6 +1278,7 @@ export class QueryController {
                     if ((!result && !kept) || version !== this.version || this.closed) return;
                     duplicates = this.engineDuplicates;
                     notNumbers = this.engineNotNumbers;
+                    sample = this.engineSampleFacts;
                     stats = spec.joins.map(j => this.engineStats?.get(j.view) ?? null);
                     // The Columns step's sample record and its cells, from the engine
                     const sampled = await this.engineSample(spec, columns);
@@ -1336,7 +1338,7 @@ export class QueryController {
             query.rows = total;
             await saveQuery(this.ports.state, query);
         }
-        this.postState({ waiting, stats: new Map(spec.joins.map((j, i) => [j.view, stats[i]])), columns, resultColumns, resultTypes, sampleRow, columnCells, duplicates, notNumbers, sql, total, preview, error: failure, sqlError });
+        this.postState({ waiting, stats: new Map(spec.joins.map((j, i) => [j.view, stats[i]])), columns, resultColumns, resultTypes, sampleRow, columnCells, duplicates, notNumbers, sql, total, preview, error: failure, sqlError, ...(sample ? { sample } : {}) });
     }
 
     /** How many of a view's rows have a value in each column (counted once for the rows as loaded). */
@@ -1406,7 +1408,7 @@ export class QueryController {
     }
 
     /** Everything the steps show. `reading`: a view was just added and its rows are still being read. */
-    private postState(now: { reading?: boolean; counting?: string; waiting?: string[]; stats?: Map<string, QueryJoinStats | null>; columns?: ColumnRef[]; resultColumns?: ColumnRef[]; resultTypes?: ColumnType[]; sampleRow?: { view: string; column: string; value: string }[]; columnCells?: { value: string; differs: boolean }[]; duplicates?: number; notNumbers?: NotNumbers; sql?: string; total?: number; preview?: unknown[][]; error?: string; sqlError?: string }): void {
+    private postState(now: { reading?: boolean; counting?: string; waiting?: string[]; stats?: Map<string, QueryJoinStats | null>; columns?: ColumnRef[]; resultColumns?: ColumnRef[]; resultTypes?: ColumnType[]; sampleRow?: { view: string; column: string; value: string }[]; columnCells?: { value: string; differs: boolean }[]; duplicates?: number; notNumbers?: NotNumbers; sql?: string; total?: number; preview?: unknown[][]; error?: string; sqlError?: string; sample?: SampleFacts }): void {
         const query = this.query;
         if (!query) return;
         const tables = tableNames(query.sources.map(s => ({ id: s.id, name: s.name, columns: [] })));
@@ -1467,7 +1469,9 @@ export class QueryController {
             widths: query.widths ?? {},
             sql: now.sql ?? '', total: now.total ?? 0, preview: now.preview ?? [], error: now.error ?? '',
             // "New compare engine (testing)": on the new engine (its counts' values not opened yet), or why not
-            onEngine: this.engineOn, engineNote: this.engineNote
+            onEngine: this.engineOn, engineNote: this.engineNote,
+            // (a compare's figures of a sample, until Results has worked out the whole: the step says so)
+            sample: now.sample ?? null
         });
     }
 
@@ -1705,22 +1709,40 @@ export class QueryController {
         void before.host.release(before.result.id).catch(() => undefined);
     }
 
+    /** A compare's whole figures (runHeld), by the compare and by the query: the Join step shows them once known. */
+    private fullFigures: (FullFigures & { compare: string; spec: string }) | undefined;
+    /** A compare's figures for the step until then: of a sample (the Baseline's first rows). */
+    private engineSampleFacts: SampleFacts | undefined;
+
+    /** What a query compares (its views as loaded, inputs and keys): the same text, the same compare. */
+    private compareKeyOf(spec: QuerySpec): string {
+        return `${this.engineKey}\n${compareStepKey(buildQuery(spec).query)}`;
+    }
+
+    /** Results has worked out the whole compare: kept, and the page told (the Join step's figures, rows alike, numbers counted). */
+    private tellFigures(spec: QuerySpec, figures: FullFigures): void {
+        this.fullFigures = { ...figures, compare: this.compareKeyOf(spec), spec: engineKey(spec) };
+        this.engineStats = figures.stats;
+        this.engineDuplicates = figures.duplicates;
+        this.engineNotNumbers = figures.notNumbers;
+        this.engineSampleFacts = undefined;
+        this.pagedAll = { key: engineKey(spec), total: figures.total };
+        this.post({ type: 'query.figures', stats: Object.fromEntries(spec.joins.map(j => [j.view, figures.stats.get(j.view) ?? null])), duplicates: figures.duplicates, notNumbers: figures.notNumbers, total: figures.total });
+    }
+
     /** The held compare for this query and these hidden views: made when there is none (or another). */
     private async heldFor(spec: QuerySpec, host: EngineHost, status: PagedStatus, onStage?: (p: Progress) => void): Promise<PagedResult | undefined> {
         const key = resultsKey(engineKey(spec), null, '', { ...status, filter: undefined });
         if (this.pagedHeld && this.pagedHeld.key === key && this.pagedHeld.host === host) return this.pagedHeld.result;
-        let held: PagedResult | undefined;
-        const base = this.pagedBase;
-        if (base && base.key === key && base.host === host && base.result.layout.status?.native) {
-            // (the step's own compare, its status stored: no second run)
-            onStage?.({ result: base.result.id, stage: 'Holding the rows', done: 0, total: base.result.total });
-            held = await holdStatus(host, base.result);
-        } else try {
+        let held: (PagedResult & { figures?: FullFigures }) | undefined;
+        try {
+            // The whole compare (Join and Columns had a sample): its rows, and with them the true figures
             if (this.pagedRunning) host.cancel(this.pagedRunning);
             held = await runHeld(host, spec, status, p => { this.pagedRunning = p.result; onStage?.(p); });
         } finally {
             this.pagedRunning = undefined;
         }
+        if (held?.figures) this.tellFigures(spec, held.figures);
         if (held) this.holdPaged({ key, result: held, host });
         return held;
     }
@@ -2060,7 +2082,8 @@ export class QueryController {
         try {
             // Kept as Results first asks for them (its remembered sort, a compare's status, nothing hidden or filtered): one run for both
             // (a compare: its rows for the step's figures and first rows only; Results holds it when it is opened, runHeld)
-            const going = runOnEngine(host, spec, p => { this.engineRunning = p.result; onStage?.(p.stage); }, { keep: true, sort: keptStatus ? null : keptSort, status: keptStatus });
+            // (a compare: on a sample, the Baseline's first rows and their keys in the others: Results works out the whole, heldFor)
+            const going = runOnEngine(host, spec, p => { this.engineRunning = p.result; onStage?.(p.stage); }, { keep: true, sort: keptStatus ? null : keptSort, status: keptStatus, ...(keptStatus ? { sample: SAMPLE_ROWS } : {}) });
             this.counting = going.catch(() => undefined);
             run = await going;
         } finally {
@@ -2072,19 +2095,27 @@ export class QueryController {
         this.engineStats = run.stats;
         this.engineDuplicates = run.duplicates;
         this.engineNotNumbers = run.notNumbers;
+        this.engineSampleFacts = run.sample;
+        // (Results has worked out this compare already: its true figures, and for these columns its rows alike and numbers counted)
+        const full = run.sample && this.fullFigures?.compare === this.compareKeyOf(spec) ? this.fullFigures : undefined;
+        if (full) {
+            this.engineStats = full.stats;
+            this.engineSampleFacts = undefined;
+            if (full.spec === engineKey(spec)) { this.engineDuplicates = full.duplicates; this.engineNotNumbers = full.notNumbers; }
+        }
         if (!keptStatus) {
             this.retirePaged(host);
             this.paged = { key: resultsKey(engineKey(spec), keptSort, '', keptStatus), result: run.kept, host };
+            this.pagedAll = { key: engineKey(spec), total: run.kept.total };
         } else {
-            // A compare: kept as the step ran it, so Results stores its status from it rather than running it again (heldFor)
+            // A compare's sample: its rows for the step only (the first rows, the sample record); its compare kept for the sample record and a calculation's first rows
             const before = this.pagedBase;
-            this.pagedBase = { key: resultsKey(engineKey(spec), null, '', { ...keptStatus, filter: undefined }), result: run.kept, host };
+            this.pagedBase = { key: `sample\n${engineKey(spec)}`, result: run.kept, host };
             const was = this.engineCompare;
             this.engineCompare = run.compare ? { ...run.compare, host, views: this.engineKey } : undefined;
             if (was && was.host.alive() && was.id !== run.compare?.id) void was.host.release(was.id).catch(() => undefined);
             if (before && before.host.alive() && before.result.id !== run.kept.id) void before.host.release(before.result.id).catch(() => undefined);
         }
-        this.pagedAll = { key: engineKey(spec), total: run.kept.total };
         console.log(`[query-engine] ${run.total} rows of ${spec.views.length} views, kept in the engine, in ${Math.round(performance.now() - started)} ms: ${laps.join(' · ')} (ms)`);
         return run.kept;
     }
