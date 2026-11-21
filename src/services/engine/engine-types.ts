@@ -6,11 +6,10 @@
  * Query as plain data, a Table out.
  *
  * Built in pieces, each tested against SQLite (sql.js, as the app runs today) by the tester's
- * reference harness. **Pieces 1 to 5** implement: `load`, `append`, `drop`, `check`, `run` (with
- * progress) / `cancel` / `read` / `release` for a query of `from`, `join`, `compare`, `select`,
- * `filter` and `sort` steps, `stats` for a compare or join step, and every function in FUNCTIONS
- * with its operators. The `group` step is declared here as agreed and comes in a later piece;
- * until then `check` refuses it by name.
+ * reference harness. **Pieces 1 to 6** implement: `load`, `append`, `drop`, `check`, `run` (with
+ * progress) / `cancel` / `read` / `release` for a query of every step (`from`, `join`, `compare`,
+ * `select`, `filter`, `group`, `sort`), `stats` for a compare or join step, and every function in FUNCTIONS
+ * with its operators.
  */
 
 /*
@@ -119,6 +118,13 @@ export type Step =
     | { as?: string; compare: string[]; on: Expr[][]; columns: { name: string; values: Expr[] }[]; notCompared?: string[] }
     | { as?: string; select: string; columns: { name: string; value: Expr }[] }
     | { as?: string; filter: string; where: Expr }
+    /**
+     * Rows grouped by the `by` values (blank is a value; 1 and 1.0 one group), a row per group in
+     * the order each first appears, as SQLite's GROUP BY would give them sorted. With no `by`, one
+     * row for all of them (even none). Aggregates as SQLite's: count (rows), countValues (values
+     * not blank), sum (blank when there are none; an integer when every value is one, else a real;
+     * text read as a number), min and max (blank left out; numbers before text).
+     */
     | { as?: string; group: string; by: { name: string; value: Expr }[]; aggregates: { name: string; fn: Aggregate; value?: Expr }[] }
     /** Blank first, then numbers, then text by code points; descending reverses (blanks last); ties keep their order. */
     | { as?: string; sort: string; by: { value: Expr; descending?: boolean }[] };
@@ -220,7 +226,14 @@ export interface RunOptions {
     onProgress?: (progress: Progress) => void;
 }
 
-export type RunOutcome = { result: ResultId; total: number } | { problems: Problem[] } | { cancelled: true };
+/**
+ * How a run ended: its result; or why not (`stats`, when a join passed the row limit: the join and
+ * compare steps' statistics counted until then, the failing join's included, by step name); or stopped.
+ */
+export type RunOutcome =
+    | { result: ResultId; total: number }
+    | { problems: Problem[]; stats?: Record<string, JoinStats | CompareStats> }
+    | { cancelled: true };
 
 /** The most rows a join may make (James, 2026-11-21: two million for the beta). */
 export const ROW_LIMIT = 2_000_000;

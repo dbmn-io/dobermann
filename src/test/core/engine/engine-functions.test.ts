@@ -268,6 +268,9 @@ _rg AS (SELECT ${ks.join(', ')}, COUNT(*) AS n FROM _r WHERE ${ks.map(k => `${k}
             assert.ok('problems' in out);
             assert.strictEqual(out.problems[0].step, 'j');
             assert.match(out.problems[0].message, /would make 6 rows, more than the 5/);
+            // The counts up to it stay, so the Join step can still show them
+            const counted = out.stats?.j as import('../../../services/engine/engine-types').JoinStats;
+            assert.deepStrictEqual([counted.rowsAfter, counted.relationship, counted.keys.manyToMany], [6, 'manyToMany', 1]);
             const e6 = new QueryEngine(6);
             e6.load('l', { columns: ['k'], rows: [[1], [1], [1]] });
             e6.load('r', { columns: ['k'], rows: [[1], [1]] });
@@ -309,6 +312,38 @@ _rg AS (SELECT ${ks.join(', ')}, COUNT(*) AS n FROM _r WHERE ${ks.map(k => `${k}
         });
     });
 
+    it('group as SQLite GROUP BY: count, countValues, sum, min, max; by one value, two, an expression, and none', async () => {
+        const rows: Value[][] = [];
+        VALUES.forEach((a, i) => rows.push([i % 3 ? 'x' : i % 2 ? 'y' : null, a, i % 4]));
+        rows.push(['x', 1.5, 0], ['x', 2, 0], [null, 'abc', 1]);
+        const db = new SQL_.Database();
+        sqliteTable(db, ['g', 'v', 'h'], rows);
+        const aggregates = [
+            { name: 'n', fn: 'count' as const }, { name: 'vals', fn: 'countValues' as const, value: { column: 'v' } },
+            { name: 's', fn: 'sum' as const, value: { column: 'v' } }, { name: 'lo', fn: 'min' as const, value: { column: 'v' } }, { name: 'hi', fn: 'max' as const, value: { column: 'v' } }
+        ];
+        const aggSql = 'COUNT(*), COUNT(v), SUM(v), MIN(v), MAX(v)';
+        // (SQLite's group order is its own: ours is first appearance, so both are put in the groups' order)
+        const sqlOf = (by: string) => db.exec(`SELECT ${by ? `${by}, ` : ''}${aggSql}, MIN(rowid) AS f FROM t ${by ? `GROUP BY ${by}` : ''} ORDER BY f`)[0].values.map(r => r.slice(0, -1));
+        const e = new QueryEngine();
+        e.load('t', { columns: ['g', 'v', 'h'], rows });
+        const ours = async (by: { name: string; value: Expr }[]) => {
+            const out = await e.run({ steps: [{ from: 't' }, { group: 'step 1', by, aggregates }] });
+            assert.ok('result' in out, JSON.stringify(out));
+            return e.read(out.result, 0, 999).rows;
+        };
+        assert.deepStrictEqual(await ours([{ name: 'g', value: { column: 'g' } }]), sqlOf('g'));
+        assert.deepStrictEqual(await ours([{ name: 'g', value: { column: 'g' } }, { name: 'h', value: { column: 'h' } }]), sqlOf('g, h'));
+        assert.deepStrictEqual(await ours([{ name: 'u', value: { fn: 'UPPER', args: [{ column: 'g' }] } }]), sqlOf('UPPER(g)'));
+        assert.deepStrictEqual(await ours([]), sqlOf(''));
+        // None at all: one row, as SQLite
+        e.load('empty', { columns: ['v'], rows: [] });
+        const none = await e.run({ steps: [{ from: 'empty' }, { group: 'step 1', by: [], aggregates: [{ name: 'n', fn: 'count' }, { name: 's', fn: 'sum', value: { column: 'v' } }] }] });
+        assert.ok('result' in none);
+        assert.deepStrictEqual(e.read(none.result, 0, 9).rows, [[0, null]]);
+        db.close();
+    });
+
     it('tables come in, in pieces, and are read a window at a time; a table still loading is refused', async () => {
         const e = new QueryEngine();
         e.load('t', { columns: ['a', 'b'], rows: [[1, 'x']] }, { more: true });
@@ -330,7 +365,7 @@ _rg AS (SELECT ${ks.join(', ')}, COUNT(*) AS n FROM _r WHERE ${ks.map(k => `${k}
         assert.match(said({ steps: [{ from: 'nope' }] })[0], /no table or step called "nope"/);
         assert.match(said({ steps: [{ from: 't' }, { select: 'step 1', columns: [{ name: 'x', value: { column: 'b' } }] }] })[0], /no column "b"/);
         assert.match(said({ steps: [{ from: 't' }, { filter: 'step 1', where: { fn: 'UPPER', args: [] } }] })[0], /UPPER takes 1 values, not 0/);
-        assert.match(said({ steps: [{ from: 't' }, { group: 'step 1', by: [], aggregates: [] }] })[0], /does not run a group step yet/);
+        assert.match(said({ steps: [{ from: 't' }, { group: 'step 1', by: [], aggregates: [] }] })[0], /something to group by or count/);
         assert.match(said({ steps: [{ join: 'inner', left: 't', right: 't', on: [] }] })[0], /at least one pair of key columns/);
     });
 

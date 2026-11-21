@@ -15,7 +15,7 @@ import {
     FUNCTIONS, ROW_LIMIT, type CompareStats, type Engine, type Expr, type FunctionName, type JoinKind, type JoinStats, type Problem,
     type Query, type ResultId, type RunOptions, type RunOutcome, type Step, type StatsWindow, type Table, type TableWindow
 } from './engine-types';
-import { compareValues, fromValue, isNumber, num, toValue, truthy, type V } from './engine-values';
+import { asDouble, compareValues, fromValue, isNumber, num, Real, toValue, truthy, type V } from './engine-values';
 
 /** A column of a step's rows: its name, and the inputs it can be named by (`{ column, of }`). */
 interface Col {
@@ -34,7 +34,8 @@ interface Relation {
 
 type Kind = 'from' | 'join' | 'compare' | 'select' | 'filter' | 'group' | 'sort';
 const KINDS: Kind[] = ['from', 'join', 'compare', 'select', 'filter', 'group', 'sort'];
-const RUNS_NOW = new Set<Kind>(['from', 'join', 'compare', 'select', 'filter', 'sort']);
+const RUNS_NOW = new Set<Kind>(['from', 'join', 'compare', 'select', 'filter', 'group', 'sort']);
+const AGGREGATES = ['count', 'countValues', 'sum', 'min', 'max'];
 
 /** A compare row's status, by code (Uint8Array), and its relation. */
 const STATUS = ['same', 'diff', 'missing', 'notInBaseline', 'duplicate'] as const;
@@ -188,6 +189,18 @@ export class QueryEngine implements Engine {
                     out.forEach(c => { if (seen.has(c.name)) say(`Two columns are called "${c.name}".`); seen.add(c.name); });
                 } else if (kind === 'filter') {
                     this.checkExpr((step as Extract<Step, { filter: string }>).where, cols, input, say);
+                } else if (kind === 'group') {
+                    const s = step as Extract<Step, { group: string }>;
+                    s.by.forEach(b => this.checkExpr(b.value, cols, input, say));
+                    s.aggregates.forEach(a => {
+                        if (!AGGREGATES.includes(a.fn)) say(`There is no aggregate "${a.fn}".`);
+                        if (a.value) this.checkExpr(a.value, cols, input, say);
+                        else if (a.fn !== 'count') say(`"${a.name}" (${a.fn}) needs a value.`);
+                    });
+                    out = [...s.by.map(b => b.name), ...s.aggregates.map(a => a.name)].map(name => ({ name, owners: [] }));
+                    if (!out.length) say('A group step needs something to group by or count.');
+                    const seen = new Set<string>();
+                    out.forEach(c => { if (seen.has(c.name)) say(`Two columns are called "${c.name}".`); seen.add(c.name); });
                 } else if (kind === 'sort') {
                     const s = step as Extract<Step, { sort: string }>;
                     if (!s.by.length) say('A sort step needs something to sort by.');
@@ -260,9 +273,14 @@ export class QueryEngine implements Engine {
             this.results.set(id, answer);
             return { result: id, total: answer.rowCount };
         } catch (error) {
+            const kept = this.stepStats.get(id);
             this.stepStats.delete(id);
             if (error instanceof Cancelled) return { cancelled: true };
-            if (error instanceof TooMany) return { problems: [error.problem] };
+            if (error instanceof TooMany) {
+                const counted: Record<string, JoinStats | CompareStats> = {};
+                for (const [step, facts] of kept ?? []) counted[step] = facts instanceof JoinFacts ? facts.stats : facts;
+                return { problems: [error.problem], stats: counted };
+            }
             throw error;
         } finally {
             this.cancelled.delete(id);
@@ -280,6 +298,7 @@ export class QueryEngine implements Engine {
             return { cols: s.columns.map(c => ({ name: c.name, owners: [] })), rowCount: base.rowCount, value: (row, c) => exprs[c](row) };
         }
         if (kind === 'sort') return this.sorted(step as Extract<Step, { sort: string }>, base, from, name, slice);
+        if (kind === 'group') return this.grouped(step as Extract<Step, { group: string }>, base, from, name, slice);
         // filter: the rows whose condition is true, as SQLite's WHERE reads it
         const where = this.compile((step as Extract<Step, { filter: string }>).where, base, from);
         const kept: number[] = [];
@@ -500,6 +519,33 @@ export class QueryEngine implements Engine {
         };
     }
 
+    /** Group (the rule is on the step in engine-types.ts): a row per group, its `by` values from its first row, then the aggregates. */
+    private async grouped(step: Extract<Step, { group: string }>, base: Relation, input: string, name: string,
+        slice: (stage: string, done: number, total: number) => Promise<void>): Promise<Relation> {
+        const by = step.by.map(b => this.compile(b.value, base, input));
+        const aggs = step.aggregates.map(a => ({ fn: a.fn, value: a.value ? this.compile(a.value, base, input) : undefined }));
+        const groups = new Map<string, number>();
+        const first: number[] = [];
+        const acc: Accumulator[][] = [];
+        const start = () => aggs.map(() => new Accumulator());
+        for (let r = 0; r < base.rowCount; r++) {
+            if (r && r % SLICE === 0) await slice(`Grouping ${name}`, r, base.rowCount);
+            const key = by.length ? compareKeyOf(by.map(f => f(r))) : '';
+            let g = groups.get(key);
+            if (g === undefined) { g = first.length; groups.set(key, g); first.push(r); acc.push(start()); }
+            const a = acc[g];
+            for (let i = 0; i < aggs.length; i++) a[i].add(aggs[i].value ? aggs[i].value!(r) : null, aggs[i].fn);
+        }
+        // With nothing to group by: one row, even for no rows
+        if (!by.length && !first.length) { first.push(-1); acc.push(start()); }
+        const results = acc.map(a => a.map((x, i) => x.result(aggs[i].fn)));
+        return {
+            cols: [...step.by.map(b => b.name), ...step.aggregates.map(a => a.name)].map(n => ({ name: n, owners: [] })),
+            rowCount: first.length,
+            value: (row, c) => (c < by.length ? by[c](first[row]) : results[row][c - by.length])
+        };
+    }
+
     /**
      * Sort: by each `by` in turn, in compareValues' order (blank first, then numbers, then text by
      * code points); `descending` reverses it, so blanks come last. Ties: rows equal on every `by`
@@ -699,4 +745,36 @@ function joinFacts(left: Relation, right: Relation, lk: ((row: number) => V)[], 
         leftValues: leftHeld.size, rightValues: byKey.size, valuesTotal: values.length
     };
     return new JoinFacts(stats, values, v => (v.side === 'left' ? lk : rk).map(f => f(v.row)), lk.length);
+}
+
+/** One aggregate over a group's rows, as SQLite's count, count(x), sum, min and max. */
+class Accumulator {
+    private rows = 0;
+    private values = 0;
+    private intSum = 0;
+    private realSum = 0;
+    private real = false;
+    private best: V = null;
+
+    add(v: V, fn: string): void {
+        this.rows++;
+        if (v === null) return;
+        this.values++;
+        if (fn === 'sum') {
+            if (typeof v === 'number') { this.intSum += v; this.realSum += v; }
+            else { this.real = true; this.realSum += v instanceof Real ? v.r : asDouble(v); }
+        } else if (fn === 'min' || fn === 'max') {
+            const c = this.best === null ? 0 : compareValues(v, this.best);
+            if (this.best === null || (fn === 'min' ? c < 0 : c > 0)) this.best = v;
+        }
+    }
+
+    result(fn: string): V {
+        switch (fn) {
+            case 'count': return this.rows;
+            case 'countValues': return this.values;
+            case 'sum': return !this.values ? null : this.real ? new Real(this.realSum) : this.intSum;
+            default: return this.best;
+        }
+    }
 }
