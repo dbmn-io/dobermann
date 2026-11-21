@@ -116,6 +116,8 @@
                 body,
                 size: 'cell-detail',
                 dismissible: true,
+                // Over a dialog it was opened from (a view's rows): closing it goes back to that one
+                over: true,
                 // No footer — header ×, Escape, and Ctrl/Cmd+W all close it.
                 actions: []
             });

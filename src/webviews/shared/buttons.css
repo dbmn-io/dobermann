@@ -307,6 +307,21 @@ body .btn.disabled {
     filter: none;
 }
 
+/* A main action that can't be taken yet looks out of reach: the ordinary action's tile, never the
+   accent (the accent at half strength still reads as a button to press) */
+body .btn-primary:disabled,
+body .btn-primary.disabled,
+body .primary-btn:disabled,
+body .hub-home-cta.btn:disabled,
+body .hub-sign-in:disabled {
+    background: var(--dbmn-tile) !important;
+    color: var(--vscode-foreground) !important;
+    border-color: var(--dbmn-tile-border) !important;
+    opacity: 0.5;
+    cursor: not-allowed;
+    filter: none;
+}
+
 /* ─── Pills: labels, not controls ────────────────────────────────────────────────────── */
 
 /* The page's background colour as text, on a fill from the theme's palette */

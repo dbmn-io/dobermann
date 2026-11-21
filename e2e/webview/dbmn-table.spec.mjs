@@ -857,27 +857,66 @@ test('a group\'s right edge sizes its columns evenly; a column can have no sort;
     expect(told).toEqual(['qty|0', 'qty|1']);
 });
 
-test('a value cut off by its column\'s width opens in full when the pointer finds it; a cell may name itself for the window', async ({ page }) => {
+test('only a long (over 100 characters), many-line or structured value opens in full; one merely cut off by its column is not a link', async ({ page }) => {
     await page.setContent(tablePage());
     await page.evaluate(() => {
         const t = document.getElementById('t');
-        t.columns = [{ id: 'order_no', name: 'order_no' }, { id: 'customer', name: 'customer', cell: (td, _v, row) => { td.dataset.title = `${row.order_no}: customer`; } }, { id: 'qty', name: 'qty', numbers: true }];
+        t.columns = [{ id: 'order_no', name: 'order_no' }, { id: 'customer', name: 'customer', cell: (td, _v, row) => { td.dataset.title = `${row.order_no}: customer`; } }, { id: 'note', name: 'note' }];
+        const long = 'x'.repeat(101);
+        t.rows = [
+            { order_no: 'SO-1', customer: 'Harbour Foods', note: 'y'.repeat(100) },
+            { order_no: 'SO-2', customer: long, note: 'first line\nsecond line' },
+            { order_no: 'SO-3', customer: 'Kettle and Co', note: '{"a":1}' }
+        ];
         t.layout = { widths: { customer: 48 } };
     });
-    const cell = page.locator('#t .dbmn-table-body tr').first().locator('td').nth(1);
-    await expect(cell).toHaveText('Harbour Foods');
-    await expect(cell).not.toHaveClass(/cell-expandable/);   // short: nothing marks it until it is seen cut off
-    await cell.hover();
-    await expect(cell).toHaveClass(/cell-expandable/);
-    await expect(cell.locator('.cell-expand-icon')).toHaveCount(1);
-    await cell.click();
-    await expect(page.locator('.dbmn-modal .cell-detail-pre')).toHaveText('Harbour Foods');
-    await expect(page.locator('.dbmn-modal .dbmn-modal-title')).toContainText('SO-10000: customer');
+    const cell = (r, c) => page.locator('#t .dbmn-table-body tr').nth(r).locator('td').nth(c);
+    // Cut off by its column, and 100 characters exactly: plain cells, whole on hover
+    await expect(cell(0, 1)).toHaveText('Harbour Foods');
+    await cell(0, 1).hover();
+    await expect(cell(0, 1)).not.toHaveClass(/cell-expandable/);
+    await expect(cell(0, 1).locator('.cell-expand-icon')).toHaveCount(0);
+    await expect(cell(0, 2)).not.toHaveClass(/cell-expandable/);
+    // Over 100, more than one line, JSON: links that open in full
+    await expect(cell(1, 1)).toHaveClass(/cell-expandable/);
+    await expect(cell(1, 2)).toHaveClass(/cell-expandable/);
+    await expect(cell(2, 2)).toHaveClass(/cell-expandable/);
+    // A cell may name itself for the window
+    await cell(1, 1).click();
+    await expect(page.locator('.dbmn-modal .cell-detail-pre')).toHaveText('x'.repeat(101));
+    await expect(page.locator('.dbmn-modal .dbmn-modal-title')).toContainText('SO-2: customer');
     await page.keyboard.press('Escape');
-    // One that fits is left alone: a click on it is a click on its row
-    const fits = page.locator('#t .dbmn-table-body tr').first().locator('td').nth(0);
-    await fits.hover();
-    await expect(fits).not.toHaveClass(/cell-expandable/);
+});
+
+test('a table in a dialog is measured at full size while the dialog zooms in (nothing cut short), and fills the dialog maximised', async ({ page }) => {
+    await page.setViewportSize({ width: 1400, height: 900 });
+    await page.setContent(tablePage());
+    await page.evaluate(() => {
+        // (a view's rows dialog: rows from the host, the first page in while the dialog is still zooming in)
+        const body = document.createElement('div');
+        const t = document.createElement('dbmn-table');
+        t.id = 'inDialog';
+        t.setAttribute('searchable', '');
+        t.style.display = 'block';
+        t.style.height = '420px';
+        body.append(t);
+        const ids = ['id', 'userId', 'gtin', 'sku', 'description'];
+        t.columns = ids.map(id => ({ id, name: id }));
+        const rows = Array.from({ length: 300 }, (_, i) => ({ id: (4096 + i).toString(16) + '9d07a-de7a-40fa-9b0d-f3be76314abc', userId: '1d9d12be-8288-49ba-a258-2835f78a6a36', gtin: '000123456002' + (i % 100), sku: 'SKU-WOOF-020-0' + (4900 + i), description: 'Oatmeal and Honey Dog Shampoo' }));
+        t.source = { page: (start, count) => Promise.resolve({ rows: rows.slice(start, start + count), total: rows.length }) };
+        window.DbmnModal.show({ title: 'inventory', body, size: 'lg', maximisable: true, actions: [{ id: 'close', label: 'Close' }] });
+    });
+    const cells = page.locator('#inDialog .dbmn-table-body tr').first().locator('td');
+    await expect(cells.first()).toHaveText('10009d07a-de7a-40fa-9b0d-f3be76314abc');
+    await page.waitForTimeout(400);   // (the zoom is over)
+    expect(await cells.evaluateAll(tds => tds.filter(td => td.scrollWidth > td.clientWidth + 1).map(td => td.textContent))).toEqual([]);
+    // Maximised, the table takes the room the dialog has
+    const before = await page.locator('#inDialog').evaluate(t => t.getBoundingClientRect().height);
+    await page.locator('.dbmn-modal-max').click();
+    const dialog = await page.locator('.dbmn-modal').evaluate(m => m.getBoundingClientRect().height);
+    await expect.poll(() => page.locator('#inDialog').evaluate(t => t.getBoundingClientRect().height)).toBeGreaterThan(dialog * 0.7);
+    expect(before).toBeLessThan(dialog * 0.7);
+    await expect(page.locator('#inDialog .dbmn-table-body tr:not(.dbmn-table-waiting)')).not.toHaveCount(0);
 });
 
 test('the screen\'s own controls sit beside a cell\'s records ("Set as Row"): their clicks are the screen\'s, the toggle still opens them', async ({ page }) => {

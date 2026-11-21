@@ -29,7 +29,9 @@
  *   - `dismissible` defaults to true. X button + Escape key + backdrop click
  *     all resolve with `actionId: 'dismiss'`.
  *   - One modal at a time. A second `show()` while one is open auto-dismisses
- *     the first.
+ *     the first, unless it is shown `over: true` (a value opened in full from a
+ *     table inside a dialog): then it opens over the first, which waits behind it
+ *     untouched and is the one open again when it closes.
  *   - Auto-focuses the first form field, or failing that the primary action.
  *
  * Field schema:
@@ -44,7 +46,6 @@
     'use strict';
 
     let activeModal = null;
-    let previouslyFocused = null;
 
     function el(tag, opts) {
         const node = document.createElement(tag);
@@ -268,9 +269,13 @@
      * @returns {Promise<{ actionId: string, fields: Record<string, string> }>}
      */
     function show(opts) {
-        // Auto-dismiss any open modal so the new one doesn't stack.
-        if (activeModal) {
-            activeModal.dismiss('dismiss');
+        // Shown over the open one (`over`): it waits behind, and is the open one again when this closes.
+        // Otherwise every open one is dismissed, so the new one doesn't stack.
+        const under = opts.over ? activeModal : null;
+        while (activeModal && !under) {
+            const was = activeModal;
+            was.dismiss('dismiss');
+            if (activeModal === was) break;   // (a modal that would not close: never loop)
         }
 
         const dismissible = opts.dismissible !== false;
@@ -285,7 +290,8 @@
                 : [{ id: 'ok', label: 'OK', variant: 'primary' }]);
 
         return new Promise((resolve, reject) => {
-            previouslyFocused = document.activeElement;
+            // (where focus was: back there when this closes; per modal, so one shown over another keeps its own)
+            const previouslyFocused = document.activeElement;
 
             const backdrop = el('div', {
                 className: 'dbmn-modal-backdrop',
@@ -723,6 +729,8 @@
 
             // ── Behaviour ────────────────────────────────────────────
             const onKeydown = (e) => {
+                // (a modal waiting behind another hears nothing: Escape closes the one on top only)
+                if (activeModal !== handle) return;
                 if (e.key === 'Escape' && dismissible) {
                     e.preventDefault();
                     dismiss('dismiss');
@@ -752,11 +760,11 @@
                 document.removeEventListener('keydown', onKeydown);
                 backdrop.removeEventListener('mousedown', onBackdropClick);
                 backdrop.remove();
-                activeModal = null;
+                // (the one it was shown over is the open one again)
+                activeModal = under;
                 if (previouslyFocused && typeof previouslyFocused.focus === 'function') {
                     try { previouslyFocused.focus(); } catch { /* gone from DOM */ }
                 }
-                previouslyFocused = null;
                 resolve({ actionId, fields: collectFieldValues(form) });
             }
 
@@ -769,11 +777,11 @@
                 document.removeEventListener('keydown', onKeydown);
                 backdrop.removeEventListener('mousedown', onBackdropClick);
                 backdrop.remove();
-                activeModal = null;
+                // (the one it was shown over is the open one again)
+                activeModal = under;
                 if (previouslyFocused && typeof previouslyFocused.focus === 'function') {
                     try { previouslyFocused.focus(); } catch { /* gone from DOM */ }
                 }
-                previouslyFocused = null;
                 void actionId;
                 reject(err);
             }

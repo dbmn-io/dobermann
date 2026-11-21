@@ -166,7 +166,8 @@
     if (!window.customElements || customElements.get('dbmn-table')) return;
 
     const ROW_H = 22;
-    const LONG = 60;
+    /** A value longer than this (or of more than one line) opens in full on a click; shorter ones widen with their column. */
+    const LONG = 100;
     /** Rows asked for at a time, and how many pages are kept before the furthest are let go. */
     const PAGE = 200;
     const ROW_GUTTER = '__row';   // (`row-delete`: the row number column the table draws itself)
@@ -531,16 +532,8 @@
                 window.CellDetail.open(td.dataset.full || td.textContent, { title: td.dataset.title || (column ? column.name || column.id : undefined) });
             });
 
-            // A value cut off by its column's width opens in full too: found when the pointer is on it
-            this._body.addEventListener('mouseover', event => {
-                const td = event.target.closest && event.target.closest('td');
-                if (!td || !this._body.contains(td) || td.classList.contains('cell-expandable') || td.classList.contains('has-nested')) return;
-                if (td.parentElement.classList.contains('dbmn-table-waiting') || td.scrollWidth <= td.clientWidth + 1) return;
-                td.classList.add('cell-expandable');
-                if (!td.dataset.full) td.dataset.full = td.textContent;
-                td.title = 'Click to see it all';
-                expandIcon(td);
-            });
+            // (a value only cut off by its column's width is not a link: the column widens to show it,
+            // and the pointer on it shows it whole; only a long, many-line or structured value opens)
 
             // A right-click on a row is the screen's (its record, its menu), when it listens for it
             this._body.addEventListener('contextmenu', event => this._rowEvent('dbmn-table-row-menu', event));
@@ -1019,11 +1012,15 @@
             this._body.replaceChildren(...sample.map(row => this._row(row)));
             if (!this._head.firstChild) return;
             if (this._body.firstChild) this._rowH = this._body.firstChild.getBoundingClientRect().height || ROW_H;
-            // Each column's own heading (under its group's, when it has one), in column order
+            // Each column's own heading (under its group's, when it has one), in column order.
+            // (in the table's own pixels: a dialog still zooming in draws it smaller for a moment, and
+            // widths measured then would cut every value short; offsetWidth is never scaled)
+            const drawn = this._table.getBoundingClientRect().width;
+            const scale = drawn > 0 && this._table.offsetWidth > 0 ? drawn / this._table.offsetWidth : 1;
             let widths = this._columns.map(c => {
                 if (Number(c.width) > 0) return Math.round(Number(c.width));
                 const th = this._head.querySelector(`th[data-col="${CSS.escape(c.id)}"]`);
-                return th ? Math.min(420, Math.ceil(th.getBoundingClientRect().width)) : 80;
+                return th ? Math.min(420, Math.ceil(th.getBoundingClientRect().width / scale)) : 80;
             });
             const sum = widths.reduce((a, b) => a + b, 0);
             const room = this._scroll.clientWidth;
@@ -1155,7 +1152,7 @@
                     td.textContent = text;
                     // (a value cut short by its column's width is whole on hover)
                     if (text.length > 20) td.title = text;
-                    if (text.length > LONG || (value && typeof value === 'object') || structured(text)) {
+                    if (text.length > LONG || text.includes('\n') || (value && typeof value === 'object') || structured(text)) {
                         td.classList.add('cell-expandable');
                         td.title = 'Click to see it all';
                         td.dataset.full = typeof value === 'object' && value ? JSON.stringify(value) : text;
@@ -1602,7 +1599,7 @@
                     const text = textOf(v);
                     const td = make('td', typeof v === 'number' ? 'text-right' : '', text);
                     if (text.length > 20) td.title = text;
-                    if (text.length > LONG || (v && typeof v === 'object')) {
+                    if (text.length > LONG || text.includes('\n') || (v && typeof v === 'object')) {
                         td.classList.add('cell-expandable');
                         td.title = 'Click to see it all';
                         td.dataset.full = v && typeof v === 'object' ? JSON.stringify(v) : text;
