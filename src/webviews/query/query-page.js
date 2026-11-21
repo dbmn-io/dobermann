@@ -1988,6 +1988,12 @@
         const repeats = m.duplicates || 0;
         $('queryDistinctLabel').classList.toggle('hidden', !repeats && !m.distinct);
         $('queryDistinctText').textContent = !repeats ? 'Distinct' : m.distinct ? `Distinct: ${count(repeats)} repeated ${repeats === 1 ? 'row' : 'rows'} folded` : `Distinct: fold ${count(repeats)} repeated ${repeats === 1 ? 'row' : 'rows'}`;
+        // Text read as a number that wasn't one is left blank, and said: how many rows, in which column (James, 2026-11-21)
+        const notNumbers = (m.notNumbers || []).filter(x => (m.resultColumns || [])[x.column]);
+        $('queryNotNumbers').classList.toggle('hidden', !notNumbers.length);
+        $('queryNotNumbers').textContent = notNumbers.length
+            ? `Text that isn't a number was left blank: ${notNumbers.map(x => `${count(x.rows)} ${x.rows === 1 ? 'row' : 'rows'} in ${m.resultColumns[x.column].column}`).join(', ')}.`
+            : '';
         if (firstState) {
             // Results as it was left: its search, its sort, its totals
             ui.search = m.search || '';

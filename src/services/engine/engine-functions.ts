@@ -10,7 +10,7 @@
 import type { FunctionName } from './engine-types';
 import {
     arithmetic, asText, castInteger, chars, compareValues, isNumber, makeNumber,
-    num, readNumber, Real, sameValue, textAsNumber, truthy, type V
+    num, readNumberCounted, Real, sameValue, textAsNumber, truthy, type V
 } from './engine-values';
 
 
@@ -123,7 +123,7 @@ function round(x: V, p: V | undefined): V {
     let places = p === undefined ? 0 : castInteger(p)!;
     if (places < 0) places = 0;
     if (places > 30) places = 30;
-    const read = readNumber(x);
+    const read = readNumberCounted(x);
     if (read === null) return null;
     const n = num(read);
     if (places === 0) return makeNumber(n < 0 ? -Math.floor(-n + 0.5) : Math.floor(n + 0.5), true);
@@ -133,7 +133,7 @@ function round(x: V, p: V | undefined): V {
 
 /** ABS: an integer stays one, a real one; text as readNumber reads it (not a number: blank). */
 function abs(x: V): V {
-    const v = readNumber(x);
+    const v = readNumberCounted(x);
     if (v === null) return null;
     if (typeof v === 'number') return Math.abs(v);
     return new Real(Math.abs(v.r));
@@ -168,9 +168,9 @@ function minMax(args: V[], max: boolean): V {
     return best;
 }
 
-/** NUMBER (and As a number): readNumber. */
+/** NUMBER (and As a number): readNumber (text that isn't a number counted). */
 function numberFn(x: V): V {
-    return readNumber(x);
+    return readNumberCounted(x);
 }
 
 /** Translate values: the first row of the table whose `from` column holds the value (as text) gives its `to` column; not found, the value. */

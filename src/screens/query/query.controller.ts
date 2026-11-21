@@ -48,7 +48,7 @@ import type { QueryFileStore } from '../../services/query/query-file-store';
 import { localEngineHost, type EngineHost } from '../../services/engine/engine-host';
 import { QueryEngine } from '../../services/engine/engine';
 import { QUERY_ROW_TESTS, searchColumns, searchTest, type SearchArg } from './query-search';
-import { compareKeyExprs, resultsKey, sampleQueries, pagedCounts, readPagedRow, readStatusPage, type PagedStatus, eachPage, fnSampleQueries, formulaExpr, labelExpr, loadLookupInto, loadViewInto, onSqliteLine, pagedTotals, readPage, runPaged, spreadPage, type PagedResult, type ShownSort, queryWithColumns, recordQuery, runOnEngine, TooManyOnEngine, whyNotQueryOnEngine } from '../../services/query/query-new-engine';
+import { compareKeyExprs, resultsKey, sampleQueries, pagedCounts, readPagedRow, readStatusPage, type PagedStatus, eachPage, fnSampleQueries, formulaExpr, labelExpr, loadLookupInto, loadViewInto, onSqliteLine, pagedTotals, readPage, runPaged, spreadPage, type NotNumbers, type PagedResult, type ShownSort, queryWithColumns, recordQuery, runOnEngine, TooManyOnEngine, whyNotQueryOnEngine } from '../../services/query/query-new-engine';
 import type { Query as EngineQuery, TableWindow } from '../../services/engine/engine-types';
 
 
@@ -148,6 +148,8 @@ export class QueryController {
     private pagedAll: { key: string; total: number } | undefined;
     /** Rows alike in every column shown, from the last run: what Distinct would fold. */
     private engineDuplicates = 0;
+    /** Results' columns where text read as a number wasn't one, from the last engine run (blank, plus a count). */
+    private engineNotNumbers: NotNumbers = [];
     private engineOn = false;
     private filtered: { key: string; indices: number[]; searched?: number[] } | undefined;
     private searchSeq = 0;
@@ -1219,6 +1221,7 @@ export class QueryController {
         // Each report column on that record, after its functions, and whether it differs (Columns)
         let columnCells: { value: string; differs: boolean }[] = [];
         let duplicates = 0;
+        let notNumbers: NotNumbers = [];
         if (spec.views.length) {
             try {
                 // On the new engine, sql.js is not touched: no views loaded into it, no SQL run
@@ -1270,6 +1273,7 @@ export class QueryController {
                     }
                     if ((!result && !kept) || version !== this.version || this.closed) return;
                     duplicates = this.engineDuplicates;
+                    notNumbers = this.engineNotNumbers;
                     stats = spec.joins.map(j => this.engineStats?.get(j.view) ?? null);
                     // The Columns step's sample record and its cells, from the engine
                     const sampled = await this.engineSample(spec, columns);
@@ -1329,7 +1333,7 @@ export class QueryController {
             query.rows = total;
             await saveQuery(this.ports.state, query);
         }
-        this.postState({ waiting, stats: new Map(spec.joins.map((j, i) => [j.view, stats[i]])), columns, resultColumns, resultTypes, sampleRow, columnCells, duplicates, sql, total, preview, error: failure, sqlError });
+        this.postState({ waiting, stats: new Map(spec.joins.map((j, i) => [j.view, stats[i]])), columns, resultColumns, resultTypes, sampleRow, columnCells, duplicates, notNumbers, sql, total, preview, error: failure, sqlError });
     }
 
     /** How many of a view's rows have a value in each column (counted once for the rows as loaded). */
@@ -1399,7 +1403,7 @@ export class QueryController {
     }
 
     /** Everything the steps show. `reading`: a view was just added and its rows are still being read. */
-    private postState(now: { reading?: boolean; counting?: string; waiting?: string[]; stats?: Map<string, QueryJoinStats | null>; columns?: ColumnRef[]; resultColumns?: ColumnRef[]; resultTypes?: ColumnType[]; sampleRow?: { view: string; column: string; value: string }[]; columnCells?: { value: string; differs: boolean }[]; duplicates?: number; sql?: string; total?: number; preview?: unknown[][]; error?: string; sqlError?: string }): void {
+    private postState(now: { reading?: boolean; counting?: string; waiting?: string[]; stats?: Map<string, QueryJoinStats | null>; columns?: ColumnRef[]; resultColumns?: ColumnRef[]; resultTypes?: ColumnType[]; sampleRow?: { view: string; column: string; value: string }[]; columnCells?: { value: string; differs: boolean }[]; duplicates?: number; notNumbers?: NotNumbers; sql?: string; total?: number; preview?: unknown[][]; error?: string; sqlError?: string }): void {
         const query = this.query;
         if (!query) return;
         const tables = tableNames(query.sources.map(s => ({ id: s.id, name: s.name, columns: [] })));
@@ -1438,6 +1442,8 @@ export class QueryController {
             allSelected: !(query.select?.length),
             distinct: !!query.distinct,
             duplicates: now.duplicates ?? 0,
+            // Results' columns where text read as a number wasn't one (left blank): how many rows
+            notNumbers: now.notNumbers ?? [],
             maxViews: MAX_QUERY_VIEWS,
             maxPerEndpoint: MAX_COMPARE_VIEWS,
             // A Compare join makes the query a compare: its Baseline and the views in it
@@ -1967,6 +1973,7 @@ export class QueryController {
         laps.push(...run.timings.map(([what, ms]) => `${what} ${ms}`));
         this.engineStats = run.stats;
         this.engineDuplicates = run.duplicates;
+        this.engineNotNumbers = run.notNumbers;
         this.retirePaged(host);
         this.paged = { key: resultsKey(engineKey(spec), keptSort, '', keptStatus), result: run.kept, host };
         this.pagedAll = { key: engineKey(spec), total: run.kept.total };
@@ -1997,6 +2004,7 @@ export class QueryController {
         laps.push(...run.timings.map(([what, ms]) => `${what} ${ms}`));
         this.engineStats = run.stats;
         this.engineDuplicates = run.duplicates;
+        this.engineNotNumbers = run.notNumbers;
         this.result = this.compareResult(key, spec, run.layout.columns, run.rows, run.keyValues, run.layout.places);
         lap('row status');
         this.filtered = undefined;

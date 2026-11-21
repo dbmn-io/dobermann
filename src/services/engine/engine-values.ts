@@ -112,8 +112,22 @@ export function readNumber(v: V): number | Real | null {
     return castNumeric(v.trim()) as number | Real;
 }
 
-/** A value as a number for arithmetic: readNumber. */
-export const arithmetic = (v: V): number | Real | null => readNumber(v);
+/**
+ * Text read as a number that isn't one (James, 2026-11-21: blank, plus a count). Counted only
+ * while `on`: the engine turns it on around one column's values at a time (engine.ts countNotNumbers).
+ * Empty text and spaces are blank already, not counted.
+ */
+export const notNumbers = { on: false, count: 0 };
+
+/** readNumber, counting text that isn't a number (notNumbers): arithmetic, Round, Abs, Floor, Ceil, NUMBER. */
+export function readNumberCounted(v: V): number | Real | null {
+    const n = readNumber(v);
+    if (n === null && notNumbers.on && typeof v === 'string' && v.trim() !== '') notNumbers.count++;
+    return n;
+}
+
+/** A value as a number for arithmetic: readNumber, counted. */
+export const arithmetic = (v: V): number | Real | null => readNumberCounted(v);
 
 /**
  * SQLite's CAST(x AS NUMERIC), as NUMBER uses it on text it has already found to be a number: its

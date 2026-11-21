@@ -17,7 +17,7 @@ export interface EngineHost {
     load(name: string, table: Table, options?: { more?: boolean }): Promise<void>;
     append(name: string, table: Table, options?: { last?: boolean }): Promise<void>;
     drop(name: string): Promise<void>;
-    run(query: Query, options?: { onProgress?: (progress: Progress) => void }): Promise<RunOutcome>;
+    run(query: Query, options?: { onProgress?: (progress: Progress) => void; countNotNumbers?: string[] }): Promise<RunOutcome>;
     cancel(result: ResultId): void;
     read(result: ResultId, from: number, count: number): Promise<TableWindow>;
     readRows(result: ResultId, rows: number[]): Promise<TableWindow>;
@@ -87,7 +87,7 @@ export function remoteEngineHost(port: EnginePort): EngineHost {
         load: (name, table, options) => call('load', [name, table, options]),
         append: (name, table, options) => call('append', [name, table, options]),
         drop: name => call('drop', [name]),
-        run: (query, options) => call('run', [query], options?.onProgress),
+        run: (query, options) => call('run', [query, options?.countNotNumbers ? { countNotNumbers: options.countNotNumbers } : undefined], options?.onProgress),
         cancel: result => { port.post({ id: next++, call: 'cancel', args: [result] } satisfies Call); },
         read: (result, from, count) => call('read', [result, from, count]),
         readRows: (result, rows) => call('readRows', [result, rows]),
@@ -108,7 +108,7 @@ export function serveEngine(port: EnginePort, engine: QueryEngine = new QueryEng
                 case 'load': engine.load(args[0] as string, args[1] as Table, args[2] as { more?: boolean } | undefined); break;
                 case 'append': engine.append(args[0] as string, args[1] as Table, args[2] as { last?: boolean } | undefined); break;
                 case 'drop': engine.drop(args[0] as string); break;
-                case 'run': value = await engine.run(args[0] as Query, { onProgress: progress => port.post({ id, progress } satisfies Answer) }); break;
+                case 'run': value = await engine.run(args[0] as Query, { ...(args[1] as { countNotNumbers?: string[] } | undefined), onProgress: progress => port.post({ id, progress } satisfies Answer) }); break;
                 case 'cancel': engine.cancel(args[0] as ResultId); return;
                 case 'read': value = engine.read(args[0] as ResultId, args[1] as number, args[2] as number); break;
                 case 'readRows': value = engine.readRows(args[0] as ResultId, args[1] as number[]); break;

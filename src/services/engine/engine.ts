@@ -16,7 +16,7 @@ import {
     FUNCTIONS, ROW_LIMIT, type CompareStats, type Engine, type Expr, type FunctionName, type JoinKind, type JoinStats, type Problem,
     type Query, type ResultId, type RowTests, type RunOptions, type Value, type RunOutcome, type Step, type StatsWindow, type Table, type TableWindow
 } from './engine-types';
-import { compareValues, fromValue, isNumber, keyPart, num, readNumber, Real, toValue, truthy, type V } from './engine-values';
+import { compareValues, fromValue, isNumber, keyPart, notNumbers, num, readNumber, Real, toValue, truthy, type V } from './engine-values';
 
 /** A column of a step's rows: its name, and the inputs it can be named by (`{ column, of }`). */
 interface Col {
@@ -271,6 +271,8 @@ export class QueryEngine implements Engine {
         try {
             progress('Starting', 0, 0);
             const made = new Map<string, Relation>();
+            // (by step, by column: rows where text read as a number wasn't one)
+            const noted: Record<string, Record<string, number>> = {};
             let last: Relation | undefined;
             for (let i = 0; i < query.steps.length; i++) {
                 const step = query.steps[i];
@@ -283,17 +285,20 @@ export class QueryEngine implements Engine {
                 };
                 const rel = kind === 'compare' ? await this.compared(step as Extract<Step, { compare: string[] }>, name, input, slice, keep)
                     : kind === 'join' ? await this.joined(step as Extract<Step, { join: JoinKind }>, name, input, slice, keep)
-                    : await this.stepRelation(step, kind, name, input, slice);
+                    : await this.stepRelation(step, kind, name, input, slice, noted);
                 made.set(name, rel);
                 last = rel;
             }
             if (this.cancelled.has(id)) { this.stepStats.delete(id); return { cancelled: true }; }
             const answer = query.result ? made.get(query.result)! : last!;
+            const answerName = query.result ?? stepName(query.steps[query.steps.length - 1], query.steps.length - 1);
+            await this.countNotNumbers(answer, options?.countNotNumbers ?? [], slice, counted => { noted[answerName] = { ...noted[answerName], ...counted }; });
+            if (this.cancelled.has(id)) { this.stepStats.delete(id); return { cancelled: true }; }
             progress('Done', answer.rowCount, answer.rowCount);
             this.results.set(id, answer);
             const steps: Record<string, number> = {};
             for (const [n, rel] of made) steps[n] = rel.rowCount;
-            return { result: id, total: answer.rowCount, steps };
+            return { result: id, total: answer.rowCount, steps, ...(Object.keys(noted).length ? { notNumbers: noted } : {}) };
         } catch (error) {
             const kept = this.stepStats.get(id);
             this.stepStats.delete(id);
@@ -309,8 +314,31 @@ export class QueryEngine implements Engine {
         }
     }
 
+    /**
+     * The rows of each column asked for where text read as a number wasn't one (engine-values.ts
+     * notNumbers): each row's value worked out once more, the counter on for it alone.
+     */
+    private async countNotNumbers(rel: Relation, columns: string[], slice: (stage: string, done: number, total: number) => Promise<void>,
+        give: (counted: Record<string, number>) => void): Promise<void> {
+        const counted: Record<string, number> = {};
+        for (const column of columns) {
+            const c = rel.cols.findIndex(x => x.name === column);
+            if (c < 0) continue;
+            let rows = 0;
+            for (let r = 0; r < rel.rowCount; r++) {
+                if (r && r % SLICE === 0) await slice('Checking numbers', r, rel.rowCount);
+                notNumbers.on = true;
+                notNumbers.count = 0;
+                try { rel.value(r, c); } finally { notNumbers.on = false; }
+                if (notNumbers.count) rows++;
+            }
+            if (rows) counted[column] = rows;
+        }
+        if (Object.keys(counted).length) give(counted);
+    }
+
     private async stepRelation(step: Step, kind: Kind, name: string, input: (n: string) => Relation,
-        slice: (stage: string, done: number, total: number) => Promise<void>): Promise<Relation> {
+        slice: (stage: string, done: number, total: number) => Promise<void>, noted: Record<string, Record<string, number>>): Promise<Relation> {
         const from = inputsOf(step, kind)[0];
         const base = input(from);
         if (kind === 'from') return { ...base, cols: base.cols.map(c => ({ name: c.name, owners: [from, ...(step.as ? [step.as] : [])] })) };
@@ -320,7 +348,7 @@ export class QueryEngine implements Engine {
             return { cols: s.columns.map(c => ({ name: c.name, owners: [] })), rowCount: base.rowCount, value: (row, c) => exprs[c](row) };
         }
         if (kind === 'sort') return this.sorted(step as Extract<Step, { sort: string }>, base, from, name, slice);
-        if (kind === 'group') return this.grouped(step as Extract<Step, { group: string }>, base, from, name, slice);
+        if (kind === 'group') return this.grouped(step as Extract<Step, { group: string }>, base, from, name, slice, noted);
         // filter: the rows whose condition is true, as SQLite's WHERE reads it; or that pass the host's row test
         const f = step as Extract<Step, { filter: string }>;
         let pass: (r: number) => boolean;
@@ -456,7 +484,7 @@ export class QueryEngine implements Engine {
 
     /** Group (the rule is on the step in engine-types.ts): a row per group, its `by` values from its first row, then the aggregates. */
     private async grouped(step: Extract<Step, { group: string }>, base: Relation, input: string, name: string,
-        slice: (stage: string, done: number, total: number) => Promise<void>): Promise<Relation> {
+        slice: (stage: string, done: number, total: number) => Promise<void>, noted: Record<string, Record<string, number>>): Promise<Relation> {
         const by = step.by.map(b => this.compile(b.value, base, input));
         const aggs = step.aggregates.map(a => ({ fn: a.fn, value: a.value ? this.compile(a.value, base, input) : undefined }));
         const groups = new Map<string, number>();
@@ -474,6 +502,11 @@ export class QueryEngine implements Engine {
         // With nothing to group by: one row, even for no rows
         if (!by.length && !first.length) { first.push(-1); acc.push(start()); }
         const results = acc.map(a => a.map((x, i) => x.result(aggs[i].fn)));
+        // Sum's values that were text but not a number, by aggregate
+        step.aggregates.forEach((agg, i) => {
+            const n = acc.reduce((t, a) => t + a[i].notNumbers, 0);
+            if (n) (noted[name] ??= {})[agg.name] = n;
+        });
         return {
             cols: [...step.by.map(b => b.name), ...step.aggregates.map(a => a.name)].map(n => ({ name: n, owners: [] })),
             rowCount: first.length,
@@ -703,6 +736,8 @@ class Accumulator {
     private realSum = 0;
     private real = false;
     private best: V = null;
+    /** Sum's values that were text but not a number (left out). */
+    notNumbers = 0;
 
     add(v: V, fn: string): void {
         this.rows++;
@@ -711,7 +746,7 @@ class Accumulator {
         if (fn === 'sum') {
             // (text read as a number by the one rule: text that is not a number is left out)
             const n = readNumber(v);
-            if (n === null) return;
+            if (n === null) { if (typeof v === 'string' && v.trim() !== '') this.notNumbers++; return; }
             this.summed++;
             if (typeof n === 'number') { this.intSum += n; this.realSum += n; }
             else { this.real = true; this.realSum += n.r; }

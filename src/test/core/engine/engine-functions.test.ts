@@ -129,6 +129,30 @@ describe('The engine, first piece: tables, select, filter, functions', () => {
         ]);
     });
 
+    it('text that is not a number: blank, and counted (James, 2026-11-21): rows per column asked for, Sum\'s values per aggregate; empty text not counted', async () => {
+        const e = new QueryEngine();
+        e.load('t', { columns: ['a', 'b'], rows: [[1, '2'], ['x', 3], ['', 4], [' ', 5], ['12abc', 'y'], [null, 6], ['7', null]] });
+        const a: Expr = { column: 'a' }, b: Expr = { column: 'b' };
+        const out = await e.run({ steps: [{ from: 't' }, { select: 'step 1', columns: [
+            { name: 's', value: { fn: '+', args: [a, b] } },
+            { name: 'n', value: { fn: 'NUMBER', args: [a] } },
+            { name: 'r', value: { fn: 'ROUND', args: [b] } },
+            { name: 'u', value: { fn: 'UPPER', args: [a] } },
+            { name: 'w', value: { fn: '*', args: [a, a] } }
+        ] }] }, { countNotNumbers: ['s', 'n', 'r', 'u', 'w', 'nothing'] });
+        assert.ok('result' in out);
+        // (rows, not readings: a * a on "x" is one row; "12abc" + "y" one row)
+        assert.deepStrictEqual(out.notNumbers, { 'step 2': { s: 2, n: 2, r: 1, w: 2 } });
+        assert.deepStrictEqual(e.read(out.result, 0, 9).rows.map(r => r[0]), [3, null, null, null, null, null, null]);
+        const g = await e.run({ steps: [{ from: 't' }, { as: 'g', group: 'step 1', by: [], aggregates: [{ name: 'sa', fn: 'sum', value: a }, { name: 'sb', fn: 'sum', value: b }, { name: 'n', fn: 'count' }] }] });
+        assert.ok('result' in g);
+        assert.deepStrictEqual(g.notNumbers, { g: { sa: 2, sb: 1 } });
+        assert.deepStrictEqual(e.read(g.result, 0, 1).rows, [[8, 20, 7]]);
+        // Nothing asked, nothing summed past a number: no count at all
+        const plain = await e.run({ steps: [{ from: 't' }, { select: 'step 1', columns: [{ name: 's', value: { fn: '+', args: [a, b] } }] }] });
+        assert.ok('result' in plain && plain.notNumbers === undefined);
+    });
+
     it('sort as SQLite ORDER BY, ties in their order: ascending, descending (blanks last), two keys, a calculated key', async () => {
         const rows: Value[][] = [];
         VALUES.forEach((a, i) => VALUES.slice(0, 6).forEach(b => rows.push([a, b, i])));

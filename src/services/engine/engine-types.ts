@@ -25,7 +25,8 @@
  *    2026-11-21): text that is a plain number, spaces round it allowed, is that number; any other
  *    text is blank. So "abc" + 1, "12abc" * 2, ROUND("x"), ABS("x"), FLOOR / CEIL("12abc"),
  *    NUMBER("1.2.3") and "As a number" ("abc") are blank, Sum leaves such text out, and a filter or
- *    IF on such text is not true. SQLite reads the text's leading number instead ("12abc" is 12,
+ *    IF on such text is not true. Each is counted, so the screen can say so (James, 2026-11-21:
+ *    "blank, plus a count"; RunOptions.countNotNumbers, RunOutcome's notNumbers). SQLite reads the text's leading number instead ("12abc" is 12,
  *    "abc" is 0, "1.2.3" is 1.2), and FLOOR("1e3") there is 1, here 1000.
  * 3. "As a number" (NUMERIC) is NUMBER (the same rule).
  * 4. Upper case / Lower case change every letter, accented ones included ("é" → "É"; James,
@@ -246,6 +247,12 @@ export interface Progress {
 
 export interface RunOptions {
     onProgress?: (progress: Progress) => void;
+    /**
+     * Columns of the result whose rows with text read as a number that isn't one are counted
+     * (arithmetic, Round, Abs, Floor, Ceil, NUMBER, "As a number": James, 2026-11-21, "blank, plus a
+     * count"): RunOutcome's `notNumbers`, under the result step's name.
+     */
+    countNotNumbers?: string[];
 }
 
 /**
@@ -253,8 +260,13 @@ export interface RunOptions {
  * compare steps' statistics counted until then, the failing join's included, by step name); or stopped.
  */
 export type RunOutcome =
-    /** `steps`: how many rows each step made (a count read from the same run, as Distinct's rows alike). */
-    | { result: ResultId; total: number; steps?: Record<string, number> }
+    /**
+     * `steps`: how many rows each step made (a count read from the same run, as Distinct's rows alike).
+     * `notNumbers`: by step, by column, the rows where text read as a number wasn't one: a group's
+     * Sum (its values left out), and the result's columns asked for (RunOptions.countNotNumbers).
+     * Only counts above 0.
+     */
+    | { result: ResultId; total: number; steps?: Record<string, number>; notNumbers?: Record<string, Record<string, number>> }
     | { problems: Problem[]; stats?: Record<string, JoinStats | CompareStats> }
     | { cancelled: true };
 

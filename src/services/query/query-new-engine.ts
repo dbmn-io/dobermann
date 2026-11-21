@@ -284,7 +284,7 @@ async function joinFigures(spec: QuerySpec, places: string[], get: (step: string
 /** An engine as an EngineHost (tests and the VS Code host hand in the engine itself). */
 const hostOf = (engine: QueryEngine | EngineHost): EngineHost => (engine instanceof QueryEngine ? localEngineHost(engine) : engine);
 
-export async function runOnEngine(engineIn: QueryEngine | EngineHost, spec: QuerySpec, onProgress?: (p: Progress) => void, options?: { keep?: boolean; sort?: ShownSort | null; status?: PagedStatus }): Promise<(CompareOnEngine & { timings: [string, number][]; duplicates: number; kept?: PagedResult }) | undefined> {
+export async function runOnEngine(engineIn: QueryEngine | EngineHost, spec: QuerySpec, onProgress?: (p: Progress) => void, options?: { keep?: boolean; sort?: ShownSort | null; status?: PagedStatus }): Promise<(CompareOnEngine & { timings: [string, number][]; duplicates: number; notNumbers: NotNumbers; kept?: PagedResult }) | undefined> {
     const timings: [string, number][] = [];
     let at = now();
     const lap = (what: string) => { const t = now(); timings.push([what, Math.round(t - at)]); at = t; };
@@ -297,7 +297,9 @@ export async function runOnEngine(engineIn: QueryEngine | EngineHost, spec: Quer
     const query: Query = options?.keep && !spec.distinct
         ? { steps: [...built.query.steps, { as: 'alike', group: 'rows', by: shownColumns, aggregates: [] }], result: built.query.result }
         : built.query;
-    const out = await engine.run(query, { onProgress: p => { onProgress?.(p); } });
+    // Results' columns that read text as a number: their rows where it wasn't one, counted in the same run
+    const counted = readsNumbersColumns(built.query);
+    const out = await engine.run(query, { onProgress: p => { onProgress?.(p); }, ...(counted.length ? { countNotNumbers: counted } : {}) });
     lap('engine run');
     if ('cancelled' in out) return undefined;
     if ('problems' in out) {
@@ -319,7 +321,7 @@ export async function runOnEngine(engineIn: QueryEngine | EngineHost, spec: Quer
             // Its rows stay in the engine, read a page at a time; the rows alike counted in the same run
             keep = true;
             const duplicates = spec.distinct ? 0 : (out.steps?.rows ?? out.total) - (out.steps?.alike ?? out.steps?.rows ?? out.total);
-            return { rows: [], keyValues: [], stats, total: out.total, layout, timings, duplicates, kept: { id: out.result, total: out.total, layout } };
+            return { rows: [], keyValues: [], stats, total: out.total, layout, timings, duplicates, notNumbers: notNumbersOf(out.notNumbers, query), kept: { id: out.result, total: out.total, layout } };
         }
         const read = await engine.read(out.result, 0, out.total);
         lap('read every row');
@@ -330,13 +332,32 @@ export async function runOnEngine(engineIn: QueryEngine | EngineHost, spec: Quer
         for (const r of rows) seen.add(r.map(v => (v === null ? '\u0000' : typeof v === 'number' ? `n${v}` : `t${String(v)}`)).join('\u0001'));
         const duplicates = spec.distinct ? 0 : rows.length - seen.size;
         lap('rows alike');
-        return { rows, keyValues, stats, total: out.total, layout, timings, duplicates };
+        return { rows, keyValues, stats, total: out.total, layout, timings, duplicates, notNumbers: notNumbersOf(out.notNumbers, query) };
     } finally {
         if (!keep) await engine.release(out.result);
     }
 }
 
 const now = (): number => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+
+/** Results' columns (by number) with rows where text read as a number wasn't one, and how many rows (James, 2026-11-21: blank, plus a count). */
+export type NotNumbers = { column: number; rows: number }[];
+
+/** The functions that read text as a number (engine-values.ts readNumberCounted). */
+const READS_NUMBERS = new Set<string>(['+', '-', '*', '/', 'NEG', 'ROUND', 'ABS', 'FLOOR', 'CEIL', 'NUMBER', 'NUMERIC']);
+const readsNumbers = (e: Expr): boolean => 'fn' in e && (READS_NUMBERS.has(e.fn) || e.args.some(readsNumbers));
+
+/** Results' columns (c0, c1…) whose value reads text as a number somewhere: the ones worth counting. */
+function readsNumbersColumns(query: Query): string[] {
+    const select = [...query.steps].reverse().find((s): s is Extract<Query['steps'][number], { select: string }> => 'select' in s && s.columns.some(c => c.name === 'c0'));
+    return select ? select.columns.filter(c => /^c\d+$/.test(c.name) && readsNumbers(c.value)).map(c => c.name) : [];
+}
+
+/** The run's counts for Results' columns, by column number. */
+function notNumbersOf(noted: Record<string, Record<string, number>> | undefined, query: Query): NotNumbers {
+    const step = query.result ?? '';
+    return Object.entries(noted?.[step] ?? {}).filter(([name]) => /^c\d+$/.test(name)).map(([name, rows]) => ({ column: Number(name.slice(1)), rows }));
+}
 
 /**
  * Runs the compare: the views must be loaded (loadView). `onProgress` hears each stage; `cancel`

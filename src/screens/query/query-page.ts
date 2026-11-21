@@ -123,6 +123,8 @@ export function buildQueryPage(asset: AssetUrl, config: { queryId: string; name:
                 </p>
             </section>
             <!-- The design system's table (shared/dbmn-table.js): the rows stay with the host and are asked for as they scroll into view -->
+            <!-- New engine: a column where text read as a number wasn't one (left blank) says how many rows -->
+            <dbmn-status id="queryNotNumbers" class="query-engine-note hidden" inline tone="warn"></dbmn-status>
             <dbmn-table id="queryTable" class="query-results" label="Results" removable></dbmn-table>
         </div>
 

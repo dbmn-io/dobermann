@@ -574,6 +574,30 @@ describe('Query compare on the new engine', () => {
         });
     });
 
+    it('text that is not a number in a calculated column: left blank, and the rows counted in the same run, through a worker\'s port too', async () => {
+        const spec: QuerySpec = {
+            views: [{ id: 'inv', name: 'inv', columns: ['sku', 'qty'] }], joins: [],
+            select: [{ view: 'inv', column: 'sku' }, { view: 'inv', column: 'qty' }, { view: '', column: 'double' }],
+            calc: [{ name: 'double', expr: '', formula: '@inv.qty * 2' }]
+        };
+        const rows: Row[] = [{ sku: 'A', qty: 1 }, { sku: 'B', qty: 'n/a' }, { sku: 'C', qty: '' }, { sku: 'D', qty: '3' }, { sku: 'E', qty: 'TBC' }];
+        const handlers: [((m: unknown) => void)[], ((m: unknown) => void)[]] = [[], []];
+        const port = (me: 0 | 1): EnginePort => ({
+            post: message => { const copy = JSON.parse(JSON.stringify(message)); setTimeout(() => handlers[1 - me].forEach(h => h(copy)), 0); },
+            listen: handler => { handlers[me].push(handler); }
+        });
+        serveEngine(port(1));
+        for (const host of [localEngineHost(), remoteEngineHost(port(0))]) {
+            await loadViewInto(host, 'inv', ['sku', 'qty'], rows);
+            for (const keep of [false, true]) {
+                const run = (await runOnEngine(host, spec, undefined, { keep }))!;
+                // (Results' third column, double: "n/a" and "TBC"; the empty one is blank, not counted; qty as it is, not counted)
+                assert.deepStrictEqual(run.notNumbers, [{ column: 2, rows: 2 }], `keep ${keep}`);
+                if (run.kept) assert.deepStrictEqual((await readPage(host, run.kept, 0, 9)).map(r => r[2]), [2, null, null, 6, null]);
+            }
+        }
+    });
+
     it('a worker that dies: the calls waiting on it and every call after are refused, in words, and it says it is no longer alive', async () => {
         let fail: (reason: string) => void = () => undefined;
         const host = remoteEngineHost({ post: () => undefined, listen: () => undefined, onFail: handler => { fail = handler; } });
