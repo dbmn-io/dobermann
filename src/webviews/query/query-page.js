@@ -2130,7 +2130,8 @@
         // The rows Results shows now (its search and sort), as a workbook
         'query:export': () => {
             setBusy('Exporting…');
-            post({ type: 'query.export', search: ui.search, sort: ui.sort });
+            // (what Results shows: its search and sort, and a compare's Status filters and hidden results)
+            post({ type: 'query.export', search: ui.search, sort: ui.sort, ...(hasStatus() ? { filter: ui.filter } : {}) });
         },
         'query:toggleSql': () => openSql(!ui.sqlOpen),
         'query:runSql': () => {

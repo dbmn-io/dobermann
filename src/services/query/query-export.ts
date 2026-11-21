@@ -7,7 +7,9 @@
  */
 import * as XLSX from 'xlsx';
 import type { QueryEngine } from '../engine/engine';
-import type { ResultId } from '../engine/engine-types';
+import type { ResultId, Value } from '../engine/engine-types';
+import { statusOfRow, type StatusLayout } from './query-new-engine';
+import type { RowStatus } from './query-status';
 
 export interface WorkbookSheet { sheetName: string; header: string[]; rows: unknown[][] }
 
@@ -29,15 +31,31 @@ export function queryWorkbook(sheets: WorkbookSheet[]): Uint8Array {
     return new Uint8Array(XLSX.write(book, { type: 'array', bookType: 'xlsx', compression: true }) as ArrayBuffer);
 }
 
+/** A row's status in words, as the old Compare's file had it: "DIFF C1 C2 · Missing C3", "No key (BL)" or "Same". */
+export function statusWords(status: RowStatus): string {
+    if (status.noKey) return `No key (${status.noKey})`;
+    const parts: string[] = [];
+    if (status.diff.length) parts.push(`DIFF ${status.diff.join(' ')}`);
+    if (status.missing.length) parts.push(`Missing ${status.missing.join(' ')}`);
+    return parts.length ? parts.join(' · ') : 'Same';
+}
+
 /**
  * Results' export from a result kept in the engine: its first `count` columns, every row (read where it
- * is), as the 'Results' sheet; `about` as the 'Query' sheet.
+ * is), as the 'Results' sheet; `about` as the 'Query' sheet. A compare's (`status`, its layout): each
+ * row's Status first and the compared columns it differs in last, as the old Compare's file had them.
  */
-export function resultWorkbook(engine: QueryEngine, result: ResultId, count: number, header: string[], about: [string, string][]): Uint8Array {
-    const total = engine.read(result, 0, 0).total;
+export function resultWorkbook(engine: QueryEngine, result: ResultId, count: number, header: string[], about: [string, string][], status?: StatusLayout): Uint8Array {
+    const first = engine.read(result, 0, 0);
+    const at = new Map(first.columns.map((c, i) => [c, i]));
     const rows: unknown[][] = [];
-    for (let from = 0; from < total; from += 50_000) {
-        for (const row of engine.read(result, from, 50_000).rows) rows.push(row.slice(0, count));
+    for (let from = 0; from < first.total; from += 50_000) {
+        for (const row of engine.read(result, from, 50_000).rows) {
+            if (!status) { rows.push(row.slice(0, count)); continue; }
+            const st = statusOfRow((name: string): Value => row[at.get(name) ?? -1] ?? null, status);
+            rows.push([statusWords(st), ...row.slice(0, count), st.groups.join(', ')]);
+        }
     }
-    return queryWorkbook([{ sheetName: 'Results', header, rows }, { sheetName: 'Query', header: ['', ''], rows: about }]);
+    const head = status ? ['Status', ...header, 'Differs in'] : header;
+    return queryWorkbook([{ sheetName: 'Results', header: head, rows }, { sheetName: 'Query', header: ['', ''], rows: about }]);
 }

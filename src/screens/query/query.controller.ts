@@ -35,6 +35,7 @@ import { CALC_VIEW, QUERY_JOIN_KINDS } from '../../services/query/query-types';
 import { comparableRuns, type RequestTemplates, type RunHeaderValue } from '../../services/compare/compare-runs';
 import { alignCompareJoins, groupCompare, isCompare, MAX_COMPARE_VIEWS, queryCompare, runJoin } from '../../services/query/query-compare';
 import { columnCellDiffs, comparedGroups, passes, rowStatus, statusCounts, type RowStatus, type StatusCounts, type StatusFilter } from '../../services/query/query-status';
+import { resultWorkbook } from '../../services/query/query-export';
 import { asColumnValue, lookupsIn } from '../../services/column-functions/column-functions';
 import type { LookupTablesReader, LookupTableSummary } from '../../services/lookup-tables/lookup-tables';
 import type { ColumnRef, QueryFn, QueryJoin, QueryJoinKind, QueryJoinStats, QueryKey, QuerySpec } from '../../services/query/query-types';
@@ -48,7 +49,7 @@ import type { QueryFileStore } from '../../services/query/query-file-store';
 import { localEngineHost, type EngineHost } from '../../services/engine/engine-host';
 import { QueryEngine } from '../../services/engine/engine';
 import { QUERY_ROW_TESTS, searchColumns, searchTest, type SearchArg } from './query-search';
-import { compareKeyExprs, resultsKey, sampleQueries, pagedCounts, readPagedRow, readStatusPage, type PagedStatus, eachPage, runHeld, holdStatus, countAlike, fromKeptCompare, compareStepKey, buildQuery, SAMPLE_ROWS, type FullFigures, type SampleFacts, fnSampleQueries, formulaExpr, labelExpr, loadLookupInto, loadViewInto, onSqliteLine, pagedTotals, readPage, runPaged, spreadPage, type NotNumbers, type PagedResult, type ShownSort, queryWithColumns, recordQuery, runOnEngine, TooManyOnEngine, whyNotQueryOnEngine } from '../../services/query/query-new-engine';
+import { compareKeyExprs, resultsKey, sampleQueries, pagedCounts, readPagedRow, readStatusPage, type PagedStatus, eachPage, runHeld, holdStatus, countAlike, fromKeptCompare, compareStepKey, buildQuery, SAMPLE_ROWS, type FullFigures, type SampleFacts, type StatusLayout, fnSampleQueries, formulaExpr, labelExpr, loadLookupInto, loadViewInto, onSqliteLine, pagedTotals, readPage, runPaged, spreadPage, type NotNumbers, type PagedResult, type ShownSort, queryWithColumns, recordQuery, runOnEngine, TooManyOnEngine, whyNotQueryOnEngine } from '../../services/query/query-new-engine';
 import type { Progress, Query as EngineQuery, TableWindow } from '../../services/engine/engine-types';
 
 
@@ -1198,7 +1199,10 @@ export class QueryController {
         this.streamed.clear();
         this.engineKey = '';
         this.paged = undefined; this.pagedAll = undefined; this.pagedHeld = undefined; this.pagedBase = undefined; this.engineCompare = undefined;
-        this.engine = this.ports.engineHost?.() ?? localEngineHost(new QueryEngine(undefined, QUERY_ROW_TESTS));
+        this.engine = this.ports.engineHost?.() ?? localEngineHost(new QueryEngine(undefined, QUERY_ROW_TESTS), {
+            // (Query's export where the engine is this thread's, as the web app's worker makes it)
+            workbook: (engine, args) => resultWorkbook(engine, args[0] as string, args[1] as number, args[2] as string[], args[3] as [string, string][], args[4] as StatusLayout | undefined)
+        });
         return this.engine;
     }
 
@@ -2009,7 +2013,7 @@ export class QueryController {
                 ...(counts ? { counts } : {}),
                 each: each => eachPage(host, paged, each),
                 ...(host.workbook && paged.layout.keyColumnOf.every(k => k === undefined)
-                    ? { workbook: (header: string[], about: [string, string][]) => host.workbook!(paged.id, paged.layout.columns.length, header, about) } : {}),
+                    ? { workbook: (header: string[], about: [string, string][]) => host.workbook!(paged.id, paged.layout.columns.length, header, about, paged.layout.status) } : {}),
                 totals: () => pagedTotals(host, paged)
             };
         }

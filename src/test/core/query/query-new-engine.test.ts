@@ -14,7 +14,7 @@ import { COLUMN_FUNCTIONS, columnFnSql, type ColumnFn } from '../../../services/
 import { QueryEngine } from '../../../services/engine/engine';
 import { localEngineHost, remoteEngineHost, serveEngine, type EnginePort } from '../../../services/engine/engine-host';
 import * as XLSX from 'xlsx';
-import { resultWorkbook } from '../../../services/query/query-export';
+import { resultWorkbook, statusWords } from '../../../services/query/query-export';
 import { QuerySession } from '../../../services/query/query-engine';
 import { buildQuery, resultsKey, runHeld, fromKeptCompare, countAlike, sampleQueries, pagedCounts, readStatusPage, eachPage, loadViewInto, pagedTotals, readPage, runOnEngine, runPaged, TooManyOnEngine, compareKeyExprs, compareQuery, fnExpr, fnSampleQueries, formulaExpr, labelExpr, loadLookupTable, loadView, queryWithColumns, recordQuery, resultRows, onSqliteLine, runCompareOnEngine, whyNotOnEngine } from '../../../services/query/query-new-engine';
 import { formulaSql, parseFormula, FORMULA_FUNCTIONS } from '../../../services/query/formula';
@@ -699,6 +699,25 @@ describe('Query compare on the new engine', () => {
         assert.deepStrictEqual(XLSX.utils.sheet_to_json(book.Sheets.Results, { header: 1, raw: true, defval: null }), [['A', 'B'], ['x', '1'], ['007', '2.5']]);
         assert.deepStrictEqual(book.SheetNames, ['Results', 'Query']);
         host.close();
+    });
+
+    it('a compare\'s export is what Results shows: its Status filter applied, each row\'s Status in words first, the compared columns it differs in last', async () => {
+        const spec = runsSpec();
+        const data = { bl: runRows(0, 300), c1: runRows(1, 300), c2: runRows(2, 300) };
+        const engine = new QueryEngine();
+        for (const v of spec.views) loadView(engine, v.id, v.columns, data[v.id as keyof typeof data]);
+        const label = (v: string) => ({ bl: 'BL', c1: 'C1', c2: 'C2' } as Record<string, string>)[v];
+        const status = { filter: { kinds: ['diff', 'missing:C2'] }, label, placeOfColumn: (i: number) => label(resultColumns(spec)[i].view), hidden: [] as string[] };
+        const paged = (await runPaged(engine, spec, { column: 1, dir: 'desc' }, undefined, undefined, status))!;
+        const page = await readStatusPage(engine, paged, 0, paged.total, status);
+        const header = paged.layout.columns.map(c => c.column);
+        const book = XLSX.read(resultWorkbook(engine, paged.id, paged.layout.columns.length, header, [], paged.layout.status), { type: 'array' });
+        const sheet = XLSX.utils.sheet_to_json<unknown[]>(book.Sheets.Results, { header: 1, raw: true, defval: null });
+        assert.deepStrictEqual(sheet[0], ['Status', ...header, 'Differs in']);
+        assert.strictEqual(sheet.length - 1, paged.total);
+        assert.ok(paged.total > 0 && sheet.slice(1).every(r => /DIFF|Missing .*C2/.test(String(r[0]))));
+        assert.deepStrictEqual(sheet.slice(1).map(r => r[0]), page.status.map(statusWords));
+        assert.deepStrictEqual(sheet.slice(1).map(r => r[r.length - 1] ?? ''), page.status.map(st => st.groups.join(', ')));
     });
 
     it('a compare held once (runHeld): a sort, a Status filter and the counts from it are the rows, status and counts a whole run gives', async () => {

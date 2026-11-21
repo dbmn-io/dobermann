@@ -26,7 +26,7 @@ export interface EngineHost {
     /** Figures over a result's rows by column (QueryEngine.measure). */
     measure(result: ResultId, measures: { column: string; equals?: Value; known?: boolean }[]): Promise<{ rows: number; values: number[] }>;
     /** Where the host can (the web app's worker): Results' export as a workbook's bytes, made from a result where it is. */
-    workbook?(result: ResultId, count: number, header: string[], about: [string, string][]): Promise<Uint8Array>;
+    workbook?(result: ResultId, count: number, header: string[], about: [string, string][], status?: unknown): Promise<Uint8Array>;
     /** Results' totals over a result's first columns (QueryEngine.totals). */
     totals(result: ResultId, count: number): Promise<{ totals: (number | null)[]; places: number[] }>;
     /** A result with these columns stored (QueryEngine.hold): its id. */
@@ -38,8 +38,10 @@ export interface EngineHost {
 }
 
 /** The engine in this thread. */
-export function localEngineHost(engine: QueryEngine = new QueryEngine()): EngineHost {
+export function localEngineHost(engine: QueryEngine = new QueryEngine(), extra: Record<string, (engine: QueryEngine, args: unknown[]) => unknown> = {}): EngineHost {
     return {
+        // (the host's own calls, as serveEngine's: Query's export where the engine is this thread's)
+        ...(extra.workbook ? { workbook: async (...args: unknown[]) => extra.workbook(engine, args) as Uint8Array } : {}),
         load: async (name, table, options) => engine.load(name, table, options),
         append: async (name, table, options) => engine.append(name, table, options),
         drop: async name => engine.drop(name),
@@ -106,7 +108,7 @@ export function remoteEngineHost(port: EnginePort): EngineHost {
         release: result => call('release', [result]),
         hold: (result, columns) => call('hold', [result, columns]),
         totals: (result, count) => call('totals', [result, count]),
-        workbook: (result, count, header, about) => call('workbook', [result, count, header, about]),
+        workbook: (result, count, header, about, status) => call('workbook', [result, count, header, about, status]),
         measure: (result, measures) => call('measure', [result, measures]),
         close: () => { for (const w of waiting.values()) w.reject(new Error('The engine was closed')); waiting.clear(); port.close?.(); },
         alive: () => !failed
