@@ -14,7 +14,7 @@ import { COLUMN_FUNCTIONS, columnFnSql, type ColumnFn } from '../../../services/
 import { QueryEngine } from '../../../services/engine/engine';
 import { remoteEngineHost, serveEngine, type EnginePort } from '../../../services/engine/engine-host';
 import { QuerySession } from '../../../services/query/query-engine';
-import { buildQuery, pagedCounts, readStatusPage, eachPage, loadViewInto, pagedTotals, readPage, runOnEngine, runPaged, TooManyOnEngine, compareKeyExprs, compareQuery, fnExpr, fnSampleQueries, formulaExpr, labelExpr, loadLookupTable, loadView, queryWithColumns, recordQuery, resultRows, onSqliteLine, runCompareOnEngine, whyNotOnEngine } from '../../../services/query/query-new-engine';
+import { buildQuery, sampleQueries, pagedCounts, readStatusPage, eachPage, loadViewInto, pagedTotals, readPage, runOnEngine, runPaged, TooManyOnEngine, compareKeyExprs, compareQuery, fnExpr, fnSampleQueries, formulaExpr, labelExpr, loadLookupTable, loadView, queryWithColumns, recordQuery, resultRows, onSqliteLine, runCompareOnEngine, whyNotOnEngine } from '../../../services/query/query-new-engine';
 import { formulaSql, parseFormula, FORMULA_FUNCTIONS } from '../../../services/query/formula';
 import type { Value } from '../../../services/engine/engine-types';
 import { compareKeySql, resultColumns } from '../../../services/query/query-sql';
@@ -552,5 +552,22 @@ describe('Query compare on the new engine', () => {
         await assert.rejects(waiting, /The query engine stopped \(out of memory\)/);
         await assert.rejects(host.read('r1', 0, 1), /The query engine stopped/);
         assert.strictEqual(host.alive(), false);
+    });
+
+    it('the Columns step\'s sample record: the first row where every view has its record, else the first row', async () => {
+        const spec = runsSpec();
+        // BL's first record is missing from C1, so the first row lacks a record
+        const data = { bl: runRows(0, 50), c1: runRows(1, 50), c2: runRows(2, 50) };
+        data.c1 = data.c1.filter(r => r.sku !== data.bl[0].sku);
+        const engine = new QueryEngine();
+        for (const v of spec.views) loadView(engine, v.id, v.columns, data[v.id as keyof typeof data]);
+        const raw = spec.views.flatMap(v => v.columns.map(column => ({ view: v.id, column })));
+        const { everyView, any } = sampleQueries(spec, raw, [{ view: 'bl', column: 'sku', fns: [{ fn: 'lower' }] }]);
+        const run = async (q: Parameters<QueryEngine['run']>[0]) => { const out = await engine.run(q); assert.ok('result' in out, JSON.stringify(out)); return engine.read(out.result, 0, 1).rows[0]; };
+        const every = await run(everyView);
+        assert.ok(every.slice(0, raw.length).every(v => v !== null), JSON.stringify(every));
+        assert.strictEqual(every[raw.length], String(every[0]).toLowerCase());
+        const first = await run(any);
+        assert.ok(first.some(v => v === null), 'the first row lacks a record somewhere: the everyView one was picked for a reason');
     });
 });

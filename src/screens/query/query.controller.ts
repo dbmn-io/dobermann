@@ -48,7 +48,7 @@ import type { QueryFileStore } from '../../services/query/query-file-store';
 import { localEngineHost, type EngineHost } from '../../services/engine/engine-host';
 import { QueryEngine } from '../../services/engine/engine';
 import { QUERY_ROW_TESTS, searchColumns, searchTest, type SearchArg } from './query-search';
-import { compareKeyExprs, pagedCounts, readPagedRow, readStatusPage, type PagedStatus, eachPage, fnSampleQueries, formulaExpr, labelExpr, loadLookupInto, loadViewInto, onSqliteLine, pagedTotals, readPage, runPaged, spreadPage, type PagedResult, type ShownSort, queryWithColumns, recordQuery, runOnEngine, TooManyOnEngine, whyNotQueryOnEngine } from '../../services/query/query-new-engine';
+import { compareKeyExprs, sampleQueries, pagedCounts, readPagedRow, readStatusPage, type PagedStatus, eachPage, fnSampleQueries, formulaExpr, labelExpr, loadLookupInto, loadViewInto, onSqliteLine, pagedTotals, readPage, runPaged, spreadPage, type PagedResult, type ShownSort, queryWithColumns, recordQuery, runOnEngine, TooManyOnEngine, whyNotQueryOnEngine } from '../../services/query/query-new-engine';
 import type { Query as EngineQuery, TableWindow } from '../../services/engine/engine-types';
 
 
@@ -1271,6 +1271,10 @@ export class QueryController {
                     if ((!result && !kept) || version !== this.version || this.closed) return;
                     duplicates = this.engineDuplicates;
                     stats = spec.joins.map(j => this.engineStats?.get(j.view) ?? null);
+                    // The Columns step's sample record and its cells, from the engine
+                    const sampled = await this.engineSample(spec, columns);
+                    sampleRow = sampled.row;
+                    columnCells = sampled.cells;
                     if (kept && this.engine) {
                         total = kept.total;
                         preview = await readPage(this.engine, kept, 0, PREVIEW_ROWS);
@@ -1370,6 +1374,21 @@ export class QueryController {
             views: spec.views, joins: inner ? spec.joins.map(j => ({ ...j, kind: 'inner' as const })) : spec.joins, select, calc: spec.calc
         }, { limit: 1 })).rows[0];
         const got = one(true) ?? one(false);
+        if (!got) return { row: [], cells: columns.map(() => ({ value: '', differs: false })) };
+        const text = (v: unknown): string => (v === null || v === undefined ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v)).slice(0, 60);
+        const values = columns.map(() => '');
+        shown.forEach((x, k) => { values[x.i] = text(got[raw.length + k]); });
+        const order = this.query?.sources.map(src => src.id) ?? [];
+        const differs = columnCellDiffs(columns, values, view => { const at = order.indexOf(view); return at < 0 ? order.length : at; });
+        return { row: raw.map((c, i) => ({ view: c.view, column: c.column, value: text(got[i]) })), cells: values.map((value, i) => ({ value, differs: differs[i] })) };
+    }
+
+    /** sampleRow on the new engine: the same record and cells, read without sql.js. */
+    private async engineSample(spec: QuerySpec, columns: ColumnRef[]): Promise<{ row: { view: string; column: string; value: string }[]; cells: { value: string; differs: boolean }[] }> {
+        const raw = allColumns(spec).filter(c => c.view !== CALC_VIEW);
+        const shown = columns.map((c, i) => ({ c, i })).filter(x => x.c.view !== CALC_VIEW && spec.views.some(v => v.id === x.c.view));
+        const { everyView, any } = sampleQueries(spec, raw, shown.map(x => ({ view: x.c.view, column: x.c.column, ...(x.c.fns?.length ? { fns: x.c.fns } : {}) })));
+        const got = (await this.engineWindow(spec, everyView, 1)).rows[0] ?? (await this.engineWindow(spec, any, 1)).rows[0];
         if (!got) return { row: [], cells: columns.map(() => ({ value: '', differs: false })) };
         const text = (v: unknown): string => (v === null || v === undefined ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v)).slice(0, 60);
         const values = columns.map(() => '');

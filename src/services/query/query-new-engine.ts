@@ -774,3 +774,29 @@ export async function pagedTotals(engineIn: QueryEngine | EngineHost, paged: Pag
     const places = decimals.map((d, c) => (text[c] ? 0 : d));
     return { totals: sums.map((sum, c) => (text[c] || !any[c] ? null : Math.round(sum * 10 ** places[c]) / 10 ** places[c])), places };
 }
+
+/**
+ * The Columns step's sample record on the engine (sampleRow's): every view's columns as they are,
+ * then `extra` (the report's columns after their functions), from the first row where every view
+ * has its record (its plain joins as inner joins, no compare view missing), else the first row.
+ */
+export function sampleQueries(spec: QuerySpec, raw: ColumnRef[], extra: ColumnRef[]): { everyView: Query; any: Query } {
+    const exprs = [...raw, ...extra].map(refExpr);
+    const any = queryWithColumns(spec, exprs);
+    const inner: QuerySpec = { ...spec, joins: spec.joins.map(j => (j.kind === 'compare' ? j : { ...j, kind: 'inner' as const })) };
+    const places = compareKeysByView(spec).map(v => v.view);
+    const flags: Expr[] = places.map(p => ({ column: `missing:${p}`, of: 'compare' }));
+    const withFlags = queryWithColumns(inner, [...exprs, ...flags]);
+    const n = exprs.length;
+    const everyView: Query = places.length
+        ? {
+            steps: [
+                ...withFlags.steps,
+                { as: 'present', filter: 'rows', where: and(places.map((_, i) => ({ fn: '=', args: [{ column: `c${n + i}` }, { value: 0 }] } as Expr))) },
+                { as: 'sample', select: 'present', columns: exprs.map((_, i) => ({ name: `c${i}`, value: { column: `c${i}` } })) }
+            ],
+            result: 'sample'
+        }
+        : queryWithColumns(inner, exprs);
+    return { everyView, any };
+}
