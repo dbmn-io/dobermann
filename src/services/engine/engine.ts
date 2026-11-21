@@ -16,7 +16,7 @@ import {
     FUNCTIONS, ROW_LIMIT, type CompareStats, type Engine, type Expr, type FunctionName, type JoinKind, type JoinStats, type Problem,
     type Query, type ResultId, type RowTests, type RunOptions, type Value, type RunOutcome, type Step, type StatsWindow, type Table, type TableWindow
 } from './engine-types';
-import { compareValues, fromValue, isNumber, keyPart, notNumbers, num, readNumber, Real, toValue, truthy, type V } from './engine-values';
+import { compareValues, fromValue, isNumber, keyPart, keyReader, notNumbers, num, readNumber, Real, toValue, truthy, type V } from './engine-values';
 
 /** A column of a step's rows: its name, and the inputs it can be named by (`{ column, of }`). */
 interface Col {
@@ -42,6 +42,27 @@ function exprKey(e: Expr, keys: WeakMap<object, string>): string {
             : `f${e.fn}(${e.args.map(a => exprKey(a, keys)).join(',')})`;
     keys.set(e, key);
     return key;
+}
+
+/** Rows by key: each key's first row, and a list only for a key on more than one row (no list a key). */
+class KeyIndex {
+    private readonly first = new Map<string, number>();
+    private readonly more = new Map<string, number[]>();
+
+    add(key: string, row: number): void {
+        const at = this.first.get(key);
+        if (at === undefined) { this.first.set(key, row); return; }
+        const list = this.more.get(key);
+        if (list) list.push(row); else this.more.set(key, [at, row]);
+    }
+
+    /** The rows holding a key, in their order; undefined when none does. */
+    get(key: string): number[] | undefined {
+        const many = this.more.get(key);
+        if (many) return many;
+        const at = this.first.get(key);
+        return at === undefined ? undefined : [at];
+    }
 }
 
 interface Relation {
@@ -82,25 +103,6 @@ function groupKeyOf(parts: V[]): string {
     return key;
 }
 
-/** A row's key, for matching: blank when any part is blank; equal values (sameValue: 42 and "42") match. */
-function keyOf(parts: V[]): string | null {
-    let key = '';
-    for (const v of parts) {
-        if (v === null) return null;
-        key += keyPart(v);
-    }
-    return key;
-}
-
-/** A key's text, as the compare matches keys (engine-compare.ts keyOf): null when a part is blank. */
-function keyText(parts: V[]): string | null {
-    let key = '';
-    for (const v of parts) {
-        if (v === null) return null;
-        key += keyPart(v);
-    }
-    return key;
-}
 
 const giveWay = (): Promise<void> => new Promise(resolve => setTimeout(resolve, 0));
 const count = (n: number): string => n.toLocaleString('en-US');
@@ -439,13 +441,15 @@ export class QueryEngine implements Engine {
         const right = input(step.right);
         const stage = `Joining ${step.right}`;
         const work = left.rowCount + right.rowCount;
-        const lk = step.on.map(p => this.compile(p.left, left, step.left));
-        const rk = step.on.map(p => this.compile(p.right, right, step.right));
+        const lParts = step.on.map(p => this.compile(p.left, left, step.left));
+        const rParts = step.on.map(p => this.compile(p.right, right, step.right));
+        const lk = keyReader(lParts);
+        const rk = keyReader(rParts);
         // The right's rows by key
         const byKey = new Map<string, number[]>();
         for (let r = 0; r < right.rowCount; r++) {
             if (r && r % SLICE === 0) await slice(stage, r, work);
-            const key = keyOf(rk.map(f => f(r)));
+            const key = rk(r);
             if (key === null) continue;
             const list = byKey.get(key);
             if (list) list.push(r); else byKey.set(key, [r]);
@@ -458,7 +462,7 @@ export class QueryEngine implements Engine {
         let pairs = 0, leftAlone = 0;
         for (let r = 0; r < left.rowCount; r++) {
             if (r && r % SLICE === 0) await slice(stage, right.rowCount + r, work);
-            const key = keyOf(lk.map(f => f(r)));
+            const key = lk(r);
             leftKeys[r] = key;
             if (key !== null) { const h = leftHeld.get(key); if (h) h.n++; else leftHeld.set(key, { n: 1, first: r }); }
             const list = key === null ? undefined : byKey.get(key);
@@ -469,7 +473,7 @@ export class QueryEngine implements Engine {
         const keepsLeft = step.join === 'left' || step.join === 'outer';
         const keepsRight = step.join === 'right' || step.join === 'outer';
         const rows = pairs + (keepsLeft ? leftAlone : 0) + (keepsRight ? rightAlone : 0);
-        keep(joinFacts(left, right, lk, rk, leftHeld, byKey, rows));
+        keep(joinFacts(left, right, lParts, rParts, leftHeld, byKey, rows));
         if (rows > this.rowLimit) {
             throw new TooMany({ step: name, message: `Joining ${step.right} would make ${count(rows)} rows, more than the ${count(this.rowLimit)} a query can hold. Check its key columns.` });
         }
@@ -552,9 +556,9 @@ export class QueryEngine implements Engine {
     private async sampleInputs(step: Extract<Step, { compare: string[] }>, names: string[], rels: Relation[], n: number,
         slice: (stage: string, done: number, total: number) => Promise<void>): Promise<{ rels: Relation[]; facts: { rows: number; of: number; inEvery: number; byInput: number[] } }> {
         const first = { ...rels[0], rowCount: Math.min(n, rels[0].rowCount) };
-        const keyFns = step.on[0].map(e => this.compile(e, first, names[0]));
+        const keyOf = keyReader(step.on[0].map(e => this.compile(e, first, names[0])));
         const keys: (string | null)[] = [];
-        for (let r = 0; r < first.rowCount; r++) keys.push(keyText(keyFns.map(f => f(r))));
+        for (let r = 0; r < first.rowCount; r++) keys.push(keyOf(r));
         const byInput = [first.rowCount];
         const inAll = keys.map(k => k !== null);
         const out: Relation[] = [first];
@@ -579,22 +583,20 @@ export class QueryEngine implements Engine {
     }
 
     /** Keys kept for a table and a key (keyIndex): its rows by key text; let go when the table changes. */
-    private readonly keyIndexes = new Map<string, Map<string, number[]>>();
+    private readonly keyIndexes = new Map<string, KeyIndex>();
 
     /** An input's rows by their key's text (a blank key left out): kept for a loaded table, made once for anything else. */
-    private async keyIndex(name: string, on: Expr[], rel: Relation, slice: (stage: string, done: number, total: number) => Promise<void>): Promise<Map<string, number[]>> {
+    private async keyIndex(name: string, on: Expr[], rel: Relation, slice: (stage: string, done: number, total: number) => Promise<void>): Promise<KeyIndex> {
         const id = `${name}\n${JSON.stringify(on)}`;
         const table = this.tables.has(name);
         const had = table ? this.keyIndexes.get(id) : undefined;
         if (had) return had;
-        const fns = on.map(e => this.compile(e, rel, name));
-        const index = new Map<string, number[]>();
+        const keyOf = keyReader(on.map(e => this.compile(e, rel, name)));
+        const index = new KeyIndex();
         for (let r = 0; r < rel.rowCount; r++) {
             if (r && r % SLICE === 0) await slice(`Finding the keys in ${name}`, r, rel.rowCount);
-            const k = keyText(fns.map(f => f(r)));
-            if (k === null) continue;
-            const list = index.get(k);
-            if (list) list.push(r); else index.set(k, [r]);
+            const k = keyOf(r);
+            if (k !== null) index.add(k, r);
         }
         if (table) this.keyIndexes.set(id, index);
         return index;

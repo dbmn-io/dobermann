@@ -194,6 +194,28 @@ export function keyPart(v: number | Real | string): string {
 }
 
 /**
+ * A row's key as text for matching, from its parts: null when any part is blank; equal values
+ * (sameValue: 42 and "42") the same text. A key of one part is its value's own text (no new string
+ * a row for text already held); of several, each part's length and text, so parts never run into
+ * each other. Every reader of one compare or join has as many parts, so their texts match.
+ */
+export function keyReader(parts: ((row: number) => V)[]): (row: number) => string | null {
+    if (parts.length === 1) {
+        const f = parts[0];
+        return row => { const v = f(row); return v === null ? null : equalForm(v); };
+    }
+    return row => {
+        let key = '';
+        for (const p of parts) {
+            const v = p(row);
+            if (v === null) return null;
+            key += keyPart(v);
+        }
+        return key;
+    };
+}
+
+/**
  * The order of values (sort, Min, Max, < and >): blank first, then numbers by value, then text by
  * its characters' code points (the same order as UTF-8's bytes). Equality is sameValue's, not
  * this: 42 and "42" are equal though a number sorts before text.

@@ -30,7 +30,7 @@
  * "missing" where a compared input lacks it, else "same".
  */
 import type { CompareStats } from './engine-types';
-import { alike, keyPart, type V } from './engine-values';
+import { alike, keyReader, type V } from './engine-values';
 
 export const COMPARE_STATUS = ['same', 'diff', 'missing', 'notInBaseline', 'noKey'] as const;
 export const COMPARE_RELATION = ['oneToOne', 'oneToMany', 'onlyBase', 'onlyOther'] as const;
@@ -59,15 +59,6 @@ export interface CompareMade {
     stats: CompareStats;
 }
 
-/** A key's text, or null when a part is blank (it matches nothing). Equal values (sameValue: 42 and "42") alike. */
-function keyOf(parts: V[]): string | null {
-    let key = '';
-    for (const v of parts) {
-        if (v === null) return null;
-        key += keyPart(v);
-    }
-    return key;
-}
 
 export async function runCompare(inputs: CompareInput[], columns: number, tick: (done: number, total: number) => Promise<void>, every: number): Promise<CompareMade> {
     const places = inputs.length;
@@ -82,9 +73,10 @@ export async function runCompare(inputs: CompareInput[], columns: number, tick: 
     const keyed: Int32Array[] = [];
     for (const x of inputs) {
         const at = new Int32Array(x.rowCount);
+        const keyOf = keyReader(x.key);
         for (let r = 0; r < x.rowCount; r++) {
             if (++done % every === 0) await tick(done, work);
-            const key = keyOf(x.key.map(f => f(r)));
+            const key = keyOf(r);
             let k: number | undefined;
             if (key === null) { k = keys++; blank[k] = true; }
             else {
