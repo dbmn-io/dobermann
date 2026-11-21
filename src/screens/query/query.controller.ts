@@ -82,11 +82,11 @@ export interface QueryConfig {
 export type QueryMessage = { type: string; [key: string]: unknown };
 
 /**
- * A compare's records worked out per second, and what each value costs in memory, as measured in Node at
- * 4 x 105k and 4 x 1M rows (engine-poc/drive-query-4x105k.cjs: 4M records compared and held in about 7 s),
- * halved for a browser tab. For the estimate Results says before a large compare starts.
+ * A compare's records worked out per second, and what each value costs in memory: on screen, Results'
+ * first page of 4 x 105k (420,000 records) took 1.5 s from history and 1.8 s from a workbook (the
+ * tester, 2026-11-22). For the estimate Results says before a large compare starts.
  */
-const RECORDS_PER_SECOND = 300_000;
+const RECORDS_PER_SECOND = 250_000;
 const BYTES_PER_VALUE = 24;
 /** Past this the compare is refused in words: what a browser tab can hold, with room for the page. */
 const TAB_BYTES = 3_000_000_000;
