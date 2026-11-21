@@ -463,6 +463,27 @@ table.export td.x{mso-number-format:"\\@"}
     }
 
     /**
+     * Sheets given as a heading row and row arrays, built as rows (SheetJS dense) and written as
+     * exportToExcelMultiSheet writes them (widths, a filter on the headings, compressed). Large
+     * results: no object a row, no cell objects kept apart (Query's export).
+     */
+    async exportArraysToExcel(sheets: { sheetName: string; header: string[]; rows: unknown[][] }[], options: { targetUri?: string }): Promise<string> {
+        const workbook = XLSX.utils.book_new();
+        for (const sheet of sheets) {
+            // (every value as the text columns of exportToExcelMultiSheet have it: formatValueForExcel's, a number as text)
+            const rows = sheet.rows.map(row => row.map(value => this.formatValueForExcel(value, 'string')));
+            const worksheet = XLSX.utils.aoa_to_sheet([sheet.header, ...rows], { dense: true } as XLSX.AOA2SheetOpts);
+            worksheet['!cols'] = sheet.header.map(name => ({ wch: Math.max(name.length, 15) }));
+            if (sheet.rows.length && worksheet['!ref']) worksheet['!autofilter'] = { ref: worksheet['!ref'] };
+            XLSX.utils.book_append_sheet(workbook, worksheet, sheet.sheetName);
+        }
+        const excelBuffer = new Uint8Array(XLSX.write(workbook, { type: 'array', bookType: 'xlsx', compression: true }) as ArrayBuffer);
+        if (!options.targetUri) throw new Error('No save path provided for export');
+        await fs.promises.writeFile(options.targetUri, excelBuffer);
+        return options.targetUri;
+    }
+
+    /**
      * Export multiple sheets to Excel format (.xlsx)
      * Creates a workbook with multiple worksheets
      */

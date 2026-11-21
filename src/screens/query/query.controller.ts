@@ -1620,12 +1620,10 @@ export class QueryController {
             this.post({ type: 'query.exported' });
             return;
         }
-        const column = (id: string, heading: string): ColumnDefinition => ({ id, name: heading, type: 'string', sortable: false, filterable: false });
         const headings = columnHeadings(found.columns, new Map(query.sources.map(s => [s.id, s.name])));
-        const columns = headings.map((h, i) => column(`c${i}`, h));
-        // (read a window at a time when the rows are in the engine)
-        const data: Record<string, unknown>[] = [];
-        await found.each(rows => { for (const row of rows) data.push(Object.fromEntries(row.map((value, c) => [`c${c}`, value]))); });
+        // (read a window at a time when the rows are in the engine; kept as the rows they are, no object a row)
+        const data: unknown[][] = [];
+        await found.each(rows => { for (const row of rows) data.push(row); });
         const search = String(message.search ?? '').trim();
         const about: [string, string][] = [
             ['Query', query.name],
@@ -1635,10 +1633,10 @@ export class QueryController {
             // (the SQL, when it ran on SQLite)
             ...(found.key.startsWith('engine:') ? [] : found.key.split('\n').map((line, i) => [i ? '' : 'SQL', line] as [string, string]))
         ];
-        const path = await new ConsoleExportService().exportToExcelMultiSheet([
-            { sheetName: 'Results', data, columns },
-            { sheetName: 'Query', data: about.map(([a, b]) => ({ a, b })), columns: [column('a', ''), column('b', '')] }
-        ], { includeHeaders: true, targetUri: target });
+        const path = await new ConsoleExportService().exportArraysToExcel([
+            { sheetName: 'Results', header: headings, rows: data },
+            { sheetName: 'Query', header: ['', ''], rows: about }
+        ], { targetUri: target });
         await files.exported?.(path);
         this.ports.toast.info(`Saved ${path.split(/[\\/]/).pop()}`);
         this.post({ type: 'query.exported' });
