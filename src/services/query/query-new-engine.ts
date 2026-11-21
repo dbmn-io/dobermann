@@ -19,7 +19,8 @@ import type { CompareStats, Expr, FunctionName, Progress, Query, Value } from '.
 import { FUNCTIONS } from '../engine/engine-types';
 import type { FormulaNode } from './formula';
 import { queryCompare } from './query-compare';
-import { lookupsUsed, resultColumns } from './query-sql';
+import { formulaColumns, lookupsUsed, resultColumns } from './query-sql';
+import { parseFormula } from './formula';
 import { CALC_VIEW, type ColumnRef, type QueryJoinStats, type QueryKey, type QuerySpec } from './query-types';
 
 /** Why a query runs on SQLite even with the setting on, in a few words; undefined when it runs on the engine. */
@@ -239,4 +240,93 @@ export async function runCompareOnEngine(engine: QueryEngine, spec: QuerySpec, o
     } finally {
         engine.release(out.result);
     }
+}
+
+/* ---------- Any query: plain joins, a view brought in beside a compare, calculated columns, Distinct ---------- */
+
+/** The first of `values` that is not blank: COALESCE, as IF(x = x, x, …) (x = x is blank only when x is). */
+function coalesce(values: Expr[]): Expr {
+    return values.reduceRight<Expr | undefined>((rest, x) => (rest ? { fn: 'IF', args: [{ fn: '=', args: [x, x] }, x, rest] } : x), undefined) ?? { value: null };
+}
+
+/**
+ * One side of a join pair as an Expr: a column, or several joined end to end with the separator
+ * as SQL's || joins them (blank when any is blank), then the key's own functions.
+ */
+export function keyExpr(key: QueryKey): Expr {
+    const parts = key.parts.map(refExpr);
+    let joined: Expr;
+    if (parts.length === 1) joined = parts[0];
+    else {
+        const pieces = key.separator ? parts.flatMap((p, i) => (i ? [{ value: key.separator! } as Expr, p] : [p])) : parts;
+        const known = parts.length === 1 ? { fn: '=' as const, args: [parts[0], parts[0]] } : { fn: 'AND' as const, args: parts.map(p => ({ fn: '=' as const, args: [p, p] })) };
+        joined = { fn: 'IF', args: [known, { fn: 'CONCAT', args: pieces }] };
+    }
+    return (key.fns ?? []).reduce<Expr>((x, f) => fnExpr(x, f), joined);
+}
+
+/** Why a query can't run on the engine yet (whatever its kind), or undefined. */
+export function whyNotQueryOnEngine(spec: QuerySpec): string | undefined {
+    if (!spec.views.length) return 'it has no views';
+    if (lookupsUsed(spec).length) return 'it uses Translate values';
+    if ((spec.calc ?? []).some(c => !c.formula)) return 'it has a calculated column written as SQL';
+    if (spec.joins.some(j => !j.on.length || j.on.some(p => !p.left.parts.length || !p.right.parts.length))) return 'a join has no key yet';
+    return undefined;
+}
+
+/**
+ * Any query as an engine Query: a compare step over the compare's views (when it is one), then each
+ * other join in order on what came before, then a select of Results' columns (calculated ones by
+ * their formula, a compare's key from whichever view has the record) and each compare view's key;
+ * Distinct a group by every column.
+ */
+export function buildQuery(spec: QuerySpec): { query: Query; layout: CompareLayout } {
+    const steps: Query['steps'] = [];
+    const byView = compareKeysByView(spec);
+    const places = byView.map(v => v.view);
+    let base = spec.views[0].id;
+    const keyExprs = byView.map(v => v.keys.flatMap(k => k.parts.map(p => (k.fns ?? []).reduce<Expr>((x, f) => fnExpr(x, f), refExpr(p)))));
+    if (byView.length) {
+        steps.push({ as: 'compare', compare: places, on: keyExprs, columns: [] });
+        base = 'compare';
+    }
+    spec.joins.filter(j => j.kind !== 'compare').forEach((j, i) => {
+        steps.push({ as: `join${i + 1}`, join: j.kind as 'inner' | 'left' | 'right' | 'outer', left: base, right: j.view, on: j.on.map(p => ({ left: keyExpr(p.left), right: keyExpr(p.right) })) });
+        base = `join${i + 1}`;
+    });
+    const columns = resultColumns(spec);
+    const formulaCols = formulaColumns(spec);
+    const byKey = (key: string): Expr => { const at = key.indexOf('\n'); return { column: key.slice(at + 1), of: key.slice(0, at) }; };
+    const first = spec.joins.find(j => j.kind === 'compare');
+    const keyColumnOf = columns.map(c => {
+        if (c.view === CALC_VIEW || c.fns?.length || !first) return undefined;
+        const pair = first.on.findIndex(p => p.left.parts.length === 1 && !p.left.fns?.length && p.left.parts[0].view === c.view && p.left.parts[0].column === c.column && !p.left.parts[0].fns?.length);
+        return pair < 0 ? undefined : pair;
+    });
+    const valueOf = (c: ColumnRef, i: number): Expr => {
+        if (c.view !== CALC_VIEW) {
+            const pair = keyColumnOf[i];
+            // A compare's key column: whichever view's key the record has
+            if (pair !== undefined) return coalesce([refExpr(c), ...byView.slice(1).map(v => v.keys[pair]).filter(Boolean).map(keyExpr)]);
+            return refExpr(c);
+        }
+        // A calculated column (a COMPARE formula a column per side: "name 1", "name 2"…)
+        const calc = spec.calc?.find(x => x.name === c.column) ?? spec.calc?.find(x => c.group === x.name);
+        if (!calc?.formula) throw new Error(`Query: no calculated column "${c.column}"`);
+        const parsed = parseFormula(calc.formula, formulaCols);
+        const side = c.group === calc.name && parsed.compare ? parsed.compare[Number(/ (\d+)$/.exec(c.column)?.[1] ?? 1) - 1] : parsed.tree;
+        return formulaExpr(side, byKey);
+    };
+    const select: { name: string; value: Expr }[] = columns.map((c, i) => ({ name: `c${i}`, value: valueOf(c, i) }));
+    const keyParts = byView.map((v, p) => {
+        const at = keyExprs[p].map((e, i) => { select.push({ name: `k${p}_${i}`, value: e }); return select.length - 1; });
+        return { at, separator: v.keys.length === 1 && v.keys[0].parts.length > 1 ? v.keys[0].separator ?? '' : '' };
+    });
+    steps.push({ as: 'rows', select: base, columns: select });
+    if (spec.distinct) steps.push({ as: 'distinct', group: 'rows', by: select.map(c => ({ name: c.name, value: { column: c.name } })), aggregates: [] });
+    return {
+        query: { steps, result: spec.distinct ? 'distinct' : 'rows' },
+        // (the keys already shown by a compare's key column: resultRows leaves them as they are)
+        layout: { columns, places, keyParts, keyColumnOf: columns.map(() => undefined) }
+    };
 }

@@ -13,12 +13,12 @@ import type { SqlJsStatic } from 'sql.js';
 import { COLUMN_FUNCTIONS, columnFnSql, type ColumnFn } from '../../../services/column-functions/column-functions';
 import { QueryEngine } from '../../../services/engine/engine';
 import { QuerySession } from '../../../services/query/query-engine';
-import { compareQuery, fnExpr, formulaExpr, loadView, onSqliteLine, runCompareOnEngine, whyNotOnEngine } from '../../../services/query/query-new-engine';
+import { buildQuery, compareQuery, fnExpr, formulaExpr, loadView, resultRows, onSqliteLine, runCompareOnEngine, whyNotOnEngine } from '../../../services/query/query-new-engine';
 import { formulaSql, parseFormula, FORMULA_FUNCTIONS } from '../../../services/query/formula';
 import type { Value } from '../../../services/engine/engine-types';
 import { compareKeySql, resultColumns } from '../../../services/query/query-sql';
 import { rowStatus } from '../../../services/query/query-status';
-import type { QuerySpec } from '../../../services/query/query-types';
+import type { QueryKey, QuerySpec } from '../../../services/query/query-types';
 import { SQL_WASM_PATH } from '../fixtures/temp-storage';
 
 type Row = Record<string, unknown>;
@@ -212,5 +212,88 @@ describe('Query compare on the new engine', () => {
         }
         db.close();
         assert.deepStrictEqual(wrong.slice(0, 8), [], `${wrong.length} values differ`);
+    });
+
+    describe('any query on the engine: the same rows as its SQL', () => {
+        const data: Record<string, Row[]> = {
+            inv: [
+                { sku: 'A1', gtin: 'G1', qty: 5, loc: 'L1', part: 'x' }, { sku: 'A2', gtin: 'G2', qty: 0, loc: 'L2', part: 'y' },
+                { sku: 'A3', gtin: 'G2', qty: 7, loc: null, part: 'x' }, { sku: 'A4', gtin: null, qty: 1, loc: 'L1', part: 'z' },
+                { sku: 'A5', gtin: 'g1', qty: 2, loc: 'L9', part: 'x' }, { sku: 'A6', gtin: 'G9', qty: 3, loc: 'L2', part: 'y' }
+            ],
+            prod: [
+                { gtin: 'G1', name: 'Bone', code: 'G1-x' }, { gtin: 'G2', name: 'Ball', code: 'G2-y' }, { gtin: 'G2', name: 'Ball (old)', code: 'G2-x' },
+                { gtin: 'G3', name: 'Lead', code: 'G3-x' }, { gtin: null, name: 'Nothing', code: null }
+            ],
+            loc: [{ gln: 'L1', site: 'North' }, { gln: 'L2', site: 'South' }, { gln: 'L7', site: 'West' }]
+        };
+        const views = [
+            { id: 'inv', name: 'inv', columns: ['sku', 'gtin', 'qty', 'loc', 'part'] },
+            { id: 'prod', name: 'prod', columns: ['gtin', 'name', 'code'] },
+            { id: 'loc', name: 'loc', columns: ['gln', 'site'] }
+        ];
+        const key = (view: string, column: string, fns?: QuerySpec['select'][number]['fns']): QueryKey => ({ parts: [{ view, column, ...(fns ? { fns } : {}) }] });
+
+        async function same(spec: QuerySpec, label: string) {
+            const session = new QuerySession(SQL, spec);
+            for (const v of spec.views) await session.load(v.id, data[v.id]);
+            const want = session.rows().rows.map(r => JSON.stringify(r)).sort();
+            session.close();
+            const engine = new QueryEngine();
+            for (const v of spec.views) loadView(engine, v.id, v.columns, data[v.id]);
+            const { query, layout } = buildQuery(spec);
+            const out = await engine.run(query);
+            assert.ok('result' in out, `${label}: ${JSON.stringify(out)}`);
+            const got = resultRows(engine.read(out.result, 0, 9999).rows, layout).rows.map(r => JSON.stringify(r)).sort();
+            assert.deepStrictEqual(got, want, label);
+        }
+
+        for (const kind of ['inner', 'left', 'right', 'outer'] as const) {
+            it(`${kind} joins, two of them, the default columns: repeats, blanks, a key in another case`, async () => {
+                await same({ views, joins: [{ view: 'prod', kind, on: [{ left: key('inv', 'gtin'), right: key('prod', 'gtin') }] }, { view: 'loc', kind, on: [{ left: key('inv', 'loc'), right: key('loc', 'gln') }] }], select: [] }, kind);
+            });
+        }
+
+        // (a view in the query is joined: with one join, two views)
+        const two = views.slice(0, 2);
+
+        it('a key with functions; a key of two columns joined with a separator against one column', async () => {
+            await same({ views: two, joins: [{ view: 'prod', kind: 'left', on: [{ left: key('inv', 'gtin', [{ fn: 'upper' }]), right: key('prod', 'gtin') }] }], select: [] }, 'upper key');
+            await same({ views: two, joins: [{ view: 'prod', kind: 'left', on: [{ left: { parts: [{ view: 'inv', column: 'gtin' }, { view: 'inv', column: 'part' }], separator: '-' }, right: key('prod', 'code') }] }], select: [{ view: 'inv', column: 'sku' }, { view: 'prod', column: 'name' }] }, 'two columns');
+        });
+
+        it('calculated columns by their formula (a COMPARE a column per side); Distinct', async () => {
+            const spec: QuerySpec = {
+                views: two, joins: [{ view: 'prod', kind: 'left', on: [{ left: key('inv', 'gtin'), right: key('prod', 'gtin') }] }],
+                select: [{ view: 'inv', column: 'sku' }, { view: '', column: 'double' }, { view: '', column: 'label' }, { view: '', column: 'both' }],
+                calc: [
+                    { name: 'double', expr: '', formula: '@inv.qty * 2 + 1' },
+                    { name: 'label', expr: '', formula: 'IF(@inv.qty > 2, CONCAT(@prod.name, "!"), IFBLANK(@prod.name, "none"))' },
+                    { name: 'both', expr: '', formula: 'COMPARE(@inv.gtin, @prod.gtin)' }
+                ]
+            };
+            await same(spec, 'calc');
+            await same({ views: two, joins: [{ view: 'prod', kind: 'left', on: [{ left: key('inv', 'gtin'), right: key('prod', 'gtin') }] }], select: [{ view: 'inv', column: 'part' }, { view: 'prod', column: 'name' }], distinct: true }, 'distinct');
+        });
+
+        it('a compare of runs with a view brought in by a plain join', async () => {
+            const runs: Record<string, Row[]> = {
+                bl: [{ sku: 'A', gtin: 'G1', qty: 1 }, { sku: 'B', gtin: 'G2', qty: 2 }, { sku: 'C', gtin: 'G3', qty: 3 }],
+                c1: [{ sku: 'A', gtin: 'G1', qty: 1 }, { sku: 'B', gtin: 'G2', qty: 9 }, { sku: 'D', gtin: 'G9', qty: 4 }]
+            };
+            Object.assign(data, runs);
+            const spec: QuerySpec = {
+                views: [
+                    { id: 'bl', name: 'stock BL', run: 'BL', columns: ['sku', 'gtin', 'qty'] }, { id: 'c1', name: 'stock C1', run: 'C1', columns: ['sku', 'gtin', 'qty'] },
+                    { id: 'prod', name: 'prod', columns: ['gtin', 'name', 'code'] }
+                ],
+                joins: [
+                    { view: 'c1', kind: 'compare', on: [{ left: key('bl', 'sku'), right: key('c1', 'sku') }] },
+                    { view: 'prod', kind: 'left', on: [{ left: key('bl', 'gtin'), right: key('prod', 'gtin') }] }
+                ],
+                select: [{ view: 'bl', column: 'sku' }, { view: 'bl', column: 'qty', group: 'qty' }, { view: 'c1', column: 'qty', group: 'qty' }, { view: 'prod', column: 'name' }]
+            };
+            await same(spec, 'compare + join');
+        });
     });
 });
