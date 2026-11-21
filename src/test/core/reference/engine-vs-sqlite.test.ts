@@ -182,14 +182,14 @@ describe('Query engine against SQLite (reference, the tester\'s)', () => {
         return engine.read(ran.result, 0, 1).rows[0][0] as Value;
     }
 
-    it('difference 1 (manager\'s ruling, pending James): comparisons are exact by type (a number never equals text)', async () => {
+    it('difference 1 (James, 2026-11-21: "yes for now"): comparisons are exact by type (a number never equals text)', async () => {
         assert.strictEqual(await one('=', 42, '42'), 0);
         assert.strictEqual(await one('=', '42', 42), 0);
         assert.strictEqual(await one('=', 42, 42), 1);
         assert.strictEqual(await one('=', '42', '42'), 1);
     });
 
-    it('difference 2 (manager\'s ruling, pending James): FLOOR and CEIL read text as NUMBER does', async () => {
+    it('difference 2 (James, 2026-11-21: text that is not a number reads as blank): FLOOR and CEIL read text as NUMBER does', async () => {
         assert.strictEqual(await one('FLOOR', 'abc'), null);
         assert.strictEqual(await one('FLOOR', '12abc'), null);
         assert.strictEqual(await one('FLOOR', '1e3'), 1000);

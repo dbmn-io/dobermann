@@ -8,8 +8,7 @@
  *   on each row and is compared each time, the Baseline included. Inputs with several are paired in
  *   order of appearance; one with fewer than the most shows its last again. An input with none is
  *   missing. No "duplicate, not compared": every row is compared.
- * - A blank (null) key never matches: each blank-key record is a row of its own (the manager is
- *   confirming blanks with James: that case is marked).
+ * - A blank (null) key never matches: each blank-key record is a row of its own (James: "ok.").
  * Everything else is still the old Compare's rule (engine-vs-old-compare.test.ts).
  */
 import * as assert from 'assert';
@@ -81,7 +80,7 @@ describe('Compare: repeated and blank keys, James\'s rule (reference, hand-count
         ]);
     });
 
-    it('blank keys (manager\'s ruling, confirming with James): never match; each blank-key record is a row of its own', async () => {
+    it('blank keys (James, 2026-11-21: "ok."): never match; each blank-key record is a row of its own', async () => {
         assert.deepStrictEqual(await compare({
             BL: [[null, 1, 'bn'], ['a', 1, 'b0']],
             C1: [[null, 1, 'cn'], ['a', 1, 'c0']],
