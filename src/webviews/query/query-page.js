@@ -222,6 +222,12 @@
         next.textContent = ui.step < 4 ? `Next: ${STEPS[ui.step].label}` : 'Next';
         next.disabled = !!waitsFor(ui.step + 1) || !!ui.busy;
         next.title = ui.step === 3 && reportEmpty() ? EMPTY_REPORT : '';
+        // (and on the Columns step itself, where the columns are put back)
+        const emptyNote = $('queryColumnsEmpty');
+        if (emptyNote) {
+            emptyNote.hidden = !(ui.step === 3 && reportEmpty());
+            if (!emptyNote.hidden && emptyNote.textContent !== EMPTY_REPORT) emptyNote.textContent = EMPTY_REPORT;
+        }
         $('queryBackBtn').disabled = ui.step === 1 || !!ui.busy;
     }
     /** A line per step: its views, its joins, its columns, its rows. */

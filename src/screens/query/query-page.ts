@@ -105,6 +105,8 @@ export function buildQueryPage(asset: AssetUrl, config: { queryId: string; name:
         <!-- Step 3: Columns: every column of every view comes in; untick and order them here -->
         <div id="queryColumnsStep" class="csv-step hidden">
             <!-- On the slots' grid: each view's columns under its slot, ticked to show, each with a value of its own -->
+            <!-- Every column taken out: said here, on the step, as Results waits (the step bar carries no reasons) -->
+            <dbmn-status id="queryColumnsEmpty" class="query-columns-empty" tone="warn" inline hidden></dbmn-status>
             <div id="queryColumns" class="dbmn-lanes query-cols"></div>
         </div>
 
