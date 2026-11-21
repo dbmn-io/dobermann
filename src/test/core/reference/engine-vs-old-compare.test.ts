@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Flexion Tech Pty Ltd
 /**
  * Query engine's compare step judged against the old Compare (compare-across.ts), by the tester,
  * on the tester's own data (generator.ts), not the engine's test data: a Baseline and up to

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Flexion Tech Pty Ltd
 /**
  * The SQLite side of Query's reference tests: the expected rows for a join, its key functions
  * and a calculation, worked out by SQLite (sql.js), which the app has trusted until now. The

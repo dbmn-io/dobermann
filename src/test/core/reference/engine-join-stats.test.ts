@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Flexion Tech Pty Ltd
 /**
  * The Join step's counts from Query's engine, judged by the tester against a plain count written
  * here from what each number means (engine-types.ts JoinStats; today's joinStats SQL in

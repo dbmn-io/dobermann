@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Flexion Tech Pty Ltd
 /**
  * The compare's rule for repeated keys and blank keys as James decided it (2026-11-21, relayed by
  * the manager: "If we have a one-to-many relationship, the one should be compared to the many each

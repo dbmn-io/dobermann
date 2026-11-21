@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Flexion Tech Pty Ltd
 /**
  * Query's engine judged against SQLite, by the tester: the same seeded tables (generator.ts) and
  * the same select or filter, run through SQLite as today's Query runs it and through the engine;

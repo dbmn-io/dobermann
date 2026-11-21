@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Flexion Tech Pty Ltd
 /**
  * The reference harness checks itself before it judges an engine: the generator gives the same
  * tables for a seed, its presets hold what they say, and SQLite's answers are what a join

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Flexion Tech Pty Ltd
 /**
  * Reference data for Query's engine tests: tables made from a seed, so a failure can be made
  * again exactly. The tester owns this file (the engine's builder doesn't write the cases it is
