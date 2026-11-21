@@ -204,10 +204,8 @@
 @media (prefers-reduced-motion: reduce) { #queryViews.is-moving .compare-result { transition: none; } }
 
 /* The lanes of the views after the one a join brings in: not part of it */
-.query-at.query-lane-off {
-    background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--vscode-foreground) 5%, transparent) 0 6px, transparent 6px 12px), color-mix(in srgb, #000 28%, var(--vscode-editor-background));
-    cursor: not-allowed;
-}
+/* (just its lane's colour, as the mock has it: only a compare's Not compared cell is hatched) */
+.query-at.query-lane-off { cursor: not-allowed; }
 /* (a box sits over a link that passes it on its way to another view) */
 .query-pick { position: relative; z-index: 1; }
 
@@ -394,3 +392,6 @@
 /* The key's sample sits under its picker, indented as the picker is */
 .query-compare-key .query-compare-value { padding-left: 8px; }
 .query-compare-key .query-compare-same { padding-left: 8px; }
+/* A view brought in beside a compare: its bar a sentence across the lanes */
+.query-join-said { display: flex; align-items: center; justify-content: space-between; gap: 14px; min-width: 0; overflow: hidden; white-space: nowrap; cursor: pointer; }
+.query-join-said > * { min-width: 0; overflow: hidden; text-overflow: ellipsis; }

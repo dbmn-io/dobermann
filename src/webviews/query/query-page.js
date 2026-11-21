@@ -1175,6 +1175,25 @@
             // Anywhere on the bar opens how the rows meet, as its chevron does
             lanes.forEach(lane => after[lane.id].addEventListener('click', () => { ui.statsOpen[v.id] = !open; renderJoins(); }));
         }
+        // A view brought in to show beside a compare: its bar is one sentence across the lanes, as the mock has it
+        // ("1,198 of the rows find a Suppliers record · 9 Suppliers records not used"), the rows it leaves at its end
+        const besideCompare = !!(ui.state && ui.state.compare) && stats;
+        let sentence = null;
+        if (besideCompare) {
+            const unused = stats.rightRows - stats.rightMatched;
+            const bar = el('div', 'query-after query-join-said');
+            const words = el('span', 'query-made query-join-stat', `${count(stats.leftMatched)} of ${count(stats.leftRows)} rows find a ${v.name} record${unused ? ` · ${count(unused)} ${v.name} ${unused === 1 ? 'record' : 'records'} not used` : ''}`);
+            words.title = `${count(stats.leftMatched)} of the rows so far find a record of ${v.name}; ${count(stats.leftRows - stats.leftMatched)} don't (${unmatchedSays(join, `${v.name} blank`, 'them')}). Open the chevron for how they meet`;
+            bar.appendChild(words);
+            if (stats.rowsAfter > stats.leftRows) {
+                const many = stats.relationship === 'manyToMany';
+                const w = el('span', many ? 'query-warn' : 'query-note', 'Rows multiply');
+                w.title = `A row comes out once for each ${v.name} row it matches. Add a column to the join (+ AND) to stop it`;
+                bar.appendChild(w);
+            }
+            bar.addEventListener('click', () => { ui.statsOpen[v.id] = !open; renderJoins(); });
+            sentence = bar;
+        }
         // Its chevron, beside what it opens
         const more = el('button', 'compare-tool-btn icon');
         more.type = 'button';
@@ -1185,7 +1204,9 @@
         more.setAttribute('aria-label', `How the rows meet ${v.name}`);
         more.title = open ? 'Hide how the rows meet this view' : 'Show how the rows meet this view';
         more.addEventListener('click', () => { ui.statsOpen[v.id] = !open; renderJoins(); });
-        const made = line('query-made-line', after, [v.error ? errorLine(v) : joinNote(join, stats)], [el('span', 'query-lead-text', 'Rows after this join'), more]);
+        const made = sentence
+            ? line('query-made-line', { __span: sentence }, [el('span', 'query-made query-compare-rows', `${count(stats.rowsAfter)} rows`)], [el('span', 'query-lead-text', 'Rows after this join'), more])
+            : line('query-made-line', after, [v.error ? errorLine(v) : joinNote(join, stats)], [el('span', 'query-lead-text', 'Rows after this join'), more]);
         made.dataset.kind = 'made';
         made.classList.toggle('is-openable', !!stats);
         band.appendChild(made);
