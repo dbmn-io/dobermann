@@ -861,14 +861,16 @@
         const applied = await window.DbmnFunctions.open({
             title: `Functions on ${ref.column || 'the column'}`,
             column: name,
-            // Translate values when there are lookup tables (Reporting's): the table, its from and to columns
-            functions: FNS.concat(lookupTables().length ? [{ id: 'translate', label: 'Translate values', sql: ['TRANSLATE(', 'x', ', ', { key: 'table', label: 'Lookup table', kind: 'lookup', options: lookupTables() }, ')'] }] : [])
+            // Translate values, always (with no lookup table yet, "+ New lookup table…" makes one): the table, its from and to columns
+            functions: FNS.concat([{ id: 'translate', label: 'Translate values', sql: ['TRANSLATE(', 'x', ', ', { key: 'table', label: 'Lookup table', kind: 'lookup', options: lookupTables() }, ')'] }])
                 .map(d => ({ id: d.id, label: d.label, sql: d.sql })),
             defaults: FN_DEFAULTS,
             applied: fromQuery(ref.fns),
             asLabel: join ? 'Joins as' : 'Shows as',
             // A lookup table opens in its own tab, from Reporting
             onOpenLookup: id => post({ type: 'query.openLookup', id }),
+            // "+ New lookup table…": a new table in its own tab, as Reporting's + New lookup table makes
+            onNewLookup: () => post({ type: 'query.newLookup' }),
             sample: list => new Promise(resolve => {
                 const seq = ++asked;
                 waiting.set(seq, resolve);

@@ -63,6 +63,8 @@ export interface QueryPorts extends ComparePorts {
     lookups?: LookupTablesReader;
     /** Open a lookup table in its own tab (from Translate values in the functions dialog). */
     openLookup?(id: string): Promise<void>;
+    /** A new lookup table, empty, opened in its own tab ("+ New lookup table…" in Translate values' table picker). */
+    newLookup?(): Promise<void>;
 }
 
 export interface QueryConfig {
@@ -371,6 +373,10 @@ export class QueryController {
                     this.result = undefined;
                 });
                 case 'query.record': return await this.record(Number(message.index), Array.isArray(message.hidden) ? (message.hidden as string[]).map(String) : []);
+                case 'query.newLookup': {
+                    if (this.ports.newLookup) await this.ports.newLookup();
+                    return;
+                }
                 case 'query.openLookup': {
                     const id = String(message.id ?? '');
                     if (id && this.ports.openLookup) await this.ports.openLookup(id);

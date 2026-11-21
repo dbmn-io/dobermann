@@ -178,7 +178,7 @@ export function webTabs(deps: WebTabDeps): HubTabFactory {
             };
             if (isQueryId(compareId)) {
                 // A query: Compare's ports and SQLite, started from the app's own wasm file
-                const query = new QueryController(session, { ...ports, sql: () => (sqlEngine ??= initSqlJs({ locateFile: () => sqlWasmUrl })), systemName: async id => (await deps.systems.getSystem(id))?.name, openRunBatch: (endpoint, chain) => deps.openBatch(endpoint.id, chain), queryFiles, lookups: new LookupTablesStore(lookupFolder), openLookup: async id => { deps.openLookup(id); } }, { queryId: compareId, start });
+                const query = new QueryController(session, { ...ports, sql: () => (sqlEngine ??= initSqlJs({ locateFile: () => sqlWasmUrl })), systemName: async id => (await deps.systems.getSystem(id))?.name, openRunBatch: (endpoint, chain) => deps.openBatch(endpoint.id, chain), queryFiles, lookups: new LookupTablesStore(lookupFolder), openLookup: async id => { deps.openLookup(id); }, newLookup: async () => { const made = await new LookupTablesStore(lookupFolder).create('Lookup table'); await deps.openLookup(made.id); } }, { queryId: compareId, start });
                 const queryScreen = { handle: (m: Record<string, unknown>) => query.handleMessage(m as never), dispose: () => query.dispose() };
                 return { ...tab(buildQueryPage(asset, { queryId: compareId, name: endpointName }), session, queryScreen), name: `Query: ${endpointName}` };
             }
