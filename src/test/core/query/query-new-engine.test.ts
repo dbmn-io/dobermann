@@ -14,11 +14,11 @@ import { COLUMN_FUNCTIONS, columnFnSql, type ColumnFn } from '../../../services/
 import { QueryEngine } from '../../../services/engine/engine';
 import { remoteEngineHost, serveEngine, type EnginePort } from '../../../services/engine/engine-host';
 import { QuerySession } from '../../../services/query/query-engine';
-import { buildQuery, eachPage, loadViewInto, pagedTotals, readPage, runOnEngine, runPaged, TooManyOnEngine, compareKeyExprs, compareQuery, fnExpr, fnSampleQueries, formulaExpr, labelExpr, loadLookupTable, loadView, queryWithColumns, recordQuery, resultRows, onSqliteLine, runCompareOnEngine, whyNotOnEngine } from '../../../services/query/query-new-engine';
+import { buildQuery, pagedCounts, readStatusPage, eachPage, loadViewInto, pagedTotals, readPage, runOnEngine, runPaged, TooManyOnEngine, compareKeyExprs, compareQuery, fnExpr, fnSampleQueries, formulaExpr, labelExpr, loadLookupTable, loadView, queryWithColumns, recordQuery, resultRows, onSqliteLine, runCompareOnEngine, whyNotOnEngine } from '../../../services/query/query-new-engine';
 import { formulaSql, parseFormula, FORMULA_FUNCTIONS } from '../../../services/query/formula';
 import type { Value } from '../../../services/engine/engine-types';
 import { compareKeySql, resultColumns } from '../../../services/query/query-sql';
-import { rowStatus } from '../../../services/query/query-status';
+import { passes, rowStatus, statusCounts, type StatusFilter } from '../../../services/query/query-status';
 import type { QueryKey, QuerySpec } from '../../../services/query/query-types';
 import { SQL_WASM_PATH } from '../fixtures/temp-storage';
 
@@ -479,5 +479,42 @@ describe('Query compare on the new engine', () => {
             const sum = nums.reduce((t, r) => t + (typeof r.a === 'number' ? r.a : 0), 0);
             assert.deepStrictEqual(await pagedTotals(engine, paged), { totals: [Math.round(sum * 100) / 100, null, nums.reduce((t, r) => t + (r.c as number), 0)], places: [2, 0, 0] });
         });
+    });
+
+    describe('a compare\'s status on Results\' pages, from the engine', () => {
+        // Keys once in each run, values all text or all numbers per column (where rowStatus' text and the engine's types agree)
+        const data = { bl: runRows(0, 400), c1: runRows(1, 400), c2: runRows(2, 400) };
+        for (const r of [...data.bl, ...data.c1, ...data.c2]) r.sku = String(r.sku);
+        const label = (v: string) => ({ bl: 'BL', c1: 'C1', c2: 'C2' } as Record<string, string>)[v];
+        const status = (hidden: string[], filter?: StatusFilter) => ({ notCompared: ['bl', 'c1', 'c2'].filter(v => hidden.includes(label(v))), filter, label, hidden });
+
+        async function held(hidden: string[]) {
+            const spec = runsSpec();
+            const engine = new QueryEngine();
+            for (const v of spec.views) loadView(engine, v.id, v.columns, data[v.id as keyof typeof data]);
+            const all = (await runCompareOnEngine(engine, spec))!;
+            const st = rowStatus(resultColumns(spec), all.rows, ['BL', 'C1', 'C2'], all.keyValues, label, hidden)!;
+            return { spec, engine, all, st };
+        }
+        const same = (a: { diff: string[]; missing: string[]; groups: string[]; relation?: string }) => JSON.stringify([[...a.diff].sort(), a.missing, a.groups, a.relation]);
+
+        for (const hidden of [[], ['C2']]) {
+            it(`each row's status, the filters and the counts, as rowStatus gave them${hidden.length ? ', a run hidden' : ''}`, async () => {
+                const { spec, engine, all, st } = await held(hidden);
+                const paged = (await runPaged(engine, spec, null, undefined, undefined, status(hidden)))!;
+                const page = await readStatusPage(engine, paged, 0, paged.total, status(hidden));
+                assert.deepStrictEqual(page.rows, all.rows);
+                assert.deepStrictEqual(page.status.map(same), st.rows.map(same));
+                // Every kind of filter: ticks, a column's DIFF pill, relations, together
+                const filters: StatusFilter[] = [{ kinds: ['diff'] }, { kinds: ['same'] }, { kinds: ['missing:C1'] }, { kinds: ['missing:BL', 'diff'] }, { columns: ['qty'] }, { columns: ['status', 'qty'] }, { relations: ['onlyOther'] }, { kinds: ['diff'], relations: ['oneToOne'] }];
+                for (const filter of filters) {
+                    const want = all.rows.filter((_, i) => passes(st.rows[i], filter));
+                    const kept = (await runPaged(engine, spec, null, undefined, undefined, status(hidden, filter)))!;
+                    assert.deepStrictEqual((await readStatusPage(engine, kept, 0, kept.total, status(hidden, filter))).rows, want, JSON.stringify(filter));
+                }
+                const counts = await pagedCounts(engine, spec, undefined, status(hidden));
+                assert.deepStrictEqual(counts, statusCounts(st.rows, st.rows.map((_, i) => i)));
+            });
+        }
     });
 });

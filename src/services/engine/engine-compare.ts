@@ -38,7 +38,8 @@ export interface CompareInput {
     name: string;
     rowCount: number;
     key: ((row: number) => V)[];
-    values: ((row: number) => V)[];
+    /** Its value for each compared column; none where the column has no cell for this input. */
+    values: (((row: number) => V) | undefined)[];
     /** Kept in the rows, left out of status, relation and differs (notCompared). */
     skipped: boolean;
 }
@@ -48,6 +49,10 @@ export interface CompareMade {
     rowAt: Int32Array[];
     status: Uint8Array;
     relation: Uint8Array;
+    /** By input: 1 where one of its values differs from its column's first (`diff:<input>`). */
+    diffBy: Uint8Array[];
+    /** By input: 1 where it holds the row's key on more than one record (`repeated:<input>`). */
+    repeatedBy: Uint8Array[];
     differs: Uint8Array[];
     stats: CompareStats;
 }
@@ -100,24 +105,30 @@ export async function runCompare(inputs: CompareInput[], columns: number, tick: 
     // 2. The rows: as many for a key as the most any input has; the one shown on each, the many in order
     const rowsOf: number[][] = inputs.map(() => []);
     const repeatedRow: number[] = [];
+    // (for each repeated row, the inputs that hold its key more than once)
+    const repeatedIn: number[][] = [];
     let length = 0;
     for (let k = 0; k < keys; k++) {
         const each = many.get(k);
         if (!each) { for (let p = 0; p < places; p++) rowsOf[p].push(firstRow[p][k]); length++; continue; }
         const n = Math.max(...each.map(list => list.length));
+        const holders = each.map((list, p) => (list.length > 1 ? p : -1)).filter(p => p >= 0);
         for (let i = 0; i < n; i++) {
             for (let p = 0; p < places; p++) rowsOf[p].push(each[p].length ? each[p][Math.min(i, each[p].length - 1)] : -1);
+            repeatedIn.push(holders);
             repeatedRow.push(length++);
         }
     }
     const rowAt = rowsOf.map(r => Int32Array.from(r));
     const isRepeated = new Uint8Array(length);
-    repeatedRow.forEach(r => { isRepeated[r] = 1; });
+    const repeatedBy = inputs.map(() => new Uint8Array(length));
+    repeatedRow.forEach((r, i) => { isRepeated[r] = 1; for (const p of repeatedIn[i]) repeatedBy[p][r] = 1; });
 
     // 3. Each row's status, relation and differs
     const status = new Uint8Array(length);
     const relation = new Uint8Array(length);
     const differs = Array.from({ length: columns }, () => new Uint8Array(length));
+    const diffBy = inputs.map(() => new Uint8Array(length));
     const counts = { same: 0, diff: 0, missing: 0, notInBaseline: 0 };
     for (let row = 0; row < length; row++) {
         if (++done % every === 0) await tick(done, work);
@@ -125,18 +136,15 @@ export async function runCompare(inputs: CompareInput[], columns: number, tick: 
         let missing = false, changed = false;
         for (let p = 1; p < places; p++) if (!inputs[p].skipped && rowAt[p][row] < 0) missing = true;
         relation[row] = b < 0 ? 3 : missing ? 2 : isRepeated[row] ? 1 : 0;
-        // Measured against the first input that has the record and is compared
-        let ref = -1;
-        for (let p = 0; p < places; p++) if (!inputs[p].skipped && rowAt[p][row] >= 0) { ref = p; break; }
-        if (ref >= 0) {
-            const at = rowAt[ref][row];
-            for (let c = 0; c < columns; c++) {
-                const first = inputs[ref].values[c](at);
-                for (let p = ref + 1; p < places; p++) {
-                    const r = rowAt[p][row];
-                    if (inputs[p].skipped || r < 0) continue;
-                    if (compareValues(first, inputs[p].values[c](r)) !== 0) { differs[c][row] = 1; changed = true; break; }
-                }
+        // Each column measured against its first input that has the record, is compared and has a cell in it
+        for (let c = 0; c < columns; c++) {
+            let first: V | undefined;
+            for (let p = 0; p < places; p++) {
+                const r = rowAt[p][row];
+                const value = inputs[p].values[c];
+                if (inputs[p].skipped || r < 0 || !value) continue;
+                if (first === undefined) { first = value(r); continue; }
+                if (compareValues(first, value(r)) !== 0) { differs[c][row] = 1; diffBy[p][row] = 1; changed = true; }
             }
         }
         status[row] = changed ? 1 : b < 0 ? 3 : missing ? 2 : 0;
@@ -163,5 +171,5 @@ export async function runCompare(inputs: CompareInput[], columns: number, tick: 
         }
         return { name: x.name, rows: x.rowCount, againstBaseline: ab, againstAll: aa };
     });
-    return { rowAt, status, relation, differs, stats: { perInput, rows: length, status: counts } };
+    return { rowAt, status, relation, differs, diffBy, repeatedBy, stats: { perInput, rows: length, status: counts } };
 }

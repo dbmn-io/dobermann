@@ -48,7 +48,7 @@ import type { QueryFileStore } from '../../services/query/query-file-store';
 import { localEngineHost, type EngineHost } from '../../services/engine/engine-host';
 import { QueryEngine } from '../../services/engine/engine';
 import { QUERY_ROW_TESTS, searchColumns, searchTest, type SearchArg } from './query-search';
-import { compareKeyExprs, eachPage, fnSampleQueries, formulaExpr, labelExpr, loadLookupInto, loadViewInto, onSqliteLine, pagedTotals, readPage, runPaged, spreadPage, type PagedResult, type ShownSort, queryWithColumns, recordQuery, runOnEngine, TooManyOnEngine, whyNotQueryOnEngine } from '../../services/query/query-new-engine';
+import { compareKeyExprs, pagedCounts, readPagedRow, readStatusPage, statusPlan, type PagedStatus, eachPage, fnSampleQueries, formulaExpr, labelExpr, loadLookupInto, loadViewInto, onSqliteLine, pagedTotals, readPage, runPaged, spreadPage, type PagedResult, type ShownSort, queryWithColumns, recordQuery, runOnEngine, TooManyOnEngine, whyNotQueryOnEngine } from '../../services/query/query-new-engine';
 import type { Query as EngineQuery, TableWindow } from '../../services/engine/engine-types';
 
 
@@ -1439,7 +1439,7 @@ export class QueryController {
             type: 'query.rowsData', seq: message.seq, offset,
             ...page,
             // Every control's counts: among the rows the search finds, and among them all
-            ...(shown.counts && offset === 0 ? shown.counts : {}),
+            ...(shown.counts && offset === 0 ? await shown.counts() ?? {} : {}),
             shown: shown.shown, total: shown.total,
             ...(message.totals && offset === 0 ? await shown.totals() : {})
         });
@@ -1564,13 +1564,28 @@ export class QueryController {
      * search is the engine's filter by the search box's own rules (query-search.ts).
      */
     private pagedOn(spec: QuerySpec, _search: string): boolean {
-        // (a query with compared columns has a status per row: those stay held until the engine gives it)
-        return !isCompare(spec.joins) && !comparedGroups(resultColumnRefs(spec)).length && this.onEngine(spec);
+        // A compare's status comes from the engine's compare (statusPlan); a plain query with compared
+        // columns has a status per row the engine doesn't give: those stay held (rowStatus)
+        const statusable = isCompare(spec.joins) ? !!statusPlan(spec) : !comparedGroups(resultColumnRefs(spec)).length;
+        return statusable && this.onEngine(spec);
+    }
+
+    /** A view's place on Results (BL, C1…, or its name). */
+    private placeLabel(spec: QuerySpec): (viewId: string) => string {
+        return viewId => runName(this.query!, viewId) || spec.views.find(v => v.id === viewId)?.name || viewId;
+    }
+
+    /** A compare's status on Results' pages: the views hidden there (not compared), the Status filter, the places' names. */
+    private pagedStatus(spec: QuerySpec, filter: StatusFilter | undefined): PagedStatus | undefined {
+        if (!isCompare(spec.joins)) return undefined;
+        const label = this.placeLabel(spec);
+        const hidden = filter?.hidden ?? [];
+        return { notCompared: spec.views.filter(v => hidden.includes(label(v.id))).map(v => v.id), filter, label, hidden };
     }
 
     /** Results' rows in the engine for this query and sort (run again only when either changes). */
-    private async pagedFor(spec: QuerySpec, sort: ShownSort | null, onStage?: (stage: string) => void, search = ''): Promise<PagedResult | undefined> {
-        const key = `${engineKey(spec)}\n${JSON.stringify(sort)}${search ? `\n${search}` : ''}`;
+    private async pagedFor(spec: QuerySpec, sort: ShownSort | null, onStage?: (stage: string) => void, search = '', status?: PagedStatus): Promise<PagedResult | undefined> {
+        const key = `${engineKey(spec)}\n${JSON.stringify(sort)}${search ? `\n${search}` : ''}${status ? `\n${JSON.stringify([status.notCompared, status.filter ?? null])}` : ''}`;
         const host = await this.engineFor(spec);
         if (this.paged && this.paged.key === key && this.paged.host === host) return this.paged.result;
         if (this.paged && this.paged.host === host) void host.release(this.paged.result.id);
@@ -1580,12 +1595,13 @@ export class QueryController {
         try {
             // (a newer search or sort stops Results' run still going: its own, never the step's count)
             if (this.pagedRunning) host.cancel(this.pagedRunning);
-            result = await runPaged(host, spec, sort, p => { this.pagedRunning = p.result; onStage?.(p.stage); }, search ? this.searchArg(resultColumnRefs(spec), search) : undefined);
+            result = await runPaged(host, spec, sort, p => { this.pagedRunning = p.result; onStage?.(p.stage); }, search ? this.searchArg(resultColumnRefs(spec), search) : undefined, status);
         } finally {
             this.pagedRunning = undefined;
         }
         if (result) this.paged = { key, result, host };
-        if (result && !search) this.pagedAll = { key: engineKey(spec), total: result.total };
+        // (the rows before any search or status filter: what "n of m" counts against)
+        if (result && !search && !status?.filter) this.pagedAll = { key: engineKey(spec), total: result.total };
         return result;
     }
 
@@ -1596,19 +1612,29 @@ export class QueryController {
     private async shownRows(message: Pick<RowsRequest, 'search' | 'sort' | 'filter'>): Promise<ShownRows | undefined | null> {
         const { spec } = this.spec();
         const search = String(message.search ?? '').trim();
-        if (spec.views.length && this.pagedOn(spec, search)) {
+        const status = spec.views.length ? this.pagedStatus(spec, message.filter ?? undefined) : undefined;
+        // (a Baseline hidden on Results is the held rows' case: the engine always compares its Baseline)
+        const baselineHidden = !!status && spec.views.length > 0 && status.hidden.includes(status.label(queryCompare(spec.joins, spec.views[0].id)?.baseline ?? ''));
+        if (spec.views.length && this.pagedOn(spec, search) && !baselineHidden) {
             const columns = resultColumnRefs(spec);
             const sort = message.sort && Number.isInteger(message.sort.column) && message.sort.column >= 0 && message.sort.column < columns.length ? { column: message.sort.column, dir: message.sort.dir === 'desc' ? 'desc' as const : 'asc' as const } : null;
             await this.remember(search, sort);
-            // (the rows before the search: counted once, when there is a search and they are not known yet)
-            if (search && this.pagedAll?.key !== engineKey(spec)) await this.pagedFor(spec, null);
-            const paged = await this.pagedFor(spec, sort, undefined, search);
+            // (the rows before the search and the filter: counted once, when not known yet)
+            if ((search || status?.filter) && this.pagedAll?.key !== engineKey(spec)) await this.pagedFor(spec, null);
+            const paged = await this.pagedFor(spec, sort, undefined, search, status);
             const host = this.engine;
             if (!paged || !host) return null;
-            const total = search ? this.pagedAll?.total ?? paged.total : paged.total;
+            const total = search || status?.filter ? this.pagedAll?.total ?? paged.total : paged.total;
+            // The Status menu's counts: among the rows the search finds, and among them all (asked for with the first page only)
+            const counts = status && paged.layout.status ? async () => {
+                const found = await pagedCounts(host, spec, search ? this.searchArg(columns, search) : undefined, status);
+                const every = search ? await pagedCounts(host, spec, undefined, status) : found;
+                return found && every ? { counts: found, countsAll: every } : undefined;
+            } : undefined;
             return {
                 columns: paged.layout.columns, key: engineKey(spec), total, shown: paged.total,
-                page: async (offset, limit) => ({ rows: await readPage(host, paged, offset, limit) }),
+                page: async (offset, limit) => (status && paged.layout.status ? await readStatusPage(host, paged, offset, limit, status) : { rows: await readPage(host, paged, offset, limit) }),
+                ...(counts ? { counts } : {}),
                 each: each => eachPage(host, paged, each),
                 totals: () => pagedTotals(host, paged)
             };
@@ -1622,7 +1648,7 @@ export class QueryController {
                 rows: indices.slice(offset, offset + limit).map(i => result.rows[i]),
                 ...(statuses ? { status: indices.slice(offset, offset + limit).map(i => statuses[i]), index: indices.slice(offset, offset + limit) } : {})
             }),
-            ...(statuses ? { counts: { counts: statusCounts(statuses, found.searched ?? indices), countsAll: statusCounts(statuses, statuses.map((_, i) => i)) } } : {}),
+            ...(statuses ? { counts: async () => ({ counts: statusCounts(statuses, found.searched ?? indices), countsAll: statusCounts(statuses, statuses.map((_, i) => i)) }) } : {}),
             each: async each => { for (let at = 0; at < indices.length; at += 20_000) await each(indices.slice(at, at + 20_000).map(i => result.rows[i]), at); },
             totals: async () => this.totals(result, indices)
         };
@@ -1686,10 +1712,21 @@ export class QueryController {
      * for its key, side by side, and where they differ.
      */
     private async record(index: number, hidden: string[]): Promise<void> {
-        const result = this.result;
-        const session = this.session;
         const { spec } = this.spec();
         const onEngine = this.onEngine(spec);
+        // On Results' pages: the row read from the engine by its place, its keys with it, its status as the page had it
+        const paged = onEngine && this.paged && isCompare(spec.joins) && this.engine ? this.paged.result : undefined;
+        const pagedRow = paged ? await readPagedRow(this.engine!, paged, index) : undefined;
+        const label = this.placeLabel(spec);
+        const pagedStatusRow = pagedRow && paged?.layout.status ? (await readStatusPage(this.engine!, paged, index, 1, this.pagedStatus(spec, { hidden })!)).status[0] : undefined;
+        const result: QueryResult | undefined = pagedRow && paged
+            ? {
+                key: '', columns: paged.layout.columns, rows: Object.assign([], { [index]: pagedRow.row }), keyViews: paged.layout.places,
+                keyPlaces: paged.layout.places.map(label), keyValues: Object.assign([], { [index]: pagedRow.keys }),
+                ...(pagedStatusRow ? { statusOf: () => Object.assign([] as RowStatus[], { [index]: pagedStatusRow }) } : {})
+            }
+            : this.result;
+        const session = this.session;
         if (!result || (!session && !onEngine) || !result.keyViews || !result.keyValues || !Number.isInteger(index) || !result.rows[index]) return;
         const engineKeys = onEngine ? compareKeyExprs(spec) : [];
         const tables = tableNames(spec.views);
@@ -2011,7 +2048,7 @@ interface ShownRows {
     total: number;
     shown: number;
     page(offset: number, limit: number): Promise<{ rows: unknown[][]; status?: RowStatus[]; index?: number[] }>;
-    counts?: { counts: ReturnType<typeof statusCounts>; countsAll: ReturnType<typeof statusCounts> };
+    counts?: () => Promise<{ counts: ReturnType<typeof statusCounts>; countsAll: ReturnType<typeof statusCounts> } | undefined>;
     each(each: (rows: unknown[][], offset: number) => void | Promise<void>): Promise<void>;
     totals(): Promise<{ totals: (number | null)[]; places: number[] }>;
 }

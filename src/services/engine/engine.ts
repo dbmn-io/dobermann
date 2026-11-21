@@ -180,13 +180,13 @@ export class QueryEngine implements Engine {
                 }
                 s.columns?.forEach(c => {
                     if (c.values.length !== ins.length) say(`"${c.name}" needs a value for each input.`);
-                    else c.values.forEach((e, i) => this.checkExpr(e, ins[i].cols, ins[i].input, say));
+                    else c.values.forEach((e, i) => { if (e) this.checkExpr(e, ins[i].cols, ins[i].input, say); });
                 });
                 (s.notCompared ?? []).forEach(n => {
                     if (n === s.compare[0]) say('The Baseline is always compared.');
                     else if (!s.compare.includes(n)) say(`"${n}" is not in the compare.`);
                 });
-                out = compareCols(ins.map(x => x.input), ins.map(x => x.cols), s.columns ?? []);
+                out = compareCols(ins.map(x => x.input), ins.map(x => x.cols), s.columns ?? [], name);
             } else if (kind === 'join') {
                 const s = step as Extract<Step, { join: JoinKind }>;
                 const [l, r] = inputs as { input: string; cols: Col[] }[];
@@ -420,18 +420,18 @@ export class QueryEngine implements Engine {
             name: names[i],
             rowCount: rel.rowCount,
             key: step.on[i].map(e => this.compile(e, rel, names[i])),
-            values: columns.map(c => this.compile(c.values[i], rel, names[i])),
+            values: columns.map(c => { const e = c.values[i]; return e ? this.compile(e, rel, names[i]) : undefined; }),
             skipped: i > 0 && skipped.has(names[i])
         })), columns.length, (done, total) => slice(`Comparing ${names.length} inputs`, done, total), SLICE);
         keep(made.stats);
-        const { rowAt, status, relation, differs } = made;
+        const { rowAt, status, relation, differs, diffBy, repeatedBy } = made;
         const length = made.stats.rows;
         const inputCols = rels.map(r => r.cols.length);
         const starts: number[] = [];
         inputCols.reduce((n, c) => { starts.push(n); return n + c; }, 0);
         const own = inputCols.reduce((n, c) => n + c, 0);
         return {
-            cols: compareCols(names, rels.map(r => r.cols), columns),
+            cols: compareCols(names, rels.map(r => r.cols), columns, name),
             rowCount: length,
             value: (row, c) => {
                 if (c < own) {
@@ -444,7 +444,10 @@ export class QueryEngine implements Engine {
                 if (extra === 0) return COMPARE_STATUS[status[row]];
                 if (extra === 1) return COMPARE_RELATION[relation[row]];
                 if (extra < 2 + places) return rowAt[extra - 2][row] < 0 ? 1 : 0;
-                return differs[extra - 2 - places][row];
+                const d = extra - 2 - places;
+                if (d < columns.length) return differs[d][row];
+                const p = d - columns.length;
+                return p < places ? diffBy[p][row] : repeatedBy[p - places][row];
             }
         };
     }
@@ -599,8 +602,8 @@ function joinedCols(leftName: string, left: Col[], rightName: string, right: Col
     return [...side(left, leftName, r), ...side(right, rightName, l)];
 }
 
-/** A compare's columns: every input's (named by `of`; a name in two inputs shown "input.name"), then status, relation, missing:<input>, differs:<column>. */
-function compareCols(names: string[], cols: Col[][], columns: { name: string }[]): Col[] {
+/** A compare's columns: every input's (named by `of`; a name in two inputs shown "input.name"), then status, relation, missing:<input>, differs:<column>, diff:<input>, repeated:<input>. */
+function compareCols(names: string[], cols: Col[][], columns: { name: string }[], step: string): Col[] {
     const seen = new Map<string, number>();
     cols.forEach(list => list.forEach(c => seen.set(c.name, (seen.get(c.name) ?? 0) + 1)));
     const own = cols.flatMap((list, p) => list.map(c => ({
@@ -608,8 +611,9 @@ function compareCols(names: string[], cols: Col[][], columns: { name: string }[]
         owners: [...c.owners, names[p]],
         ...((seen.get(c.name) ?? 0) > 1 ? { shown: `${names[p]}.${c.name}` } : c.shown ? { shown: c.shown } : {})
     })));
-    const added = ['status', 'relation', ...names.map(n => `missing:${n}`), ...columns.map(c => `differs:${c.name}`)];
-    return [...own, ...added.map(name => ({ name, owners: [] }))];
+    const added = ['status', 'relation', ...names.map(n => `missing:${n}`), ...columns.map(c => `differs:${c.name}`), ...names.map(n => `diff:${n}`), ...names.map(n => `repeated:${n}`)];
+    // (the compare's own columns are named by its step: { column: 'status', of: <its as> } when an input has a "status" too)
+    return [...own, ...added.map(name => ({ name, owners: [step] }))];
 }
 
 /**
@@ -619,7 +623,9 @@ function compareCols(names: string[], cols: Col[][], columns: { name: string }[]
  */
 function findColumn(e: { column: string; of?: string }, cols: Col[], input: string): number | string {
     const named = cols.map((c, i) => ({ c, i })).filter(x => x.c.name === e.column);
-    const found = e.of === undefined || e.of === input ? named : named.filter(x => x.c.owners.includes(e.of!));
+    // `of`: the columns that input (or step) gave; the step's own input names every column it has
+    const owned = e.of === undefined ? [] : named.filter(x => x.c.owners.includes(e.of!));
+    const found = e.of === undefined ? named : owned.length ? owned : e.of === input ? named : [];
     if (found.length === 1) return found[0].i;
     if (!found.length) return e.of !== undefined && e.of !== input ? `There is no column "${e.column}" in "${e.of}".` : `There is no column "${e.column}".`;
     return `"${e.column}" is in more than one input (${found.map(x => x.c.owners[x.c.owners.length - 1]).join(', ')}): say which.`;

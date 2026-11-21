@@ -113,10 +113,13 @@ export type Step =
      * Columns out: every input's columns (named by `of`), then `status` ("diff", "notInBaseline",
      * "missing", "same": the first that applies; engine-compare.ts), `relation`
      * ("oneToOne", "oneToMany", "onlyBase", "onlyOther"), a `missing:<input>` per input and a
-     * `differs:<column>` per compared column, each 1 (yes) or 0. A value differs from the
+     * `differs:<column>` per compared column, then a `diff:<input>` per input (one of its values
+     * differs from its column's first) and a `repeated:<input>` per input (it holds the row's key on
+     * more than one record), each 1 (yes) or 0. A compared column's `values[i]` may be null: input
+     * i has no cell in it, and is not measured there. A value differs from the
      * first present, compared input's (the Baseline's unless it lacks the record) when compareValues says so: exact by type.
      */
-    | { as?: string; compare: string[]; on: Expr[][]; columns: { name: string; values: Expr[] }[]; notCompared?: string[] }
+    | { as?: string; compare: string[]; on: Expr[][]; columns: { name: string; values: (Expr | null)[] }[]; notCompared?: string[] }
     | { as?: string; select: string; columns: { name: string; value: Expr }[] }
     | { as?: string; filter: string; where: Expr }
     /**
