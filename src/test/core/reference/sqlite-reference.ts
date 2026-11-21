@@ -8,6 +8,7 @@
  */
 import type { Database, SqlJsStatic } from 'sql.js';
 import type { Table, Value } from './generator';
+import { valueSql } from '../../../services/query/query-engine';
 
 export type JoinKind = 'inner' | 'left' | 'right' | 'outer';
 /** A function on a key column before it is matched (the Functions dialog's, by name). */
@@ -38,9 +39,9 @@ export function withFns(column: string, fns: KeyFn[] = []): string {
     }, column);
 }
 
-/** A value as SQLite holds it: true/false as 1/0 (SQLite has no booleans). */
+/** A value as today's Query loads it (query-engine.ts toSql): true/false as the text "true"/"false". */
 function bind(v: Value): string | number | null {
-    if (typeof v === 'boolean') return v ? 1 : 0;
+    if (typeof v === 'boolean') return v ? 'true' : 'false';
     return v;
 }
 
@@ -49,7 +50,7 @@ export function load(SQL: SqlJsStatic, tables: Table[]): Database {
     const db = new SQL.Database();
     for (const t of tables) {
         db.run(`CREATE TABLE ${q(t.name)} (${t.columns.map(q).join(', ')})`);
-        const insert = db.prepare(`INSERT INTO ${q(t.name)} VALUES (${t.columns.map(() => '?').join(', ')})`);
+        const insert = db.prepare(`INSERT INTO ${q(t.name)} VALUES (${t.columns.map((_, i) => valueSql(`?${i + 1}`)).join(', ')})`);
         for (const row of t.rows) insert.run(row.map(bind));
         insert.free();
     }
