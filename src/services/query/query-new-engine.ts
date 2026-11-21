@@ -434,8 +434,10 @@ export function buildQuery(spec: QuerySpec, options?: { status?: StatusPlaces })
     const places = byView.map(v => v.view);
     let base = spec.views[0].id;
     const keyExprs = byView.map(v => v.keys.flatMap(k => k.parts.map(p => (k.fns ?? []).reduce<Expr>((x, f) => fnExpr(x, f), refExpr(p)))));
+    // (a compare's status: its compared columns compared by the compare step itself when it can, nativeCompared)
+    const native = options?.status && byView.length ? nativeCompared(spec, places, options.status) : undefined;
     if (byView.length) {
-        steps.push({ as: 'compare', compare: places, on: keyExprs, columns: [] });
+        steps.push({ as: 'compare', compare: places, on: keyExprs, columns: native?.columns ?? [], ...(native?.notCompared.length ? { notCompared: native.notCompared } : {}) });
         base = 'compare';
     }
     spec.joins.filter(j => j.kind !== 'compare').forEach((j, i) => {
@@ -473,7 +475,7 @@ export function buildQuery(spec: QuerySpec, options?: { status?: StatusPlaces })
     // Each row's status, worked out as Results works it out (statusColumns), when asked for
     let status: StatusLayout | undefined;
     if (options?.status && byView.length) {
-        const made = statusColumns(spec, select.slice(0, columns.length).map(c => c.value), places, options.status);
+        const made = statusColumns(spec, select.slice(0, columns.length).map(c => c.value), places, options.status, !!native);
         select.push(...made.columns);
         status = made.layout;
     }
@@ -512,6 +514,37 @@ export interface StatusLayout {
     diffPlaces: string[];
     groups: string[];
     hidden: string[];
+    /** Compared by the compare step (nativeCompared): stored a row at a time, nothing to hold. */
+    native?: boolean;
+}
+
+/**
+ * A compare's compared columns as the compare step compares them (engine-compare.ts: each measured
+ * against the first input that has the record and is compared, by sameValue, two blanks alike), so
+ * its differs and diff columns are stored once a row rather than worked out from expressions. Only
+ * where that is Results' own rule: every shown cell is a compare view's own column, one per view, in
+ * the views' order, and the Baseline is shown. Else undefined (statusColumns' expressions).
+ */
+function nativeCompared(spec: QuerySpec, places: string[], where: StatusPlaces): { columns: { name: string; values: (Expr | null)[] }[]; notCompared: string[] } | undefined {
+    if (where.hidden.includes(where.label(places[0]))) return undefined;
+    const resultCols = resultColumns(spec);
+    // (a compare's key column shows the key from whichever view has it: buildQuery's valueOf, not the view's own)
+    const first = spec.joins.find(j => j.kind === 'compare');
+    const isKey = (c: ColumnRef) => !c.fns?.length && !!first?.on.some(p => p.left.parts.length === 1 && !p.left.fns?.length && p.left.parts[0].view === c.view && p.left.parts[0].column === c.column && !p.left.parts[0].fns?.length);
+    const columns: { name: string; values: (Expr | null)[] }[] = [];
+    for (const [gi, g] of comparedGroups(resultCols).entries()) {
+        const values: (Expr | null)[] = places.map(() => null);
+        let last = -1;
+        for (const i of g.cells) {
+            const c = resultCols[i];
+            const p = places.indexOf(c.view);
+            if (c.view === CALC_VIEW || p < 0 || p <= last || isKey(c)) return undefined;
+            last = p;
+            values[p] = refExpr(c);
+        }
+        columns.push({ name: `g${gi}`, values });
+    }
+    return { columns, notCompared: places.filter(v => where.hidden.includes(where.label(v))) };
 }
 
 const known = (e: Expr): Expr => ({ fn: '=', args: [e, e] });
@@ -524,7 +557,7 @@ const differ = (a: Expr, b: Expr): Expr => ifThen(known(a), ifThen(known(b), { f
 const yes = (e: Expr): Expr => ifThen(e, { value: 1 }, { value: 0 });
 
 /** The status columns for a select over a compare (named s_…), from Results' columns' values. */
-function statusColumns(spec: QuerySpec, values: Expr[], places: string[], where: StatusPlaces): { columns: { name: string; value: Expr }[]; layout: StatusLayout } {
+function statusColumns(spec: QuerySpec, values: Expr[], places: string[], where: StatusPlaces, native = false): { columns: { name: string; value: Expr }[]; layout: StatusLayout } {
     const labels = places.map(where.label);
     const shown = (place: string) => !where.hidden.includes(place);
     const own = (name: string): Expr => ({ column: name, of: 'compare' });
@@ -539,7 +572,16 @@ function statusColumns(spec: QuerySpec, values: Expr[], places: string[], where:
     const groups = comparedGroups(resultCols);
     const diffPlaces: string[] = [];
     const placeFlags = new Map<string, Expr[]>();
-    groups.forEach((g, gi) => {
+    // Compared by the compare step (nativeCompared): its differs and diff columns, stored once a row
+    const placeView = new Map<string, string>();
+    if (native) groups.forEach((g, gi) => {
+        columns.push({ name: `s_g${gi}`, value: own(`differs:g${gi}`) });
+        g.cells.filter(i => shown(where.placeOfColumn(i))).forEach(i => {
+            const place = where.placeOfColumn(i);
+            if (!placeView.has(place)) { placeView.set(place, resultCols[i].view); diffPlaces.push(place); }
+        });
+    });
+    if (!native) groups.forEach((g, gi) => {
         const cells = g.cells.filter(i => shown(where.placeOfColumn(i)));
         const present = cells.map(i => { const p = places.indexOf(resultCols[i].view); return p >= 0 ? not(missing(p)) : { value: 1 } as Expr; });
         const flags = cells.map((i, k) => {
@@ -554,7 +596,7 @@ function statusColumns(spec: QuerySpec, values: Expr[], places: string[], where:
             placeFlags.get(place)!.push(flags[k]);
         });
     });
-    diffPlaces.forEach((place, k) => columns.push({ name: `s_dp${k}`, value: yes(or(placeFlags.get(place)!)) }));
+    diffPlaces.forEach((place, k) => columns.push({ name: `s_dp${k}`, value: native ? own(`diff:${placeView.get(place)}`) : yes(or(placeFlags.get(place)!)) }));
     places.forEach((v, p) => {
         columns.push({ name: `s_missing${p}`, value: ifThen(noKey, { value: 0 }, own(`missing:${v}`)) });
         columns.push({ name: `s_repeated${p}`, value: own(`repeated:${v}`) });
@@ -575,7 +617,7 @@ function statusColumns(spec: QuerySpec, values: Expr[], places: string[], where:
         name: 's_relation',
         value: ifThen(baseShown ? missing(0) : { value: 0 }, { value: 'onlyOther' }, ifThen(or(shownMissing), { value: 'onlyBase' }, ifThen(or(shownRepeated), { value: 'oneToMany' }, { value: 'oneToOne' })))
     });
-    return { columns, layout: { places, labels, diffPlaces, groups: groups.map(g => g.name), hidden: where.hidden } };
+    return { columns, layout: { places, labels, diffPlaces, groups: groups.map(g => g.name), hidden: where.hidden, ...(native ? { native } : {}) } };
 }
 
 /** A row's status (rowStatus's shape) from its status columns, by name. */
