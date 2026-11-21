@@ -200,10 +200,25 @@
             if (!st.diff.length && !st.missing.length) box.appendChild(el('span', 'status-pill-generic compare-same', 'Same'));
             return box;
         }
+        /**
+         * Status's width, as Compare sizes it: its widest one line (DIFF with every other result's tag,
+         * or Missing with every other's), measured off screen, plus its cell's padding. A row with both
+         * takes a second line (wrap) instead of widening the column. Measured again when the results
+         * shown change (one hidden, another made the Baseline), as the columns are drawn again then.
+         */
+        function statusWidth() {
+            const others = shownPlaces().slice(1);
+            const probe = el('div', 'compare-status-probe');
+            [{ diff: others, missing: [] }, { diff: [], missing: others }].forEach(c => probe.appendChild(statusNode(c)));
+            document.body.appendChild(probe);
+            const widest = Math.max(0, ...[...probe.children].map(n => n.getBoundingClientRect().width));
+            probe.remove();
+            return widest ? Math.ceil(widest) + 18 : undefined;
+        }
         /** Status (and how each row's key met the others), pinned first. */
         function leadColumns() {
             const out = [{
-                id: '__status', name: 'Status', pinned: true, sortable: false, className: 'compare-status-cell',
+                id: '__status', name: 'Status', pinned: true, sortable: false, className: 'compare-status-cell', width: statusWidth(), wrap: true,
                 render: (_v, row) => statusNode(row.__status),
                 head: th => { th.classList.add('compare-status-head'); headButton(th, 'Status', statusFiltered(), 'queryStatusMenu', renderStatusMenu, () => setFilter({ kinds: null })); }
             }];
