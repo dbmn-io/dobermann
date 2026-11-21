@@ -125,7 +125,8 @@
  * ── Rows that stay with the screen ──
  *   orders.source = { total: 5310, page: (start, count, { search, sort }) => rows | Promise };
  *       Only the pages in view are asked for; a row not yet in is an empty row of the right
- *       height. `page` may answer { rows, total } when only the answer knows how many there are.
+ *       height. `page` may answer { rows, total } when only the answer knows how many there are,
+ *       and { rows, total, of } to say how many there are before the search ("12 of 105,010 rows").
  *       The table neither searches nor sorts these: it says what was asked and asks again.
  *   orders.reload();                  // the rows changed (a search, Distinct): ask again, from the top
  *   orders.reload({ keep: true });    // the same, staying where it is (a live refresh)
@@ -705,6 +706,7 @@
                 this._asked.delete(page);
                 this._pages.set(page, Array.isArray(got) ? got : (got && Array.isArray(got.rows) ? got.rows : []));
                 if (got && typeof got.total === 'number') this._total = got.total;
+                if (got && !Array.isArray(got)) this._of = typeof got.of === 'number' ? got.of : null;
                 this._landed(page);
             }, () => { if (gen === this._gen) this._asked.delete(page); });
         }
@@ -1175,7 +1177,9 @@
                 this._view = [];
                 this._rendered = { start: -1, end: -1 };
                 const all = this._total;
-                const text = `${count(all)} row${all === 1 ? '' : 's'}`;
+                // (`of`: how many there are before the search, when the screen says)
+                const of = typeof this._of === 'number' && this._of !== all ? this._of : null;
+                const text = of !== null ? `${count(all)} of ${count(of)} rows` : `${count(all)} row${all === 1 ? '' : 's'}`;
                 if (this._count.textContent !== text) this._count.textContent = text;
                 this.dispatchEvent(new CustomEvent('dbmn-table-shown', { bubbles: true, detail: { shown: all, total: all, text } }));
                 return;

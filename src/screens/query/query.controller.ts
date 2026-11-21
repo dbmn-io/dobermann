@@ -482,7 +482,8 @@ export class QueryController {
                 });
                 case 'query.setSql': return await this.setSql(String(message.sql ?? ''));
                 case 'query.latest': return await this.useLatest(String(message.id));
-                case 'query.viewRows': return await this.viewRows(String(message.id), String(message.search ?? ''), Number(message.seq));
+                case 'query.viewRows': return await this.viewRows(message);
+                case 'query.viewRowsClosed': { const next = this.viewLine.then(() => this.viewRowsClosed()); this.viewLine = next.catch(() => undefined); return await next; }
                 // Make Baseline (Results' slot menu, a run of the Baseline's view): the two runs swap their results; what is built on BL stays as it is
                 case 'query.makeBaseline': return await this.change(q => {
                     const run = q.sources.find(x => x.id === String(message.id));
@@ -888,20 +889,92 @@ export class QueryController {
      * A view's own rows, to look through before it is joined: the first of those every word of
      * `search` is found in (any column, capitals ignored).
      */
-    private async viewRows(id: string, search: string, seq: number): Promise<void> {
-        const LIMIT = 500;
-        const loaded = this.loaded.get(id);
-        const columns = loaded?.columns ?? [];
-        const words = search.toLowerCase().split(/\s+/).filter(Boolean);
+    /**
+     * A view's own rows dialog (the count on its Views row): a page of its rows at a time, as the
+     * design system's table scrolls, searched by the one copy of the search rules (searchTest,
+     * search-matcher.js) and sorted as Results sorts. On the new engine the view is read where it
+     * already is, the rows the search keeps held there until the search, the sort or the dialog
+     * changes; else from the rows held here. One page at a time: a search waits for the one before.
+     */
+    private viewFound?: { key: string; columns: string[]; found: number; total: number; host?: EngineHost; result?: string; rows?: QueryRowData[] };
+    private viewLine: Promise<unknown> = Promise.resolve();
+
+    private viewRows(message: Record<string, unknown>): Promise<void> {
+        const next = this.viewLine.then(() => this.viewPage(message));
+        this.viewLine = next.catch(() => undefined);
+        return next;
+    }
+
+    private async viewPage(message: Record<string, unknown>): Promise<void> {
+        const id = String(message.id);
+        const seq = Number(message.seq);
+        const search = String(message.search ?? '').trim();
+        const offset = Math.max(0, Math.floor(Number(message.offset) || 0));
+        const limit = Math.min(1000, Math.max(1, Math.floor(Number(message.limit) || 200)));
+        const columns = this.loaded.get(id)?.columns ?? [];
+        const asked = message.sort as { id?: unknown; dir?: unknown } | null | undefined;
+        const sort = asked && typeof asked.id === 'string' && columns.includes(asked.id) ? { id: asked.id, dir: asked.dir === 'desc' ? 'desc' as const : 'asc' as const } : null;
         const text = (value: unknown): string => value === null || value === undefined ? '' : typeof value === 'object' ? JSON.stringify(value) : String(value);
-        const all = await this.rowsOf(id);
-        const found = words.length
-            ? all.filter(row => { const line = columns.map(c => text(row[c])).join('\n').toLowerCase(); return words.every(w => line.includes(w)); })
-            : all;
-        this.post({
-            type: 'query.viewRowsData', seq, columns, total: all.length, found: found.length,
-            rows: found.slice(0, LIMIT).map(row => columns.map(c => text(row[c])))
-        });
+        const key = JSON.stringify([id, columns, this.rowCount(id), search, sort]);
+        try {
+            let found = this.viewFound;
+            if (!found || found.key !== key || (found.host && !found.host.alive())) {
+                await this.viewRowsClosed();
+                found = await this.viewFind(id, columns, search, sort, key, text);
+                this.viewFound = found;
+            }
+            let rows: string[][];
+            if (found.host && found.result) {
+                const window = await found.host.read(found.result, offset, limit);
+                const at = found.columns.map(c => window.columns.indexOf(c));
+                rows = window.rows.map(row => at.map(i => (i < 0 ? '' : text(row[i]))));
+            } else {
+                const shown = found.columns;
+                rows = (found.rows ?? []).slice(offset, offset + limit).map(row => shown.map(c => text(row[c])));
+            }
+            this.post({ type: 'query.viewRowsData', seq, columns: found.columns, total: found.total, found: found.found, offset, rows });
+        } catch (e) {
+            this.post({ type: 'query.viewRowsData', seq, columns, total: this.rowCount(id), found: 0, offset, rows: [], error: e instanceof Error ? e.message : String(e) });
+        }
+    }
+
+    /** The rows a search of a view keeps, in the sort's order: on the engine (held there), or here. */
+    private async viewFind(id: string, columns: string[], search: string, sort: { id: string; dir: 'asc' | 'desc' } | null, key: string, text: (value: unknown) => string): Promise<NonNullable<QueryController['viewFound']>> {
+        const total = this.rowCount(id);
+        const arg: SearchArg = { search, cols: columns.map(c => ({ id: c, name: c, type: 'string' })) };
+        const engine = this.engine;
+        // (a view read on the new engine went into it as it was read, and was let go here: read it there)
+        if (this.loaded.get(id)?.dropped && engine && engine.alive() && this.streamed.has(id)) {
+            const steps: EngineQuery['steps'] = [{ as: 'all', from: id }];
+            let base = 'all';
+            if (search) { steps.push({ as: 'found', filter: base, test: { name: 'search', arg, columns } }); base = 'found'; }
+            if (sort) { steps.push({ as: 'sorted', sort: base, by: [{ value: { column: sort.id }, descending: sort.dir === 'desc', order: 'shown' }] }); base = 'sorted'; }
+            const out = await engine.run({ steps, result: base });
+            if ('cancelled' in out) throw new Error('The search was stopped.');
+            if ('problems' in out) throw new Error(out.problems.map(p => p.message).join(' '));
+            const first = await engine.read(out.result, 0, 0);
+            return { key, columns, found: first.total, total, host: engine, result: out.result };
+        }
+        let rows = await this.rowsOf(id);
+        if (search) {
+            const test = searchTest(arg);
+            rows = rows.filter(row => test(columns.map(c => text(row[c]))));
+        }
+        if (sort) {
+            // (as the table sorts its own rows: numbers inside text by size, blanks last)
+            const sign = sort.dir === 'desc' ? -1 : 1;
+            rows = rows.map((row, i) => ({ row, i, v: text(row[sort.id]) }))
+                .sort((x, y) => (!x.v || !y.v ? (x.v ? -1 : y.v ? 1 : 0) : sign * x.v.localeCompare(y.v, undefined, { numeric: true, sensitivity: 'base' })) || x.i - y.i)
+                .map(x => x.row);
+        }
+        return { key, columns, found: rows.length, total, rows };
+    }
+
+    /** The view's rows dialog closed (or asked again): what its search kept is let go. */
+    private async viewRowsClosed(): Promise<void> {
+        const was = this.viewFound;
+        this.viewFound = undefined;
+        if (was?.host && was.result && was.host.alive()) await was.host.release(was.result).catch(() => undefined);
     }
 
     /** A few of a column's values, as they are and as `fns` leave them: the function dialog's sample. */

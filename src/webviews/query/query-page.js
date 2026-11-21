@@ -751,51 +751,50 @@
         return show;
     }
 
-    /** A view's own rows, in a dialog: its columns as it has them, and a search over every one. */
+    /**
+     * A view's own rows, in a dialog: the design system's table (dbmn-table) with its search box, the
+     * same search as everywhere (words in what is shown, @column, @@word…), every row reached by
+     * scrolling: the host searches and sorts, and sends the page in view (query.viewRows).
+     */
     async function previewView(v) {
-        const body = el('div', 'query-add-form compare-drill-body');
-        const searchBox = el('div', 'dbmn-modal-field');
-        const search = el('input', 'dbmn-modal-input');
-        search.type = 'text';
-        search.id = 'queryViewSearch';
-        search.placeholder = `Search ${v.name}: any value, in any column`;
-        search.spellcheck = false;
-        search.autocomplete = 'off';
-        search.setAttribute('aria-label', `Search ${v.name}`);
-        searchBox.appendChild(search);
-        const says = el('p', 'form-hint', 'Reading…');
+        const body = el('div', 'query-add-form query-rows-dialog');
+        const tableEl = document.createElement('dbmn-table');
+        tableEl.id = 'queryViewTable';
+        tableEl.className = 'query-add-table';
+        tableEl.setAttribute('label', `${v.name}'s rows`);
+        tableEl.setAttribute('searchable', '');
+        tableEl.setAttribute('placeholder', `Search ${v.name}, or @column=value`);
+        const says = el('p', 'form-hint query-add-note');
         says.id = 'queryViewShown';
-        const box = el('div', 'table-container query-preview query-view-preview');
-        const table = el('table', 'data-table');
-        const head = el('thead');
-        const rows = el('tbody');
-        table.append(head, rows);
-        box.appendChild(table);
-        body.append(searchBox, says, box);
-        let seq = 0;
-        const ask = () => post({ type: 'query.viewRows', id: v.id, search: search.value, seq: ++seq });
+        says.hidden = true;
+        body.append(tableEl, says);
+        tableEl.columns = (v.columns || []).map(c => ({ id: c.name, name: c.name }));
+        // Pages asked for and not yet in, by their number
+        const waiting = new Map();
+        let asked = 0;
         ui.viewRows = m => {
-            if (m.seq !== seq) return;
-            const tr = el('tr');
-            m.columns.forEach(c => tr.appendChild(el('th', '', c)));
-            head.replaceChildren(tr);
-            rows.replaceChildren(...m.rows.map(line => {
-                const row = el('tr');
-                line.forEach(value => { const td = el('td', '', value); td.title = value; row.appendChild(td); });
-                return row;
-            }));
-            const of = m.found === m.total ? `${count(m.total)} row${m.total === 1 ? '' : 's'}` : `${count(m.found)} of ${count(m.total)} rows`;
-            says.textContent = m.rows.length < m.found ? `${of}. The first ${count(m.rows.length)} are shown: search to narrow them.` : of;
+            const done = waiting.get(m.seq);
+            if (!done) return;
+            waiting.delete(m.seq);
+            says.textContent = m.error || '';
+            says.hidden = !m.error;
+            done({ rows: m.rows.map(line => Object.fromEntries(m.columns.map((c, i) => [c, line[i]]))), total: m.found, of: m.total });
         };
-        let timer = 0;
-        search.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(ask, 200); });
-        ask();
-        setTimeout(() => search.focus(), 0);
+        tableEl.source = {
+            page: (offset, limit, { search, sort }) => new Promise(resolve => {
+                const seq = ++asked;
+                waiting.set(seq, resolve);
+                post({ type: 'query.viewRows', id: v.id, offset, limit, search, sort, seq });
+            })
+        };
+        setTimeout(() => { const box = tableEl.querySelector('input'); if (box) box.focus(); }, 0);
         await window.DbmnModal.show({
-            title: `${v.name} · ${v.file ? (v.sheet ? `${v.file}, ${v.sheet}` : v.file) : (v.request || v.endpointName)}`, body, size: 'lg',
+            title: `${v.name} · ${v.file ? (v.sheet ? `${v.file}, ${v.sheet}` : v.file) : (v.request || v.endpointName)}`, body, size: 'lg', maximisable: true,
             actions: [{ id: 'close', label: 'Close', variant: 'secondary' }]
         });
         ui.viewRows = null;
+        waiting.forEach(done => done({ rows: [] }));
+        post({ type: 'query.viewRowsClosed' });
     }
 
     /* ---------- Join ---------- */

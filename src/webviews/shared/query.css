@@ -193,9 +193,6 @@
 .query-pick { position: relative; z-index: 1; }
 
 /* A view's rows, looked through from its count: as tall as the window allows, cells on one line */
-.query-view-preview { max-height: 60vh; overflow: auto; }
-.query-view-preview td, .query-view-preview th { white-space: nowrap; max-width: 320px; overflow: hidden; text-overflow: ellipsis; }
-.query-view-preview thead th { position: sticky; top: 0; z-index: 1; background: var(--vscode-editor-background); }
 
 /* A view sitting out of the report (hidden, or not joined yet): its slot is quiet */
 #queryViews .compare-result.is-off .compare-result-name { opacity: 0.55; }

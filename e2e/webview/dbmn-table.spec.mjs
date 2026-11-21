@@ -189,6 +189,18 @@ test('rows on demand: only the pages in view are asked for, and a row not in yet
     expect(await page.locator('#t .dbmn-table-scroll').evaluate(box => box.scrollHeight)).toBe(tall);
 });
 
+test('rows on demand: an answer that says how many there are before the search counts "12 of 10,000 rows"', async ({ page }) => {
+    await page.setContent(sourcePage('label="Orders" searchable').replace(
+        'done({ rows: rows.slice(start, start + count), total: rows.length })',
+        'done({ rows: rows.slice(start, start + count), total: rows.length, of: all.length })'));
+    await expect(firstCell(page)).toHaveText('SO-10000');
+    await expect(page.locator('#t .dbmn-table-count')).toHaveText('10,000 rows');
+    await page.locator('#t .dbmn-table-tools input').fill('kettle');
+    await expect(page.locator('#t .dbmn-table-count')).toHaveText('3,333 of 10,000 rows');
+    await page.locator('#t .dbmn-table-tools input').fill('');
+    await expect(page.locator('#t .dbmn-table-count')).toHaveText('10,000 rows');
+});
+
 test('rows on demand: a sort is the screen\'s; the icon is a clock until the rows land, and the third click clears it', async ({ page }) => {
     await page.setContent(sourcePage());
     await expect(firstCell(page)).toHaveText('SO-10000');
