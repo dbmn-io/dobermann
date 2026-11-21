@@ -393,19 +393,12 @@
             if (old) inner.title += `\n${old.title}`;
             if (out) inner.title += v.off ? '\nHidden: left out of the report. Its menu shows it again.' : '\nNot joined yet: left out of the report until its columns are picked on Join.';
             if (v.off) { const eye = el('i', 'query-sign'); eye.dataset.icon = 'eye-off'; name.prepend(eye); }
-            // In a compare: the scale on each view in it (the Baseline says so), "to show" on the others
+            // In a compare: "to show" on a view joined in only to show. The views in it carry no mark: the join
+            // says what is compared, BL is the Baseline, and the tab's icon says it's a compare (James, 2026-11-22)
             const compare = ui.state && ui.state.compare;
-            if (compare) {
-                const isIn = compare.views.includes(v.id);
-                const badge = el('span', `query-slot-badge${isIn ? ' is-in' : ''}`);
-                if (isIn) {
-                    badge.innerHTML = window.Icons ? window.Icons.icon('scale') : '';
-                    if (v.id === compare.baseline) badge.appendChild(el('span', '', 'Baseline'));
-                    badge.title = v.id === compare.baseline ? 'The Baseline: every view in the compare is matched to it' : 'In the compare';
-                } else {
-                    badge.textContent = 'to show';
-                    badge.title = 'Joined in to show: not compared';
-                }
+            if (compare && !compare.views.includes(v.id)) {
+                const badge = el('span', 'query-slot-badge', 'to show');
+                badge.title = 'Joined in to show: not compared';
                 inner.appendChild(badge);
             }
             if (edit) inner.appendChild(el('span', 'compare-result-caret', '▾'));
@@ -589,16 +582,22 @@
         fillRead(bar, ui.reads[v.id]);
         return bar;
     }
-    /** Its figures: rows read and the share of its pages; a view waiting its turn says so, with an empty bar. */
+    /**
+     * Its figures: "Reading C2", rows read and the share of its pages. A view waiting its turn: "Waiting", an
+     * empty bar, the one read next saying so ("next"). One at a time, in order.
+     */
     function fillRead(bar, read) {
+        const v = views().find(x => x.id === bar.dataset.readView);
+        const label = v ? (v.run || v.name) : '';
         if (!read) {
-            bar.setAttribute('phase', 'Waiting to be read');
+            const waiting = views().filter(x => x.reading && !ui.reads[x.id]);
+            bar.setAttribute('phase', 'Waiting');
             bar.setAttribute('value', '0');
             bar.removeAttribute('busy');
-            bar.removeAttribute('count');
+            if (waiting[0] && waiting[0].id === bar.dataset.readView) bar.setAttribute('count', 'next'); else bar.removeAttribute('count');
             return;
         }
-        bar.setAttribute('phase', 'Reading');
+        bar.setAttribute('phase', label ? `Reading ${label}` : 'Reading');
         if (read.total) {
             bar.setAttribute('count', `${count(read.rows)} rows`);
             bar.setAttribute('value', String(Math.round(100 * read.done / read.total)));
@@ -1556,7 +1555,7 @@
         more.setAttribute('aria-label', 'How the records meet in the compare');
         more.title = open ? 'Hide how the records meet' : 'Show how the records meet';
         more.addEventListener('click', () => { ui.statsOpen.__compare = !open; renderJoins(); });
-        const made = line('query-made-line', { __span: bar }, [total], [el('span', 'query-lead-text', 'Rows after this compare'), more]);
+        const made = line('query-made-line', { __span: bar }, [total], [el('span', 'query-lead-text', 'Rows after compare'), more]);
         made.dataset.kind = 'made';
         made.classList.toggle('is-openable', ready);
         if (ready) bar.addEventListener('click', () => { ui.statsOpen.__compare = !open; renderJoins(); });
@@ -1720,7 +1719,7 @@
             totals[v.id] = cell;
         });
         const first = s.views[0];
-        const lines = [line('query-total-line', totals, [first.error ? errorLine(first) : null], [el('span', 'query-lead-text', 'Rows in each view')]), addsLine('join')];
+        const lines = [line('query-total-line', totals, [first.error ? errorLine(first) : null], [el('span', 'query-lead-text', 'Rows')]), addsLine('join')];
         if (s.views.length < 2) lines.push(el('p', 'compare-match-empty', 'Add another view to join.'));
         // "New compare engine (testing)" on, and this query more than a compare of runs: it says it runs on SQLite, and why
         if (s.engineNote) {
@@ -2282,7 +2281,8 @@
                 // (a view's own figures: its Rows cell's bar, where it is on show)
                 if (m.view) {
                     ui.reads[m.view] = m.read || {};
-                    document.querySelectorAll(`dbmn-progress[data-read-view="${CSS.escape(m.view)}"]`).forEach(bar => fillRead(bar, ui.reads[m.view]));
+                    // (every bar: which one is next changes as one starts)
+                    document.querySelectorAll('dbmn-progress[data-read-view]').forEach(bar => fillRead(bar, ui.reads[bar.dataset.readView]));
                 }
                 // (a view's own figures are in its text already: "Reading C1: 25,000 rows (page 50 of 210)")
                 setBusy(m.total && !m.read ? `${m.text} · ${count(m.done)} of ${count(m.total)}` : m.text);
