@@ -208,3 +208,51 @@ describe('Query engine against SQLite (reference, the tester\'s)', () => {
         assert.strictEqual(await one('LOWER', 'ÉTÉ'), 'été');
     });
 });
+
+describe('Query engine group against SQLite (reference, the tester\'s)', () => {
+    let SQL: SqlJsStatic;
+    before(async () => { SQL = await initSqlJs({ locateFile: () => SQL_WASM_PATH }); });
+
+    /** A group of L by `by` (column names; none for one row), every aggregate on `of`, from both sides, groups in first-seen order. */
+    async function both(table: Table, by: string[], of: string): Promise<{ expected: Value[][]; actual: Value[][] }> {
+        const q = (c: string) => `"${c}"`;
+        const aggs = `COUNT(*), COUNT(${q(of)}), SUM(${q(of)}), MIN(${q(of)}), MAX(${q(of)})`;
+        const sql = by.length
+            ? `SELECT ${by.map(q).join(', ')}, ${aggs} FROM "L" GROUP BY ${by.map(q).join(', ')} ORDER BY MIN(rowid)`
+            : `SELECT ${aggs} FROM "L"`;
+        const db = load(SQL, [table]);
+        let expected: Value[][];
+        try { expected = rows(db, sql); } finally { db.close(); }
+        const e = new QueryEngine();
+        e.load('L', { columns: table.columns, rows: table.rows.map(r => r.map(toEngine)) });
+        const ran = await e.run({ steps: [{ as: 'l', from: 'L' }, { group: 'l', by: by.map(c => ({ name: c, value: { column: c } })), aggregates: (['count', 'countValues', 'sum', 'min', 'max'] as const).map(fn => ({ name: fn, fn, ...(fn === 'count' ? {} : { value: { column: of } }) })) }] });
+        if (!('result' in ran)) throw new Error(JSON.stringify(ran));
+        return { expected, actual: e.read(ran.result, 0, ran.total).rows as Value[][] };
+    }
+
+    for (const preset of ['plain', 'repeated', 'blanks', 'mixed', 'twoColumnKey', 'everything'] as const) {
+        it(`by one column, two, and none; every aggregate on every column; preset ${preset}`, async () => {
+            const { left } = makePair({ seed: 61, rows: 400, ...PRESETS[preset] });
+            const failures: string[] = [];
+            for (const by of [['uom'], ['code'], ['uom', ...(left.columns.includes('site') ? ['site'] : ['qty'])], []]) {
+                for (const of of left.columns) {
+                    const { expected, actual } = await both(left, by, of);
+                    if (JSON.stringify(expected) !== JSON.stringify(actual)) {
+                        const i = expected.findIndex((r, n) => JSON.stringify(r) !== JSON.stringify(actual[n]));
+                        failures.push(`by ${by.join('+') || '(none)'} of ${of}: ${expected.length} vs ${actual.length} groups; first difference ${JSON.stringify(expected[i])} vs ${JSON.stringify(actual[i])}`);
+                    }
+                }
+            }
+            assert.deepStrictEqual(failures, [], failures.slice(0, 6).join('\n'));
+        });
+    }
+
+    it('with no rows: no groups by a column, and one row with none', async () => {
+        const empty: Table = { name: 'L', columns: ['code', 'qty'], rows: [] };
+        const a = await both(empty, ['code'], 'qty');
+        assert.deepStrictEqual(a.actual, a.expected);
+        const b = await both(empty, [], 'qty');
+        assert.deepStrictEqual(b.actual, b.expected);
+        assert.strictEqual(b.actual.length, 1);
+    });
+});

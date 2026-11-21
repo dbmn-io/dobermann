@@ -88,6 +88,28 @@ describe('Query engine join statistics against a hand count (reference, the test
         });
     }
 
+    it('a join over the row limit is refused, and the counts up to it are what a run of just those joins gives', async () => {
+        const a = makePair({ seed: 52, rows: 200, repeats: 0.4 });
+        const b = makePair({ seed: 53, rows: 200, repeats: 0.6 });
+        const load = (e: QueryEngine) => {
+            e.load('L', { columns: a.left.columns, rows: a.left.rows.map(r => r.map(toEngine)) });
+            e.load('R', { columns: a.right.columns, rows: a.right.rows.map(r => r.map(toEngine)) });
+            e.load('S', { columns: b.right.columns.map(c => `s_${c}`), rows: b.right.rows.map(r => r.map(toEngine)) });
+        };
+        const first = { as: 'j1', join: 'left' as const, left: 'L', right: 'R', on: [{ left: { column: 'code', of: 'L' }, right: { column: 'itemCode', of: 'R' } }] };
+        // The second join meets on uom = s_status: few values, so every row meets many: far past the limit
+        const second = { as: 'j2', join: 'inner' as const, left: 'j1', right: 'S', on: [{ left: { column: 'uom', of: 'L' }, right: { value: 'EA' } }] };
+        const alone = new QueryEngine(5000); load(alone);
+        const ok = await alone.run({ steps: [first] });
+        assert.ok('result' in ok, JSON.stringify(ok));
+        const big = new QueryEngine(5000); load(big);
+        const refused = await big.run({ steps: [first, second] });
+        assert.ok('problems' in refused, `refused: ${JSON.stringify(refused).slice(0, 200)}`);
+        assert.ok(refused.stats?.j1 && refused.stats?.j2, 'the counts of both joins, the failing one included');
+        assert.deepStrictEqual(refused.stats.j1, alone.stats(ok.result, 'j1'));
+        assert.ok((refused.stats.j2 as JoinStats).rowsAfter > 5000, 'the failing join says how many rows it would make');
+    });
+
     it('a key that is a number on one side and text on the other is said (typeMismatch)', async () => {
         const e = new QueryEngine();
         e.load('L', { columns: ['k'], rows: [['1'], ['2'], [null]] });
