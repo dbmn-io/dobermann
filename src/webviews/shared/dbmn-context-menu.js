@@ -21,6 +21,16 @@
  *       { id: 'left', label: 'Left join', detail: 'All of Stock; Counts where it matches',
  *         glyph: RelationGlyph.join('left'), checked: true }, …
  *   ], id => …);
+ *
+ * What the menu is about can come first (`summary`): a title, then names and values in two columns,
+ * read only (arrows and Enter skip it). A line with `tone: 'warn'` (set on the pair) shows in the warning colour:
+ *
+ *   const ran = ['Read', '13 Nov · 9 days ago']; ran.tone = 'warn';
+ *   DbmnContextMenu.show(slot, [
+ *       { summary: { title: 'BL · inventory', lines: [['Request', 'GET /inventory'], ran, ['Rows', '105,010']] } },
+ *       { separator: true },
+ *       { id: 'refresh', label: 'Read again', icon: 'refresh-cw' }, …
+ *   ], id => …);
  */
 (function () {
     'use strict';
@@ -46,6 +56,33 @@
         else if (e.key === 'Enter' && at >= 0) { e.preventDefault(); items[at].click(); }
     }
 
+    /** What the menu is about: a title, then names and values in two columns. Read, never chosen (not focusable). */
+    function summaryOf(summary) {
+        const box = document.createElement('div');
+        box.className = 'dbmn-context-menu-summary' + (summary.tone === 'warn' ? ' is-warn' : '');
+        box.setAttribute('role', 'presentation');
+        if (summary.title) {
+            const title = document.createElement('div');
+            title.className = 'dbmn-context-menu-summary-title';
+            title.textContent = summary.title;
+            box.appendChild(title);
+        }
+        const list = document.createElement('dl');
+        list.className = 'dbmn-context-menu-summary-lines';
+        (summary.lines || []).forEach(line => {
+            if (!Array.isArray(line)) return;
+            const name = document.createElement('dt');
+            name.textContent = line[0] == null ? '' : String(line[0]);
+            const value = document.createElement('dd');
+            value.textContent = line[1] == null ? '' : String(line[1]);
+            // (a line to notice: the data's age when it is over a week)
+            if (line.tone === 'warn') { name.classList.add('is-warn'); value.classList.add('is-warn'); }
+            list.append(name, value);
+        });
+        box.appendChild(list);
+        return box;
+    }
+
     function show(event, items, onChoose) {
         close();
         // (opened from a button: the button, not an event)
@@ -56,6 +93,7 @@
         menu.className = 'dbmn-context-menu';
         menu.setAttribute('role', 'menu');
         items.forEach(item => {
+            if (item.summary) { menu.appendChild(summaryOf(item.summary)); return; }
             if (item.separator) {
                 const sep = document.createElement('div');
                 sep.className = 'dbmn-context-menu-separator';
@@ -125,5 +163,6 @@
         return menu;
     }
 
-    window.DbmnContextMenu = { show, close, get isOpen() { return !!current; } };
+    // (`takesSummary`: a screen may send a `{ summary }` item first; one that checks for it draws nothing empty before)
+    window.DbmnContextMenu = { show, close, takesSummary: true, get isOpen() { return !!current; } };
 })();

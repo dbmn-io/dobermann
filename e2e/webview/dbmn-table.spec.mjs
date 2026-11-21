@@ -846,6 +846,44 @@ test('a group moves and is removed as one, never past a pinned column', async ({
     await expect(page.locator('.dbmn-context-menu-item', { hasText: 'Move' })).toHaveCount(0);
 });
 
+test('a column of its own dragged past a group: the group slides aside with its name over it, and the column lands before it', async ({ page }) => {
+    // (Query's Results: sku, the key, not pinned, dragged left over quantityOnHand's BL and C1)
+    await page.setContent(groupedPage()
+        .replace("{ id: 'sku', name: 'sku', pinned: true }, ", '')
+        .replace("{ id: 'desc|1', name: 'C1', group: desc }", "{ id: 'desc|1', name: 'C1', group: desc }, { id: 'sku', name: 'sku' }"));
+    const ids = () => page.locator('#t').evaluate(t => t.columns.map(c => c.id));
+    expect(await ids()).toEqual(['status', 'qty|0', 'qty|1', 'desc|0', 'desc|1', 'sku']);
+    const descHead = page.locator('#t th[data-group="desc"]:not([data-col])');
+    const shift = loc => loc.evaluate(th => new DOMMatrix(getComputedStyle(th).transform).m41);
+    const grab = await page.locator('#t th[data-col="sku"] .column-name').boundingBox();
+    const d = await descHead.boundingBox();
+    await page.mouse.move(grab.x + 5, grab.y + grab.height / 2);
+    await page.mouse.down();
+    // Short of the group's middle: its own heading (over both heading rows) goes with its cells; the group stays
+    const sku = page.locator('#t th[data-col="sku"]');
+    const skuCell = page.locator('#t .dbmn-table-body tr').first().locator('td').last();
+    await page.mouse.move(d.x + d.width - 30, grab.y + grab.height / 2, { steps: 8 });
+    await expect(sku).toHaveClass(/col-lift/);
+    await expect.poll(() => shift(sku)).toBeLessThan(-40);
+    expect(Math.abs(await shift(sku) - await shift(skuCell))).toBeLessThan(2);
+    expect(Math.abs((await sku.boundingBox()).x - (await skuCell.boundingBox()).x)).toBeLessThan(2);
+    await expect(descHead).not.toHaveClass(/col-shift/);
+    await page.mouse.move(d.x + 10, grab.y + grab.height / 2, { steps: 8 });
+    await expect(page.locator('#t th[data-col="desc|0"]')).toHaveClass(/col-shift-right/);
+    await expect(descHead).toHaveClass(/col-shift-right/);
+    // The name over the group has gone as far as its columns: still right over them
+    await expect.poll(() => shift(page.locator('#t th[data-col="desc|0"]'))).toBeGreaterThan(20);
+    // (once the slide, a sixth of a second, is done)
+    await page.waitForTimeout(300);
+    expect(Math.abs(await shift(descHead) - await shift(page.locator('#t th[data-col="desc|0"]')))).toBeLessThan(2);
+    const [head, first, last] = await Promise.all([descHead.boundingBox(), page.locator('#t th[data-col="desc|0"]').boundingBox(), page.locator('#t th[data-col="desc|1"]').boundingBox()]);
+    expect(Math.abs(head.x - first.x)).toBeLessThan(2);
+    expect(Math.abs(head.x + head.width - (last.x + last.width))).toBeLessThan(2);
+    await page.mouse.up();
+    await expect.poll(ids).toEqual(['status', 'qty|0', 'qty|1', 'sku', 'desc|0', 'desc|1']);
+    await expect(page.locator('#t thead tr').first().locator('th')).toHaveText(['Status', 'qty3', 'sku', 'description']);
+});
+
 test('a plain table\'s column is dragged to another place by its name; held against the end, it takes the end place, however wide', async ({ page }) => {
     await page.setContent(tablePage());
     const from = await page.locator('#t thead th').nth(3).locator('.column-name').boundingBox();

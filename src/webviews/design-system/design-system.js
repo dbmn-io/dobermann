@@ -198,7 +198,7 @@
         ['<dbmn-map>', 'Which column in each source is which, a line at a time: key, functions, how many agree', C, 'Design system; Compare and Run Batch next', 'shared/dbmn-map.js'],
         ['DbmnFunctions', 'Functions on a column, ticked in order, tried on its values before and after', M, 'Design system; Query, Compare and Run Batch next', 'shared/dbmn-functions.js'],
         ['DbmnToast', 'Messages in the corner', M, 'Every screen', 'shared/dbmn-toast.js'],
-        ['DbmnContextMenu', 'A right-click menu, or a menu under a button; an item may carry a picture and a quiet second line', M, 'Hub lists, tables; Query\'s join kind next', 'shared/dbmn-context-menu.js'],
+        ['DbmnContextMenu', 'A right-click menu, or a menu under a button; an item may carry a picture and a quiet second line; a summary of what it is about may come first', M, 'Hub lists, tables; Query\'s join kind and slots', 'shared/dbmn-context-menu.js'],
         ['Join picture', 'Which rows a join keeps: two circles, the kept parts filled; Compare is the scale', M, 'Design system; Query\'s Join next', 'shared/relation-glyph.js (RelationGlyph.join)'],
         ['Icons', 'The one list of icons, and icons by job', M, 'Every screen', 'shared/icons.js'],
         ['DbmnActions', 'Named actions for markup (data-click)', M, 'Every screen', 'shared/dbmn-actions.js'],
@@ -721,7 +721,18 @@
                 { separator: true },
                 { id: 'delete', label: 'Delete', icon: 'trash-2', danger: true }
             ], id => window.DbmnToast.info(`You chose ${id}`));
-        }
+        },
+        // (what the menu is about first, read only, then its actions: a Query slot's click)
+        'ds:summaryMenu': (arg, event) => {
+            const read = ['Read', '13 Nov, 09:18 · 9 days ago'];
+            read.tone = 'warn';
+            window.DbmnContextMenu.show(event.target.closest('button') || event, [
+                { summary: { title: 'BL · inventory', lines: [['Request', 'GET /inventory'], ['View', 'LowStock'], ['Result', 'DBMN Local'], read, ['Rows', '105,010']] } },
+                { separator: true },
+                { id: 'refresh', label: 'Read again', icon: 'refresh-cw' },
+                { id: 'remove', label: 'Remove', icon: 'trash-2', danger: true }
+            ], id => window.DbmnToast.info(`You chose ${id}`));
+        },
     });
 
     drawJoins();

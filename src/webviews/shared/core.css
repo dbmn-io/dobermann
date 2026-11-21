@@ -2361,6 +2361,14 @@ body.editor-slide-out {
     margin: 4px 6px;
     background: var(--vscode-menu-separatorBackground, var(--vscode-widget-border));
 }
+/* What the menu is about, before its actions: a title, then quiet names beside plain values */
+.dbmn-context-menu-summary { padding: 6px 10px 4px; max-width: 360px; cursor: default; }
+.dbmn-context-menu-summary-title { font-weight: 600; margin-bottom: 4px; }
+.dbmn-context-menu-summary-lines { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px 12px; margin: 0; font-size: 0.92em; }
+.dbmn-context-menu-summary-lines dt { color: var(--vscode-descriptionForeground); white-space: nowrap; }
+.dbmn-context-menu-summary-lines dd { margin: 0; overflow-wrap: anywhere; }
+.dbmn-context-menu-summary.is-warn .dbmn-context-menu-summary-title,
+.dbmn-context-menu-summary-lines .is-warn { color: var(--dbmn-editorWarning-foreground, var(--vscode-editorWarning-foreground)); }
 
 /* Help mode (shared/help-mode.js): one help button, DBMN-wide, instead of a help icon per
    control. In help mode every documented control gets a dashed outline and opens its docs.

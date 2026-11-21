@@ -863,8 +863,9 @@
             return this._units().filter(unit => !unit.pinned).map(unit => {
                 const head = unit.group ? this._head.querySelector(`th[data-group="${CSS.escape(unit.group.id)}"]:not([data-col])`)
                     : this._head.querySelector(`th[data-col="${CSS.escape(unit.columns[0].column.id)}"]`);
-                // (a group's name goes with its columns, and slides aside with them when passed)
-                const cells = unit.group && head ? [head] : [];
+                // (a group's name goes with its columns, a column's own heading (over both heading rows) with its
+                // cells: each lifts with them and slides aside with them when passed)
+                const cells = head ? [head] : [];
                 unit.columns.forEach(({ column, index }) => {
                     if (unit.group) { const sub = this._head.querySelector(`th[data-col="${CSS.escape(column.id)}"]`); if (sub) cells.push(sub); }
                     rows.forEach(r => { if (r.cells.length === this._columns.length && r.cells[index]) cells.push(r.cells[index]); });

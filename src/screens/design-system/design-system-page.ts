@@ -311,11 +311,13 @@ Icons.icon('check')                                   the SVG as text</code></pr
             <button type="button" class="btn btn-secondary" data-click="ds:toast" data-arg="warn">Warning</button>
             <button type="button" class="btn btn-secondary" data-click="ds:toast" data-arg="error">Error</button>
             <button type="button" class="btn btn-secondary" data-click="ds:menu">Menu</button>
+            <button type="button" class="btn btn-secondary" data-click="ds:summaryMenu" aria-haspopup="menu">Menu with a summary</button>
         </div>
         <pre class="ds-code"><code>const yes = await DbmnModal.confirm({ title: 'Delete the query?', body: '…', confirmLabel: 'Delete', confirmVariant: 'danger' });
 const { actionId, fields } = await DbmnModal.show({ title, fields: [{ id: 'name', type: 'text', label: 'Name' }], actions: [{ id: 'save', label: 'Save', variant: 'primary' }] });
 DbmnToast.success('Saved');   DbmnToast.warn('…');   DbmnToast.error('…', { persistent: true });
-DbmnContextMenu.show(event, [{ id: 'rename', label: 'Rename', icon: 'pencil' }], id =&gt; …);</code></pre>
+DbmnContextMenu.show(event, [{ id: 'rename', label: 'Rename', icon: 'pencil' }], id =&gt; …);
+DbmnContextMenu.show(button, [{ summary: { title: 'BL · inventory', lines: [['View', 'LowStock'], read /* read.tone = 'warn' */] } }, { separator: true }, …actions], id =&gt; …);</code></pre>
 
         <h3>Which rows a join keeps</h3>
         <p>A picture for each kind of join, for someone who does not know SQL: the rows kept are filled. A menu opened from a button sits under it; its items can carry a picture and a quiet second line.</p>
