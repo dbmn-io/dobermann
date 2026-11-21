@@ -16,7 +16,7 @@ import {
     FUNCTIONS, ROW_LIMIT, type CompareStats, type Engine, type Expr, type FunctionName, type JoinKind, type JoinStats, type Problem,
     type Query, type ResultId, type RowTests, type RunOptions, type Value, type RunOutcome, type Step, type StatsWindow, type Table, type TableWindow
 } from './engine-types';
-import { compareValues, fromValue, isNumber, num, readNumber, Real, toValue, truthy, type V } from './engine-values';
+import { compareValues, fromValue, isNumber, keyPart, num, readNumber, Real, toValue, truthy, type V } from './engine-values';
 
 /** A column of a step's rows: its name, and the inputs it can be named by (`{ column, of }`). */
 interface Col {
@@ -58,19 +58,19 @@ function inputsOf(step: Step, kind: Kind): string[] {
     return [String(s[kind])];
 }
 
-/** A group's key: blank is a value like any other (as GROUP BY); numbers and text never alike. */
+/** A group's key: blank is a value like any other (as GROUP BY); equal values (sameValue: 42 and "42") alike. */
 function groupKeyOf(parts: V[]): string {
     let key = '';
-    for (const v of parts) key += v === null ? 'z\u0001' : isNumber(v) ? `n${num(v)}\u0001` : `t${v.length}:${v}`;
+    for (const v of parts) key += v === null ? '-' : keyPart(v);
     return key;
 }
 
-/** A row's key, for matching: blank when any part is blank; numbers and text never alike. */
+/** A row's key, for matching: blank when any part is blank; equal values (sameValue: 42 and "42") match. */
 function keyOf(parts: V[]): string | null {
     let key = '';
     for (const v of parts) {
         if (v === null) return null;
-        key += isNumber(v) ? `n${num(v)}\u0001` : `t${v.length}:${v}`;
+        key += keyPart(v);
     }
     return key;
 }
@@ -520,7 +520,7 @@ export class QueryEngine implements Engine {
         return { cols: t.columns.map(c => ({ name: c, owners: [name] })), rowCount, value: (row, c) => t.value(row, c) };
     }
 
-    /** An expression as a function of a row of `rel` (read as `input`). Comparisons are exact by type (engine-values.ts compareValues). */
+    /** An expression as a function of a row of `rel` (read as `input`). Equality by sameValue, order by compareValues (engine-values.ts). */
     private compile(e: Expr, rel: Relation, input: string): (row: number) => V {
         if ('column' in e) {
             const at = findColumn(e, rel.cols, input) as number;
@@ -681,19 +681,11 @@ function joinFacts(left: Relation, right: Relation, lk: ((row: number) => V)[], 
         records[kind] += rn;
     }
     for (const [key, list] of byKey) if (!leftHeld.has(key)) values.push({ ln: 0, rn: list.length, side: 'right', row: list[0] });
-    // Types on each side of each key part: no type in common means it can never match
-    const typesOf = (rel: Relation, fns: ((row: number) => V)[]) => fns.map(f => {
-        let num = false, text = false;
-        for (let r = 0; r < rel.rowCount && !(num && text); r++) { const v = f(r); if (v === null) continue; if (isNumber(v)) num = true; else text = true; }
-        return { num, text };
-    });
-    const lt = typesOf(left, lk), rt = typesOf(right, rk);
-    const typeMismatch = lt.some((l, i) => (l.num || l.text) && (rt[i].num || rt[i].text) && !((l.num && rt[i].num) || (l.text && rt[i].text)));
     const relationship: JoinStats['relationship'] = keys.manyToMany || (keys.oneToMany && keys.manyToOne) ? 'manyToMany'
         : keys.oneToMany ? 'oneToMany' : keys.manyToOne ? 'manyToOne' : keys.oneToOne ? 'oneToOne' : 'none';
     const stats: JoinStats = {
         leftRows: left.rowCount, leftMatched, rightRows: right.rowCount, rightMatched, rowsAfter, relationship,
-        keys, rows, records, typeMismatch,
+        keys, rows, records,
         leftBlank: left.rowCount - leftKeyed,
         leftValues: leftHeld.size, rightValues: byKey.size, valuesTotal: values.length
     };

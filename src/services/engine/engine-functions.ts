@@ -10,7 +10,7 @@
 import type { FunctionName } from './engine-types';
 import {
     arithmetic, asText, castInteger, chars, compareValues, isNumber, makeNumber,
-    num, readNumber, Real, textAsNumber, truthy, type V
+    num, readNumber, Real, sameValue, textAsNumber, truthy, type V
 } from './engine-values';
 
 
@@ -62,9 +62,10 @@ function divide(a: V, b: V): V {
     return makeNumber(num(x) / num(y), true);
 }
 
+/** = <> < > <= >=: equal by sameValue (42 = "42"); otherwise in compareValues' order. Blank: not known. */
 function compare(a: V, b: V, test: (c: number) => boolean): V {
     if (a === null || b === null) return null;
-    return bool(test(compareValues(a, b)));
+    return bool(test(sameValue(a, b) ? 0 : compareValues(a, b)));
 }
 
 /** A value as text, for the text functions (blank stays blank; a number as its text). */

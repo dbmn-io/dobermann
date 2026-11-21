@@ -16,11 +16,11 @@
  * Differences from SQLite (intended; everything not listed here gives what SQLite gives today, and
  * the reference tests expect the engine's rule for these):
  *
- * 1. Comparisons are exact by type, always: a number never equals text, whether a side is a
- *    column, a constant or a function's result. SQLite converts by "affinity": TEXT(x) = 42 is
- *    true there for x 42, NUMERIC(x) = '42' and NUMERIC(x) = a column holding "42" too; here they
- *    are false. The same in join keys, filters and sort. So "As a number" on one side of a key
- *    matches only numbers on the other: put it on both sides.
+ * 1. Equality (=, <>, join, compare and group keys, compared values) is by sameValue (James,
+ *    2026-11-21, "loose is good"): a number equals text that reads the same characters as the
+ *    number is shown, 42 = "42" and 12.5 = "12.5", but "12.50", "007" and " 42" are not 42. SQLite
+ *    goes by "affinity": a number never equals text from a column without one (42 = "42" false),
+ *    and with one the text is read as a number first ("007" = 7 true).
  * 2. Text is read as a number by one rule everywhere (engine-values.ts readNumber; James,
  *    2026-11-21): text that is a plain number, spaces round it allowed, is that number; any other
  *    text is blank. So "abc" + 1, "12abc" * 2, ROUND("x"), ABS("x"), FLOOR / CEIL("12abc"),
@@ -95,7 +95,7 @@ export type Step =
     | { as?: string; from: string }
     /**
      * Rows of two inputs matched on keys. A key with a blank in it matches nothing; keys match
-     * exactly by type. Rows come out in the left input's order, each with its matches in the right
+     * by sameValue (42 and "42" match, "042" and 42 don't). Rows come out in the left input's order, each with its matches in the right
      * input's order; then (right, outer) the right input's rows that matched nothing, in its order.
      * The columns: the left's, then the right's; `{ column, of }` names one by the input it came from.
      */
@@ -117,7 +117,7 @@ export type Step =
      * differs from its column's first) and a `repeated:<input>` per input (it holds the row's key on
      * more than one record), each 1 (yes) or 0. A compared column's `values[i]` may be null: input
      * i has no cell in it, and is not measured there. A value differs from the
-     * first present, compared input's (the Baseline's unless it lacks the record) when compareValues says so: exact by type.
+     * first present, compared input's (the Baseline's unless it lacks the record) when they aren't alike (sameValue; two blanks alike).
      */
     | { as?: string; compare: string[]; on: Expr[][]; columns: { name: string; values: (Expr | null)[] }[]; notCompared?: string[] }
     | { as?: string; select: string; columns: { name: string; value: Expr }[] }
@@ -167,7 +167,8 @@ export interface KindCounts { oneToOne: number; oneToMany: number; manyToOne: nu
  * counted from the same keys the join matched on (blank keys left out, as they match nothing).
  * keys: matched key values of each kind; rows: the left's rows with them; records: the right's.
  * leftValues / rightValues: different key values on each side; valuesTotal: every key value of
- * either side; typeMismatch: some key part holds only numbers on one side and only text on the other.
+ * either side. (Numbers and text meet by sameValue, so there is no "one side numbers, the other
+ * text" to say.)
  */
 export interface JoinStats {
     leftRows: number;
@@ -179,7 +180,6 @@ export interface JoinStats {
     keys: KindCounts;
     rows: KindCounts;
     records: KindCounts;
-    typeMismatch: boolean;
     leftBlank: number;
     leftValues: number;
     rightValues: number;

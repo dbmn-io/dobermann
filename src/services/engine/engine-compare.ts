@@ -21,14 +21,15 @@
  * Rows come in the order their keys first appear: the Baseline's, then each later input's.
  *
  * On each row, a compared value is measured against the first input that has the record there and
- * is compared (the Baseline, unless it lacks the record or is in notCompared), exact by type, as
- * Results has always measured it (query-status.ts rowStatus); so a row the Baseline lacks is still
+ * is compared (the Baseline, unless it lacks the record or is in notCompared), equal by sameValue
+ * (42 and "42" alike, as Results has always measured it by text: query-status.ts rowStatus; two
+ * blanks alike, a blank and a value not); so a row the Baseline lacks is still
  * compared among the others. Status, the first that applies: "diff" where a value differs, else
  * "notInBaseline" where the Baseline lacks the record, else "missing" where a compared input
  * lacks it, else "same".
  */
 import type { CompareStats } from './engine-types';
-import { compareValues, isNumber, num, type V } from './engine-values';
+import { alike, keyPart, type V } from './engine-values';
 
 export const COMPARE_STATUS = ['same', 'diff', 'missing', 'notInBaseline'] as const;
 export const COMPARE_RELATION = ['oneToOne', 'oneToMany', 'onlyBase', 'onlyOther'] as const;
@@ -57,12 +58,12 @@ export interface CompareMade {
     stats: CompareStats;
 }
 
-/** A key's text, or null when a part is blank (it matches nothing). Numbers and text never alike. */
+/** A key's text, or null when a part is blank (it matches nothing). Equal values (sameValue: 42 and "42") alike. */
 function keyOf(parts: V[]): string | null {
     let key = '';
     for (const v of parts) {
         if (v === null) return null;
-        key += isNumber(v) ? `n${num(v)}\u0001` : `t${v.length}:${v}`;
+        key += keyPart(v);
     }
     return key;
 }
@@ -144,7 +145,7 @@ export async function runCompare(inputs: CompareInput[], columns: number, tick: 
                 const value = inputs[p].values[c];
                 if (inputs[p].skipped || r < 0 || !value) continue;
                 if (first === undefined) { first = value(r); continue; }
-                if (compareValues(first, value(r)) !== 0) { differs[c][row] = 1; diffBy[p][row] = 1; changed = true; }
+                if (!alike(first, value(r))) { differs[c][row] = 1; diffBy[p][row] = 1; changed = true; }
             }
         }
         status[row] = changed ? 1 : b < 0 ? 3 : missing ? 2 : 0;

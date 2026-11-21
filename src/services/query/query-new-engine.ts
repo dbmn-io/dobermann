@@ -266,7 +266,7 @@ async function plainJoinStats(host: EngineHost, result: string, step: string, st
         const parts = w.columns.length - 2;
         return w.rows.map(r => ({ key: r.slice(0, parts), left: Number(r[parts]), right: Number(r[parts + 1]) }));
     }))).flat();
-    return { ...stats, values };
+    return { ...stats, typeMismatch: false, values };
 }
 
 /** The Join step's figures from a run: a compare's from CompareStats, each plain join's (its spec index's view) from its JoinStats. */
@@ -276,7 +276,7 @@ async function joinFigures(spec: QuerySpec, places: string[], get: (step: string
     const plain = spec.joins.filter(j => j.kind !== 'compare');
     for (const [i, j] of plain.entries()) {
         const st = await get(`join${i + 1}`) as JoinStats | undefined;
-        if (st) out.set(j.view, values ? await values(`join${i + 1}`, st) : { ...st, values: [] });
+        if (st) out.set(j.view, values ? await values(`join${i + 1}`, st) : { ...st, typeMismatch: false, values: [] });
     }
     return out;
 }
@@ -455,7 +455,8 @@ export function buildQuery(spec: QuerySpec, options?: { status?: StatusPlaces })
 
 /**
  * A compare's status on Results, worked out by the engine as Results has always worked it out
- * (query-status.ts rowStatus), but exact by type (James: 123 is not "123"): each compared column's
+ * (query-status.ts rowStatus), equal by the engine's sameValue (42 and "42" alike, as rowStatus's
+ * text; "042" and 42 not): each compared column's
  * cells measured against its first cell that is shown and whose view has the record; which places
  * differ, which compare views lack the record, which repeat the key, the relation. Cells may be any
  * column of the query: a compare view's, a view joined beside it, a COMPARE calculation's side.
@@ -485,7 +486,7 @@ const not = (e: Expr): Expr => ({ fn: 'NOT', args: [e] });
 const and = (parts: Expr[]): Expr => (parts.length === 0 ? { value: 1 } : parts.length === 1 ? parts[0] : { fn: 'AND', args: parts });
 const or = (parts: Expr[]): Expr => (parts.length === 0 ? { value: 0 } : parts.length === 1 ? parts[0] : { fn: 'OR', args: parts });
 const ifThen = (test: Expr, then: Expr, otherwise: Expr): Expr => ({ fn: 'IF', args: [test, then, otherwise] });
-/** Two cells differ: by type and value; a blank and a value differ; two blanks don't. 1 or 0, never blank. */
+/** Two cells differ: not sameValue; a blank and a value differ; two blanks don't. 1 or 0, never blank. */
 const differ = (a: Expr, b: Expr): Expr => ifThen(known(a), ifThen(known(b), { fn: '<>', args: [a, b] }, { value: 1 }), ifThen(known(b), { value: 1 }, { value: 0 }));
 const yes = (e: Expr): Expr => ifThen(e, { value: 1 }, { value: 0 });
 

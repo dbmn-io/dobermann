@@ -107,24 +107,25 @@ describe('The engine, first piece: tables, select, filter, functions', () => {
         await same('IF', 2, ['no'], undefined, [0]);
     });
 
-    it('comparisons are exact by type, whatever the sides came from (difference 1): TEXT(a) = 42 and NUMERIC(a) = \'42\' only meet by type', async () => {
+    it('equality is loose (difference 1, James 2026-11-21): a number equals text with the same characters, not other text for it; order keeps numbers before text', async () => {
         const e = new QueryEngine();
-        const rows: Value[][] = [[42, '42'], ['42', 42], ['0042', '42'], [1.5, '1.5']];
+        const rows: Value[][] = [[42, '42'], ['42', 42], ['0042', 42], [12.5, '12.5'], [12.5, '12.50'], ['007', 7], [' 42', 42], [2, '2.0'], ['abc', 'abc'], [null, null], [1, 1]];
         e.load('t', { columns: ['a', 'b'], rows });
         const a: Expr = { column: 'a' }, b: Expr = { column: 'b' };
-        const out = await e.run({ steps: [{ from: 't' }, { select: 'step 1', columns: [
-            { name: 'textA_is_b', value: { fn: '=', args: [{ fn: 'TEXT', args: [a] }, b] } },
-            { name: 'textA_is_42', value: { fn: '=', args: [{ fn: 'TEXT', args: [a] }, { value: 42 }] } },
-            { name: 'numA_is_b', value: { fn: '=', args: [{ fn: 'NUMERIC', args: [a] }, b] } },
-            { name: 'numA_is_text42', value: { fn: '=', args: [{ fn: 'NUMERIC', args: [a] }, { value: '42' }] } },
-            { name: 'numA_is_numB', value: { fn: '=', args: [{ fn: 'NUMERIC', args: [a] }, { fn: 'NUMBER', args: [b] }] } }
-        ] }] });
+        const out = await e.run({ steps: [{ from: 't' }, { select: 'step 1', columns: (['=', '<>', '<', '<=', '>', '>='] as const).map(fn => ({ name: fn, value: { fn, args: [a, b] } as Expr })) }] });
         assert.ok('result' in out);
-        assert.deepStrictEqual(e.read(out.result, 0, 9).rows, [
-            [1, 0, 0, 0, 1],
-            [0, 0, 1, 0, 1],
-            [0, 0, 0, 0, 1],
-            [1, 0, 0, 0, 1]
+        assert.deepStrictEqual(e.read(out.result, 0, 20).rows, [
+            [1, 0, 0, 1, 0, 1],
+            [1, 0, 0, 1, 0, 1],
+            [0, 1, 0, 0, 1, 1], // text after a number in order
+            [1, 0, 0, 1, 0, 1],
+            [0, 1, 1, 1, 0, 0], // 12.5 before "12.50"
+            [0, 1, 0, 0, 1, 1],
+            [0, 1, 0, 0, 1, 1],
+            [0, 1, 1, 1, 0, 0],
+            [1, 0, 0, 1, 0, 1],
+            [null, null, null, null, null, null],
+            [1, 0, 0, 1, 0, 1]
         ]);
     });
 
@@ -201,21 +202,22 @@ describe('The engine, first piece: tables, select, filter, functions', () => {
         const k = (of: string): Expr => ({ column: 'k', of });
         const j = (of: string): Expr => ({ column: 'j', of });
         for (const kind of ['inner', 'left', 'right', 'outer'] as const) {
-            it(`${kind} join as SQLite: one key, two keys, a key with a function; a blank key matches nothing; 1 never meets "1"`, async () => {
-                await joinsAsSqlite(kind, [{ sql: 'l.k = r.k', left: k('l'), right: k('r') }]);
-                await joinsAsSqlite(kind, [{ sql: 'l.k = r.k', left: k('l'), right: k('r') }, { sql: 'l.j = r.j', left: j('l'), right: j('r') }]);
+            it(`${kind} join as SQLite matching on keys' text: one key, two keys, a key with a function; a blank key matches nothing; 1 meets "1"`, async () => {
+                // (the engine's keys are loose, sameValue: as SQLite on the keys' text, for these keys)
+                await joinsAsSqlite(kind, [{ sql: 'CAST(l.k AS TEXT) = CAST(r.k AS TEXT)', left: k('l'), right: k('r') }]);
+                await joinsAsSqlite(kind, [{ sql: 'CAST(l.k AS TEXT) = CAST(r.k AS TEXT)', left: k('l'), right: k('r') }, { sql: 'l.j = r.j', left: j('l'), right: j('r') }]);
                 await joinsAsSqlite(kind, [{ sql: 'UPPER(l.j) = UPPER(r.j)', left: { fn: 'UPPER', args: [j('l')] }, right: { fn: 'UPPER', args: [j('r')] } }]);
             });
         }
 
-        it('a join step\'s statistics as today\'s joinStats counts them in SQLite (query-engine.ts), one key and two', async () => {
+        it('a join step\'s statistics as today\'s joinStats counts them in SQLite (query-engine.ts) on the keys\' text, one key and two', async () => {
             for (const parts of [['k'], ['k', 'j']]) {
                 const db = new SQL_.Database();
                 db.run('CREATE TABLE l (k, j, name)'); db.run('CREATE TABLE r (k, j, name)');
                 L.forEach(row => db.run('INSERT INTO l VALUES (?, ?, ?)', row as (string | number | null)[]));
                 R.forEach(row => db.run('INSERT INTO r VALUES (?, ?, ?)', row as (string | number | null)[]));
                 const ks = parts.map((_, i) => `k${i}`);
-                const groups = `WITH _l AS (SELECT ${parts.map((p, i) => `${p} AS k${i}`).join(', ')} FROM l), _r AS (SELECT ${parts.map((p, i) => `${p} AS k${i}`).join(', ')} FROM r),
+                const groups = `WITH _l AS (SELECT ${parts.map((p, i) => `CAST(${p} AS TEXT) AS k${i}`).join(', ')} FROM l), _r AS (SELECT ${parts.map((p, i) => `CAST(${p} AS TEXT) AS k${i}`).join(', ')} FROM r),
 _lg AS (SELECT ${ks.join(', ')}, COUNT(*) AS n FROM _l WHERE ${ks.map(k => `${k} IS NOT NULL`).join(' AND ')} GROUP BY ${ks.join(', ')}),
 _rg AS (SELECT ${ks.join(', ')}, COUNT(*) AS n FROM _r WHERE ${ks.map(k => `${k} IS NOT NULL`).join(' AND ')} GROUP BY ${ks.join(', ')})`;
                 const same = ks.map(k => `lg.${k} = rg.${k}`).join(' AND ');
@@ -259,7 +261,6 @@ _rg AS (SELECT ${ks.join(', ')}, COUNT(*) AS n FROM _r WHERE ${ks.map(k => `${k}
             const st = e.stats(out.result, 'j') as import('../../../services/engine/engine-types').JoinStats;
             assert.strictEqual(st.leftBlank, 1);
             assert.strictEqual(st.relationship, 'manyToMany');
-            assert.strictEqual(st.typeMismatch, false);
             const many = new QueryEngine();
             many.load('l', { columns: ['k'], rows: [['a'], ['a'], ['b'], ['c'], ['c'], ['c']] });
             many.load('r', { columns: ['k'], rows: [['a'], ['a'], ['b'], ['b'], ['c'], ['c'], [1]] });
@@ -269,11 +270,13 @@ _rg AS (SELECT ${ks.join(', ')}, COUNT(*) AS n FROM _r WHERE ${ks.map(k => `${k}
             assert.deepStrictEqual((many.stats(m.result, 'j', { kind: 'manyToMany', side: 'left', from: 0, count: 1 }) as Table).rows, [['c', 3, 2]]);
             assert.deepStrictEqual((many.stats(m.result, 'j', { kind: 'manyToMany', side: 'left', from: 1, count: 5 }) as Table).rows, [['a', 2, 2]]);
             const t = new QueryEngine();
-            t.load('l', { columns: ['k'], rows: [['1'], ['2']] });
+            // Text keys meet number keys with the same characters (sameValue), not "01" or "2.0"
+            t.load('l', { columns: ['k'], rows: [['1'], ['2'], ['01'], ['2.0']] });
             t.load('r', { columns: ['k'], rows: [[1], [2]] });
-            const tm = await t.run({ steps: [{ as: 'j', join: 'left', left: 'l', right: 'r', on: [{ left: { column: 'k' }, right: { column: 'k' } }] }] });
+            const tm = await t.run({ steps: [{ as: 'j', join: 'inner', left: 'l', right: 'r', on: [{ left: { column: 'k' }, right: { column: 'k' } }] }] });
             assert.ok('result' in tm);
-            assert.strictEqual((t.stats(tm.result, 'j') as import('../../../services/engine/engine-types').JoinStats).typeMismatch, true);
+            assert.deepStrictEqual(t.read(tm.result, 0, 9).rows, [['1', 1], ['2', 2]]);
+            assert.strictEqual((t.stats(tm.result, 'j') as import('../../../services/engine/engine-types').JoinStats).leftMatched, 2);
         });
 
         it('a join over the row limit is refused before any row is made; under it, made', async () => {

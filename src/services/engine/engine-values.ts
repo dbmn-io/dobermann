@@ -152,10 +152,37 @@ export function truthy(v: V): boolean | null {
 }
 
 /**
- * The order of values, everywhere (comparisons, join keys, filters, sort): blank first, then
- * numbers by value, then text by its characters' code points (the same order as UTF-8's bytes).
- * Exact by type: a number is never equal to text, whatever either side came from. NUMBER(x) and
- * TEXT(x) are how a user makes two sides meet (engine-types.ts, "Differences from SQLite").
+ * Are two values equal: James, 2026-11-21 ("loose is good"). A number equals text that reads the
+ * same characters as the number is shown (42 = "42", 12.5 = "12.5"), but not other text for the same
+ * number ("12.50", "007", " 42"), so leading zeros stay apart. Two numbers by value, two texts by
+ * their characters. Blank is equal to nothing (null: not known), as SQL's =.
+ */
+export function sameValue(a: V, b: V): boolean | null {
+    if (a === null || b === null) return null;
+    return equalForm(a) === equalForm(b);
+}
+
+/** Two cells alike, for the compare: by sameValue, and two blanks alike. */
+export function alike(a: V, b: V): boolean {
+    if (a === null || b === null) return a === b;
+    return equalForm(a) === equalForm(b);
+}
+
+/** A value's form for equality: text as it is; a number as JavaScript writes it, as Results shows it (2.0 as "2"). */
+export function equalForm(v: number | Real | string): string {
+    return typeof v === 'string' ? v : String(num(v));
+}
+
+/** One part of a key (join, compare, group): its equal form, so equal values make the same key. */
+export function keyPart(v: number | Real | string): string {
+    const f = equalForm(v);
+    return `${f.length}:${f}`;
+}
+
+/**
+ * The order of values (sort, Min, Max, < and >): blank first, then numbers by value, then text by
+ * its characters' code points (the same order as UTF-8's bytes). Equality is sameValue's, not
+ * this: 42 and "42" are equal though a number sorts before text.
  */
 export function compareValues(a: V, b: V): number {
     if (a === null || b === null) return a === null ? (b === null ? 0 : -1) : 1;

@@ -482,9 +482,12 @@ describe('Query compare on the new engine', () => {
     });
 
     describe('a compare\'s status on Results\' pages, from the engine', () => {
-        // Keys once in each run, values all text or all numbers per column (where rowStatus' text and the engine's types agree)
+        // Keys once in each run; some numbers as text (42 and "42" alike, James 2026-11-21: as rowStatus' text), some not alike ("42.0")
         const data = { bl: runRows(0, 400), c1: runRows(1, 400), c2: runRows(2, 400) };
         for (const r of [...data.bl, ...data.c1, ...data.c2]) r.sku = String(r.sku);
+        data.c1.forEach((r, i) => { if (i % 5 === 0 && typeof r.qty === 'number') r.qty = String(r.qty); });
+        data.c2.forEach((r, i) => { if (i % 7 === 0 && typeof r.qty === 'number') r.qty = `${r.qty}.0`; });
+        data.bl.forEach((r, i) => { if (i % 11 === 0) r.sku = Number(r.sku) || r.sku; });
         const label = (v: string) => ({ bl: 'BL', c1: 'C1', c2: 'C2' } as Record<string, string>)[v];
         const status = (hidden: string[], filter?: StatusFilter) => ({ filter, label, placeOfColumn: (i: number) => label(resultColumns(runsSpec())[i].view), hidden });
 
