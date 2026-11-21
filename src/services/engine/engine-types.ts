@@ -21,10 +21,13 @@
  *    true there for x 42, NUMERIC(x) = '42' and NUMERIC(x) = a column holding "42" too; here they
  *    are false. The same in join keys, filters and sort. So "As a number" on one side of a key
  *    matches only numbers on the other: put it on both sides.
- * 2. FLOOR and CEIL read their value as NUMBER does: text that is not a plain number ("abc",
- *    "12abc") gives blank, and "1e3" is 1000. SQLite gives 0, 12 and 1.
- * 3. "As a number" (NUMERIC) is NUMBER: text that is not a plain number ("abc", "12abc", "")
- *    gives blank (James, 2026-11-21). SQLite gives 0, 12 and 0.
+ * 2. Text is read as a number by one rule everywhere (engine-values.ts readNumber; James,
+ *    2026-11-21): text that is a plain number, spaces round it allowed, is that number; any other
+ *    text is blank. So "abc" + 1, "12abc" * 2, ROUND("x"), ABS("x"), FLOOR / CEIL("12abc"),
+ *    NUMBER("1.2.3") and "As a number" ("abc") are blank, Sum leaves such text out, and a filter or
+ *    IF on such text is not true. SQLite reads the text's leading number instead ("12abc" is 12,
+ *    "abc" is 0, "1.2.3" is 1.2), and FLOOR("1e3") there is 1, here 1000.
+ * 3. "As a number" (NUMERIC) is NUMBER (the same rule).
  * 4. Upper case / Lower case change every letter, accented ones included ("é" → "É"; James,
  *    2026-11-21). SQLite changes a–z only.
  */

@@ -49,14 +49,21 @@ describe('The engine, first piece: tables, select, filter, functions', () => {
     before(async () => { SQL_ = await initSqlJs({ locateFile: () => SQL_WASM_PATH }); });
 
     /** Every value (or pair of values) through one function, in SQLite and in the engine: the same answers. */
-    /** `ours`: for a row on the list of differences (engine-types.ts), the engine's answer; else SQLite's is expected. */
-    async function same(fn: FunctionName, arity: number, extra: Value[] = [], ours?: (row: Value[]) => Value | undefined) {
+    /** Text read as a number by the engine's one rule (difference 2): a plain number is that number, other text blank. */
+    const readByRule = (v: Value): Value => (typeof v !== 'string' ? v : /^\s*[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?\s*$/.test(v) ? Number(v.trim()) : null);
+
+    /**
+     * `ours`: for a row on the list of differences (engine-types.ts), the engine's answer; else SQLite's is expected.
+     * `read`: the arguments the function reads as numbers: SQLite is given them already read by the
+     * engine's rule, so the engine must equal SQLite after that reading.
+     */
+    async function same(fn: FunctionName, arity: number, extra: Value[] = [], ours?: (row: Value[]) => Value | undefined, read: number[] = []) {
         const rows: Value[][] = [];
         if (arity === 1) VALUES.forEach(v => rows.push([v, ...extra]));
         else VALUES.forEach(a => VALUES.forEach(b => rows.push([a, b, ...extra])));
         const columns = ['a', 'b', 'c', 'd'].slice(0, arity + extra.length);
         const db = new SQL_.Database();
-        sqliteTable(db, columns, rows);
+        sqliteTable(db, columns, rows.map(r => r.map((v, i) => (read.includes(i) ? readByRule(v) : v))));
         const want = db.exec(`SELECT ${SQL[fn]!(columns)} FROM t`)[0].values.map((r, i) => { const o = ours?.(rows[i]); return o === undefined ? r[0] : o; });
         db.close();
         const engine = new QueryEngine();
@@ -79,17 +86,25 @@ describe('The engine, first piece: tables, select, filter, functions', () => {
         await same('UPPER', 1, [], r => (typeof r[0] === 'string' ? r[0].toUpperCase() : undefined));
         await same('LOWER', 1, [], r => (typeof r[0] === 'string' ? r[0].toLowerCase() : undefined));
     });
-    for (const fn of ['NEG', 'ABS', 'TRIM', 'LENGTH', 'TEXT', 'NUMBER', 'NOT', 'ROUND'] as FunctionName[]) {
+    for (const fn of ['TRIM', 'LENGTH', 'TEXT'] as FunctionName[]) {
         it(`${fn} as SQLite`, async () => same(fn, 1));
     }
-    for (const fn of ['+', '-', '*', '/', '=', '<>', '>', '<', 'IFBLANK', 'AND', 'OR', 'MIN', 'MAX', 'CONCAT', 'LTRIM', 'LEFT', 'RIGHT', 'SUBSTR', 'ROUND'] as FunctionName[]) {
+    for (const fn of ['NEG', 'ABS', 'NOT', 'ROUND'] as FunctionName[]) {
+        it(`${fn} as SQLite, text read as a number by the one rule`, async () => same(fn, 1, [], undefined, [0]));
+    }
+    it('NUMBER: the one rule', async () => same('NUMBER', 1, [], r => readByRule(r[0])));
+    for (const fn of ['=', '<>', '>', '<', 'IFBLANK', 'MIN', 'MAX', 'CONCAT', 'LTRIM', 'LEFT', 'RIGHT', 'SUBSTR'] as FunctionName[]) {
         it(`${fn} of two as SQLite`, async () => same(fn, 2));
     }
+    for (const fn of ['+', '-', '*', '/', 'AND', 'OR'] as FunctionName[]) {
+        it(`${fn} of two as SQLite, text read as a number by the one rule`, async () => same(fn, 2, [], undefined, [0, 1]));
+    }
+    it('ROUND of two as SQLite, its value read by the one rule', async () => same('ROUND', 2, [], undefined, [0]));
     it('SUBSTR of three, REPLACE and IF as SQLite', async () => {
         await same('SUBSTR', 2, [2]);
         await same('SUBSTR', 2, [-2]);
         await same('REPLACE', 2, ['_']);
-        await same('IF', 2, ['no']);
+        await same('IF', 2, ['no'], undefined, [0]);
     });
 
     it('comparisons are exact by type, whatever the sides came from (difference 1): TEXT(a) = 42 and NUMERIC(a) = \'42\' only meet by type', async () => {
@@ -134,12 +149,13 @@ describe('The engine, first piece: tables, select, filter, functions', () => {
         db.close();
     });
 
-    it('select and filter at their edges: a filter keeps only true rows (blank, 0 and "abc" are not); steps read by name; the result can be a middle step', async () => {
+    it('select and filter at their edges: a filter keeps only true rows (blank, 0, "abc" and "2x" are not); steps read by name; the result can be a middle step', async () => {
         const e = new QueryEngine();
         e.load('t', { columns: ['a'], rows: [[1], [0], [null], ['abc'], ['2x'], [''], [-1]] });
         const kept = await e.run({ steps: [{ from: 't' }, { filter: 'step 1', where: { column: 'a' } }] });
         assert.ok('result' in kept);
-        assert.deepStrictEqual(e.read(kept.result, 0, 9).rows, [[1], ['2x'], [-1]]);
+        // ("2x" is not a number by the one rule: not true)
+        assert.deepStrictEqual(e.read(kept.result, 0, 9).rows, [[1], [-1]]);
         const middle = await e.run({ result: 'doubled', steps: [
             { from: 't', as: 'in' },
             { as: 'doubled', select: 'in', columns: [{ name: 'd', value: { fn: '*', args: [{ column: 'a', of: 'in' }, { value: 2 }] } }, { name: 'k', value: { value: 'x' } }] },
@@ -317,12 +333,13 @@ _rg AS (SELECT ${ks.join(', ')}, COUNT(*) AS n FROM _r WHERE ${ks.map(k => `${k}
         VALUES.forEach((a, i) => rows.push([i % 3 ? 'x' : i % 2 ? 'y' : null, a, i % 4]));
         rows.push(['x', 1.5, 0], ['x', 2, 0], [null, 'abc', 1]);
         const db = new SQL_.Database();
-        sqliteTable(db, ['g', 'v', 'h'], rows);
+        sqliteTable(db, ['g', 'v', 'h', 'vn'], rows.map(r => [...r, readByRule(r[1])]));
         const aggregates = [
             { name: 'n', fn: 'count' as const }, { name: 'vals', fn: 'countValues' as const, value: { column: 'v' } },
             { name: 's', fn: 'sum' as const, value: { column: 'v' } }, { name: 'lo', fn: 'min' as const, value: { column: 'v' } }, { name: 'hi', fn: 'max' as const, value: { column: 'v' } }
         ];
-        const aggSql = 'COUNT(*), COUNT(v), SUM(v), MIN(v), MAX(v)';
+        // (Sum reads text by the one rule: SQLite sums a column of v already read so)
+        const aggSql = 'COUNT(*), COUNT(v), SUM(vn), MIN(v), MAX(v)';
         // (SQLite's group order is its own: ours is first appearance, so both are put in the groups' order)
         const sqlOf = (by: string) => db.exec(`SELECT ${by ? `${by}, ` : ''}${aggSql}, MIN(rowid) AS f FROM t ${by ? `GROUP BY ${by}` : ''} ORDER BY f`)[0].values.map(r => r.slice(0, -1));
         const e = new QueryEngine();

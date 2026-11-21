@@ -9,8 +9,8 @@
  */
 import type { FunctionName } from './engine-types';
 import {
-    arithmetic, asDouble, asText, castInteger, castNumeric, chars, compareValues, isNumber, makeNumber,
-    num, numericType, Real, truthy, type V
+    arithmetic, asText, castInteger, chars, compareValues, isNumber, makeNumber,
+    num, readNumber, Real, textAsNumber, truthy, type V
 } from './engine-values';
 
 
@@ -40,7 +40,7 @@ export const ARITY: Record<FunctionName, [number, number]> = {
 
 const bool = (b: boolean | null): V => (b === null ? null : b ? 1 : 0);
 
-/** + - * as SQLite: blank if either is blank; text read as its leading number; an integer when both are and it fits. */
+/** + - *: blank if either is blank or not a number (readNumber); an integer when both are and it fits. */
 function arith(a: V, b: V, op: '+' | '-' | '*'): V {
     const x = arithmetic(a);
     const y = arithmetic(b);
@@ -56,10 +56,10 @@ function divide(a: V, b: V): V {
     if (a === null || b === null) return null;
     // NULLIF(y, 0): only a number 0 is 0 (text "0" is not equal to the integer 0)
     if (isNumber(b) && num(b) === 0) return null;
-    const x = asDouble(arithmetic(a));
-    const y = asDouble(arithmetic(b));
-    if (y === 0) return null;   // (text that reads as 0: SQLite gives blank for a division by zero)
-    return makeNumber(x / y, true);
+    const x = arithmetic(a);
+    const y = arithmetic(b);
+    if (x === null || y === null || num(y) === 0) return null;
+    return makeNumber(num(x) / num(y), true);
 }
 
 function compare(a: V, b: V, test: (c: number) => boolean): V {
@@ -122,19 +122,20 @@ function round(x: V, p: V | undefined): V {
     let places = p === undefined ? 0 : castInteger(p)!;
     if (places < 0) places = 0;
     if (places > 30) places = 30;
-    const n = asDouble(x);
+    const read = readNumber(x);
+    if (read === null) return null;
+    const n = num(read);
     if (places === 0) return makeNumber(n < 0 ? -Math.floor(-n + 0.5) : Math.floor(n + 0.5), true);
     // (as SQLite: printf with so many decimals, read back)
     return makeNumber(Number(n.toFixed(Math.min(places, 100))), true);
 }
 
-/** SQLite's ABS: an integer stays one; text wholly a number becomes it; other text its leading number as a real. */
+/** ABS: an integer stays one, a real one; text as readNumber reads it (not a number: blank). */
 function abs(x: V): V {
-    if (x === null) return null;
-    const v = numericType(x);
+    const v = readNumber(x);
+    if (v === null) return null;
     if (typeof v === 'number') return Math.abs(v);
-    if (v instanceof Real) return new Real(Math.abs(v.r));
-    return new Real(Math.abs(asDouble(v)));
+    return new Real(Math.abs(v.r));
 }
 
 /**
@@ -166,13 +167,9 @@ function minMax(args: V[], max: boolean): V {
     return best;
 }
 
-/** The formula's NUMBER: a number as it is; text that (trimmed) holds a digit and only 0-9 . e E + - as that number (CAST AS NUMERIC); else blank. */
+/** NUMBER (and As a number): readNumber. */
 function numberFn(x: V): V {
-    if (x === null) return null;
-    if (isNumber(x)) return x;
-    const t = trimSet(x, ' ', true, true);
-    if (!/[0-9]/.test(t) || /[^0-9.eE+-]/.test(t)) return null;
-    return castNumeric(t);
+    return readNumber(x);
 }
 
 /** Translate values: the first row of the table whose `from` column holds the value (as text) gives its `to` column; not found, the value. */
@@ -242,7 +239,9 @@ export function callFunction(name: FunctionName, a: V[], ctx: FunctionContext): 
             // CASE WHEN n > 0 THEN SUBSTR(t, -(n)) ELSE '' END
             const n = a[1];
             if (n === null || compareValues(n, 0) <= 0) return '';
-            const neg = callFunction('NEG', [n], ctx);
+            // (a count of characters, as LEFT's and SUBSTR's positions: read as SQLite reads it, not by the value rule)
+            const lead = typeof n === 'string' ? textAsNumber(n) : n;
+            const neg = typeof lead === 'number' ? -lead : new Real(-num(lead));
             return substr(a[0], neg, undefined);
         }
         case 'SUBSTR': return substr(a[0], a[1], a.length > 2 ? a[2] : undefined);

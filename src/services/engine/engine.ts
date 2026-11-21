@@ -16,7 +16,7 @@ import {
     FUNCTIONS, ROW_LIMIT, type CompareStats, type Engine, type Expr, type FunctionName, type JoinKind, type JoinStats, type Problem,
     type Query, type ResultId, type RunOptions, type RunOutcome, type Step, type StatsWindow, type Table, type TableWindow
 } from './engine-types';
-import { asDouble, compareValues, fromValue, isNumber, num, Real, toValue, truthy, type V } from './engine-values';
+import { compareValues, fromValue, isNumber, num, readNumber, Real, toValue, truthy, type V } from './engine-values';
 
 /** A column of a step's rows: its name, and the inputs it can be named by (`{ column, of }`). */
 interface Col {
@@ -668,6 +668,7 @@ function joinFacts(left: Relation, right: Relation, lk: ((row: number) => V)[], 
 class Accumulator {
     private rows = 0;
     private values = 0;
+    private summed = 0;
     private intSum = 0;
     private realSum = 0;
     private real = false;
@@ -678,8 +679,12 @@ class Accumulator {
         if (v === null) return;
         this.values++;
         if (fn === 'sum') {
-            if (typeof v === 'number') { this.intSum += v; this.realSum += v; }
-            else { this.real = true; this.realSum += v instanceof Real ? v.r : asDouble(v); }
+            // (text read as a number by the one rule: text that is not a number is left out)
+            const n = readNumber(v);
+            if (n === null) return;
+            this.summed++;
+            if (typeof n === 'number') { this.intSum += n; this.realSum += n; }
+            else { this.real = true; this.realSum += n.r; }
         } else if (fn === 'min' || fn === 'max') {
             const c = this.best === null ? 0 : compareValues(v, this.best);
             if (this.best === null || (fn === 'min' ? c < 0 : c > 0)) this.best = v;
@@ -690,7 +695,7 @@ class Accumulator {
         switch (fn) {
             case 'count': return this.rows;
             case 'countValues': return this.values;
-            case 'sum': return !this.values ? null : this.real ? new Real(this.realSum) : this.intSum;
+            case 'sum': return !this.summed ? null : this.real ? new Real(this.realSum) : this.intSum;
             default: return this.best;
         }
     }

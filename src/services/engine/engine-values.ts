@@ -99,12 +99,21 @@ export function textAsNumber(t: string): number | Real {
     return new Real(n);
 }
 
-/** A value as a number for arithmetic; blank stays blank. */
-export function arithmetic(v: V): number | Real | null {
-    if (v === null) return null;
-    if (typeof v === 'string') return textAsNumber(v);
-    return v;
+/**
+ * A value read as a number: the one rule everywhere in the engine (NUMBER, As a number, arithmetic,
+ * Round, Abs, Floor, Ceil, Sum, a yes/no test). A number as it is; text that is a plain number,
+ * spaces round it allowed, as that number ("0042" → 42, " 1.50 " → 1.5, "1e3" → 1000, "1.0" → 1);
+ * any other text blank ("abc", "12abc", "", "1.2.3"). James, 2026-11-21. SQLite reads a text's
+ * leading number instead ("12abc" → 12, "abc" → 0): engine-types.ts, "Differences from SQLite".
+ */
+export function readNumber(v: V): number | Real | null {
+    if (v === null || isNumber(v)) return v;
+    if (!WHOLE_NUMBER.test(v)) return null;
+    return castNumeric(v.trim()) as number | Real;
 }
+
+/** A value as a number for arithmetic: readNumber. */
+export const arithmetic = (v: V): number | Real | null => readNumber(v);
 
 /**
  * SQLite's CAST(x AS NUMERIC), as NUMBER uses it on text it has already found to be a number: its
@@ -133,29 +142,13 @@ export function castInteger(v: V): number | null {
     return m ? Number(m[1]) : 0;
 }
 
-/**
- * The numeric type SQLite gives a value before some functions (ABS): a number as it is; text that is
- * wholly a number becomes it (an integer when written as one); other text stays text.
- */
-export function numericType(v: V): V {
-    if (v === null || isNumber(v)) return v;
-    if (WHOLE_INTEGER.test(v)) { const n = Number(v.trim()); return Number.isSafeInteger(n) ? n : new Real(n); }
-    if (WHOLE_NUMBER.test(v)) return new Real(Number(v.trim()));
-    return v;
-}
 
-/** A value as SQLite's sqlite3_value_double: a number as it is, text's leading number, else 0. */
-export function asDouble(v: V): number {
-    if (v === null) return 0;
-    if (typeof v === 'string') return num(textAsNumber(v));
-    return num(v);
-}
 
-/** Is a value true, as SQLite's WHERE and CASE WHEN read it: blank is not; a number other than 0 is; text by its leading number. */
+/** Is a value true (a filter, IF, AND, OR, NOT): blank is not known; a number other than 0 is; text as readNumber reads it (not a number: not known). */
 export function truthy(v: V): boolean | null {
-    if (v === null) return null;
-    if (typeof v === 'string') return num(textAsNumber(v)) !== 0;
-    return num(v) !== 0;
+    const n = readNumber(v);
+    if (n === null) return null;
+    return num(n) !== 0;
 }
 
 /**
