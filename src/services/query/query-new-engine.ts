@@ -905,10 +905,11 @@ export interface FullFigures {
 export type SampleFacts = { rows: number; of: number; inEvery: number; byInput: number[] };
 
 /** Distinct's count for a compare held for Results: its rows alike in every column shown, counted from it (no compare again). */
-export async function countAlike(engineIn: QueryEngine | EngineHost, held: PagedResult): Promise<number | undefined> {
+export async function countAlike(engineIn: QueryEngine | EngineHost, held: PagedResult, onRun?: (result: string) => void): Promise<number | undefined> {
     const engine = hostOf(engineIn);
     const by = held.layout.columns.map((_, i) => ({ name: `c${i}`, value: { column: `c${i}` } as Expr }));
-    const out = await engine.run({ steps: [{ as: 'held', from: held.id }, { as: 'alike', group: 'held', by, aggregates: [] }], result: 'alike' });
+    // (its run named as it starts: the user's next request stops it, and it starts again after: undefined when stopped)
+    const out = await engine.run({ steps: [{ as: 'held', from: held.id }, { as: 'alike', group: 'held', by, aggregates: [] }], result: 'alike' }, { onProgress: p => onRun?.(p.result) });
     if (!('result' in out)) return undefined;
     await engine.release(out.result);
     return held.total - out.total;

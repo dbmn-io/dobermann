@@ -102,6 +102,9 @@ function compareSize(spec: QuerySpec, rows: (id: string) => number): { views: nu
     return { views, records, seconds: Math.max(1, Math.round(records / RECORDS_PER_SECOND)), bytes };
 }
 
+/** Distinct's count waits for Results to be left this long after a page (ms): a sort or filter clicked meanwhile goes first. */
+const ALIKE_AFTER_MS = 1000;
+
 /** A view's rows into the engine this many at a time (a file's, read whole: feedEngine). */
 const FEED_ROWS = 20_000;
 /** Search reads this many rows between giving way to the page. */
@@ -306,6 +309,7 @@ export class QueryController {
 
     dispose(): void {
         this.closed = true;
+        if (this.alikeTimer) clearTimeout(this.alikeTimer);
         this.stopLookups?.();
         this.session_.dismissAll();
         this.session?.close();
@@ -1648,6 +1652,13 @@ export class QueryController {
     /** One window of Results' rows, after the search and the sort. */
     private async rows(message: RowsRequest): Promise<void> {
         this.shown = { search: message.search, sort: message.sort, filter: message.filter };
+        // What the user asked for goes first: Distinct's count in the background stops (or doesn't start yet), and starts again after
+        if (this.alikeTimer) { clearTimeout(this.alikeTimer); this.alikeTimer = undefined; this.alikeNext ??= this.alikePending; }
+        if (this.alikeRunning) {
+            this.alikeRunning.host.cancel(this.alikeRunning.id);
+            this.alikeRunning = undefined;
+            this.alikeNext ??= this.alikeAgain;
+        }
         // Each part's time, in the console as "[query-results] …" (the setting is for testing)
         const started = performance.now();
         let at = started;
@@ -1676,10 +1687,13 @@ export class QueryController {
             shown: shown.shown, total: shown.total,
             ...totals
         });
-        // Distinct's count waits for this page: now it is sent, counted
+        // Distinct's count waits for this page, and for Results to be left a moment (clicks in a row never meet it)
         const next = this.alikeNext;
         this.alikeNext = undefined;
-        next?.();
+        if (next) {
+            this.alikePending = next;
+            this.alikeTimer = setTimeout(() => { this.alikeTimer = undefined; this.alikePending = undefined; if (!this.closed) next(); }, ALIKE_AFTER_MS);
+        }
         if (this.engineOn) console.log(`[query-results] rows ${offset}+${limit} (${shown.shown} of ${shown.total}) in ${Math.round(performance.now() - started)} ms: ${laps.join(' · ')} (ms)`);
         this.lap = () => undefined;
     }
@@ -1878,11 +1892,24 @@ export class QueryController {
 
     /** Distinct's count to work out once Results' page is sent (heldFor). */
     private alikeNext: (() => void) | undefined;
+    /** Distinct's count running in the background, and how to start it again when the user's request stops it. */
+    private alikeRunning: { id: string; host: EngineHost } | undefined;
+    private alikeTimer: ReturnType<typeof setTimeout> | undefined;
+    private alikePending: (() => void) | undefined;
+    private alikeAgain: (() => void) | undefined;
 
     /** Distinct's count for a held compare, worked out after Results' first page and then told (still this query). */
     private async alikeLater(spec: QuerySpec, host: EngineHost, held: PagedResult): Promise<void> {
         const key = engineKey(spec);
-        const duplicates = await countAlike(host, held).catch(() => undefined);
+        // (the user's next request stops it, and it starts again once that request's page is sent: rows)
+        this.alikeAgain = () => void this.alikeLater(spec, host, held);
+        let duplicates: number | undefined;
+        try {
+            duplicates = await countAlike(host, held, id => { this.alikeRunning = { id, host }; }).catch(() => undefined);
+        } finally {
+            this.alikeRunning = undefined;
+        }
+        if (duplicates !== undefined) this.alikeAgain = undefined;
         if (duplicates === undefined || this.closed || this.fullFigures?.spec !== key) return;
         this.fullFigures.duplicates = duplicates;
         this.engineDuplicates = duplicates;
