@@ -40,9 +40,9 @@
 #csvBatchContainer.query-page > .report-toolbar, #csvBatchContainer.query-page > .csv-step { padding-left: 10px; }
 /* The query's name, then the slots, on every step in the same place. On Views and Join each
    line says what it is under the name, with a cell under each slot */
-/* + Add a view and + Add a file stand after the last slot, in the slots' row, side by side */
-.query-adds { display: flex; gap: var(--query-gap); justify-self: start; align-self: center; }
-#queryAddBtn, #queryAddFileBtn { white-space: nowrap; margin: 0; }
+/* + Add a view and + Add a file: one above the other, the same width, their words at the left (James, 2026-11-22: "more balanced") */
+.query-adds { display: inline-flex; flex-direction: column; align-items: stretch; gap: 8px; justify-self: start; align-self: start; }
+#queryAddBtn, #queryAddFileBtn { white-space: nowrap; margin: 0; text-align: left; }
 .query-page > .compare-results-tools { column-gap: var(--query-gap); }
 /* Views and Join end clear of the step bar, as Columns does */
 #queryViewsStep, #queryJoinStep { padding-bottom: 25px; }
@@ -287,9 +287,9 @@
 .query-add-view-pick { display: inline-flex; align-items: center; gap: 6px; }
 .query-add-note { margin: 0; }
 /* A view still being read: its count a ghost, pulsing, until its rows are in */
-.query-ghost { display: inline-block; min-width: 70px; border-radius: 3px; color: var(--vscode-descriptionForeground); background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--vscode-focusBorder) 22%, transparent), transparent); background-size: 200% 100%; animation: query-ghost 1.2s ease-in-out infinite; padding: 0 6px; text-align: right; }
-@keyframes query-ghost { from { background-position: 100% 0; } to { background-position: -100% 0; } }
-@media (prefers-reduced-motion: reduce) { .query-ghost { animation: none; } }
+/* A view still being read: its Rows cell is the footer's progress bar, the whole cell (dbmn-progress inline) */
+.query-at.is-reading { display: flex; align-items: stretch; padding: 0; }
+.query-read-progress { flex: 1 1 auto; min-width: 0; border-radius: 0; text-align: left; font-family: var(--vscode-font-family); font-weight: 400; }
 /* A slot's name: the text shortens with "…", its run's chip and signs always show */
 .query-page .compare-result-name.query-slot-name { display: flex; align-items: center; gap: 4px; min-width: 0; }
 .query-slot-name .query-slot-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

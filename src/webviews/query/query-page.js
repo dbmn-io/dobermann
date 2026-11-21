@@ -58,6 +58,7 @@
         sources: [],
         sourceViews: {},    // the Views each result's endpoint has, by endpoint id        // endpoints with results and Views, for Add a view
         busy: '',           // work under way, on the step bar
+        reads: {},          // how far each view being read has got, by its id: { rows, done, total } (its Rows cell's bar)
         search: '',
         sort: null,         // { column, dir }
         totals: false,      // a total under each column of numbers
@@ -531,6 +532,7 @@
             views().forEach(v => {
                 const cell = at(v.id, `query-view-cell${className ? ' ' + className : ''}`);
                 const value = text(v);
+                if (value instanceof Element && value.tagName === 'DBMN-PROGRESS') cell.classList.add('is-reading');
                 // One line, shortened with "…" (the whole of it on hover): never into the next lane
                 if (value instanceof Node) cell.appendChild(value); else cell.appendChild(el('span', 'query-view-text', value));
                 cell.title = cell.textContent;
@@ -561,8 +563,8 @@
         };
         const rows = v => {
             if (v.error) return el('span', 'query-warn', v.error);
-            // Still being read: a ghost, pulsing, where its count will be
-            return v.reading ? el('span', 'query-ghost', 'Reading…') : rowsButton(v);
+            // Still being read: the footer's progress bar, the whole cell, where its count will be
+            return v.reading ? readProgress(v) : rowsButton(v);
         };
         box.replaceChildren(
             said('request', 'Request', v => v.file ? `File · ${v.file}` : [v.system, v.request || v.endpointName].filter(Boolean).join(' · ')),
@@ -576,6 +578,36 @@
         applyLanes(box);
         injectIcons(box);
         placeAdds();
+    }
+
+    /** A view still being read, in its Rows cell: the design system's progress bar (as the footer's), how far it has got. */
+    function readProgress(v) {
+        const bar = document.createElement('dbmn-progress');
+        bar.setAttribute('inline', '');
+        bar.className = 'query-read-progress';
+        bar.dataset.readView = v.id;
+        fillRead(bar, ui.reads[v.id]);
+        return bar;
+    }
+    /** Its figures: rows read and the share of its pages; a view waiting its turn says so, with an empty bar. */
+    function fillRead(bar, read) {
+        if (!read) {
+            bar.setAttribute('phase', 'Waiting to be read');
+            bar.setAttribute('value', '0');
+            bar.removeAttribute('busy');
+            bar.removeAttribute('count');
+            return;
+        }
+        bar.setAttribute('phase', 'Reading');
+        if (read.total) {
+            bar.setAttribute('count', `${count(read.rows)} rows`);
+            bar.setAttribute('value', String(Math.round(100 * read.done / read.total)));
+            bar.removeAttribute('busy');
+        } else {
+            bar.removeAttribute('count');
+            bar.removeAttribute('value');
+            bar.setAttribute('busy', '');
+        }
     }
 
     /** The line + Add a view and + Add a file sit on, under the rows (Views and Join): one place each step keeps for them. */
@@ -1683,6 +1715,7 @@
         s.views.forEach(v => {
             const cell = at(v.id, 'query-count');
             if (!v.error && !v.reading) cell.appendChild(rowsButton(v));
+            else if (v.reading) { cell.classList.add('is-reading'); cell.appendChild(readProgress(v)); }
             cell.title = v.file ? `${v.name}: a row per line of ${v.file}` : `${v.name}: a row per ${v.rowBasis === 'root' ? 'response' : v.rowBasis}`;
             totals[v.id] = cell;
         });
@@ -2246,7 +2279,13 @@
                 break;
             case 'query.sourceList': ui.sources = m.results || []; ui.sourceViews = m.views || {}; break;
             case 'query.progress':
-                setBusy(m.total ? `${m.text} · ${count(m.done)} of ${count(m.total)}` : m.text);
+                // (a view's own figures: its Rows cell's bar, where it is on show)
+                if (m.view) {
+                    ui.reads[m.view] = m.read || {};
+                    document.querySelectorAll(`dbmn-progress[data-read-view="${CSS.escape(m.view)}"]`).forEach(bar => fillRead(bar, ui.reads[m.view]));
+                }
+                // (a view's own figures are in its text already: "Reading C1: 25,000 rows (page 50 of 210)")
+                setBusy(m.total && !m.read ? `${m.text} · ${count(m.done)} of ${count(m.total)}` : m.text);
                 // (the Join step says how far a view still arriving has got)
                 if (ui.step === 2 && ui.state && (ui.state.views || []).some(v => v.reading)) renderJoins();
                 break;

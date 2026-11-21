@@ -642,7 +642,7 @@ export class QueryController {
         await this.change(q => { q.sources.push(...sources); }, false);
         this.postState({ reading: true });
         for (let i = 0; i < sources.length; i++) {
-            this.post({ type: 'query.progress', text: `Reading ${sources[i].name}`, done: i, total: sources.length });
+            this.post({ type: 'query.progress', text: `Reading ${sources[i].name}`, done: i, total: sources.length, view: sources[i].id });
             await this.load(sources[i]);
             if (this.closed) return;
             // (each one's rows show on its slot as it is read)
@@ -1219,8 +1219,8 @@ export class QueryController {
     /** Read one view's rows from its run's saved responses, through its Console View. */
     private async load(source: QuerySource): Promise<void> {
         if (this.loaded.has(source.id)) return;
-        // (how far it has got, on the footer's line: "Reading C2: 30,000 rows (page 60 of 210)")
-        const say = (text: string) => this.post({ type: 'query.progress', text });
+        // (how far it has got, on the footer's line: "Reading C2: 30,000 rows (page 60 of 210)"; and in its own Rows cell)
+        const say = (text: string, done: number, total: number, rows: number) => this.post({ type: 'query.progress', text, view: source.id, read: { rows, done, total } });
         // On the new engine its rows go into the engine as they are read, piece by piece, never held here
         const feed = this.ports.newCompareEngine?.() ? this.feedEngine(source.id) : undefined;
         const loaded = await this.readView(source, say, feed?.piece);
@@ -1329,7 +1329,7 @@ export class QueryController {
     /** Response files read and made rows of at a time: the page gives way between them, and says how far it has got. */
     private static readonly READ_FILES = 50;
 
-    private async readView(source: QuerySource, said?: (text: string, done: number, total: number) => void, sink?: (columns: string[], rows: QueryRowData[]) => Promise<void>): Promise<LoadedView> {
+    private async readView(source: QuerySource, said?: (text: string, done: number, total: number, rows: number) => void, sink?: (columns: string[], rows: QueryRowData[]) => Promise<void>): Promise<LoadedView> {
         if (source.file) {
             const kept = await this.ports.queryFiles?.read(this.query?.id ?? '', source.id);
             return kept
@@ -1380,7 +1380,7 @@ export class QueryController {
                 read += piece.length;
                 const done = Math.min(files.length, at + step);
                 if (files.length > step) {
-                    said?.(`Reading ${name}: ${read.toLocaleString('en-US')} rows (page ${done.toLocaleString('en-US')} of ${files.length.toLocaleString('en-US')})`, done, files.length);
+                    said?.(`Reading ${name}: ${read.toLocaleString('en-US')} rows (page ${done.toLocaleString('en-US')} of ${files.length.toLocaleString('en-US')})`, done, files.length, read);
                     await new Promise(resolve => setTimeout(resolve, 0));
                 }
             }
@@ -1432,9 +1432,11 @@ export class QueryController {
         const version = ++this.version;
         for (let i = 0; i < query.sources.length; i++) {
             if (this.loaded.has(query.sources[i].id)) continue;
-            this.post({ type: 'query.progress', text: `Reading ${query.sources[i].name}`, done: i, total: query.sources.length });
+            this.post({ type: 'query.progress', text: `Reading ${query.sources[i].name}`, done: i, total: query.sources.length, view: query.sources[i].id });
             await this.load(query.sources[i]);
             if (version !== this.version || this.closed) return;
+            // (each view's count shows as soon as it is read, the next one's bar starts: one at a time, in order)
+            if (query.sources.slice(i + 1).some(s => !this.loaded.has(s.id))) this.postState({ reading: true });
         }
         const tidied = untickClashes(query, id => this.loaded.get(id)?.columns ?? []);
         if (untickBlanks(query, id => this.emptyColumns(id)) || tidied) await saveQuery(this.ports.state, query);
