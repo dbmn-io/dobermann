@@ -6,8 +6,9 @@
  * its kind and which columns differ must be the old Compare's, in its order.
  *
  * Both sides get the same values, as Query loads them (yes/no as the text "true"/"false").
- * Blank keys: the old Compare pairs a blank key with the same blank (null with null, "" with "");
- * the engine follows it, under the manager's ruling, pending James.
+ * James's rule (2026-11-21) parts from the old Compare in two places, so the data here holds
+ * neither: no key repeats in the Baseline, and no key is blank (null). Those are counted by
+ * hand in engine-compare-repeats.test.ts.
  */
 import * as assert from 'assert';
 import { compareAcross } from '../../../services/compare/compare-across';
@@ -48,7 +49,7 @@ function laterRun(base: Input, seed: number, keyParts: number): Input {
 }
 
 const col = (name: string, of: string): Expr => ({ column: name, of });
-const KIND = { changed: 'diff', missing: 'missing', notInBaseline: 'notInBaseline', duplicate: 'duplicate', same: 'same' } as const;
+const KIND = { changed: 'diff', missing: 'missing', notInBaseline: 'notInBaseline', duplicate: 'duplicate (gone in James\'s rule)', same: 'same' } as const;
 
 describe('Query engine compare against the old Compare (reference, the tester\'s)', () => {
     const cases = [
@@ -59,7 +60,10 @@ describe('Query engine compare against the old Compare (reference, the tester\'s
             const pair = makePair({ seed: 41, rows: 300, ...PRESETS[preset] });
             const keys = pair.leftKey;
             const columns = [...pair.left.columns, 'id'];
-            const base: Input = { columns, rows: pair.left.rows.map((row, i) => [...row.map(toEngine), `base:${i}`]) };
+            // No repeats in the Baseline, no blank keys anywhere (where James's rule parts from the old Compare)
+            const seen = new Set<string>();
+            const baseRows = pair.left.rows.filter(row => { const k = JSON.stringify(row.slice(0, keys.length)); if (row.slice(0, keys.length).some(v => v === null) || seen.has(k)) return false; seen.add(k); return true; });
+            const base: Input = { columns, rows: baseRows.map((row, i) => [...row.map(toEngine), `base:${i}`]) };
             const inputs = [base, ...Array.from({ length: places - 1 }, (_, p) => laterRun(base, 100 + p, keys.length))];
             const names = inputs.map((_, p) => (p === 0 ? 'BL' : `C${p}`));
             const compared = columns.filter(c => !keys.includes(c) && c !== 'id');
@@ -96,20 +100,14 @@ describe('Query engine compare against the old Compare (reference, the tester\'s
             }
             assert.deepStrictEqual(wrong.slice(0, 6), [], `${wrong.length} differences from the old Compare`);
             const stats = e.stats(out.result, 'step 1') as CompareStats;
-            assert.deepStrictEqual(stats.status, { same: old.counts.same, diff: old.counts.changed, missing: old.counts.missing, notInBaseline: old.counts.notInBaseline, duplicate: old.counts.duplicate });
-            // The data has every kind in it, so the passes above mean something
-            if (preset === 'everything') for (const k of ['same', 'changed', 'missing', 'notInBaseline', 'duplicate'] as const) assert.ok(old.counts[k] > 0, `the data holds ${k} rows`);
+            assert.deepStrictEqual(stats.status, { same: old.counts.same, diff: old.counts.changed, missing: old.counts.missing, notInBaseline: old.counts.notInBaseline });
+            assert.strictEqual(old.counts.duplicate, 0, 'no repeats in the Baseline');
+            // The data has every kind in it, and later runs repeat keys, so the passes above mean something
+            if (preset === 'everything') {
+                for (const k of ['same', 'changed', 'missing', 'notInBaseline'] as const) assert.ok(old.counts[k] > 0, `the data holds ${k} rows`);
+                assert.ok(old.repeated > 0, 'later runs repeat keys');
+            }
             e.release(out.result);
         });
     }
-
-    it('blank keys (manager\'s ruling, pending James): null pairs with null and "" with "", never with each other', async () => {
-        const e = new QueryEngine();
-        e.load('BL', { columns: ['k', 'v'], rows: [[null, 1], ['', 2], ['a', 3]] });
-        e.load('C1', { columns: ['k', 'v'], rows: [[null, 1], ['', 2], ['a', 3]] });
-        const out = await e.run({ steps: [{ compare: ['BL', 'C1'], on: [[col('k', 'BL')], [col('k', 'C1')]], columns: [{ name: 'v', values: [col('v', 'BL'), col('v', 'C1')] }] }] });
-        assert.ok('result' in out);
-        const got = e.read(out.result, 0, 9);
-        assert.deepStrictEqual(got.rows.map(r => r[got.columns.indexOf('status')]), ['same', 'same', 'same']);
-    });
 });

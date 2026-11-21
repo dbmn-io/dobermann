@@ -11,9 +11,6 @@
  * - A blank (null) key never matches: each blank-key record is a row of its own (the manager is
  *   confirming blanks with James: that case is marked).
  * Everything else is still the old Compare's rule (engine-vs-old-compare.test.ts).
- *
- * Until the engine takes this rule, these tests are expected to fail: run with
- * DBMN_REPEAT_RULE=1 to see where it stands.
  */
 import * as assert from 'assert';
 import { QueryEngine } from '../../../services/engine/engine';
@@ -37,7 +34,7 @@ async function compare(inputs: Record<string, [Value, Value, string][]>): Promis
     return got.rows.map(r => at.map(i => r[i]));
 }
 
-(process.env.DBMN_REPEAT_RULE ? describe : describe.skip)('Compare: repeated and blank keys, James\'s rule (reference, hand-counted)', () => {
+describe('Compare: repeated and blank keys, James\'s rule (reference, hand-counted)', () => {
     it('Baseline once, C1 three times: three rows, the Baseline compared with each', async () => {
         assert.deepStrictEqual(await compare({
             BL: [['a', 1, 'b0']],
@@ -84,7 +81,7 @@ async function compare(inputs: Record<string, [Value, Value, string][]>): Promis
         ]);
     });
 
-    it('blank keys (confirming with James): never match; each blank-key record is a row of its own', async () => {
+    it('blank keys (manager\'s ruling, confirming with James): never match; each blank-key record is a row of its own', async () => {
         assert.deepStrictEqual(await compare({
             BL: [[null, 1, 'bn'], ['a', 1, 'b0']],
             C1: [[null, 1, 'cn'], ['a', 1, 'c0']],
