@@ -4,6 +4,8 @@
  * Compare in VS Code (#298): a Hub tab running the shared CompareController
  * (src/screens/compare), with VS Code's services as its ports, the same ones the Console uses.
  */
+import { getBackend } from '../../services/dbmn-backend/backend-config';
+import { HubPreferencesService } from '../../services/hub-preferences/hub-preferences.service';
 import * as vscode from 'vscode';
 import { WebviewBase } from '../shared/webview-base';
 import { WebviewConfig, WebviewMessage } from '../shared/types';
@@ -78,7 +80,7 @@ export class CompareWebview extends WebviewBase {
         };
         const wasm = path.join(context.extensionPath, 'dist', 'sql-wasm.wasm');
         this.controller = isQueryId(config.compareId)
-            ? new QueryController(this.session, { ...ports, sql: () => (sqlEngine ??= initSqlJs({ locateFile: () => wasm })), systemName: async id => (await container.resolve<{ getSystem(id: string): Promise<{ name: string } | undefined> }>(ServiceTokens.SystemManager).getSystem(id))?.name, openRunBatch: async (endpoint, chain) => { await vscode.commands.executeCommand('dbmn.runBatch', { endpoint, chain }); }, queryFiles: createVsCodeQueryFiles(), lookups: new LookupTablesStore(vsCodeLookupFolder()), openLookup: async id => { await vscode.commands.executeCommand('dbmn.openLookupTable', id); }, newLookup: async () => { const made = await new LookupTablesStore(vsCodeLookupFolder()).create('Lookup table'); await vscode.commands.executeCommand('dbmn.openLookupTable', made.id); } }, { queryId: config.compareId, start: config.start })
+            ? new QueryController(this.session, { ...ports, sql: () => (sqlEngine ??= initSqlJs({ locateFile: () => wasm })), systemName: async id => (await container.resolve<{ getSystem(id: string): Promise<{ name: string } | undefined> }>(ServiceTokens.SystemManager).getSystem(id))?.name, openRunBatch: async (endpoint, chain) => { await vscode.commands.executeCommand('dbmn.runBatch', { endpoint, chain }); }, queryFiles: createVsCodeQueryFiles(), lookups: new LookupTablesStore(vsCodeLookupFolder()), openLookup: async id => { await vscode.commands.executeCommand('dbmn.openLookupTable', id); }, newLookup: async () => { const made = await new LookupTablesStore(vsCodeLookupFolder()).create('Lookup table'); await vscode.commands.executeCommand('dbmn.openLookupTable', made.id); }, newCompareEngine: () => getBackend().isDevBuild && new HubPreferencesService(context.globalState).get().newCompareEngine === true }, { queryId: config.compareId, start: config.start })
             : new CompareController(this.session, ports, config);
     }
 

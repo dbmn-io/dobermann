@@ -1534,7 +1534,8 @@
                         const which = kind === 'oneToOne' ? 'oneToOne'
                             : kind === 'manyToMany' ? (isBase ? (st && st.keys.manyToOne ? 'manyToOne' : 'manyToMany') : (st && st.keys.oneToMany ? 'oneToMany' : 'manyToMany'))
                                 : isBase ? 'onlyBase' : 'onlyOther';
-                        if (join && st) {
+                        // (on the new engine the values behind a count are not read yet: a count, not a dead button)
+                        if (join && st && !ui.state.onEngine) {
                             const show = el('button', 'query-count-btn', cell.textContent);
                             show.type = 'button';
                             show.dataset.side = isBase ? 'left' : 'right';
@@ -1645,6 +1646,15 @@
         const first = s.views[0];
         const lines = [line('query-total-line', totals, [first.error ? errorLine(first) : null], [el('span', 'query-lead-text', 'Rows in each view')]), addsLine('join')];
         if (s.views.length < 2) lines.push(el('p', 'compare-match-empty', 'Add another view to join.'));
+        // "New compare engine (testing)" on, and this query more than a compare of runs: it says it runs on SQLite, and why
+        if (s.engineNote) {
+            const note = document.createElement('dbmn-status');
+            note.className = 'query-engine-note';
+            note.setAttribute('inline', '');
+            note.setAttribute('tone', 'warn');
+            note.textContent = s.engineNote;
+            lines.unshift(note);
+        }
         // The views in a compare join as one: one band, first; the joins that bring views in to show below it
         if (s.joins.some(j => j.kind === 'compare')) lines.push(compareBand());
         // A join a view at a time, as SQL is written: every join made, and the first still to make; the views after it wait

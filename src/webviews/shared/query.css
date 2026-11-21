@@ -351,3 +351,5 @@
 }
 @media (prefers-reduced-motion: reduce) { .query-counting-stage::after { animation: none; border-style: dashed; } }
 .query-counting-time { color: var(--vscode-descriptionForeground); font-size: 11px; }
+/* "New compare engine (testing)": the Join step's line when a query runs on SQLite instead */
+.query-engine-note { display: block; margin: 0 0 8px; }

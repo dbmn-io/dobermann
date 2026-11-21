@@ -34,6 +34,8 @@ import { appLog } from './app-log';
 import { runHistory } from '../../../src/screens/logs/run-history';
 import { LogReader } from '../../../src/services/logging/log-reader';
 import { isQueryId } from '../../../src/services/query/query-store';
+import { getBackend } from '../../../src/services/dbmn-backend/backend-config';
+import { HubPreferencesService } from '../../../src/services/hub-preferences/hub-preferences.service';
 import initSqlJs from 'sql.js';
 import sqlWasmUrl from 'sql.js/dist/sql-wasm.wasm?url';
 
@@ -178,7 +180,7 @@ export function webTabs(deps: WebTabDeps): HubTabFactory {
             };
             if (isQueryId(compareId)) {
                 // A query: Compare's ports and SQLite, started from the app's own wasm file
-                const query = new QueryController(session, { ...ports, sql: () => (sqlEngine ??= initSqlJs({ locateFile: () => sqlWasmUrl })), systemName: async id => (await deps.systems.getSystem(id))?.name, openRunBatch: (endpoint, chain) => deps.openBatch(endpoint.id, chain), queryFiles, lookups: new LookupTablesStore(lookupFolder), openLookup: async id => { deps.openLookup(id); }, newLookup: async () => { const made = await new LookupTablesStore(lookupFolder).create('Lookup table'); await deps.openLookup(made.id); } }, { queryId: compareId, start });
+                const query = new QueryController(session, { ...ports, sql: () => (sqlEngine ??= initSqlJs({ locateFile: () => sqlWasmUrl })), systemName: async id => (await deps.systems.getSystem(id))?.name, openRunBatch: (endpoint, chain) => deps.openBatch(endpoint.id, chain), queryFiles, lookups: new LookupTablesStore(lookupFolder), openLookup: async id => { deps.openLookup(id); }, newLookup: async () => { const made = await new LookupTablesStore(lookupFolder).create('Lookup table'); await deps.openLookup(made.id); }, newCompareEngine: () => getBackend().isDevBuild && new HubPreferencesService(deps.state.globalState).get().newCompareEngine === true }, { queryId: compareId, start });
                 const queryScreen = { handle: (m: Record<string, unknown>) => query.handleMessage(m as never), dispose: () => query.dispose() };
                 return { ...tab(buildQueryPage(asset, { queryId: compareId, name: endpointName }), session, queryScreen), name: `Query: ${endpointName}` };
             }
