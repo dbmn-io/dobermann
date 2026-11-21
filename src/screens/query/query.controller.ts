@@ -33,7 +33,7 @@ import { cleanViewName, getQuery, guessViewName, viewNameFromPath, VIEW_NAME_MAX
 import { columnTypes, spread, TYPE_SAMPLE, type ColumnType } from '../../services/query/column-types';
 import { CALC_VIEW, QUERY_JOIN_KINDS } from '../../services/query/query-types';
 import { comparableRuns, type RequestTemplates, type RunHeaderValue } from '../../services/compare/compare-runs';
-import { alignCompareJoins, groupCompare, MAX_COMPARE_VIEWS, queryCompare, runJoin } from '../../services/query/query-compare';
+import { alignCompareJoins, groupCompare, isCompare, MAX_COMPARE_VIEWS, queryCompare, runJoin } from '../../services/query/query-compare';
 import { columnCellDiffs, passes, rowStatus, statusCounts, type RowStatus, type StatusFilter } from '../../services/query/query-status';
 import { lookupsIn } from '../../services/column-functions/column-functions';
 import type { LookupTablesReader, LookupTableSummary } from '../../services/lookup-tables/lookup-tables';
@@ -48,7 +48,7 @@ import type { QueryFileStore } from '../../services/query/query-file-store';
 import * as searchMatcherScript from '../../webviews/shared/search-matcher.js';
 import { sharedScript } from '../../utils/shared-script';
 import { localEngineHost, type EngineHost } from '../../services/engine/engine-host';
-import { compareKeyExprs, fnSampleQueries, formulaExpr, labelExpr, loadLookupInto, loadViewInto, onSqliteLine, queryWithColumns, recordQuery, runOnEngine, TooManyOnEngine, whyNotQueryOnEngine } from '../../services/query/query-new-engine';
+import { compareKeyExprs, eachPage, fnSampleQueries, formulaExpr, labelExpr, loadLookupInto, loadViewInto, onSqliteLine, pagedTotals, readPage, runPaged, spreadPage, type PagedResult, type ShownSort, queryWithColumns, recordQuery, runOnEngine, TooManyOnEngine, whyNotQueryOnEngine } from '../../services/query/query-new-engine';
 import type { Query as EngineQuery, TableWindow } from '../../services/engine/engine-types';
 
 const { parseSearchExpression, matchesRow } = sharedScript<typeof searchMatcherScript>(searchMatcherScript, 'SearchMatcher');
@@ -138,6 +138,8 @@ export class QueryController {
     private engineRunning: string | undefined;
     private engineStats: Map<string, QueryJoinStats> | undefined;
     private engineNote = '';
+    /** Results' rows kept in the engine (a query not a compare, no search): which query and sort, and the engine they are in. */
+    private paged: { key: string; result: PagedResult; host: EngineHost } | undefined;
     /** Rows alike in every column shown, from the last run: what Distinct would fold. */
     private engineDuplicates = 0;
     private engineOn = false;
@@ -234,11 +236,13 @@ export class QueryController {
         this.extractor = new ResponseDataExtractor({ executionMetadataService: ports.metadata });
         this.chain = new ConsoleChainHandler({
             getTabRowsForChain: async () => {
-                const found = await this.found(this.shown);
-                if (!found || !this.query) return null;
-                const headings = columnHeadings(found.result.columns, new Map(this.query.sources.map(s => [s.id, s.name])));
+                const shown = await this.shownRows(this.shown);
+                if (!shown || !this.query) return null;
+                const headings = columnHeadings(shown.columns, new Map(this.query.sources.map(s => [s.id, s.name])));
+                const data: Record<string, unknown>[] = [];
+                await shown.each(rows => { for (const row of rows) data.push(Object.fromEntries(row.map((value, c) => [`c${c}`, value]))); });
                 return {
-                    data: found.indices.map(i => Object.fromEntries(found.result.rows[i].map((value, c) => [`c${c}`, value]))),
+                    data,
                     columns: headings.map((name, c) => ({ id: `c${c}`, name, type: 'string' as const, sortable: false, filterable: false }))
                 };
             },
@@ -1199,13 +1203,17 @@ export class QueryController {
                     let said = '';
                     const words: Record<string, string> = { Starting: 'Starting', Done: 'Reading the rows' };
                     let result: QueryResult | undefined;
+                    let kept: PagedResult | undefined;
+                    const onStage = (stg: string) => {
+                        // (the engine names a view by its id: said by its name)
+                        const named = spec.views.reduce((t, v) => t.split(v.id).join(v.run || v.name), stg);
+                        const text = words[stg] ?? (stg.startsWith('Comparing') ? `Comparing ${spec.views.length} views` : named);
+                        if (text !== said) { said = text; this.post({ type: 'query.counting', since, stage: text }); }
+                    };
                     try {
-                        result = await this.engineRead(spec, engineKey(spec), stg => {
-                            // (the engine names a view by its id: said by its name)
-                            const named = spec.views.reduce((t, v) => t.split(v.id).join(v.run || v.name), stg);
-                            const text = words[stg] ?? (stg.startsWith('Comparing') ? `Comparing ${spec.views.length} views` : named);
-                            if (text !== said) { said = text; this.post({ type: 'query.counting', since, stage: text }); }
-                        });
+                        // Not a compare: its rows stay in the engine, Results reads them a page at a time
+                        if (this.pagedOn(spec, '')) kept = await this.engineKept(spec, onStage);
+                        else result = await this.engineRead(spec, engineKey(spec), onStage);
                     } catch (error) {
                         // Past the row limit: the joins' figures until then still show, and the step says why
                         if (error instanceof TooManyOnEngine) {
@@ -1215,12 +1223,18 @@ export class QueryController {
                         }
                         throw error;
                     }
-                    if (!result || version !== this.version || this.closed) return;
-                    total = result.rows.length;
+                    if ((!result && !kept) || version !== this.version || this.closed) return;
                     duplicates = this.engineDuplicates;
                     stats = spec.joins.map(j => this.engineStats?.get(j.view) ?? null);
-                    preview = result.rows.slice(0, PREVIEW_ROWS);
-                    resultTypes = columnTypes(spread(result.rows, TYPE_SAMPLE), resultColumns.length);
+                    if (kept && this.engine) {
+                        total = kept.total;
+                        preview = await readPage(this.engine, kept, 0, PREVIEW_ROWS);
+                        resultTypes = columnTypes(await spreadPage(this.engine, kept, TYPE_SAMPLE), resultColumns.length);
+                    } else if (result) {
+                        total = result.rows.length;
+                        preview = result.rows.slice(0, PREVIEW_ROWS);
+                        resultTypes = columnTypes(spread(result.rows, TYPE_SAMPLE), resultColumns.length);
+                    }
                 } else if (session) {
                     if (!await stage('Checking how many rows the joins make')) return;
                     // A join that would make far too many rows is never made: it would fill the page's memory
@@ -1409,24 +1423,22 @@ export class QueryController {
     /** One window of Results' rows, after the search and the sort. */
     private async rows(message: RowsRequest): Promise<void> {
         this.shown = { search: message.search, sort: message.sort, filter: message.filter };
-        const found = await this.found(message);
-        if (found === null) return;
-        if (!found) {
+        const shown = await this.shownRows(message);
+        if (shown === null) return;
+        if (!shown) {
             this.post({ type: 'query.rowsData', seq: message.seq, offset: 0, rows: [], shown: 0, total: 0 });
             return;
         }
-        const { result, indices } = found;
-        void result;
         const offset = Math.max(0, Math.floor(Number(message.offset) || 0));
         const limit = Math.min(1000, Math.max(1, Math.floor(Number(message.limit) || 200)));
+        const page = await shown.page(offset, limit);
         this.post({
             type: 'query.rowsData', seq: message.seq, offset,
-            rows: indices.slice(offset, offset + limit).map(i => result.rows[i]),
-            ...(found.statuses ? { status: indices.slice(offset, offset + limit).map(i => found.statuses![i]), index: indices.slice(offset, offset + limit) } : {}),
+            ...page,
             // Every control's counts: among the rows the search finds, and among them all
-            ...(found.statuses && offset === 0 ? { counts: statusCounts(found.statuses, found.searched ?? indices), countsAll: statusCounts(found.statuses, found.statuses.map((_, i) => i)) } : {}),
-            shown: indices.length, total: result.rows.length,
-            ...(message.totals && offset === 0 ? this.totals(result, indices) : {})
+            ...(shown.counts && offset === 0 ? shown.counts : {}),
+            shown: shown.shown, total: shown.total,
+            ...(message.totals && offset === 0 ? await shown.totals() : {})
         });
     }
 
@@ -1497,7 +1509,7 @@ export class QueryController {
         const query = this.query;
         const files = this.ports.files;
         if (!files) throw new Error('This app cannot save files.');
-        const found = query ? await this.found(message) : undefined;
+        const found = query ? await this.shownRows(message) : undefined;
         if (!query || !found) {
             this.post({ type: 'query.exported' });
             if (found !== null) throw new Error('Nothing to export yet.');
@@ -1509,18 +1521,20 @@ export class QueryController {
             this.post({ type: 'query.exported' });
             return;
         }
-        const { result, indices } = found;
         const column = (id: string, heading: string): ColumnDefinition => ({ id, name: heading, type: 'string', sortable: false, filterable: false });
-        const headings = columnHeadings(result.columns, new Map(query.sources.map(s => [s.id, s.name])));
+        const headings = columnHeadings(found.columns, new Map(query.sources.map(s => [s.id, s.name])));
         const columns = headings.map((h, i) => column(`c${i}`, h));
-        const data = indices.map(i => Object.fromEntries(result.rows[i].map((value, c) => [`c${c}`, value])));
+        // (read a window at a time when the rows are in the engine)
+        const data: Record<string, unknown>[] = [];
+        await found.each(rows => { for (const row of rows) data.push(Object.fromEntries(row.map((value, c) => [`c${c}`, value]))); });
         const search = String(message.search ?? '').trim();
         const about: [string, string][] = [
             ['Query', query.name],
-            ['Rows', search ? `${indices.length} of ${result.rows.length}` : String(result.rows.length)],
+            ['Rows', search ? `${found.shown} of ${found.total}` : String(found.total)],
             ...(search ? [['Search', search] as [string, string]] : []),
             ...query.sources.map(s => [`View ${s.name}`, [s.endpointName, s.system, s.request, s.view, s.environment, s.executedAt].filter(Boolean).join(' · ')] as [string, string]),
-            ...result.key.split('\n').map((line, i) => [i ? '' : 'SQL', line] as [string, string])
+            // (the SQL, when it ran on SQLite)
+            ...(found.key.startsWith('engine:') ? [] : found.key.split('\n').map((line, i) => [i ? '' : 'SQL', line] as [string, string]))
         ];
         const path = await new ConsoleExportService().exportToExcelMultiSheet([
             { sheetName: 'Results', data, columns },
@@ -1529,6 +1543,78 @@ export class QueryController {
         await files.exported?.(path);
         this.ports.toast.info(`Saved ${path.split(/[\\/]/).pop()}`);
         this.post({ type: 'query.exported' });
+    }
+
+    /** Results is remembered as it was left: its search and its sort. */
+    private async remember(search: string, sort: { column: number; dir: string } | null): Promise<void> {
+        const query = this.query;
+        if (!query) return;
+        if ((query.search ?? '') === search && JSON.stringify(query.sort ?? null) === JSON.stringify(sort ? { column: sort.column, dir: sort.dir === 'desc' ? 'desc' : 'asc' } : null)) return;
+        query.search = search || undefined;
+        query.sort = sort ? { column: sort.column, dir: sort.dir === 'desc' ? 'desc' : 'asc' } : null;
+        await saveQuery(this.ports.state, query);
+    }
+
+    /**
+     * Are Results' rows read from the engine a page at a time? On the new engine, a query that is
+     * not a compare (whose status needs every row: the next piece) with no search (the next too).
+     */
+    private pagedOn(spec: QuerySpec, search: string): boolean {
+        return !search && !isCompare(spec.joins) && this.onEngine(spec);
+    }
+
+    /** Results' rows in the engine for this query and sort (run again only when either changes). */
+    private async pagedFor(spec: QuerySpec, sort: ShownSort | null, onStage?: (stage: string) => void): Promise<PagedResult | undefined> {
+        const key = `${engineKey(spec)}\n${JSON.stringify(sort)}`;
+        const host = await this.engineFor(spec);
+        if (this.paged && this.paged.key === key && this.paged.host === host) return this.paged.result;
+        if (this.paged && this.paged.host === host) void host.release(this.paged.result.id);
+        this.paged = undefined;
+        await this.loadEngineLookups(host, lookupsUsed(spec));
+        let result: PagedResult | undefined;
+        try {
+            result = await runPaged(host, spec, sort, p => { this.engineRunning = p.result; onStage?.(p.stage); });
+        } finally {
+            this.engineRunning = undefined;
+        }
+        if (result) this.paged = { key, result, host };
+        return result;
+    }
+
+    /**
+     * Results' rows as the table, its totals, export and Chain read them: kept in the engine and
+     * read a page at a time (pagedOn), or held here after the search and the sort (found).
+     */
+    private async shownRows(message: Pick<RowsRequest, 'search' | 'sort' | 'filter'>): Promise<ShownRows | undefined | null> {
+        const { spec } = this.spec();
+        const search = String(message.search ?? '').trim();
+        if (spec.views.length && this.pagedOn(spec, search)) {
+            const columns = resultColumnRefs(spec);
+            const sort = message.sort && Number.isInteger(message.sort.column) && message.sort.column >= 0 && message.sort.column < columns.length ? { column: message.sort.column, dir: message.sort.dir === 'desc' ? 'desc' as const : 'asc' as const } : null;
+            await this.remember(search, sort);
+            const paged = await this.pagedFor(spec, sort);
+            const host = this.engine;
+            if (!paged || !host) return null;
+            return {
+                columns: paged.layout.columns, key: engineKey(spec), total: paged.total, shown: paged.total,
+                page: async (offset, limit) => ({ rows: await readPage(host, paged, offset, limit) }),
+                each: each => eachPage(host, paged, each),
+                totals: () => pagedTotals(host, paged)
+            };
+        }
+        const found = await this.found(message);
+        if (!found) return found;
+        const { result, indices, statuses } = found;
+        return {
+            columns: result.columns, key: result.key, total: result.rows.length, shown: indices.length,
+            page: async (offset, limit) => ({
+                rows: indices.slice(offset, offset + limit).map(i => result.rows[i]),
+                ...(statuses ? { status: indices.slice(offset, offset + limit).map(i => statuses[i]), index: indices.slice(offset, offset + limit) } : {})
+            }),
+            ...(statuses ? { counts: { counts: statusCounts(statuses, found.searched ?? indices), countsAll: statusCounts(statuses, statuses.map((_, i) => i)) } } : {}),
+            each: async each => { for (let at = 0; at < indices.length; at += 20_000) await each(indices.slice(at, at + 20_000).map(i => result.rows[i]), at); },
+            totals: async () => this.totals(result, indices)
+        };
     }
 
     /**
@@ -1557,15 +1643,7 @@ export class QueryController {
         }
         const search = String(message.search ?? '').trim();
         const sort = message.sort && Number.isInteger(message.sort.column) && message.sort.column < result.columns.length ? message.sort : null;
-        // Results is remembered as it was left
-        const query = this.query;
-        if (query && (query.search ?? '') !== search || JSON.stringify(query?.sort ?? null) !== JSON.stringify(sort)) {
-            if (query) {
-                query.search = search || undefined;
-                query.sort = sort ? { column: sort.column, dir: sort.dir === 'desc' ? 'desc' : 'asc' } : null;
-                await saveQuery(this.ports.state, query);
-            }
-        }
+        await this.remember(search, sort);
         // Compare's filters: Status ticks, a compared column's DIFF pill, relations; a hidden result left out of every status
         const filter: StatusFilter = result.statusOf ? (message.filter ?? {}) : {};
         const statuses = result.statusOf ? result.statusOf(filter.hidden ?? []) : undefined;
@@ -1737,6 +1815,32 @@ export class QueryController {
         return engine;
     }
 
+    /** A query's run on the new engine, its rows kept there for Results' pages (with the figures and the rows alike); undefined when stopped. */
+    private async engineKept(spec: QuerySpec, onStage?: (stage: string) => void): Promise<PagedResult | undefined> {
+        const started = performance.now();
+        let at = started;
+        const laps: string[] = [];
+        const lap = (what: string) => { const t = performance.now(); laps.push(`${what} ${Math.round(t - at)}`); at = t; };
+        const host = await this.engineFor(spec);
+        await this.loadEngineLookups(host, lookupsUsed(spec));
+        lap('views into the engine');
+        let run;
+        try {
+            run = await runOnEngine(host, spec, p => { this.engineRunning = p.result; onStage?.(p.stage); }, { keep: true });
+        } finally {
+            this.engineRunning = undefined;
+        }
+        if (!run?.kept) return undefined;
+        at = performance.now();
+        laps.push(...run.timings.map(([what, ms]) => `${what} ${ms}`));
+        this.engineStats = run.stats;
+        this.engineDuplicates = run.duplicates;
+        if (this.paged && this.paged.host === host) void host.release(this.paged.result.id);
+        this.paged = { key: `${engineKey(spec)}\n${JSON.stringify(null)}`, result: run.kept, host };
+        console.log(`[query-engine] ${run.total} rows of ${spec.views.length} views, kept in the engine, in ${Math.round(performance.now() - started)} ms: ${laps.join(' · ')} (ms)`);
+        return run.kept;
+    }
+
     /** Results from the new engine (run again only when the query changes): undefined when Stop stopped it. */
     private async engineRead(spec: QuerySpec, key: string, onStage?: (stage: string) => void): Promise<QueryResult | undefined> {
         if (this.result?.key === key) return this.result;
@@ -1891,6 +1995,19 @@ function compareSides(spec: QuerySpec, label: (view: string) => string): (column
 /** Each run's first run, by id: what keeps a run's key its first run's. */
 function runsOf(query: SavedQuery): Map<string, string> {
     return new Map(query.sources.filter(s => s.runOf).map(s => [s.id, s.runOf as string]));
+}
+
+/** Results' rows as their readers see them, wherever the rows are (shownRows). */
+interface ShownRows {
+    columns: ColumnRef[];
+    /** What ran: the SQL, or "engine:" and the query. */
+    key: string;
+    total: number;
+    shown: number;
+    page(offset: number, limit: number): Promise<{ rows: unknown[][]; status?: RowStatus[]; index?: number[] }>;
+    counts?: { counts: ReturnType<typeof statusCounts>; countsAll: ReturnType<typeof statusCounts> };
+    each(each: (rows: unknown[][], offset: number) => void | Promise<void>): Promise<void>;
+    totals(): Promise<{ totals: (number | null)[]; places: number[] }>;
 }
 
 interface QueryResult {

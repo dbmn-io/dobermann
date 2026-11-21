@@ -127,8 +127,13 @@ export type Step =
      * text read as a number), min and max (blank left out; numbers before text).
      */
     | { as?: string; group: string; by: { name: string; value: Expr }[]; aggregates: { name: string; fn: Aggregate; value?: Expr }[] }
-    /** Blank first, then numbers, then text by code points; descending reverses (blanks last); ties keep their order. */
-    | { as?: string; sort: string; by: { value: Expr; descending?: boolean }[] };
+    /**
+     * Blank first, then numbers, then text by code points; descending reverses (blanks last); ties
+     * keep their order. `order: 'shown'`: Results' own order instead (a table people read): numbers
+     * by size, text by its letters with numbers inside it by size (a natural, locale order), blank
+     * and empty text last; descending reverses it (blanks first).
+     */
+    | { as?: string; sort: string; by: { value: Expr; descending?: boolean; order?: 'values' | 'shown' }[] };
 
 /** A query: its steps in order, and which step's table is the answer (its `as`, or the last step when left out). */
 export interface Query {

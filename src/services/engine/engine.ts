@@ -470,7 +470,7 @@ export class QueryEngine implements Engine {
     private async sorted(step: Extract<Step, { sort: string }>, base: Relation, input: string, name: string,
         slice: (stage: string, done: number, total: number) => Promise<void>): Promise<Relation> {
         const n = base.rowCount;
-        const keys: { values: V[]; sign: number }[] = [];
+        const keys: { values: V[]; sign: number; cmp: (a: V, b: V) => number }[] = [];
         for (const b of step.by) {
             const f = this.compile(b.value, base, input);
             const values = new Array<V>(n);
@@ -478,14 +478,14 @@ export class QueryEngine implements Engine {
                 if (r && r % SLICE === 0) await slice(`Sorting ${name}`, r, n);
                 values[r] = f(r);
             }
-            keys.push({ values, sign: b.descending ? -1 : 1 });
+            keys.push({ values, sign: b.descending ? -1 : 1, cmp: b.order === 'shown' ? shownOrder() : compareValues });
         }
         const order = new Array<number>(n);
         for (let r = 0; r < n; r++) order[r] = r;
         // (text ranked once instead was measured slower on unique keys, 1.9 s against 1.6 s for 1M: not kept)
         order.sort((x, y) => {
             for (const k of keys) {
-                const c = compareValues(k.values[x], k.values[y]);
+                const c = k.cmp(k.values[x], k.values[y]);
                 if (c) return c * k.sign;
             }
             return x - y;
@@ -699,4 +699,21 @@ class Accumulator {
             default: return this.best;
         }
     }
+}
+
+/**
+ * Results' order (a sort step's `order: 'shown'`): blank and empty text last, numbers by size, any
+ * other pair by its text, letters in a natural locale order with numbers inside it by size: as the
+ * Query screen sorted its rows before (query.controller.ts compareValues).
+ */
+function shownOrder(): (a: V, b: V) => number {
+    const collator = new Intl.Collator(undefined, { numeric: true });
+    const text = (v: V): string => (typeof v === 'string' ? v : v instanceof Real ? String(v.r) : String(v));
+    return (a, b) => {
+        const blankA = a === null || a === '';
+        const blankB = b === null || b === '';
+        if (blankA || blankB) return blankA === blankB ? 0 : blankA ? 1 : -1;
+        if (isNumber(a) && isNumber(b)) return num(a) - num(b);
+        return collator.compare(text(a), text(b));
+    };
 }

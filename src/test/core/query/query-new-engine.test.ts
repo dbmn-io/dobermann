@@ -14,7 +14,7 @@ import { COLUMN_FUNCTIONS, columnFnSql, type ColumnFn } from '../../../services/
 import { QueryEngine } from '../../../services/engine/engine';
 import { remoteEngineHost, serveEngine, type EnginePort } from '../../../services/engine/engine-host';
 import { QuerySession } from '../../../services/query/query-engine';
-import { buildQuery, loadViewInto, runOnEngine, TooManyOnEngine, compareKeyExprs, compareQuery, fnExpr, fnSampleQueries, formulaExpr, labelExpr, loadLookupTable, loadView, queryWithColumns, recordQuery, resultRows, onSqliteLine, runCompareOnEngine, whyNotOnEngine } from '../../../services/query/query-new-engine';
+import { buildQuery, eachPage, loadViewInto, pagedTotals, readPage, runOnEngine, runPaged, TooManyOnEngine, compareKeyExprs, compareQuery, fnExpr, fnSampleQueries, formulaExpr, labelExpr, loadLookupTable, loadView, queryWithColumns, recordQuery, resultRows, onSqliteLine, runCompareOnEngine, whyNotOnEngine } from '../../../services/query/query-new-engine';
 import { formulaSql, parseFormula, FORMULA_FUNCTIONS } from '../../../services/query/formula';
 import type { Value } from '../../../services/engine/engine-types';
 import { compareKeySql, resultColumns } from '../../../services/query/query-sql';
@@ -435,5 +435,49 @@ describe('Query compare on the new engine', () => {
         const stopped = await runOnEngine(host, spec, p => { if (p.done > 0) host.cancel(p.result); });
         assert.strictEqual(stopped, undefined);
         host.close();
+    });
+
+    describe('Results by pages: the same rows, order and totals as Results held them', () => {
+        /** Results' own order, as the Query screen sorted its rows (query.controller.ts compareValues). */
+        const shown = (a: unknown, b: unknown): number => {
+            const blankA = a === null || a === undefined || a === '';
+            const blankB = b === null || b === undefined || b === '';
+            if (blankA || blankB) return blankA === blankB ? 0 : blankA ? 1 : -1;
+            if (typeof a === 'number' && typeof b === 'number') return a - b;
+            return String(a).localeCompare(String(b), undefined, { numeric: true });
+        };
+        const values: unknown[] = [null, '', 'b10', 'B2', 'b2', 'a', 3, 20, 2.5, -1, 'Item 9', 'Item 10', 'é', 'e', 0, '10', '9'];
+        const rows: Row[] = [];
+        values.forEach((v, i) => values.forEach((w, j) => rows.push({ id: i * 100 + j, v, w })));
+        const spec: QuerySpec = { views: [{ id: 't', name: 't', columns: ['id', 'v', 'w'] }], joins: [], select: [] };
+
+        for (const dir of ['asc', 'desc'] as const) {
+            it(`sorted by a column ${dir === 'asc' ? 'up' : 'down'}, ties in their order: page for page as the rows sorted in memory`, async () => {
+                const engine = new QueryEngine();
+                loadView(engine, 't', ['id', 'v', 'w'], rows);
+                const all = (await runOnEngine(engine, spec))!.rows;
+                for (const column of [1, 2]) {
+                    const want = all.map((r, i) => ({ r, i })).sort((a, b) => (dir === 'desc' ? -1 : 1) * shown(a.r[column], b.r[column]) || a.i - b.i).map(x => x.r);
+                    const paged = (await runPaged(engine, spec, { column, dir }))!;
+                    assert.strictEqual(paged.total, want.length);
+                    const got: unknown[][] = [];
+                    for (let at = 0; at < paged.total; at += 37) got.push(...await readPage(engine, paged, at, 37));
+                    assert.deepStrictEqual(got, want, `column ${column}`);
+                }
+            });
+        }
+
+        it('every page in turn (export, Chain) and the totals, as Results worked them out', async () => {
+            const engine = new QueryEngine();
+            const nums: Row[] = Array.from({ length: 2500 }, (_, i) => ({ a: i % 7 ? i * 1.25 : null, b: i % 2 ? 'x' : i, c: i }));
+            loadView(engine, 'n', ['a', 'b', 'c'], nums);
+            const s: QuerySpec = { views: [{ id: 'n', name: 'n', columns: ['a', 'b', 'c'] }], joins: [], select: [] };
+            const paged = (await runPaged(engine, s))!;
+            const seen: unknown[][] = [];
+            await eachPage(engine, paged, page => { seen.push(...page); }, 1000);
+            assert.strictEqual(seen.length, 2500);
+            const sum = nums.reduce((t, r) => t + (typeof r.a === 'number' ? r.a : 0), 0);
+            assert.deepStrictEqual(await pagedTotals(engine, paged), { totals: [Math.round(sum * 100) / 100, null, nums.reduce((t, r) => t + (r.c as number), 0)], places: [2, 0, 0] });
+        });
     });
 });

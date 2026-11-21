@@ -281,7 +281,7 @@ async function joinFigures(spec: QuerySpec, places: string[], get: (step: string
 /** An engine as an EngineHost (tests and the VS Code host hand in the engine itself). */
 const hostOf = (engine: QueryEngine | EngineHost): EngineHost => (engine instanceof QueryEngine ? localEngineHost(engine) : engine);
 
-export async function runOnEngine(engineIn: QueryEngine | EngineHost, spec: QuerySpec, onProgress?: (p: Progress) => void): Promise<(CompareOnEngine & { timings: [string, number][]; duplicates: number }) | undefined> {
+export async function runOnEngine(engineIn: QueryEngine | EngineHost, spec: QuerySpec, onProgress?: (p: Progress) => void, options?: { keep?: boolean }): Promise<(CompareOnEngine & { timings: [string, number][]; duplicates: number; kept?: PagedResult }) | undefined> {
     const timings: [string, number][] = [];
     let at = now();
     const lap = (what: string) => { const t = now(); timings.push([what, Math.round(t - at)]); at = t; };
@@ -301,9 +301,21 @@ export async function runOnEngine(engineIn: QueryEngine | EngineHost, spec: Quer
         }
         throw new Error(out.problems.map(p => p.message).join(' '));
     }
+    let keep = false;
     try {
         const stats = await joinFigures(spec, layout.places, async step => await engine.stats(out.result, step) as JoinStats | CompareStats, (step, st) => plainJoinStats(engine, out.result, step, st));
         lap('statistics');
+        if (options?.keep) {
+            // Its rows stay in the engine, read a page at a time; the rows alike counted by a second run, folded
+            keep = true;
+            let duplicates = 0;
+            if (!spec.distinct) {
+                const folded = await engine.run(buildQuery({ ...spec, distinct: true }).query);
+                if ('result' in folded) { duplicates = out.total - folded.total; await engine.release(folded.result); }
+            }
+            lap('rows alike');
+            return { rows: [], keyValues: [], stats, total: out.total, layout, timings, duplicates, kept: { id: out.result, total: out.total, layout } };
+        }
         const read = await engine.read(out.result, 0, out.total);
         lap('read every row');
         const { rows, keyValues } = resultRows(read.rows, layout);
@@ -315,7 +327,7 @@ export async function runOnEngine(engineIn: QueryEngine | EngineHost, spec: Quer
         lap('rows alike');
         return { rows, keyValues, stats, total: out.total, layout, timings, duplicates };
     } finally {
-        await engine.release(out.result);
+        if (!keep) await engine.release(out.result);
     }
 }
 
@@ -480,4 +492,79 @@ export function fnSampleQueries(view: string, column: string, fns: ColumnFn[], r
 /** The record window's records of one view: the rows whose key is the row's (up to five). */
 export function recordQuery(view: string, key: Expr, value: Value): Query {
     return { steps: [{ from: view }, { filter: 'step 1', where: { fn: '=', args: [key, { value }] } }] };
+}
+
+/* ---------- Results by pages: its rows stay in the engine, read a window at a time ---------- */
+
+/** Results' sort: a column of Results (its place), up or down. */
+export interface ShownSort { column: number; dir: 'asc' | 'desc' }
+
+/** The query Results pages through: buildQuery, then sorted as Results sorts when a column is picked. */
+export function pagedQuery(spec: QuerySpec, sort?: ShownSort | null): { query: Query; layout: CompareLayout } {
+    const { query, layout } = buildQuery(spec);
+    if (!sort || !Number.isInteger(sort.column) || sort.column < 0 || sort.column >= layout.columns.length) return { query, layout };
+    const base = query.result ?? 'rows';
+    return {
+        query: { steps: [...query.steps, { as: 'sorted', sort: base, by: [{ value: { column: `c${sort.column}` }, descending: sort.dir === 'desc', order: 'shown' }] }], result: 'sorted' },
+        layout
+    };
+}
+
+/** A query's rows kept in the engine for Results to page through. */
+export interface PagedResult {
+    id: string;
+    total: number;
+    layout: CompareLayout;
+}
+
+/** Runs a paged query: its result kept (release it when done); undefined when stopped. */
+export async function runPaged(engineIn: QueryEngine | EngineHost, spec: QuerySpec, sort?: ShownSort | null, onProgress?: (p: Progress) => void): Promise<PagedResult | undefined> {
+    const engine = hostOf(engineIn);
+    const { query, layout } = pagedQuery(spec, sort);
+    const out = await engine.run(query, { onProgress });
+    if ('cancelled' in out) return undefined;
+    if ('problems' in out) throw new Error(out.problems.map(p => p.message).join(' '));
+    return { id: out.result, total: out.total, layout };
+}
+
+/** One page of Results from a paged result: the rows as Results shows them (keys left out). */
+export async function readPage(engineIn: QueryEngine | EngineHost, paged: PagedResult, offset: number, limit: number): Promise<unknown[][]> {
+    const window = await hostOf(engineIn).read(paged.id, offset, limit);
+    return resultRows(window.rows, paged.layout).rows;
+}
+
+/** Every row of a paged result, a window at a time (export, Chain, totals): `each` hears each window. */
+export async function eachPage(engineIn: QueryEngine | EngineHost, paged: PagedResult, each: (rows: unknown[][], offset: number) => void | Promise<void>, size = 20_000): Promise<void> {
+    for (let offset = 0; offset < paged.total; offset += size) await each(await readPage(engineIn, paged, offset, size), offset);
+}
+
+/** Rows spread across a paged result, for what kind of values each column holds: 20 windows evenly apart (20 reads, not one per row). */
+export async function spreadPage(engineIn: QueryEngine | EngineHost, paged: PagedResult, count: number): Promise<unknown[][]> {
+    if (paged.total <= count) return readPage(engineIn, paged, 0, count);
+    const windows = 20;
+    const size = Math.ceil(count / windows);
+    const out: unknown[][] = [];
+    for (let i = 0; i < windows; i++) out.push(...await readPage(engineIn, paged, Math.floor((i * (paged.total - size)) / (windows - 1)), size));
+    return out;
+}
+
+/** Results' totals as they were worked out on its rows: per column, the numbers' sum (blank when a value is text), to two places at most. */
+export async function pagedTotals(engineIn: QueryEngine | EngineHost, paged: PagedResult): Promise<{ totals: (number | null)[]; places: number[] }> {
+    const n = paged.layout.columns.length;
+    const sums = new Array<number>(n).fill(0);
+    const any = new Array<boolean>(n).fill(false);
+    const text = new Array<boolean>(n).fill(false);
+    const decimals = new Array<number>(n).fill(0);
+    await eachPage(engineIn, paged, rows => {
+        for (const row of rows) for (let c = 0; c < n; c++) {
+            const v = row[c];
+            if (text[c] || v === null || v === undefined || v === '') continue;
+            if (typeof v !== 'number') { text[c] = true; continue; }
+            sums[c] += v;
+            any[c] = true;
+            if (decimals[c] < 2 && !Number.isInteger(v)) decimals[c] = Math.max(decimals[c], Math.min(2, (String(v).split('.')[1] ?? '').length || 2));
+        }
+    });
+    const places = decimals.map((d, c) => (text[c] ? 0 : d));
+    return { totals: sums.map((sum, c) => (text[c] || !any[c] ? null : Math.round(sum * 10 ** places[c]) / 10 ** places[c])), places };
 }
