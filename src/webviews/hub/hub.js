@@ -1816,7 +1816,7 @@
         const toggle = document.getElementById('newCompareEngine');
         if (!row || !toggle) return;
         row.hidden = !document.querySelector('.hub-header .hub-dev-backend');
-        try { toggle.checked = (vscode.getState() || {}).newCompareEngine === true; } catch { toggle.checked = false; }
+        try { toggle.checked = (vscode.getState() || {}).newCompareEngine !== false; } catch { toggle.checked = true; }
         toggle.addEventListener('change', () => persistState({ newCompareEngine: toggle.checked }));
     }
 
