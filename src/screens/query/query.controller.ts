@@ -1205,7 +1205,7 @@ export class QueryController {
         this.paged = undefined; this.pagedAll = undefined; this.pagedHeld = undefined; this.pagedBase = undefined; this.engineCompare = undefined;
         this.engine = this.ports.engineHost?.() ?? localEngineHost(new QueryEngine(undefined, QUERY_ROW_TESTS), {
             // (Query's export where the engine is this thread's, as the web app's worker makes it)
-            workbook: (engine, args) => resultWorkbook(engine, args[0] as string, args[1] as number, args[2] as string[], args[3] as [string, string][], args[4] as StatusLayout | undefined)
+            workbook: (engine, args) => resultWorkbook(engine, args[0] as string, args[1] as number[], args[2] as string[], args[3] as [string, string][], args[4] as StatusLayout | undefined)
         });
         return this.engine;
     }
@@ -1780,7 +1780,10 @@ export class QueryController {
             this.post({ type: 'query.exported' });
             return;
         }
-        const headings = columnHeadings(found.columns, new Map(query.sources.map(s => [s.id, s.name])));
+        // The columns Results shows: a hidden result's left out, as Results leaves them out
+        const shownStatus = this.pagedStatus(this.spec().spec, message.filter ?? undefined);
+        const keep = found.columns.map((_, i) => i).filter(i => !shownStatus?.hidden.length || !shownStatus.hidden.includes(shownStatus.placeOfColumn(i)));
+        const headings = keep.map(i => columnHeadings(found.columns, new Map(query.sources.map(s => [s.id, s.name])))[i]);
         const search = String(message.search ?? '').trim();
         const about: [string, string][] = [
             ['Query', query.name],
@@ -1794,11 +1797,11 @@ export class QueryController {
         if (found.workbook) {
             // Made in the engine's worker, where the rows are: the page only saves the file
             this.post({ type: 'query.progress', text: `Exporting ${found.shown.toLocaleString('en-US')} rows` });
-            path = await new ConsoleExportService().saveBytes(target, await found.workbook(headings, about));
+            path = await new ConsoleExportService().saveBytes(target, await found.workbook(keep, headings, about));
         } else {
             // (read a window at a time when the rows are in the engine; kept as the rows they are, no object a row)
             const data: unknown[][] = [];
-            await found.each(rows => { for (const row of rows) data.push(row); });
+            await found.each(rows => { for (const row of rows) data.push(keep.map(c => row[c])); });
             path = await new ConsoleExportService().exportArraysToExcel([
                 { sheetName: 'Results', header: headings, rows: data },
                 { sheetName: 'Query', header: ['', ''], rows: about }
@@ -2040,7 +2043,7 @@ export class QueryController {
                 ...(counts ? { counts } : {}),
                 each: each => eachPage(host, paged, each),
                 ...(host.workbook && paged.layout.keyColumnOf.every(k => k === undefined)
-                    ? { workbook: (header: string[], about: [string, string][]) => host.workbook!(paged.id, paged.layout.columns.length, header, about, paged.layout.status) } : {}),
+                    ? { workbook: (keep: number[], header: string[], about: [string, string][]) => host.workbook!(paged.id, keep, header, about, paged.layout.status) } : {}),
                 totals: () => pagedTotals(host, paged)
             };
         }
@@ -2491,7 +2494,7 @@ interface ShownRows {
     each(each: (rows: unknown[][], offset: number) => void | Promise<void>): Promise<void>;
     totals(): Promise<{ totals: (number | null)[]; places: number[] }>;
     /** Where the engine can make it (the web app's worker): the export's workbook, made from the rows where they are. */
-    workbook?(header: string[], about: [string, string][]): Promise<Uint8Array>;
+    workbook?(keep: number[], header: string[], about: [string, string][]): Promise<Uint8Array>;
 }
 
 interface QueryResult {

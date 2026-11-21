@@ -41,19 +41,21 @@ export function statusWords(status: RowStatus): string {
 }
 
 /**
- * Results' export from a result kept in the engine: its first `count` columns, every row (read where it
- * is), as the 'Results' sheet; `about` as the 'Query' sheet. A compare's (`status`, its layout): each
- * row's Status first and the compared columns it differs in last, as the old Compare's file had them.
+ * Results' export from a result kept in the engine: the columns Results shows (`keep`, by place: a hidden
+ * result's left out), every row (read where it is), as the 'Results' sheet; `about` as the 'Query' sheet.
+ * A compare's (`status`, its layout): each row's Status first and the compared columns it differs in
+ * last, as the old Compare's file had them.
  */
-export function resultWorkbook(engine: QueryEngine, result: ResultId, count: number, header: string[], about: [string, string][], status?: StatusLayout): Uint8Array {
+export function resultWorkbook(engine: QueryEngine, result: ResultId, keep: number[], header: string[], about: [string, string][], status?: StatusLayout): Uint8Array {
     const first = engine.read(result, 0, 0);
     const at = new Map(first.columns.map((c, i) => [c, i]));
     const rows: unknown[][] = [];
     for (let from = 0; from < first.total; from += 50_000) {
         for (const row of engine.read(result, from, 50_000).rows) {
-            if (!status) { rows.push(row.slice(0, count)); continue; }
+            const shown = keep.map(c => row[c]);
+            if (!status) { rows.push(shown); continue; }
             const st = statusOfRow((name: string): Value => row[at.get(name) ?? -1] ?? null, status);
-            rows.push([statusWords(st), ...row.slice(0, count), st.groups.join(', ')]);
+            rows.push([statusWords(st), ...shown, st.groups.join(', ')]);
         }
     }
     const head = status ? ['Status', ...header, 'Differs in'] : header;

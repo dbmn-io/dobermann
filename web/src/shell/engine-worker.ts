@@ -15,5 +15,5 @@ import type { StatusLayout } from '../../../src/services/query/query-new-engine'
 const scope = self as unknown as { postMessage(message: unknown): void; addEventListener(type: 'message', listener: (event: { data: unknown }) => void): void };
 serveEngine({ post: message => scope.postMessage(message), listen: handler => scope.addEventListener('message', event => handler(event.data)) }, new QueryEngine(undefined, QUERY_ROW_TESTS), {
     // Query's export made here, where Results' rows are: the page receives only the workbook's bytes
-    workbook: (engine, args) => resultWorkbook(engine, args[0] as string, args[1] as number, args[2] as string[], args[3] as [string, string][], args[4] as StatusLayout | undefined)
+    workbook: (engine, args) => resultWorkbook(engine, args[0] as string, args[1] as number[], args[2] as string[], args[3] as [string, string][], args[4] as StatusLayout | undefined)
 });

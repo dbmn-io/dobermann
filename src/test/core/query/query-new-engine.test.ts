@@ -689,12 +689,12 @@ describe('Query compare on the new engine', () => {
         const handlers: [((m: unknown) => void)[], ((m: unknown) => void)[]] = [[], []];
         const port = (me: 0 | 1): EnginePort => ({ post: message => { const copy = structuredClone(message); setTimeout(() => handlers[1 - me].forEach(h => h(copy)), 0); }, listen: handler => { handlers[me].push(handler); } });
         const engine = new QueryEngine();
-        serveEngine(port(1), engine, { workbook: (e, a) => resultWorkbook(e, a[0] as string, a[1] as number, a[2] as string[], a[3] as [string, string][]) });
+        serveEngine(port(1), engine, { workbook: (e, a) => resultWorkbook(e, a[0] as string, a[1] as number[], a[2] as string[], a[3] as [string, string][]) });
         const host = remoteEngineHost(port(0));
         await host.load('t', { columns: ['a', 'b', 'c'], rows: [['x', 1, null], ['007', 2.5, 'y']] });
         const out = await host.run({ steps: [{ from: 't' }] });
         assert.ok('result' in out);
-        const bytes = await host.workbook!(out.result, 2, ['A', 'B'], [['Query', 'q']]);
+        const bytes = await host.workbook!(out.result, [0, 1], ['A', 'B'], [['Query', 'q']]);
         const book = XLSX.read(bytes, { type: 'array' });
         assert.deepStrictEqual(XLSX.utils.sheet_to_json(book.Sheets.Results, { header: 1, raw: true, defval: null }), [['A', 'B'], ['x', '1'], ['007', '2.5']]);
         assert.deepStrictEqual(book.SheetNames, ['Results', 'Query']);
@@ -711,13 +711,19 @@ describe('Query compare on the new engine', () => {
         const paged = (await runPaged(engine, spec, { column: 1, dir: 'desc' }, undefined, undefined, status))!;
         const page = await readStatusPage(engine, paged, 0, paged.total, status);
         const header = paged.layout.columns.map(c => c.column);
-        const book = XLSX.read(resultWorkbook(engine, paged.id, paged.layout.columns.length, header, [], paged.layout.status), { type: 'array' });
+        const book = XLSX.read(resultWorkbook(engine, paged.id, paged.layout.columns.map((_, i) => i), header, [], paged.layout.status), { type: 'array' });
         const sheet = XLSX.utils.sheet_to_json<unknown[]>(book.Sheets.Results, { header: 1, raw: true, defval: null });
         assert.deepStrictEqual(sheet[0], ['Status', ...header, 'Differs in']);
         assert.strictEqual(sheet.length - 1, paged.total);
         assert.ok(paged.total > 0 && sheet.slice(1).every(r => /DIFF|Missing .*C2/.test(String(r[0]))));
         assert.deepStrictEqual(sheet.slice(1).map(r => r[0]), page.status.map(statusWords));
         assert.deepStrictEqual(sheet.slice(1).map(r => r[r.length - 1] ?? ''), page.status.map(st => st.groups.join(', ')));
+        // A result hidden on Results: its columns not in the file either (only the shown ones kept)
+        const keep = paged.layout.columns.map((c, i) => ({ c, i })).filter(x => x.c.view !== 'c2').map(x => x.i);
+        const hiddenBook = XLSX.read(resultWorkbook(engine, paged.id, keep, keep.map(i => header[i]), [], paged.layout.status), { type: 'array' });
+        const head = XLSX.utils.sheet_to_json<unknown[]>(hiddenBook.Sheets.Results, { header: 1, raw: true, defval: null })[0];
+        assert.strictEqual(head.length, keep.length + 2);
+        assert.ok(keep.length < header.length);
     });
 
     it('a compare held once (runHeld): a sort, a Status filter and the counts from it are the rows, status and counts a whole run gives', async () => {
