@@ -103,9 +103,12 @@ function rootView(responses: unknown[]): CompareView {
 /** A view's rows as loaded: its columns by the names the Console heads them with. */
 interface LoadedView {
     columns: string[];
+    /** Its rows; empty once the new engine holds them (`dropped`): read again from storage when needed (rowsOf). */
     rows: QueryRowData[];
     rowBasis: string;
     error?: string;
+    /** Let go here, the engine has them: how many there were, and a value from each column. */
+    dropped?: { count: number; samples: Map<string, string> };
 }
 
 /** A join pair as the page edits it: one column each side. */
@@ -212,7 +215,7 @@ export class QueryController {
         // (a view not joined yet is read on its own: it goes in too)
         if (extraView && !spec.views.some(v => v.id === extraView)) {
             const loaded = this.loaded.get(extraView);
-            if (loaded) await loadViewInto(engine, extraView, loaded.columns, loaded.rows);
+            if (loaded) await loadViewInto(engine, extraView, loaded.columns, await this.rowsOf(extraView));
         }
         const out = await engine.run(query);
         if ('cancelled' in out) return { columns: [], rows: [], total: 0 };
@@ -441,7 +444,7 @@ export class QueryController {
                 });
                 case 'query.setSql': return await this.setSql(String(message.sql ?? ''));
                 case 'query.latest': return await this.useLatest(String(message.id));
-                case 'query.viewRows': return this.viewRows(String(message.id), String(message.search ?? ''), Number(message.seq));
+                case 'query.viewRows': return await this.viewRows(String(message.id), String(message.search ?? ''), Number(message.seq));
                 // Make Baseline (Results' slot menu, a run of the Baseline's view): the two runs swap their results; what is built on BL stays as it is
                 case 'query.makeBaseline': return await this.change(q => {
                     const run = q.sources.find(x => x.id === String(message.id));
@@ -820,13 +823,13 @@ export class QueryController {
      * A view's own rows, to look through before it is joined: the first of those every word of
      * `search` is found in (any column, capitals ignored).
      */
-    private viewRows(id: string, search: string, seq: number): void {
+    private async viewRows(id: string, search: string, seq: number): Promise<void> {
         const LIMIT = 500;
         const loaded = this.loaded.get(id);
         const columns = loaded?.columns ?? [];
         const words = search.toLowerCase().split(/\s+/).filter(Boolean);
         const text = (value: unknown): string => value === null || value === undefined ? '' : typeof value === 'object' ? JSON.stringify(value) : String(value);
-        const all = loaded?.rows ?? [];
+        const all = await this.rowsOf(id);
         const found = words.length
             ? all.filter(row => { const line = columns.map(c => text(row[c])).join('\n').toLowerCase(); return words.every(w => line.includes(w)); })
             : all;
@@ -904,6 +907,7 @@ export class QueryController {
             const at = c.key.indexOf('\n');
             const view = c.key.slice(0, at);
             const loaded = this.loaded.get(view);
+            if (loaded?.dropped) return { key: c.key, full: fullRef(c), short: shortRef(c, columns), path: c.path, view, sample: loaded.dropped.samples.get(c.key.slice(at + 1)) ?? '' };
             const value = loaded?.rows.find(r => r[c.key.slice(at + 1)] !== null && r[c.key.slice(at + 1)] !== undefined && r[c.key.slice(at + 1)] !== '')?.[c.key.slice(at + 1)];
             return { key: c.key, full: fullRef(c), short: shortRef(c, columns), path: c.path, view, sample: value === undefined ? '' : typeof value === 'object' ? JSON.stringify(value) : String(value) };
         });
@@ -1077,12 +1081,44 @@ export class QueryController {
     /** Read one view's rows from its run's saved responses, through its Console View. */
     private async load(source: QuerySource): Promise<void> {
         if (this.loaded.has(source.id)) return;
+        this.loaded.set(source.id, await this.readView(source));
+    }
+
+    /**
+     * A view's rows, wherever they are: held here, or read again from storage when the new engine
+     * holds them and they were let go here (only for what still needs them all: SQLite, a new
+     * engine, the view's own rows table). Not kept: they are let go again when done.
+     */
+    private async rowsOf(id: string): Promise<QueryRowData[]> {
+        const loaded = this.loaded.get(id);
+        if (!loaded) return [];
+        if (!loaded.dropped) return loaded.rows;
+        const source = this.query?.sources.find(s => s.id === id);
+        return source ? (await this.readView(source)).rows : [];
+    }
+
+    /** How many rows a view has (held, or let go to the engine). */
+    private rowCount(id: string): number {
+        const loaded = this.loaded.get(id);
+        return loaded?.dropped ? loaded.dropped.count : loaded?.rows.length ?? 0;
+    }
+
+    /** The new engine holds this view: its rows are let go here, its counts and samples kept. */
+    private dropRows(id: string): void {
+        const loaded = this.loaded.get(id);
+        if (!loaded || loaded.dropped || loaded.error || !loaded.rows.length) return;
+        this.filledRows(id);
+        loaded.dropped = { count: loaded.rows.length, samples: new Map(loaded.columns.map(c => [c, sample(loaded.rows, c)])) };
+        loaded.rows = [];
+    }
+
+    /** A view's rows read from where they are kept: a file's on this computer, a run's from its results. */
+    private async readView(source: QuerySource): Promise<LoadedView> {
         if (source.file) {
             const kept = await this.ports.queryFiles?.read(this.query?.id ?? '', source.id);
-            this.loaded.set(source.id, kept
+            return kept
                 ? { ...kept, rowBasis: 'line' }
-                : { columns: [], rows: [], rowBasis: 'line', error: 'Pick the file again: its rows are not on this computer.' });
-            return;
+                : { columns: [], rows: [], rowBasis: 'line', error: 'Pick the file again: its rows are not on this computer.' };
         }
         try {
             await this.ports.preloadRun?.(source.executionId);
@@ -1108,9 +1144,9 @@ export class QueryController {
                 for (const c of named) out[c.name] = row[c.id];
                 return out;
             });
-            this.loaded.set(source.id, { columns: named.map(c => c.name), rows, rowBasis: view.rowBasis || 'root' });
+            return { columns: named.map(c => c.name), rows, rowBasis: view.rowBasis || 'root' };
         } catch (error) {
-            this.loaded.set(source.id, { columns: [], rows: [], rowBasis: 'root', error: error instanceof Error ? error.message : String(error) });
+            return { columns: [], rows: [], rowBasis: 'root', error: error instanceof Error ? error.message : String(error) };
         }
     }
 
@@ -1307,7 +1343,7 @@ export class QueryController {
 
     /** A view's columns with no value in any of its rows. */
     private emptyColumns(id: string): string[] {
-        if (!this.loaded.get(id)?.rows.length) return [];
+        if (!this.rowCount(id)) return [];
         return [...this.filledRows(id)].filter(([, n]) => n === 0).map(([column]) => column);
     }
 
@@ -1353,11 +1389,11 @@ export class QueryController {
                     endpointId: s.endpointId, executionId: s.executionId,
                     request: s.request ?? '', system: s.system ?? '', file: s.file?.name ?? '', sheet: s.file?.sheet ?? '',
                     environment: s.environment, executedAt: s.executedAt, rowBasis: loaded?.rowBasis ?? 'root',
-                    rows: loaded?.rows.length ?? 0, error: loaded?.error ?? '', reading: !loaded,
+                    rows: this.rowCount(s.id), error: loaded?.error ?? '', reading: !loaded,
                     waiting: !!now.waiting?.includes(s.id), off: !!s.off,
                     // A run of a view (C1...), or BL for its first run; the first run's id
                     run: runName(query, s.id), runOf: s.runOf ?? '',
-                    columns: (loaded?.columns ?? []).map(name => ({ name, sample: sample(loaded!.rows, name), filled: this.filledRows(s.id).get(name) ?? 0, empty: !!loaded!.rows.length && !this.filledRows(s.id).get(name) }))
+                    columns: (loaded?.columns ?? []).map(name => ({ name, sample: loaded!.dropped ? loaded!.dropped.samples.get(name) ?? '' : sample(loaded!.rows, name), filled: this.filledRows(s.id).get(name) ?? 0, empty: !!this.rowCount(s.id) && !this.filledRows(s.id).get(name) }))
                 };
             }),
             joins: query.joins.map(j => ({
@@ -1414,7 +1450,7 @@ export class QueryController {
         const SQL = await this.ports.sql();
         const session = new QuerySession(SQL, spec);
         for (const view of spec.views) {
-            const rows = this.loaded.get(view.id)?.rows ?? [];
+            const rows = await this.rowsOf(view.id);
             await session.load(view.id, rows, done => this.post({ type: 'query.progress', text: `Loading ${view.name}`, done, total: rows.length }));
             if (version !== this.version || this.closed) { session.close(); return undefined; }
         }
@@ -1848,16 +1884,18 @@ export class QueryController {
     }
 
     private async engineLoad(spec: QuerySpec): Promise<EngineHost> {
-        const key = JSON.stringify(spec.views.map(v => [v.id, v.columns, this.loaded.get(v.id)?.rows.length ?? 0]));
+        const key = JSON.stringify(spec.views.map(v => [v.id, v.columns, this.rowCount(v.id)]));
         if (this.engine && this.engineKey === key) return this.engine;
         const engine = this.engine && this.engineKey.startsWith('[') ? this.engine : (this.ports.engineHost?.() ?? localEngineHost(new QueryEngine(undefined, QUERY_ROW_TESTS)));
         if (engine !== this.engine) { this.engine?.close(); this.engineLookups.clear(); }
         // (only the views not in it yet, or changed, go in again)
         const had = new Map<string, string>((JSON.parse(this.engineKey || '[]') as [string, string[], number][]).map(v => [v[0], JSON.stringify(v)]));
         for (const view of spec.views) {
-            const entry = JSON.stringify([view.id, view.columns, this.loaded.get(view.id)?.rows.length ?? 0]);
+            const entry = JSON.stringify([view.id, view.columns, this.rowCount(view.id)]);
             if (had.get(view.id) === entry && engine === this.engine) continue;
-            await loadViewInto(engine, view.id, view.columns, this.loaded.get(view.id)?.rows ?? []);
+            await loadViewInto(engine, view.id, view.columns, await this.rowsOf(view.id));
+            // (the engine has them now: let go here)
+            this.dropRows(view.id);
         }
         this.engine = engine;
         this.engineKey = key;
