@@ -1092,7 +1092,8 @@ export class QueryController {
     /** Read one view's rows from its run's saved responses, through its Console View. */
     private async load(source: QuerySource): Promise<void> {
         if (this.loaded.has(source.id)) return;
-        this.loaded.set(source.id, await this.readView(source));
+        // (how far it has got, on the footer's line: "Reading C2: 30,000 rows (page 60 of 210)")
+        this.loaded.set(source.id, await this.readView(source, text => this.post({ type: 'query.progress', text })));
     }
 
     /**
@@ -1106,7 +1107,11 @@ export class QueryController {
         if (!loaded.dropped) return loaded.rows;
         const source = this.query?.sources.find(s => s.id === id);
         if (!source) return [];
-        const again = await this.readView(source);
+        // (read again from storage: said where the user is looking, the footer and Results' working line)
+        const again = await this.readView(source, (text, done, total) => {
+            this.post({ type: 'query.progress', text, done, total });
+            this.post({ type: 'query.reading', stage: text, done, total });
+        });
         // (its rows were here before: not finding them now is said, never run as an empty view)
         if (again.error) throw new Error(`${source.name}: ${again.error}`);
         return again.rows;
@@ -1128,7 +1133,10 @@ export class QueryController {
     }
 
     /** A view's rows read from where they are kept: a file's on this computer, a run's from its results. */
-    private async readView(source: QuerySource): Promise<LoadedView> {
+    /** Response files read and made rows of at a time: the page gives way between them, and says how far it has got. */
+    private static readonly READ_FILES = 50;
+
+    private async readView(source: QuerySource, said?: (text: string, done: number, total: number) => void): Promise<LoadedView> {
         if (source.file) {
             const kept = await this.ports.queryFiles?.read(this.query?.id ?? '', source.id);
             return kept
@@ -1143,23 +1151,41 @@ export class QueryController {
                 executionMetadataService: this.ports.metadata,
                 environments: this.ports.environments,
             });
-            const responses = await this.extractor.extractResponses(config.responseFiles, config.responseFileStatusMap, config.responseFileDetails);
             const views = await this.successViews(source.endpointId);
             const saved = views.find(v => v.name === source.view);
             // A view that has gone is said, never swapped for other columns
             if (source.view && !saved) throw new Error(`The view "${source.view}" is no longer in the Console.`);
-            const view = saved ?? rootView(responses);
-            const side = buildCompareSide(responses, view);
-            // Headed as the Console heads them; two columns sharing a header keep their paths
-            const count = new Map<string, number>();
-            side.columns.forEach(c => count.set(c.name, (count.get(c.name) ?? 0) + 1));
-            const named = side.columns.map(c => ({ id: c.id, name: (count.get(c.name) ?? 0) > 1 ? c.id : c.name }));
-            const rows = side.rows.map(row => {
-                const out: QueryRowData = {};
-                for (const c of named) out[c.name] = row[c.id];
-                return out;
-            });
-            return { columns: named.map(c => c.name), rows, rowBasis: view.rowBasis || 'root' };
+            // A run's responses a few files at a time (a batch of 210 pages: never all of them parsed at once,
+            // never one long block on the page): each piece's rows made, its responses let go
+            const files = config.responseFiles;
+            const step = QueryController.READ_FILES;
+            const name = runName(this.query!, source.id) || source.name;
+            let view = saved;
+            let named: { id: string; name: string }[] | undefined;
+            const rows: QueryRowData[] = [];
+            for (let at = 0; at < Math.max(1, files.length); at += step) {
+                const responses = await this.extractor.extractResponses(files.slice(at, at + step), config.responseFileStatusMap, config.responseFileDetails);
+                view ??= rootView(responses);
+                const side = buildCompareSide(responses, view);
+                // (the columns from the first piece with a completed response, as the whole run's first would give them)
+                if (!named && (side.rows.length || at + step >= files.length)) {
+                    // Headed as the Console heads them; two columns sharing a header keep their paths
+                    const count = new Map<string, number>();
+                    side.columns.forEach(c => count.set(c.name, (count.get(c.name) ?? 0) + 1));
+                    named = side.columns.map(c => ({ id: c.id, name: (count.get(c.name) ?? 0) > 1 ? c.id : c.name }));
+                }
+                for (const row of side.rows) {
+                    const out: QueryRowData = {};
+                    for (const c of named ?? []) out[c.name] = row[c.id];
+                    rows.push(out);
+                }
+                const done = Math.min(files.length, at + step);
+                if (files.length > step) {
+                    said?.(`Reading ${name}: ${rows.length.toLocaleString('en-US')} rows (page ${done.toLocaleString('en-US')} of ${files.length.toLocaleString('en-US')})`, done, files.length);
+                    await new Promise(resolve => setTimeout(resolve, 0));
+                }
+            }
+            return { columns: (named ?? []).map(c => c.name), rows, rowBasis: view?.rowBasis || 'root' };
         } catch (error) {
             return { columns: [], rows: [], rowBasis: 'root', error: error instanceof Error ? error.message : String(error) };
         }
