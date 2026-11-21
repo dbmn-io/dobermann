@@ -10,7 +10,7 @@
  * and Stop can reach it (`cancel`).
  */
 import { ARITY, callFunction, type FunctionContext, type LookupSource } from './engine-functions';
-import { StoredTable } from './engine-columns';
+import { StoredTable, TextDictionary } from './engine-columns';
 import {
     FUNCTIONS, ROW_LIMIT, type CompareStats, type Engine, type Expr, type FunctionName, type JoinKind, type JoinStats, type Problem,
     type Query, type ResultId, type RunOptions, type RunOutcome, type Step, type StatsWindow, type Table, type TableWindow
@@ -82,6 +82,8 @@ const count = (n: number): string => n.toLocaleString('en-US');
 
 export class QueryEngine implements Engine {
     private readonly tables = new Map<string, StoredTable>();
+    /** Every table's text, once (engine-columns.ts). */
+    private readonly dict = new TextDictionary();
     private readonly results = new Map<ResultId, Relation>();
     private readonly cancelled = new Set<ResultId>();
     /** Each result's compare and join steps' statistics, by step name (a join's with its values, for windows). */
@@ -101,10 +103,13 @@ export class QueryEngine implements Engine {
 
     /** Start a table (replacing one of the same name). `more`: further pieces follow by `append`; it is loading until one says `last`. */
     load(name: string, table: Table, options?: { more?: boolean }): void {
-        const stored = new StoredTable(name, [...table.columns]);
-        stored.complete = !options?.more;
+        const replaced = this.tables.has(name);
+        const stored = new StoredTable(name, [...table.columns], this.dict);
+        stored.complete = false;
         this.tables.set(name, stored);
+        if (replaced) this.tidy();
         this.put(stored, table);
+        if (!options?.more) this.completed(stored);
     }
 
     append(name: string, table: Table, options?: { last?: boolean }): void {
@@ -114,11 +119,23 @@ export class QueryEngine implements Engine {
             throw new Error(`Engine: the rows for "${name}" have other columns`);
         }
         this.put(stored, table);
-        stored.complete = !!options?.last;
+        if (options?.last) this.completed(stored);
     }
 
     drop(name: string): void {
-        this.tables.delete(name);
+        if (this.tables.delete(name)) this.tidy();
+    }
+
+    /** A table is all in: its columns' spare room goes, and with no table coming in, the dictionary's lookup. */
+    private completed(stored: StoredTable): void {
+        stored.complete = true;
+        stored.cols.forEach(c => c.trim());
+        if ([...this.tables.values()].every(t => t.complete)) this.dict.seal();
+    }
+
+    /** A table gone or replaced: the texts no table uses any more go too, once there are enough of them. */
+    private tidy(): void {
+        if (this.dict.worthCompacting) this.dict.compact([...this.tables.values()].flatMap(t => t.cols));
     }
 
     private put(stored: StoredTable, table: Table): void {
@@ -566,6 +583,7 @@ export class QueryEngine implements Engine {
         }
         const order = new Array<number>(n);
         for (let r = 0; r < n; r++) order[r] = r;
+        // (text ranked once instead was measured slower on unique keys, 1.9 s against 1.6 s for 1M: not kept)
         order.sort((x, y) => {
             for (const k of keys) {
                 const c = compareValues(k.values[x], k.values[y]);
@@ -638,7 +656,7 @@ export class QueryEngine implements Engine {
     bytes(): number {
         let n = 0;
         for (const t of this.tables.values()) for (const c of t.cols) n += c.bytes();
-        return n;
+        return n + this.dict.bytes();
     }
 }
 
