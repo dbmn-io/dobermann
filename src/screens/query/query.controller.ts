@@ -34,7 +34,7 @@ import { columnTypes, spread, TYPE_SAMPLE, type ColumnType } from '../../service
 import { CALC_VIEW, QUERY_JOIN_KINDS } from '../../services/query/query-types';
 import { comparableRuns, type RequestTemplates, type RunHeaderValue } from '../../services/compare/compare-runs';
 import { alignCompareJoins, groupCompare, isCompare, MAX_COMPARE_VIEWS, queryCompare, runJoin } from '../../services/query/query-compare';
-import { columnCellDiffs, passes, rowStatus, statusCounts, type RowStatus, type StatusFilter } from '../../services/query/query-status';
+import { columnCellDiffs, comparedGroups, passes, rowStatus, statusCounts, type RowStatus, type StatusFilter } from '../../services/query/query-status';
 import { lookupsIn } from '../../services/column-functions/column-functions';
 import type { LookupTablesReader, LookupTableSummary } from '../../services/lookup-tables/lookup-tables';
 import type { ColumnRef, QueryFn, QueryJoin, QueryJoinKind, QueryJoinStats, QueryKey, QuerySpec } from '../../services/query/query-types';
@@ -1564,7 +1564,8 @@ export class QueryController {
      * search is the engine's filter by the search box's own rules (query-search.ts).
      */
     private pagedOn(spec: QuerySpec, _search: string): boolean {
-        return !isCompare(spec.joins) && this.onEngine(spec);
+        // (a query with compared columns has a status per row: those stay held until the engine gives it)
+        return !isCompare(spec.joins) && !comparedGroups(resultColumnRefs(spec)).length && this.onEngine(spec);
     }
 
     /** Results' rows in the engine for this query and sort (run again only when either changes). */

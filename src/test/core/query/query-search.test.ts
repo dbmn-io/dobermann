@@ -27,12 +27,24 @@ const rows: Row[] = Array.from({ length: 3000 }, (_, i) => ({
     qty: i % 11 === 0 ? null : (i * 7) % 250,
     price: i % 3 ? (i % 90) + 0.5 : i % 90,
     when: `2026-${String((i % 12) + 1).padStart(2, '0')}-${String((i % 27) + 1).padStart(2, '0')}`,
-    note: i % 9 === 0 ? 'Café crème' : i % 4 === 0 ? 'blue widget, large' : 'red widget'
+    note: i % 9 === 0 ? 'Café crème' : i % 4 === 0 ? 'blue widget, large' : i % 7 === 0 ? 'bulk-upload /inventory/export' : 'red widget',
+    uom: ['EA', 'CS', 'PL', 'A|B'][i % 4],
+    code: i % 13 === 0 ? 'A|B' : i % 6 === 0 ? '1..5' : `C${i % 40}`,
+    // (dates near today, for the relative ones)
+    placed: new Date(Date.now() - (i % 40) * 86_400_000).toISOString().slice(0, 10),
+    flag: i % 2 ? 'true' : 'false'
 }));
-const spec: QuerySpec = { views: [{ id: 'inv', name: 'Inventory', columns: ['sku', 'status', 'qty', 'price', 'when', 'note'] }], joins: [], select: [] };
+const spec: QuerySpec = { views: [{ id: 'inv', name: 'Inventory', columns: ['sku', 'status', 'qty', 'price', 'when', 'note', 'uom', 'code', 'placed', 'flag'] }], joins: [], select: [] };
 const SEARCHES = [
     'widget', 'red widget', 'blue, red', 'hold', '@status=ACTIVE', '@status=hold', '@qty>100', '@qty>=100 @qty<200', '@price=45.5',
-    'SKU-00*', '@sku=SKU-01*', 'café', '@note=blue*', '@status=', '!@status=', '@when>2026-06-01', '@inventory.qty<10', '"large"', 'nothing-here-xyz', '42'
+    'SKU-00*', '@sku=SKU-01*', 'café', '@note=blue*', '@status=', '!@status=', '@when>2026-06-01', '@inventory.qty<10', '"large"', 'nothing-here-xyz', '42',
+    // The design system's review: leaving out, words across - _ . /, contains, any-of, ranges in a value, blanks,
+    // commas with column terms, a column twice, relative dates, yes/no, terms that filter nothing
+    '-widget', 'widget -red', '-"red widget"', 'sku -', 'bulk up', 'inventory export', '"bulk upload"',
+    '@note~blue', '@note!~blue', '@uom=EA|CS', '@uom!=EA|CS', '@code="A|B"', '@code="1..5"',
+    '@qty=10..90', '@qty=..90', '@qty=10..', '@qty!=10..90', '@qty>9', '@status=..H',
+    '@status=""', '@status!=""', '@status=hold, @qty>40', 'crème, @status=hold', '@qty>10 @qty<20',
+    '@placed>7d', '@placed=today', '@placed=2w', '@flag=true', '@status', '@@', '@nothere=1', '@@widget', '-@@widget'
 ];
 
 describe('Results\' search box on the new engine', () => {
@@ -63,7 +75,7 @@ describe('Results\' search box on the new engine', () => {
             counts.push(`${search}=${got.length}`);
         }
         // (the searches find something, most of them, so the comparison is not empty against empty)
-        assert.ok(counts.filter(c => !c.endsWith('=0')).length >= SEARCHES.length - 3, counts.join(' '));
+        assert.ok(counts.filter(c => !c.endsWith('=0')).length >= SEARCHES.length - 5, counts.join(' '));
     }
 
     it('row for row the rows the held search kept, for every kind of search', async () => {
