@@ -20,6 +20,7 @@ export interface EngineHost {
     run(query: Query, options?: { onProgress?: (progress: Progress) => void }): Promise<RunOutcome>;
     cancel(result: ResultId): void;
     read(result: ResultId, from: number, count: number): Promise<TableWindow>;
+    readRows(result: ResultId, rows: number[]): Promise<TableWindow>;
     stats(result: ResultId, step: string, window?: StatsWindow): Promise<JoinStats | CompareStats | Table>;
     release(result: ResultId): Promise<void>;
     /** Ends it (a worker is stopped). */
@@ -35,6 +36,7 @@ export function localEngineHost(engine: QueryEngine = new QueryEngine()): Engine
         run: (query, options) => engine.run(query, options),
         cancel: result => engine.cancel(result),
         read: async (result, from, count) => engine.read(result, from, count),
+        readRows: async (result, rows) => engine.readRows(result, rows),
         stats: async (result, step, window) => engine.stats(result, step, window),
         release: async result => engine.release(result),
         close: () => undefined
@@ -75,6 +77,7 @@ export function remoteEngineHost(port: EnginePort): EngineHost {
         run: (query, options) => call('run', [query], options?.onProgress),
         cancel: result => { port.post({ id: next++, call: 'cancel', args: [result] } satisfies Call); },
         read: (result, from, count) => call('read', [result, from, count]),
+        readRows: (result, rows) => call('readRows', [result, rows]),
         stats: (result, step, window) => call('stats', [result, step, window]),
         release: result => call('release', [result]),
         close: () => { for (const w of waiting.values()) w.reject(new Error('The engine was closed')); waiting.clear(); port.close?.(); }
@@ -94,6 +97,7 @@ export function serveEngine(port: EnginePort, engine: QueryEngine = new QueryEng
                 case 'run': value = await engine.run(args[0] as Query, { onProgress: progress => port.post({ id, progress } satisfies Answer) }); break;
                 case 'cancel': engine.cancel(args[0] as ResultId); return;
                 case 'read': value = engine.read(args[0] as ResultId, args[1] as number, args[2] as number); break;
+                case 'readRows': value = engine.readRows(args[0] as ResultId, args[1] as number[]); break;
                 case 'stats': value = engine.stats(args[0] as ResultId, args[1] as string, args[2] as StatsWindow | undefined); break;
                 case 'release': engine.release(args[0] as ResultId); break;
                 default: throw new Error(`Engine: no call "${call}"`);

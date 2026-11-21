@@ -110,11 +110,11 @@ export type Step =
      * compared column c. `notCompared`: inputs kept in the rows but left out of status, relation and
      * differs (Results' Hide); never the Baseline.
      *
-     * Columns out: every input's columns (named by `of`), then `status` ("same", "diff",
-     * "missing", "notInBaseline": the first that applies, from the end), `relation`
+     * Columns out: every input's columns (named by `of`), then `status` ("diff", "notInBaseline",
+     * "missing", "same": the first that applies; engine-compare.ts), `relation`
      * ("oneToOne", "oneToMany", "onlyBase", "onlyOther"), a `missing:<input>` per input and a
      * `differs:<column>` per compared column, each 1 (yes) or 0. A value differs from the
-     * Baseline's when compareValues says so: exact by type. A row not in the Baseline is not compared.
+     * first present, compared input's (the Baseline's unless it lacks the record) when compareValues says so: exact by type.
      */
     | { as?: string; compare: string[]; on: Expr[][]; columns: { name: string; values: Expr[] }[]; notCompared?: string[] }
     | { as?: string; select: string; columns: { name: string; value: Expr }[] }
@@ -266,6 +266,8 @@ export interface Engine {
     cancel(result: ResultId): void;
     /** A window of a result. */
     read(result: ResultId, from: number, count: number): TableWindow;
+    /** Rows of a result by their numbers, in the order given (a filtered page of rows kept elsewhere: Results' status filter). */
+    readRows(result: ResultId, rows: number[]): TableWindow;
     /** How a join or compare step's rows met (a later piece). */
     stats(result: ResultId, step: string, window?: StatsWindow): JoinStats | CompareStats | Table;
     release(result: ResultId): void;

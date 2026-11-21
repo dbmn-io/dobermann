@@ -19,9 +19,13 @@
  * - A blank key never matches anything: each record with a blank in its key is a row of its own.
  *
  * Rows come in the order their keys first appear: the Baseline's, then each later input's.
- * Everything else is as the old Compare (compare-across.ts): a row the Baseline lacks is not
- * compared; status is "diff" where a compared value differs from the Baseline's (exact by type),
- * else "missing" where a compared input lacks the record, else "same".
+ *
+ * On each row, a compared value is measured against the first input that has the record there and
+ * is compared (the Baseline, unless it lacks the record or is in notCompared), exact by type, as
+ * Results has always measured it (query-status.ts rowStatus); so a row the Baseline lacks is still
+ * compared among the others. Status, the first that applies: "diff" where a value differs, else
+ * "notInBaseline" where the Baseline lacks the record, else "missing" where a compared input
+ * lacks it, else "same".
  */
 import type { CompareStats } from './engine-types';
 import { compareValues, isNumber, num, type V } from './engine-values';
@@ -115,25 +119,27 @@ export async function runCompare(inputs: CompareInput[], columns: number, tick: 
     const relation = new Uint8Array(length);
     const differs = Array.from({ length: columns }, () => new Uint8Array(length));
     const counts = { same: 0, diff: 0, missing: 0, notInBaseline: 0 };
-    const base = inputs[0];
     for (let row = 0; row < length; row++) {
         if (++done % every === 0) await tick(done, work);
         const b = rowAt[0][row];
         let missing = false, changed = false;
         for (let p = 1; p < places; p++) if (!inputs[p].skipped && rowAt[p][row] < 0) missing = true;
         relation[row] = b < 0 ? 3 : missing ? 2 : isRepeated[row] ? 1 : 0;
-        if (b < 0) status[row] = 3;
-        else {
+        // Measured against the first input that has the record and is compared
+        let ref = -1;
+        for (let p = 0; p < places; p++) if (!inputs[p].skipped && rowAt[p][row] >= 0) { ref = p; break; }
+        if (ref >= 0) {
+            const at = rowAt[ref][row];
             for (let c = 0; c < columns; c++) {
-                const bv = base.values[c](b);
-                for (let p = 1; p < places; p++) {
+                const first = inputs[ref].values[c](at);
+                for (let p = ref + 1; p < places; p++) {
                     const r = rowAt[p][row];
                     if (inputs[p].skipped || r < 0) continue;
-                    if (compareValues(bv, inputs[p].values[c](r)) !== 0) { differs[c][row] = 1; changed = true; break; }
+                    if (compareValues(first, inputs[p].values[c](r)) !== 0) { differs[c][row] = 1; changed = true; break; }
                 }
             }
-            status[row] = changed ? 1 : missing ? 2 : 0;
         }
+        status[row] = changed ? 1 : b < 0 ? 3 : missing ? 2 : 0;
         counts[COMPARE_STATUS[status[row]]]++;
     }
 

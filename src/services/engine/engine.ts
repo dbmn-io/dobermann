@@ -537,6 +537,20 @@ export class QueryEngine implements Engine {
         return { columns: rel.cols.map(c => c.shown ?? c.name), rows, total: rel.rowCount };
     }
 
+    readRows(result: ResultId, rows: number[]): TableWindow {
+        const rel = this.results.get(result);
+        if (!rel) throw new Error(`Engine: no result "${result}"`);
+        const n = rel.cols.length;
+        const out: Table['rows'] = [];
+        for (const r of rows) {
+            if (!Number.isInteger(r) || r < 0 || r >= rel.rowCount) continue;
+            const row = new Array(n);
+            for (let c = 0; c < n; c++) row[c] = toValue(rel.value(r, c));
+            out.push(row);
+        }
+        return { columns: rel.cols.map(c => c.shown ?? c.name), rows: out, total: rel.rowCount };
+    }
+
     stats(result: ResultId, step: string, window?: StatsWindow): JoinStats | CompareStats | Table {
         if (!this.results.has(result)) throw new Error(`Engine: no result "${result}"`);
         const found = this.stepStats.get(result)?.get(step);

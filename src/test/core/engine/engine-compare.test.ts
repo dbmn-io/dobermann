@@ -68,7 +68,16 @@ describe('The engine, compare: James\'s rule for repeats and blanks, the old Com
                 const want = old.rowNumbers(row).map((list, p) => (list.length ? `p${p}r${list[0]}` : null));
                 const has = id.map(i => got.rows[row][i]);
                 if (JSON.stringify(want) !== JSON.stringify(has)) wrong.push(`row ${row}: records ${JSON.stringify(has)}, old ${JSON.stringify(want)}`);
-                if (got.rows[row][status] !== kind[old.kindOf(row)]) wrong.push(`row ${row}: ${got.rows[row][status]}, old ${old.kindOf(row)}`);
+                // A row the Baseline lacks is compared among the others (against the first present: Results' rule);
+                // the old Compare left it uncompared, so its kind is worked out here
+                let expected: string = kind[old.kindOf(row)];
+                if (old.kindOf(row) === 'notInBaseline') {
+                    const present = old.rowNumbers(row).map((list, p) => (list.length ? data[p][list[0]] : null)).filter((r): r is Value[] => r !== null);
+                    const at = (r: Value[], c: string) => r[COLUMNS.indexOf(c)];
+                    const differs = compared.some(c => present.slice(1).some(r => !(at(r, c) === at(present[0], c) || (typeof at(r, c) === 'number' && at(r, c) === at(present[0], c)))));
+                    expected = differs ? 'diff' : 'notInBaseline';
+                }
+                if (got.rows[row][status] !== expected) wrong.push(`row ${row}: ${got.rows[row][status]}, expected ${expected} (old ${old.kindOf(row)})`);
                 if (old.kindOf(row) === 'changed') {
                     const diffs = new Set(old.row(row).diffs.flat());
                     compared.forEach(c => {
@@ -79,7 +88,9 @@ describe('The engine, compare: James\'s rule for repeats and blanks, the old Com
             }
             assert.deepStrictEqual(wrong.slice(0, 5), [], `${wrong.length} rows differ from the old Compare`);
             const stats = e.stats(out.result, 'step 1') as CompareStats;
-            assert.deepStrictEqual(stats.status, { same: old.counts.same, diff: old.counts.changed, missing: old.counts.missing, notInBaseline: old.counts.notInBaseline });
+            // (the old counts, but for rows the Baseline lacks that now differ among the others)
+            const moved = got.rows.filter((r, i) => old.kindOf(i) === 'notInBaseline' && r[status] === 'diff').length;
+            assert.deepStrictEqual(stats.status, { same: old.counts.same, diff: old.counts.changed + moved, missing: old.counts.missing, notInBaseline: old.counts.notInBaseline - moved });
         });
     }
 
