@@ -131,6 +131,7 @@
 }
 .dbmn-cell {
     position: relative;
+    box-sizing: border-box;   /* (a <div> cell and a <button> cell the same height) */
     display: flex;
     flex-direction: column;
     justify-content: center;

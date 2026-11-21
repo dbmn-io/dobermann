@@ -1,0 +1,114 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Copyright (C) 2026 Flexion Tech Pty Ltd */
+/* Query's Columns step (query-columns.js), on the lanes grid (dbmn-lanes.css): rows are
+   .dbmn-lanes-row, a view's lane .dbmn-cells, a run's place .dbmn-cell. Only what those don't
+   have is here: the gutter's pieces (grip, Key and fx marks, the name, the Compare icon), the
+   heading and the empty report, and the cells' small differences from the shared ones. */
+
+/* The step's lines: the mock's spacing, under one another */
+.query-cols { gap: 6px; align-content: start; }
+
+/* (Query's lane cells centre their content; a spreadsheet cell's value starts at its left) */
+.query-cols .query-at.dbmn-cell { align-items: stretch; text-align: left; min-height: 30px; }
+.query-cols button.dbmn-cell { cursor: pointer; }
+
+/* The gutter: what the row is, right-aligned so every name ends at the same place */
+.query-cols .dbmn-lanes-gutter { gap: 6px; }
+.query-rep-grip { cursor: grab; color: var(--dbmn-descriptionForeground); letter-spacing: -2px; user-select: none; flex: none; }
+.query-rep-what {
+    flex: none;
+    font-size: 10.5px;
+    font-weight: 600;
+    line-height: 14px;
+    padding: 0 6px;
+    border-radius: 8px;
+    border: 1px solid currentColor;
+}
+.query-rep-what.is-key { color: var(--dbmn-charts-yellow, #cca700); }
+.query-rep-what.is-calc { color: var(--dbmn-charts-yellow, #cca700); border-radius: 3px; font-style: italic; }
+.query-rep-label,
+.query-rep-name {
+    min-width: 0;
+    font-family: var(--dbmn-editor-font-family, monospace);
+    font-size: 12.5px;
+    color: var(--dbmn-foreground);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.query-rep-name {
+    flex: 1;
+    text-align: right;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    padding: 2px 4px;
+}
+.query-rep-name:hover,
+.query-rep-name:focus { border-color: var(--dbmn-input-border, var(--dbmn-panel-border)); background: var(--dbmn-input-background); outline: none; }
+/* The Compare icon's room, on every row, so names end in line whether a row has it or not */
+.query-rep-icon-space { flex: none; display: inline-block; width: 20px; }
+.query-free-title { margin-right: auto; color: var(--dbmn-descriptionForeground); font-size: 12px; }
+.query-free-compare {
+    flex: none;
+    width: 20px;
+    padding: 0;
+    display: inline-flex;
+    justify-content: center;
+    background: none;
+    border: 0;
+    border-radius: 3px;
+    cursor: pointer;
+    color: var(--dbmn-charts-yellow, #cca700);
+}
+/* (the scale as it is in the Join's menu, without the padding that sizes it beside the circles there) */
+.query-free-compare .join-glyph.is-compare { width: 18px; height: 16px; padding: 0; }
+.query-free-compare:hover,
+.query-free-compare:focus-visible { background: color-mix(in srgb, var(--dbmn-focusBorder) 18%, transparent); outline: none; }
+
+/* "In the report": the heading and its hint, over the lanes */
+.query-rep-heading { display: flex; align-items: baseline; gap: 10px; min-width: 0; padding-top: 4px; }
+.query-rep-title { font-weight: 600; color: var(--dbmn-foreground); white-space: nowrap; }
+.query-rep-hint { font-size: 12px; color: var(--dbmn-descriptionForeground); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+
+/* Nothing in the report yet */
+.query-rep-none {
+    flex: 1;
+    padding: 12px 16px;
+    border: 1px dashed var(--dbmn-panel-border, rgba(128, 128, 128, 0.35));
+    border-radius: 4px;
+    color: var(--dbmn-descriptionForeground);
+    font-size: 13px;
+}
+.query-rep-none b { color: var(--dbmn-foreground); }
+
+/* The line between the report and what it doesn't use: + Calculated sits on it */
+.query-rep-rule .dbmn-lanes-rule { flex: 1; }
+.query-rep-rule { margin: 4px 0; }
+.query-calc-add { font-size: 12px; padding: 2px 10px; }
+
+/* A calculated column across the lanes */
+.query-rep-calc { flex: 1; min-height: 30px; border-radius: 3px; }
+.query-rep-calc:hover { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--dbmn-charts-yellow, #cca700) 60%, transparent); }
+
+/* ƒ1 where functions are on: always shown, in the link colour */
+.query-rep-fx { font: italic 600 13px Georgia, serif; color: var(--dbmn-descriptionForeground); background: none; border: 0; cursor: pointer; padding: 0 3px; }
+.query-rep-fx.is-on { font: 600 11px var(--dbmn-editor-font-family, monospace); color: var(--dbmn-textLink-foreground); }
+
+/* Dragging a row: to another place, or onto another row */
+.query-rep-row.is-dragging { opacity: 0.45; }
+.query-rep-row.is-drop-on { box-shadow: inset 0 0 0 2px var(--dbmn-focusBorder); border-radius: 3px; }
+.query-rep-row.is-drop-before { box-shadow: 0 -2px 0 var(--dbmn-focusBorder); }
+
+/* What just came up: lit for a moment */
+.query-rep-row.is-new .dbmn-cell,
+.query-free-row.is-new .dbmn-cell,
+.query-rep-row.is-new .dbmn-lanes-gutter { animation: query-rep-new 1.2s ease-out; }
+@keyframes query-rep-new { from { box-shadow: inset 0 0 0 100px color-mix(in srgb, var(--dbmn-focusBorder) 28%, transparent); } to { box-shadow: inset 0 0 0 100px transparent; } }
+@media (prefers-reduced-motion: reduce) {
+    .query-rep-row.is-new .dbmn-cell,
+    .query-free-row.is-new .dbmn-cell,
+    .query-rep-row.is-new .dbmn-lanes-gutter { animation: none; box-shadow: inset 0 0 0 1px var(--dbmn-focusBorder); }
+}
+
+.query-cols-note { margin: 8px 0 0; }
