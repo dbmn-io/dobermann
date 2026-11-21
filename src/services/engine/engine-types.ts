@@ -253,7 +253,8 @@ export interface RunOptions {
  * compare steps' statistics counted until then, the failing join's included, by step name); or stopped.
  */
 export type RunOutcome =
-    | { result: ResultId; total: number }
+    /** `steps`: how many rows each step made (a count read from the same run, as Distinct's rows alike). */
+    | { result: ResultId; total: number; steps?: Record<string, number> }
     | { problems: Problem[]; stats?: Record<string, JoinStats | CompareStats> }
     | { cancelled: true };
 

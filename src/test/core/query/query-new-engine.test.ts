@@ -12,9 +12,9 @@ import initSqlJs from 'sql.js';
 import type { SqlJsStatic } from 'sql.js';
 import { COLUMN_FUNCTIONS, columnFnSql, type ColumnFn } from '../../../services/column-functions/column-functions';
 import { QueryEngine } from '../../../services/engine/engine';
-import { remoteEngineHost, serveEngine, type EnginePort } from '../../../services/engine/engine-host';
+import { localEngineHost, remoteEngineHost, serveEngine, type EnginePort } from '../../../services/engine/engine-host';
 import { QuerySession } from '../../../services/query/query-engine';
-import { buildQuery, sampleQueries, pagedCounts, readStatusPage, eachPage, loadViewInto, pagedTotals, readPage, runOnEngine, runPaged, TooManyOnEngine, compareKeyExprs, compareQuery, fnExpr, fnSampleQueries, formulaExpr, labelExpr, loadLookupTable, loadView, queryWithColumns, recordQuery, resultRows, onSqliteLine, runCompareOnEngine, whyNotOnEngine } from '../../../services/query/query-new-engine';
+import { buildQuery, resultsKey, sampleQueries, pagedCounts, readStatusPage, eachPage, loadViewInto, pagedTotals, readPage, runOnEngine, runPaged, TooManyOnEngine, compareKeyExprs, compareQuery, fnExpr, fnSampleQueries, formulaExpr, labelExpr, loadLookupTable, loadView, queryWithColumns, recordQuery, resultRows, onSqliteLine, runCompareOnEngine, whyNotOnEngine } from '../../../services/query/query-new-engine';
 import { formulaSql, parseFormula, FORMULA_FUNCTIONS } from '../../../services/query/formula';
 import type { Value } from '../../../services/engine/engine-types';
 import { compareKeySql, resultColumns } from '../../../services/query/query-sql';
@@ -569,5 +569,33 @@ describe('Query compare on the new engine', () => {
         assert.strictEqual(every[raw.length], String(every[0]).toLowerCase());
         const first = await run(any);
         assert.ok(first.some(v => v === null), 'the first row lacks a record somewhere: the everyView one was picked for a reason');
+    });
+
+    it('one run per refresh: the Join step\'s figures, Distinct\'s rows alike and Results\' first page from the same kept result', async () => {
+        const spec = runsSpec();
+        // (the status columns only: many rows alike, so Distinct's count is a real one)
+        spec.select = spec.select.filter(c => c.column === 'status');
+        const data = { bl: runRows(0, 300), c1: runRows(1, 300), c2: runRows(2, 300) };
+        const engine = new QueryEngine();
+        for (const v of spec.views) loadView(engine, v.id, v.columns, data[v.id as keyof typeof data]);
+        // A host that counts its runs
+        const inner = localEngineHost(engine);
+        let runs = 0;
+        const host = { ...inner, run: (...args: Parameters<typeof inner.run>) => { runs++; return inner.run(...args); } };
+        const label = (v: string) => ({ bl: 'BL', c1: 'C1', c2: 'C2' } as Record<string, string>)[v];
+        const status = { filter: undefined, label, placeOfColumn: (i: number) => label(resultColumns(spec)[i].view), hidden: [] as string[] };
+        const sort = { column: 0, dir: 'desc' as const };
+        const kept = (await runOnEngine(host, spec, undefined, { keep: true, sort, status }))!;
+        assert.strictEqual(runs, 1, 'the Join step\'s figures and Distinct\'s count in one run');
+        assert.ok(kept.kept && kept.stats.get('c1'));
+        // Distinct's count: the rows alike in every column shown, as counted on the rows themselves
+        const all = (await runOnEngine(engine, spec))!;
+        assert.strictEqual(kept.duplicates, all.rows.length - new Set(all.rows.map(r => JSON.stringify(r))).size);
+        assert.ok(kept.duplicates > 100, String(kept.duplicates));
+        // Results' first page is the kept result: the same key, the same rows and status as its own run would give
+        assert.strictEqual(resultsKey('q', sort, '', status), resultsKey('q', { column: 0, dir: 'desc' }, '', { ...status, filter: undefined }));
+        const own = (await runPaged(engine, spec, sort, undefined, undefined, status))!;
+        assert.deepStrictEqual(await readStatusPage(host, kept.kept!, 0, 50, status), await readStatusPage(engine, own, 0, 50, status));
+        assert.strictEqual(runs, 1);
     });
 });

@@ -48,7 +48,7 @@ import type { QueryFileStore } from '../../services/query/query-file-store';
 import { localEngineHost, type EngineHost } from '../../services/engine/engine-host';
 import { QueryEngine } from '../../services/engine/engine';
 import { QUERY_ROW_TESTS, searchColumns, searchTest, type SearchArg } from './query-search';
-import { compareKeyExprs, sampleQueries, pagedCounts, readPagedRow, readStatusPage, type PagedStatus, eachPage, fnSampleQueries, formulaExpr, labelExpr, loadLookupInto, loadViewInto, onSqliteLine, pagedTotals, readPage, runPaged, spreadPage, type PagedResult, type ShownSort, queryWithColumns, recordQuery, runOnEngine, TooManyOnEngine, whyNotQueryOnEngine } from '../../services/query/query-new-engine';
+import { compareKeyExprs, resultsKey, sampleQueries, pagedCounts, readPagedRow, readStatusPage, type PagedStatus, eachPage, fnSampleQueries, formulaExpr, labelExpr, loadLookupInto, loadViewInto, onSqliteLine, pagedTotals, readPage, runPaged, spreadPage, type PagedResult, type ShownSort, queryWithColumns, recordQuery, runOnEngine, TooManyOnEngine, whyNotQueryOnEngine } from '../../services/query/query-new-engine';
 import type { Query as EngineQuery, TableWindow } from '../../services/engine/engine-types';
 
 
@@ -1644,7 +1644,9 @@ export class QueryController {
         // A column's place as rowStatus names it: a calculation's side by compareSides, else its view's place
         const sides = compareSides(spec, label);
         const placeOfColumn = (i: number): string => (columns[i].view === CALC_VIEW ? (sides(columns[i].column) ?? / (\d+)$/.exec(columns[i].column)?.[1] ?? columns[i].column) : label(columns[i].view));
-        return { filter, label, placeOfColumn, hidden: filter?.hidden ?? [] };
+        // (a filter with nothing ticked or picked is no filter: the same rows as none)
+        const active = !!filter && (!!filter.kinds || !!filter.columns?.length || !!filter.relations);
+        return { filter: active ? filter : undefined, label, placeOfColumn, hidden: filter?.hidden ?? [] };
     }
 
     /** The paged result before the current one, kept one step longer: a page still being read from it finishes. */
@@ -1658,7 +1660,7 @@ export class QueryController {
 
     /** Results' rows in the engine for this query and sort (run again only when either changes). */
     private async pagedFor(spec: QuerySpec, sort: ShownSort | null, onStage?: (stage: string) => void, search = '', status?: PagedStatus): Promise<PagedResult | undefined> {
-        const key = `${engineKey(spec)}\n${JSON.stringify(sort)}${search ? `\n${search}` : ''}${status ? `\n${JSON.stringify([status.hidden, status.filter ?? null])}` : ''}`;
+        const key = resultsKey(engineKey(spec), sort, search, status);
         const host = await this.engineFor(spec);
         if (this.paged && this.paged.key === key && this.paged.host === host) return this.paged.result;
         this.retirePaged(host);
@@ -1941,6 +1943,10 @@ export class QueryController {
 
     /** A query's run on the new engine, its rows kept there for Results' pages (with the figures and the rows alike); undefined when stopped. */
     private async engineKept(spec: QuerySpec, onStage?: (stage: string) => void, wanted: () => boolean = () => true): Promise<PagedResult | undefined> {
+        const columns = resultColumnRefs(spec);
+        const remembered = this.query?.sort;
+        const keptSort = remembered && Number.isInteger(remembered.column) && remembered.column >= 0 && remembered.column < columns.length ? { column: remembered.column, dir: remembered.dir === 'desc' ? 'desc' as const : 'asc' as const } : null;
+        const keptStatus = this.pagedStatus(spec, undefined);
         const started = performance.now();
         let at = started;
         const laps: string[] = [];
@@ -1951,7 +1957,8 @@ export class QueryController {
         if (!wanted()) return undefined;
         let run;
         try {
-            run = await runOnEngine(host, spec, p => { this.engineRunning = p.result; onStage?.(p.stage); }, { keep: true });
+            // Kept as Results first asks for them (its remembered sort, a compare's status, nothing hidden or filtered): one run for both
+            run = await runOnEngine(host, spec, p => { this.engineRunning = p.result; onStage?.(p.stage); }, { keep: true, sort: keptSort, status: keptStatus });
         } finally {
             this.engineRunning = undefined;
         }
@@ -1961,7 +1968,7 @@ export class QueryController {
         this.engineStats = run.stats;
         this.engineDuplicates = run.duplicates;
         this.retirePaged(host);
-        this.paged = { key: `${engineKey(spec)}\n${JSON.stringify(null)}`, result: run.kept, host };
+        this.paged = { key: resultsKey(engineKey(spec), keptSort, '', keptStatus), result: run.kept, host };
         this.pagedAll = { key: engineKey(spec), total: run.kept.total };
         console.log(`[query-engine] ${run.total} rows of ${spec.views.length} views, kept in the engine, in ${Math.round(performance.now() - started)} ms: ${laps.join(' · ')} (ms)`);
         return run.kept;

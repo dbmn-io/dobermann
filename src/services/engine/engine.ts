@@ -291,7 +291,9 @@ export class QueryEngine implements Engine {
             const answer = query.result ? made.get(query.result)! : last!;
             progress('Done', answer.rowCount, answer.rowCount);
             this.results.set(id, answer);
-            return { result: id, total: answer.rowCount };
+            const steps: Record<string, number> = {};
+            for (const [n, rel] of made) steps[n] = rel.rowCount;
+            return { result: id, total: answer.rowCount, steps };
         } catch (error) {
             const kept = this.stepStats.get(id);
             this.stepStats.delete(id);

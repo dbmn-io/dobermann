@@ -284,12 +284,19 @@ async function joinFigures(spec: QuerySpec, places: string[], get: (step: string
 /** An engine as an EngineHost (tests and the VS Code host hand in the engine itself). */
 const hostOf = (engine: QueryEngine | EngineHost): EngineHost => (engine instanceof QueryEngine ? localEngineHost(engine) : engine);
 
-export async function runOnEngine(engineIn: QueryEngine | EngineHost, spec: QuerySpec, onProgress?: (p: Progress) => void, options?: { keep?: boolean }): Promise<(CompareOnEngine & { timings: [string, number][]; duplicates: number; kept?: PagedResult }) | undefined> {
+export async function runOnEngine(engineIn: QueryEngine | EngineHost, spec: QuerySpec, onProgress?: (p: Progress) => void, options?: { keep?: boolean; sort?: ShownSort | null; status?: PagedStatus }): Promise<(CompareOnEngine & { timings: [string, number][]; duplicates: number; kept?: PagedResult }) | undefined> {
     const timings: [string, number][] = [];
     let at = now();
     const lap = (what: string) => { const t = now(); timings.push([what, Math.round(t - at)]); at = t; };
     const engine = hostOf(engineIn);
-    const { query, layout } = buildQuery(spec);
+    // Kept for Results' pages: as Results first asks for them (its sort, a compare's status columns), and in the
+    // same run the rows alike in every column shown (Distinct's count): one run serves the Join step and Results
+    const built = options?.keep ? pagedQuery(spec, options.sort, undefined, options.status) : buildQuery(spec);
+    const { layout } = built;
+    const shownColumns = layout.columns.map((_, i) => ({ name: `c${i}`, value: { column: `c${i}` } as Expr }));
+    const query: Query = options?.keep && !spec.distinct
+        ? { steps: [...built.query.steps, { as: 'alike', group: 'rows', by: shownColumns, aggregates: [] }], result: built.query.result }
+        : built.query;
     const out = await engine.run(query, { onProgress: p => { onProgress?.(p); } });
     lap('engine run');
     if ('cancelled' in out) return undefined;
@@ -309,14 +316,9 @@ export async function runOnEngine(engineIn: QueryEngine | EngineHost, spec: Quer
         const stats = await joinFigures(spec, layout.places, async step => await engine.stats(out.result, step) as JoinStats | CompareStats, (step, st) => plainJoinStats(engine, out.result, step, st));
         lap('statistics');
         if (options?.keep) {
-            // Its rows stay in the engine, read a page at a time; the rows alike counted by a second run, folded
+            // Its rows stay in the engine, read a page at a time; the rows alike counted in the same run
             keep = true;
-            let duplicates = 0;
-            if (!spec.distinct) {
-                const folded = await engine.run(buildQuery({ ...spec, distinct: true }).query);
-                if ('result' in folded) { duplicates = out.total - folded.total; await engine.release(folded.result); }
-            }
-            lap('rows alike');
+            const duplicates = spec.distinct ? 0 : (out.steps?.rows ?? out.total) - (out.steps?.alike ?? out.steps?.rows ?? out.total);
             return { rows: [], keyValues: [], stats, total: out.total, layout, timings, duplicates, kept: { id: out.result, total: out.total, layout } };
         }
         const read = await engine.read(out.result, 0, out.total);
@@ -799,4 +801,9 @@ export function sampleQueries(spec: QuerySpec, raw: ColumnRef[], extra: ColumnRe
         }
         : queryWithColumns(inner, exprs);
     return { everyView, any };
+}
+
+/** Which kept result Results' rows are: the query, its sort, its search, a compare's hidden views and Status filter. */
+export function resultsKey(specKey: string, sort: ShownSort | null | undefined, search: string, status: PagedStatus | undefined): string {
+    return `${specKey}\n${JSON.stringify(sort ?? null)}${search ? `\n${search}` : ''}${status ? `\n${JSON.stringify([status.hidden, status.filter ?? null])}` : ''}`;
 }
