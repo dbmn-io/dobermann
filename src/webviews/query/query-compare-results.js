@@ -39,7 +39,7 @@
         function tone(place) {
             const v = ctx.views().find(x => (x.run || x.name) === place);
             if (v) return ctx.colour(v.id);
-            return `compare-r${Math.max(0, (Number(place) || 1) - 1) % 4}`;
+            return `dbmn-run-${Math.max(0, (Number(place) || 1) - 1) % 4}`;
         }
         const tag = p => el('span', `compare-tag ${tone(p)}`, p);
 

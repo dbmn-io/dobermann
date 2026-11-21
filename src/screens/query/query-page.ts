@@ -21,7 +21,7 @@ export function buildQueryPage(asset: AssetUrl, config: { queryId: string; name:
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Query: ${attr(config.name)}</title>
-    ${sharedStyleLinks(asset, ['atomic', 'core', 'buttons', 'modals', 'tables', 'tabs', 'toast', 'console', 'data-transformer', 'compare', 'column-drag', 'column-head', 'query', 'dbmn-footer', 'dbmn-table', 'dbmn-name', 'dbmn-functions'])}
+    ${sharedStyleLinks(asset, ['atomic', 'core', 'buttons', 'modals', 'tables', 'tabs', 'toast', 'console', 'data-transformer', 'compare', 'column-drag', 'column-head', 'dbmn-lanes', 'query', 'dbmn-footer', 'dbmn-table', 'dbmn-name', 'dbmn-functions'])}
 </head>
 <body class="editor-slide-in">
     <script src="${asset('shared/button-contrast.js')}"></script>
@@ -37,9 +37,13 @@ export function buildQueryPage(asset: AssetUrl, config: { queryId: string; name:
             <!-- Compare's slots, one per view, first: the match table on Join sits on their grid -->
             <!-- The gutter the lines' headings sit in (Request, View, ... on Views; the joins on Join): the same width on every step, so the slots never move -->
             <!-- ...and it holds the query's name (shared/dbmn-name.js): click it to rename, from the first step on -->
-            <span class="query-lead query-head-lead"><dbmn-name id="queryName" label="Query name" max="30" value="${attr(config.name)}"></dbmn-name><span id="queryKindLabel" class="query-kind-label" role="status"></span></span>
-            <div id="queryViews" class="compare-results-bar" role="group" aria-label="The views joined"></div>
-            <!-- Shown after the last slot (renderTop puts it in the slots' row) -->
+            <!-- The slots' row is a row of the grid every step's lines share (dbmn-lanes): the name in its gutter, a lane per view, its runs under one heading -->
+            <div id="queryTop" class="dbmn-lanes query-top">
+                <div id="queryViews" class="dbmn-lanes-row query-slots" data-line="slots" role="group" aria-label="The views joined">
+                    <span id="queryHeadLead" class="dbmn-lanes-gutter is-name query-lead query-head-lead" data-gutter><dbmn-name id="queryName" label="Query name" max="30" value="${attr(config.name)}"></dbmn-name><span id="queryKindLabel" class="query-kind-label" role="status"></span></span>
+                </div>
+            </div>
+            <!-- On their own line under the rows of Views and Join (placeAdds moves them there) -->
             <span id="queryAdds" class="query-adds">
             <button type="button" class="btn btn-secondary" id="queryAddBtn" data-click="query:add">+ Add a view</button>
             <!-- A file is a view too, with a button of its own: a CSV, or a workbook whose sheets are picked next -->
@@ -84,8 +88,8 @@ export function buildQueryPage(asset: AssetUrl, config: { queryId: string; name:
         <div id="queryViewsStep" class="csv-step hidden">
             <section class="execution-section">
                 <!-- On the slots' grid, as Join is: a line per thing a view says, each view's under its slot -->
-                <div id="queryViewRows" class="query-views"></div>
-                <p class="form-hint" id="queryViewsEmpty">No views yet. Click <strong>+ Add a view</strong> to pick a result, or <strong>+ Add a file</strong> for a CSV or Excel file.</p>
+                <div id="queryViewRows" class="dbmn-lanes query-views"></div>
+                <div id="queryViewsEmpty" class="query-views-empty"><p class="form-hint">No views yet. Click <strong>+ Add a view</strong> to pick a result, or <strong>+ Add a file</strong> for a CSV or Excel file.</p><div class="query-adds-holder" data-adds="empty"></div></div>
             </section>
         </div>
 
@@ -95,13 +99,13 @@ export function buildQueryPage(asset: AssetUrl, config: { queryId: string; name:
              under the view it counts. A count is a button: it lists the values it counts. A join's
              stats fold away -->
         <div id="queryJoinStep" class="csv-step hidden">
-            <div id="queryJoins" class="query-joins"></div>
+            <div id="queryJoins" class="dbmn-lanes query-joins"></div>
         </div>
 
         <!-- Step 3: Columns: every column of every view comes in; untick and order them here -->
         <div id="queryColumnsStep" class="csv-step hidden">
             <!-- On the slots' grid: each view's columns under its slot, ticked to show, each with a value of its own -->
-            <div id="queryColumns" class="query-cols"></div>
+            <div id="queryColumns" class="dbmn-lanes query-cols"></div>
         </div>
 
         <!-- Step 4: Results -->
@@ -134,6 +138,7 @@ export function buildQueryPage(asset: AssetUrl, config: { queryId: string; name:
     ${script('shared/search-words.js')}
     ${script('shared/search-matcher.js')}
     ${script('shared/relation-glyph.js')}
+    ${script('shared/dbmn-lanes.js')}
     ${script('shared/value-formatter.js')}
     ${script('shared/cell-detail.js')}
     ${script('shared/virtual-window.js')}

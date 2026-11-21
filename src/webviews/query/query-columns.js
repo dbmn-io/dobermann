@@ -206,14 +206,10 @@
                     calc.title = 'Click to change the calculation';
                     calc.append(el('span', 'query-rep-formula', row.calc ? (row.calc.expr || row.calc.formula || '') : ''));
                     calc.addEventListener('click', () => ctx.openCalc(row.calc || null));
-                    const first = liveViews()[0];
-                    if (first) {
-                        const c = at(first.id, 'query-rep-cell query-rep-calc-cell');
-                        // (across every lane)
-                        c.style.setProperty('--query-span', String(views().length));
-                        c.appendChild(calc);
-                        cells[first.id] = c;
-                    }
+                    // (across every lane: one cell spanning them, dbmn-lanes-span)
+                    const c = el('div', 'query-rep-cell query-rep-calc-cell');
+                    c.appendChild(calc);
+                    cells.__span = c;
                 } else {
                     liveViews().forEach(v => {
                         const index = row.entries.find(i => list[i].view === v.id);
@@ -231,7 +227,6 @@
                 });
                 const made = line('query-rep-row' + (row.kind === 'calc' ? ' is-calc' : row.entries.length > 1 ? ' is-compared' : ''), cells, [out], lead);
                 made.dataset.repKey = row.key;
-                if (row.kind === 'calc') made.querySelector('.query-cells').classList.add('query-rep-span');
                 // Drag: to another place, or onto another row to compare them as one column
                 made.draggable = true;
                 made.addEventListener('dragstart', e => { if (e.target.closest('input, button, select')) { e.preventDefault(); return; } dragFrom = r; made.classList.add('is-dragging'); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', row.name); });
