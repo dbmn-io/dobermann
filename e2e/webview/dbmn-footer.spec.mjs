@@ -410,6 +410,34 @@ test('the design system page draws every section from the real files, with no er
     await page.locator('#dsSteps .dbmn-steps-item').nth(0).click();
     await expect(page.locator('#dsSteps .dbmn-step[data-step="1"]')).toHaveAttribute('aria-current', 'step');
 
+    // A working line in a page: Stop stops it, Again starts it again; too large has no bar
+    const working = page.locator('#dsWorkingLine');
+    await working.getByRole('button', { name: 'Stop' }).click();
+    await expect(working).toHaveAttribute('phase', 'Stopped');
+    await working.getByRole('button', { name: 'Compare again' }).click();
+    await expect(working).toHaveAttribute('stop', '');
+    await page.locator('[data-click="ds:workingLine"][data-arg="refused"]').click();
+    await expect(working.locator('.dbmn-progress-fill')).toBeHidden();
+    // Figures from the first 1,000 records: marked, then the true ones in the same cells
+    const sampled = page.locator('#dsLanesSampled');
+    await expect(sampled.locator('.is-sample')).toHaveCount(5);   // the gutter and four runs; the 640-record view has no sample
+    await expect(sampled.locator('dbmn-status')).toContainText('The full counts come with Results.');
+    await page.locator('#dsLanesAll').click();
+    await expect(sampled.locator('.is-sample')).toHaveCount(0);
+    await expect(sampled.locator('.dbmn-lanes-gutter').nth(1)).toHaveText('All 418,720 records');
+    await page.locator('#dsLanesWarn').click();
+    await expect(sampled.locator('dbmn-status')).toHaveAttribute('tone', 'warn');
+    if (process.env.DBMN_E2E_SHOTS) {
+        for (const width of [1500, 1100, 900]) {
+            await page.setViewportSize({ width, height: 900 });
+            await page.locator('#dsLanesSample').click();
+            await page.locator('[data-click="ds:workingLine"][data-arg="large"]').click();
+            await working.scrollIntoViewIfNeeded();
+            await page.locator('#footer').screenshot({ path: `${process.env.DBMN_E2E_SHOTS}/gallery-progress-${width}.png` });
+            await page.locator('#lanes').screenshot({ path: `${process.env.DBMN_E2E_SHOTS}/gallery-lanes-${width}.png` });
+        }
+    }
+
     // Find narrows the icon list
     await page.locator('#dsIconFind').fill('chevron');
     expect(await page.locator('#dsIcons .ds-icon:visible').count()).toBeLessThan(15);
@@ -446,4 +474,86 @@ ${read('shared/dbmn-footer.css')}</style>
     expect(s.wraps).toBe('normal');
     expect(s.tall).toBeGreaterThan(40);   // two lines or more, not the footer's 32px row
     expect(s.margin).toBe('0px');
+});
+
+/** A working line in a page (Query's Results and Join step), at a width. */
+const workingPage = (width, attrs) => `<!doctype html><html><head>
+<style>:root{--vscode-foreground:#cccccc;--vscode-textLink-foreground:#3794ff;--vscode-errorForeground:#f14c4c;--vscode-editorWarning-foreground:#cca700}
+body{margin:0;padding:16px;font:13px sans-serif;width:${width}px;box-sizing:border-box;background:#1e1e1e;color:#ccc}
+${read('shared/atomic.css')}
+${read('shared/dbmn-footer.css')}</style>
+<script>${read('shared/icons.js')}</script><script>${read('shared/dbmn-footer.js')}</script></head><body>
+<dbmn-progress inline id="line" ${attrs}></dbmn-progress>
+<div id="table" style="height:40px;border:1px solid #444">table</div>
+<script>window.heard = []; ['stop', 'again'].forEach(n => document.getElementById('line').addEventListener('dbmn-progress-' + n, () => window.heard.push(n)));</script>
+</body></html>`;
+
+test('a working line in a page (inline): Stop and Again are heard, never open the figures, and the bar is still a progressbar inside', async ({ page }) => {
+    await page.setContent(workingPage(1100, 'phase="Comparing the records" count="420,000 records" value="29" note="About 40 s left" stop'));
+    const line = page.locator('#line');
+    await expect(line).toHaveAttribute('role', 'group');
+    await expect(line).toHaveAttribute('aria-label', 'Comparing the records');
+    await expect(page.locator('.dbmn-progress-track')).toHaveAttribute('role', 'progressbar');
+    await expect(page.locator('.dbmn-progress-track')).toHaveAttribute('aria-valuenow', '29');
+    await expect(page.locator('.dbmn-progress-count')).toHaveText('420,000 records · About 40 s left');
+    await expect(page.locator('.dbmn-progress-act.is-again')).toBeHidden();
+    await line.evaluate(e => { e.stats = [{ label: 'Started', value: '23:40' }]; });
+    await page.getByRole('button', { name: 'Stop' }).click();
+    expect(await page.evaluate(() => window.heard)).toEqual(['stop']);
+    await expect(page.locator('.dbmn-progress-stats')).toHaveCount(0);
+    // Stopped: the screen says so and offers to start again
+    await line.evaluate(e => { e.stats = []; e.removeAttribute('stop'); e.removeAttribute('value'); e.removeAttribute('note'); e.setAttribute('phase', 'Stopped'); e.setAttribute('again', 'Compare again'); });
+    await expect(page.locator('.dbmn-progress-act.is-stop')).toBeHidden();
+    await page.getByRole('button', { name: 'Compare again' }).click();
+    expect(await page.evaluate(() => window.heard)).toEqual(['stop', 'again']);
+    // No links: the element is the bar again, as in the footer
+    await line.evaluate(e => e.removeAttribute('again'));
+    await expect(line).toHaveAttribute('role', 'progressbar');
+    await expect(page.locator('.dbmn-progress-track')).not.toHaveAttribute('role', /./);
+});
+
+test('a working line with no total yet: it sweeps and counts the seconds itself; a note of its own replaces them', async ({ page }) => {
+    await page.setContent(workingPage(1100, `phase="Comparing the records" busy stop since="${Date.now() - 5000}"`));
+    const count = page.locator('.dbmn-progress-count');
+    await expect(count).toHaveText(/^[56] s$/);
+    await expect(count).toHaveText(/^[78] s$/, { timeout: 4000 });
+    expect(await page.locator('.dbmn-progress-fill').evaluate(e => getComputedStyle(e).animationName)).toBe('dbmn-progress-sweep');
+    await page.locator('#line').evaluate(e => e.setAttribute('note', 'About 30 s left'));
+    await expect(count).toHaveText('About 30 s left');
+});
+
+test('a working line at 1500, 1100 and 900px and a phone: never wider than its place, the words wrap rather than cut; a refusal has no bar', async ({ page }) => {
+    const REFUSED = 'Too large to compare here: 4 views of 2.1 million records would need more memory than this window has. Leave a view out, or search to fewer records.';
+    const cases = [
+        ['running', 'phase="A large compare: 4 views, 420,000 records" count="120,000 of 420,000 records" value="29" note="About 40 s left" stop tone="warn"'],
+        ['refused', `phase="${REFUSED}" tone="error"`]
+    ];
+    for (const width of [1500, 1100, 900, 380]) {
+        for (const [name, attrs] of cases) {
+            await page.setContent(workingPage(width, attrs));
+            const m = await page.evaluate(() => {
+                const line = document.getElementById('line');
+                const r = line.getBoundingClientRect();
+                const inside = [...line.querySelectorAll('.dbmn-progress-phase, .dbmn-progress-count, .dbmn-progress-act:not([hidden])')]
+                    .filter(e => e.getBoundingClientRect().width > 0)
+                    .every(e => { const b = e.getBoundingClientRect(); return b.left >= r.left - 0.5 && b.right <= r.right + 0.5; });
+                const table = document.getElementById('table').getBoundingClientRect();
+                return {
+                    width: r.width, room: document.body.clientWidth - 32, height: r.height, inside, below: table.top >= r.bottom,
+                    fill: getComputedStyle(line.querySelector('.dbmn-progress-fill')).display,
+                    phaseColour: getComputedStyle(line.querySelector('.dbmn-progress-phase')).color, text: getComputedStyle(line).color
+                };
+            });
+            expect(m.width, `${name} at ${width}`).toBeLessThanOrEqual(m.room + 0.5);
+            expect(m.inside, `${name} at ${width}: every part inside the line`).toBe(true);
+            expect(m.below, `${name} at ${width}: pushes the table down, never over it`).toBe(true);
+            expect(m.height).toBeGreaterThanOrEqual(30);
+            if (name === 'refused') {
+                expect(m.fill).toBe('none');
+                expect(m.phaseColour).not.toBe(m.text);
+                if (width < 900) expect(m.height, `the refusal wraps at ${width}`).toBeGreaterThan(40);
+            } else if (width >= 1100) expect(m.height, `one line at ${width}`).toBeLessThan(40);
+            if (process.env.DBMN_E2E_SHOTS) await page.screenshot({ path: `${process.env.DBMN_E2E_SHOTS}/working-line-${name}-${width}.png` });
+        }
+    }
 });

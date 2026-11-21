@@ -617,7 +617,67 @@
         );
     }
 
+    /* ── Figures from the first records: a join counted on a sample, then on all (after Results) ── */
+    let sampleMode = 'sample';
+    function drawSampled() {
+        const box = $('dsLanesSampled');
+        if (!window.DbmnLanes || !box) return;
+        ['sample', 'all', 'warn'].forEach(m => $({ sample: 'dsLanesSample', all: 'dsLanesAll', warn: 'dsLanesWarn' }[m]).setAttribute('aria-pressed', String(m === sampleMode)));
+        const sampled = sampleMode !== 'all';
+        // (sample, all): BL, C1, C2, C3 of inventory; counts, a view of 640 records has no sample
+        const figures = sampleMode === 'warn'
+            ? [[1000, 1000], [12, 3104], [998, 418200], [997, 418100]]
+            : [[1000, 418720], [990, 412904], [998, 418200], [997, 418100]];
+        const counts = [640, 640];
+        window.DbmnLanes.apply(box, [{ runs: 4 }, { runs: 1 }]);
+        const fig = (run, [part, all], of) => {
+            const d = div(`dbmn-lane-run dbmn-run-${run}${sampled ? ' is-sample' : ''}`, (sampled ? part : all).toLocaleString());
+            d.title = sampled ? `${part.toLocaleString()} of the first 1,000 records${of ? ' ' + of : ''}` : `${all.toLocaleString()} records`;
+            return d;
+        };
+        const whole = n => { const d = div('dbmn-lane-run dbmn-run-0', n.toLocaleString()); d.title = `${n.toLocaleString()} records: all of them`; return d; };
+        const gutter = div(`dbmn-lanes-gutter${sampled ? ' is-sample' : ''}`, sampled ? 'In the first 1,000 records' : 'All 418,720 records');
+        if (sampled) gutter.title = 'Counted on the first 1,000 records, so the Join step stays quick. Results counts them all';
+        const found = el('div', 'dbmn-lanes-row');
+        found.append(gutter, lane(0, 4, figures.map((f, i) => fig(i, f, i ? 'found in BL' : ''))), lane(1, 1, [whole(counts[0])]), div('dbmn-lanes-end', ''));
+        const status = document.createElement('dbmn-status');
+        status.setAttribute('inline', '');
+        status.setAttribute('tone', sampleMode === 'warn' ? 'warn' : 'ok');
+        status.textContent = sampleMode === 'warn'
+            ? 'Only 12 of the first 1,000 keys of inventory are in C1: check the key.'
+            : sampled
+                ? 'In the first 1,000 records of inventory: 990 found in every run, none repeated. Looks like a safe compare. The full counts come with Results.'
+                : '✓ 412,904 of 418,720 records are in every run, none repeated.';
+        const says = el('div', 'dbmn-lanes-row');
+        const span = el('div', 'dbmn-lanes-span');
+        span.append(status);
+        says.append(div('dbmn-lanes-gutter', ''), span, div('dbmn-lanes-end', ''));
+        box.replaceChildren(row('Stock and counts', [slotLane(0, 'inventory · GET /inventory', RUNS), slotLane(1, 'counts · GET /cycle-counts', [['', 'UAT · 21 Nov']])], '', true), found, says);
+    }
+
+    /* ── A working line in a page: its states ── */
+    const WORKING = {
+        running: { phase: 'Comparing the records', count: '420,000 records', value: '29', note: 'About 40 s left', stop: '' },
+        unknown: { phase: 'Comparing the records', busy: '', since: String(Date.now() - 7000), stop: '' },
+        large: { phase: 'A large compare: 4 views, 420,000 records', note: 'About 40 s', tone: 'warn', busy: '', stop: '' },
+        refused: { phase: 'Too large to compare here: 4 views of 2.1 million records would need more memory than this window has. Leave a view out, or search to fewer records.', tone: 'error' },
+        stopped: { phase: 'Stopped', count: '120,000 of 420,000 records compared', again: 'Compare again' }
+    };
+    function workingLine(state) {
+        const line = $('dsWorkingLine');
+        const want = WORKING[state] || WORKING.running;
+        ['phase', 'count', 'value', 'note', 'tone', 'busy', 'since', 'stop', 'again'].forEach(a => {
+            if (a in want) line.setAttribute(a, a === 'since' && state === 'unknown' ? String(Date.now() - 7000) : want[a]);
+            else line.removeAttribute(a);
+        });
+        document.querySelectorAll('#dsWorkingLineStates button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.arg === state)));
+    }
+    $('dsWorkingLine').addEventListener('dbmn-progress-stop', () => workingLine('stopped'));
+    $('dsWorkingLine').addEventListener('dbmn-progress-again', () => workingLine('running'));
+
     window.DbmnActions.register({
+        'ds:workingLine': workingLine,
+        'ds:lanesSample': mode => { sampleMode = mode; drawSampled(); },
         'ds:lanes': mode => { lanesUi.mode = mode === 'slots' ? 'slots' : 'head'; drawLanes(); },
         'ds:log': () => $('dsLog').append(logLines(5, Date.now())),
         'ds:back': () => go(current - 1),
@@ -686,6 +746,7 @@
     drawNested();
     drawMap();
     drawLanes();
+    drawSampled();
     drawEdit();
     drawLookup();
     drawPaged();

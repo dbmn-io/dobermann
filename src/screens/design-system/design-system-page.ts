@@ -220,6 +220,25 @@ progress.stats = [{ id: 'threads', label: 'Threads', value: 8, options: [1, 2, 4
 progress.addEventListener('dbmn-progress-change', e =&gt; post({ type: 'console.setThreads', value: e.detail.value }));
                                                              the box only asks: the controller keeps the limit and answers with new stats</code></pre>
 
+        <h3>A working line in a page</h3>
+        <p>The same bar, <code>inline</code>: above what it works on (Query's Results, its Join step) rather than in the footer. It says what it is doing, how far, the time that matters, and Stop. When the total isn't known yet it sweeps and counts the seconds. A large job says so as it starts; a job too large to do here says why, with no bar. Stopped, it offers to start again. When narrow, the words wrap under one another.</p>
+        <div class="ds-row" id="dsWorkingLineStates">
+            <button type="button" class="btn btn-secondary" data-click="ds:workingLine" data-arg="running" aria-pressed="true">Running</button>
+            <button type="button" class="btn btn-secondary" data-click="ds:workingLine" data-arg="unknown" aria-pressed="false">Total not known yet</button>
+            <button type="button" class="btn btn-secondary" data-click="ds:workingLine" data-arg="large" aria-pressed="false">Large</button>
+            <button type="button" class="btn btn-secondary" data-click="ds:workingLine" data-arg="refused" aria-pressed="false">Too large</button>
+            <button type="button" class="btn btn-secondary" data-click="ds:workingLine" data-arg="stopped" aria-pressed="false">Stopped</button>
+        </div>
+        <div class="ds-demo">
+            <dbmn-progress inline id="dsWorkingLine" phase="Comparing the records" count="420,000 records" value="29" note="About 40 s left" stop></dbmn-progress>
+        </div>
+        <pre class="ds-code"><code>&lt;dbmn-progress inline phase="Comparing the records" count="420,000 records" value="29" note="About 40 s left" stop&gt;
+&lt;dbmn-progress inline busy phase="Comparing the records" since="2026-11-21T23:40:00Z" stop&gt;     total not known: it sweeps, the seconds count
+&lt;dbmn-progress inline tone="warn" phase="A large compare: 4 views, 420,000 records" note="About 40 s" stop&gt;
+&lt;dbmn-progress inline tone="error" phase="Too large to compare here: …"&gt;                        no bar, the sentence wraps
+&lt;dbmn-progress inline phase="Stopped" again="Compare again"&gt;
+line.addEventListener('dbmn-progress-stop', () =&gt; post({ type: 'query.stopCounting' }));    and 'dbmn-progress-again'</code></pre>
+
         <h3>Status</h3>
         <p>An editor has no steps and no run: a few words.</p>
         <div class="ds-demo">
@@ -434,6 +453,20 @@ map.matched = { c1: { text: '1,180 of 1,198 match BL', tone: 'ok' } };
         <div class="ds-demo">
             <div class="dbmn-lanes" id="dsLanes"></div>
         </div>
+        <h3>Figures from the first records</h3>
+        <p>A step that counts on the first 1,000 records only (Query's Join, so it stays quick) marks its figures: quiet, dotted under, "of the first 1,000 records" on hover, and the gutter says so. Once Results has counted every record the true figures take their place in the same cells and the gutter says "All": nothing moves. A view under 1,000 records has no sample: its figures are of all of them, unmarked.</p>
+        <div class="ds-row">
+            <button type="button" class="btn btn-secondary" id="dsLanesSample" data-click="ds:lanesSample" data-arg="sample" aria-pressed="true">First 1,000</button>
+            <button type="button" class="btn btn-secondary" id="dsLanesAll" data-click="ds:lanesSample" data-arg="all" aria-pressed="false">After Results</button>
+            <button type="button" class="btn btn-secondary" id="dsLanesWarn" data-click="ds:lanesSample" data-arg="warn" aria-pressed="false">A key that doesn't meet</button>
+        </div>
+        <div class="ds-demo">
+            <div class="dbmn-lanes" id="dsLanesSampled"></div>
+        </div>
+        <pre class="ds-code"><code>&lt;div class="dbmn-lanes-gutter is-sample" title="Counted on the first 1,000 records"&gt;In the first 1,000 records&lt;/div&gt;
+&lt;div class="dbmn-lane-run dbmn-run-1 is-sample" title="990 of the first 1,000 records"&gt;990&lt;/div&gt;    also .dbmn-cell, .dbmn-lanes-span, .dbmn-lanes-figure
+&lt;dbmn-status inline tone="ok"&gt;In the first 1,000 records of inventory: … The full counts come with Results.&lt;/dbmn-status&gt;</code></pre>
+
         <h3>Runs, another endpoint and a file</h3>
         <div class="ds-demo">
             <div class="dbmn-lanes" id="dsLanesMixed"></div>

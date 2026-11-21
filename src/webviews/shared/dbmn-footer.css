@@ -17,9 +17,10 @@
 
 /* The footer's colours. As text, a status colour leans a little toward the text's own: readable on
    a light theme and a dark one. The tones are the status's own too: a <dbmn-status> in a page,
-   outside any footer, has them */
+   or a <dbmn-progress inline>, outside any footer, has them */
 dbmn-footer,
-dbmn-status {
+dbmn-status,
+dbmn-progress[inline] {
     --foot-ok: color-mix(in srgb, var(--dbmn-testing-iconPassed, #3fa35c) 78%, var(--dbmn-foreground));
     --foot-warn: color-mix(in srgb, var(--dbmn-editorWarning-foreground, #cca700) 78%, var(--dbmn-foreground));
     --foot-error: color-mix(in srgb, var(--dbmn-errorForeground, #f14c4c) 85%, var(--dbmn-foreground));
@@ -226,6 +227,42 @@ dbmn-progress .dbmn-progress-more svg { width: 14px; height: 14px; }
 .dbmn-progress-step:hover:not(:disabled) { border-color: var(--foot-accent); background: color-mix(in srgb, var(--foot-accent) 14%, transparent); }
 .dbmn-progress-step:disabled { opacity: 0.4; cursor: default; }
 .dbmn-progress-step:focus-visible { outline: 1px solid var(--dbmn-focusBorder); }
+/* Stop while it runs, Again once stopped: links at the end of the line */
+dbmn-progress .dbmn-progress-acts { position: relative; display: inline-flex; gap: 10px; }
+dbmn-progress .dbmn-progress-act {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--dbmn-textLink-foreground);
+    font: inherit;
+    cursor: pointer;
+}
+dbmn-progress .dbmn-progress-act:hover { text-decoration: underline; }
+dbmn-progress .dbmn-progress-act:focus-visible { outline: 1px solid var(--dbmn-focusBorder); outline-offset: 1px; }
+
+/* In a page (Query's Results and Join step: above what it works on): the width it is given, and
+   when narrow the words wrap under one another rather than cut. The stage in the tone's colour once
+   it is warned or refused; a refusal has no bar, just the sentence */
+dbmn-progress[inline] {
+    --foot-accent: var(--dbmn-textLink-foreground);
+    flex-wrap: wrap;
+    gap: 2px 16px;
+    height: auto;
+    min-height: var(--foot-row, 32px);
+    min-width: 0;
+    margin: 0;
+    padding: 5px 12px;
+    white-space: normal;
+    font-size: 12.5px;
+    line-height: 1.45;
+}
+dbmn-progress[inline] .dbmn-progress-phase { flex: 0 1 auto; min-width: 0; }
+dbmn-progress[inline] .dbmn-progress-count { white-space: nowrap; }
+dbmn-progress[inline] .dbmn-progress-acts { white-space: nowrap; }
+dbmn-progress[inline][tone="warn"] .dbmn-progress-phase { color: var(--foot-warn); }
+dbmn-progress[inline][tone="error"] .dbmn-progress-phase { color: var(--foot-error); font-weight: 400; }
+dbmn-progress[inline][tone="error"] .dbmn-progress-fill { display: none; }
+
 /* No figure to show yet: the fill sweeps */
 dbmn-progress[busy] .dbmn-progress-fill {
     width: 35%;
@@ -238,6 +275,7 @@ dbmn-progress[busy] .dbmn-progress-fill {
 
 /* (an element with a display of its own still goes when hidden) */
 dbmn-footer [hidden],
+dbmn-progress [hidden],
 dbmn-steps[hidden],
 dbmn-progress[hidden],
 dbmn-status[hidden] { display: none !important; }

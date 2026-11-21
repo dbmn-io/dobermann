@@ -167,3 +167,40 @@ test('--lanes-c: an element\'s own colour, the run\'s on a run, else its view\'s
     expect(c.lane).toBe(c.laneOwn);
     expect(c.run1).not.toBe(c.lane);
 });
+
+test('.is-sample: a figure from the first records is quiet and dotted under; the true figure takes its place without anything moving', async ({ page: p }) => {
+    await p.setContent(page('head'));
+    await p.evaluate(() => {
+        const row = document.createElement('div');
+        row.className = 'dbmn-lanes-row';
+        row.id = 'found';
+        row.innerHTML = '<div class="dbmn-lanes-gutter is-sample">In the first 1,000 records</div>'
+            + '<div class="dbmn-lane dbmn-view-0 dbmn-runs-4">' + [1000, 990, 998, 997].map((n, i) => `<div class="dbmn-lane-run dbmn-run-${i} is-sample">${n.toLocaleString()}</div>`).join('') + '</div>'
+            + '<div class="dbmn-lane dbmn-view-1 dbmn-runs-1"><div class="dbmn-lane-run dbmn-run-0" id="whole">640</div></div>'
+            + '<div class="dbmn-lane dbmn-view-2 dbmn-runs-1"></div><div class="dbmn-lanes-end"></div>';
+        document.getElementById('step').append(row);
+    });
+    const look = () => p.evaluate(() => {
+        const s = el => getComputedStyle(el);
+        const run = document.querySelector('#found .dbmn-run-1');
+        return {
+            colour: s(run).color, line: s(run).textDecorationStyle, whole: s(document.getElementById('whole')).color,
+            gutterLine: s(document.querySelector('#found .dbmn-lanes-gutter')).textDecorationStyle,
+            boxes: [...document.querySelectorAll('#found .dbmn-lane-run, #found .dbmn-lanes-gutter')].map(e => { const r = e.getBoundingClientRect(); return [r.left, r.top, r.width, r.height].map(Math.round).join(','); })
+        };
+    });
+    const sample = await look();
+    expect(sample.line).toBe('dotted');
+    expect(sample.gutterLine).toBe('dotted');
+    expect(sample.colour, 'quiet: not the colour of a figure of all the records').not.toBe(sample.whole);
+    // Results has counted them all: the true figures, same cells
+    await p.evaluate(() => {
+        document.querySelectorAll('#found .is-sample').forEach(e => e.classList.remove('is-sample'));
+        document.querySelector('#found .dbmn-lanes-gutter').textContent = 'All 418,720 records';
+        ['418,720', '412,904', '418,200', '418,100'].forEach((t, i) => { document.querySelector(`#found .dbmn-run-${i}`).textContent = t; });
+    });
+    const all = await look();
+    expect(all.line).not.toBe('dotted');
+    expect(all.colour).toBe(all.whole);
+    expect(all.boxes, 'nothing moves').toEqual(sample.boxes);
+});

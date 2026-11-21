@@ -46,6 +46,17 @@
  *     { id: 'stopOnError', label: 'Stop on next error', value: false }                   true or false: a switch
  *   The box asks with 'dbmn-progress-change' ({ id, value }); the screen decides (its controller
  *   keeps the limits) and sets the figure it settles on.
+ *   stop[="Stop counting"]   a Stop link at the end: fires 'dbmn-progress-stop'; the screen stops it
+ *   again[="Count again"]    once stopped, the link that starts it again: fires 'dbmn-progress-again'
+ *   since="<ISO or ms>"      with no note: how long it has been going ("12 s"), counted by the element
+ *   busy                     no figure yet: the fill sweeps
+ *   inline                   in a page, above what it works on (Query's Results, its Join step): the
+ *                            width it is given, the words wrapping under one another when narrow.
+ *     <dbmn-progress inline phase="Comparing the records" count="420,000 records" value="29" note="About 40 s left" stop>
+ *     <dbmn-progress inline busy phase="Comparing the records" since="2026-11-21T23:40:00Z" stop>   total not known yet
+ *     <dbmn-progress inline tone="warn" phase="A large compare: 4 views, 420,000 records" note="About 40 s" stop>
+ *     <dbmn-progress inline tone="error" phase="Too large to compare here: …">                      a refusal: no bar
+ *     <dbmn-progress inline phase="Stopped" again="Count again">
  * ── <dbmn-status tone="ok|warn|error">Saved</dbmn-status> ──
  *   (inline: in a page, not the footer: the words in the tone's colour, edged in it, wrapping:
  *    <dbmn-status inline tone="warn">36 values repeat in C3: BL's record is compared with each.</dbmn-status>)
@@ -62,6 +73,12 @@
     const DONE = ['done', 'skipped'];
 
     const icon = name => (window.Icons && window.Icons.icon(name)) || '';
+
+    /** "12 s", "3 min 5 s": how long since a moment (ms). */
+    function secondsSince(from) {
+        const s = Math.max(0, Math.round((Date.now() - from) / 1000));
+        return s < 60 ? `${s} s` : `${Math.floor(s / 60)} min ${s % 60} s`;
+    }
 
     function make(tag, className, text) {
         const el = document.createElement(tag);
@@ -106,7 +123,7 @@
     }
 
     class DbmnProgress extends HTMLElement {
-        static get observedAttributes() { return ['phase', 'count', 'value', 'note']; }
+        static get observedAttributes() { return ['phase', 'count', 'value', 'note', 'stop', 'again', 'since']; }
 
         constructor() {
             super();
@@ -127,7 +144,13 @@
                 this._more = make('span', 'dbmn-progress-more');
                 this._more.setAttribute('aria-hidden', 'true');
                 this._more.innerHTML = icon('chevron-up');
-                this.replaceChildren(track, this._phase, this._count, this._more);
+                this._track = track;
+                // Stop while it runs, Again once stopped: the screen hears them and decides
+                this._acts = make('span', 'dbmn-progress-acts');
+                this._stopBtn = this._act('stop', 'Stop');
+                this._againBtn = this._act('again', 'Again');
+                this._acts.append(this._stopBtn, this._againBtn);
+                this.replaceChildren(track, this._phase, this._count, this._acts, this._more);
                 this.addEventListener('click', event => {
                     // (a click inside the list is the list's own; asked of the click's path, since stepping a figure draws the list again mid-click)
                     if (!this._stats.length || (this._list && event.composedPath().includes(this._list))) return;
@@ -139,13 +162,29 @@
                     if (this._list) this._close(); else this._open();
                 });
             }
-            this.setAttribute('role', 'progressbar');
-            this.setAttribute('aria-valuemin', '0');
-            this.setAttribute('aria-valuemax', '100');
             this._draw();
         }
 
-        disconnectedCallback() { this._close(); }
+        disconnectedCallback() { this._close(); this._tick(false); }
+
+        /** A Stop or Again link: fires dbmn-progress-stop / dbmn-progress-again, never opens the stats. */
+        _act(name, words) {
+            const btn = make('button', `dbmn-progress-act text-link is-${name}`, words);
+            btn.type = 'button';
+            btn.hidden = true;
+            btn.addEventListener('click', event => {
+                event.stopPropagation();
+                this.dispatchEvent(new CustomEvent(`dbmn-progress-${name}`, { bubbles: true }));
+            });
+            btn.addEventListener('keydown', event => event.stopPropagation());
+            return btn;
+        }
+
+        /** The time since `since`, counted here a second at a time while nothing else is said. */
+        _tick(on) {
+            if (on && !this._timer) this._timer = setInterval(() => this._draw(), 1000);
+            if (!on && this._timer) { clearInterval(this._timer); this._timer = 0; }
+        }
 
         attributeChangedCallback() { this._draw(); }
 
@@ -164,14 +203,37 @@
             const phase = this.getAttribute('phase') || '';
             const count = this.getAttribute('count') || '';
             // The one time that matters now, beside the count: how long is left while it runs, how long it took once done
-            const note = this.getAttribute('note') || '';
+            // (no time of its own given: how long it has been going, when the screen says since when)
+            const since = this.getAttribute('since');
+            const from = since ? (/^\d+$/.test(since) ? Number(since) : new Date(since).getTime()) : NaN;
+            const elapsed = isNaN(from) ? '' : secondsSince(from);
+            const note = this.getAttribute('note') || elapsed;
+            this._tick(!this.getAttribute('note') && !!elapsed && this.isConnected);
             const value = Math.max(0, Math.min(100, Number(this.getAttribute('value')) || 0));
+            const stop = this.getAttribute('stop');
+            const again = this.getAttribute('again');
+            this._stopBtn.hidden = stop === null;
+            if (stop !== null) this._stopBtn.textContent = stop || 'Stop';
+            this._againBtn.hidden = again === null;
+            if (again !== null) this._againBtn.textContent = again || 'Again';
+            const acts = stop !== null || again !== null;
+            this._acts.hidden = !acts;
+            // A bar with links in it is a group holding the bar (a progressbar's insides are not
+            // reachable); without, the element is the bar
+            const bar = acts ? this._track : this;
+            const other = acts ? this : this._track;
+            ['aria-valuemin', 'aria-valuemax', 'aria-valuenow', 'aria-valuetext'].forEach(a => other.removeAttribute(a));
+            if (acts) { this.setAttribute('role', 'group'); this.setAttribute('aria-label', phase || 'Progress'); this._track.removeAttribute('aria-hidden'); }
+            else { this.removeAttribute('aria-label'); this._track.removeAttribute('role'); this._track.setAttribute('aria-hidden', 'true'); }
+            bar.setAttribute('role', 'progressbar');
+            bar.setAttribute('aria-valuemin', '0');
+            bar.setAttribute('aria-valuemax', '100');
             const right = [count, note].filter(Boolean).join(' · ');
             if (this._phase.textContent !== phase) this._phase.textContent = phase;
             if (this._count.textContent !== right) this._count.textContent = right;
             this.style.setProperty('--progress', `${value}%`);
-            this.setAttribute('aria-valuenow', String(Math.round(value)));
-            this.setAttribute('aria-valuetext', [phase, count, note].filter(Boolean).join(', '));
+            bar.setAttribute('aria-valuenow', String(Math.round(value)));
+            bar.setAttribute('aria-valuetext', [phase, count, note].filter(Boolean).join(', '));
             const more = this._stats.length > 0;
             this.classList.toggle('has-stats', more);
             this._more.hidden = !more;

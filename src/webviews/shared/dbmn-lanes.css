@@ -19,7 +19,10 @@
  *   .is-following          a container DbmnLanes.together keeps in step with another (no bar of its own)
  *   .dbmn-cells            on a split lane: spreadsheet cells, 1px lines between them
  *     .dbmn-cell           (.dbmn-cell-value, .dbmn-cell-fx; is-diff is-blank is-dim is-picked
- *                          is-empty is-add is-calc; a <button> gets the hover and focus look)
+ *                          is-empty is-add is-calc is-sample; a <button> gets the hover and focus look)
+ *   .is-sample             a figure counted on the first records only (Join, before Results has
+ *                          counted them all): quiet, dotted under; on a cell, a run's place,
+ *                          span, gutter or a .dbmn-lanes-figure inside one
  *
  * --lanes-c is an element's own colour (a run's, else its view's) for a screen's own pieces;
  * --lanes-view-c and --lanes-run-c the view's and the run's.
@@ -175,6 +178,20 @@ button.dbmn-cell:focus-visible {
 .dbmn-cell.is-diff .dbmn-cell-value { color: var(--dbmn-editorWarning-foreground, #cca700); }
 .dbmn-cell.is-blank { background: var(--dbmn-editor-background, transparent); }
 .dbmn-cell.is-dim { opacity: 0.35; }
+/* A figure counted on a sample (the first 1,000 records), not on all of them: quiet, with a dotted line
+   under it; the screen's title says "of the first 1,000 records". The true figure takes its place when
+   it is known, in the same cell: nothing moves. Works on a cell, a run's place (and a button in it),
+   a span or a gutter, or on a figure inside one (.dbmn-lanes-figure) */
+.dbmn-cell.is-sample .dbmn-cell-value,
+.dbmn-lane-run.is-sample,
+.dbmn-lane-run.is-sample button,
+.dbmn-lanes-span.is-sample,
+.dbmn-lanes-gutter.is-sample,
+.dbmn-lanes-figure.is-sample {
+    color: var(--dbmn-descriptionForeground);
+    text-decoration: underline dotted color-mix(in srgb, currentColor 60%, transparent);
+    text-underline-offset: 3px;
+}
 .dbmn-cell.is-picked { box-shadow: inset 0 0 0 1px var(--dbmn-focusBorder, #007fd4); }
 .dbmn-cell.is-empty {
     background: var(--dbmn-editor-background, transparent);
