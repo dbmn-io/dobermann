@@ -1628,12 +1628,21 @@ export class QueryController {
         return { filter, label, placeOfColumn, hidden: filter?.hidden ?? [] };
     }
 
+    /** The paged result before the current one, kept one step longer: a page still being read from it finishes. */
+    private pagedRetired: { id: string; host: EngineHost } | undefined;
+
+    /** The current paged result is being replaced: the one before it goes now, this one when the next replaces it. */
+    private retirePaged(host: EngineHost): void {
+        if (this.pagedRetired && this.pagedRetired.host.alive()) void this.pagedRetired.host.release(this.pagedRetired.id).catch(() => undefined);
+        this.pagedRetired = this.paged && this.paged.host === host ? { id: this.paged.result.id, host } : undefined;
+    }
+
     /** Results' rows in the engine for this query and sort (run again only when either changes). */
     private async pagedFor(spec: QuerySpec, sort: ShownSort | null, onStage?: (stage: string) => void, search = '', status?: PagedStatus): Promise<PagedResult | undefined> {
         const key = `${engineKey(spec)}\n${JSON.stringify(sort)}${search ? `\n${search}` : ''}${status ? `\n${JSON.stringify([status.hidden, status.filter ?? null])}` : ''}`;
         const host = await this.engineFor(spec);
         if (this.paged && this.paged.key === key && this.paged.host === host) return this.paged.result;
-        if (this.paged && this.paged.host === host) void host.release(this.paged.result.id);
+        this.retirePaged(host);
         this.paged = undefined;
         await this.loadEngineLookups(host, lookupsUsed(spec));
         let result: PagedResult | undefined;
@@ -1932,7 +1941,7 @@ export class QueryController {
         laps.push(...run.timings.map(([what, ms]) => `${what} ${ms}`));
         this.engineStats = run.stats;
         this.engineDuplicates = run.duplicates;
-        if (this.paged && this.paged.host === host) void host.release(this.paged.result.id);
+        this.retirePaged(host);
         this.paged = { key: `${engineKey(spec)}\n${JSON.stringify(null)}`, result: run.kept, host };
         this.pagedAll = { key: engineKey(spec), total: run.kept.total };
         console.log(`[query-engine] ${run.total} rows of ${spec.views.length} views, kept in the engine, in ${Math.round(performance.now() - started)} ms: ${laps.join(' · ')} (ms)`);
