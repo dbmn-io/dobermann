@@ -284,14 +284,16 @@ async function joinFigures(spec: QuerySpec, places: string[], get: (step: string
 /** An engine as an EngineHost (tests and the VS Code host hand in the engine itself). */
 const hostOf = (engine: QueryEngine | EngineHost): EngineHost => (engine instanceof QueryEngine ? localEngineHost(engine) : engine);
 
-export async function runOnEngine(engineIn: QueryEngine | EngineHost, spec: QuerySpec, onProgress?: (p: Progress) => void, options?: { keep?: boolean; sort?: ShownSort | null; status?: PagedStatus }): Promise<(CompareOnEngine & { timings: [string, number][]; duplicates: number; notNumbers: NotNumbers; kept?: PagedResult }) | undefined> {
+export async function runOnEngine(engineIn: QueryEngine | EngineHost, spec: QuerySpec, onProgress?: (p: Progress) => void, options?: { keep?: boolean; sort?: ShownSort | null; status?: PagedStatus }): Promise<(CompareOnEngine & { timings: [string, number][]; duplicates: number; notNumbers: NotNumbers; kept?: PagedResult; held?: PagedResult }) | undefined> {
     const timings: [string, number][] = [];
     let at = now();
     const lap = (what: string) => { const t = now(); timings.push([what, Math.round(t - at)]); at = t; };
     const engine = hostOf(engineIn);
     // Kept for Results' pages: as Results first asks for them (its sort, a compare's status columns), and in the
     // same run the rows alike in every column shown (Distinct's count): one run serves the Join step and Results
-    const built = options?.keep ? pagedQuery(spec, options.sort, undefined, options.status) : buildQuery(spec);
+    // (a compare: held without its sort, its status worked out once; the sort then a run from it)
+    const holding = !!options?.keep && !!options.status;
+    const built = options?.keep ? pagedQuery(spec, holding ? null : options.sort, undefined, holding ? { ...options.status!, filter: undefined } : options.status) : buildQuery(spec);
     const { layout } = built;
     const shownColumns = layout.columns.map((_, i) => ({ name: `c${i}`, value: { column: `c${i}` } as Expr }));
     const query: Query = options?.keep && !spec.distinct
@@ -299,7 +301,7 @@ export async function runOnEngine(engineIn: QueryEngine | EngineHost, spec: Quer
         : built.query;
     // Results' columns that read text as a number: their rows where it wasn't one, counted in the same run
     const counted = readsNumbersColumns(built.query);
-    const out = await engine.run(query, { onProgress: p => { onProgress?.(p); }, ...(counted.length ? { countNotNumbers: counted } : {}) });
+    const out = await engine.run(query, { onProgress: p => { onProgress?.(p); }, ...(counted.length ? { countNotNumbers: counted } : {}), ...(holding ? { hold: true } : {}) });
     lap('engine run');
     if ('cancelled' in out) return undefined;
     if ('problems' in out) {
@@ -321,7 +323,16 @@ export async function runOnEngine(engineIn: QueryEngine | EngineHost, spec: Quer
             // Its rows stay in the engine, read a page at a time; the rows alike counted in the same run
             keep = true;
             const duplicates = spec.distinct ? 0 : (out.steps?.rows ?? out.total) - (out.steps?.alike ?? out.steps?.rows ?? out.total);
-            return { rows: [], keyValues: [], stats, total: out.total, layout, timings, duplicates, notNumbers: notNumbersOf(out.notNumbers, query), kept: { id: out.result, total: out.total, layout } };
+            const held = holding ? { id: out.result, total: out.total, layout } : undefined;
+            // (Results' remembered sort, from the held rows)
+            let kept: PagedResult = { id: out.result, total: out.total, layout };
+            if (held && options.sort) {
+                const sorted = await runPaged(engine, spec, options.sort, onProgress, undefined, options.status, held.id);
+                if (!sorted) { await engine.release(held.id); return undefined; }
+                kept = sorted;
+                lap('sorted');
+            }
+            return { rows: [], keyValues: [], stats, total: out.total, layout, timings, duplicates, notNumbers: notNumbersOf(out.notNumbers, query), kept, ...(held ? { held } : {}) };
         }
         const read = await engine.read(out.result, 0, out.total);
         lap('read every row');
@@ -693,10 +704,11 @@ export interface ShownSort { column: number; dir: 'asc' | 'desc' }
  * The query Results pages through: buildQuery; the search box's rows (a filter step by the host's
  * "search" row test, given `search`: query-search.ts); then sorted as Results sorts when a column is picked.
  */
-export function pagedQuery(spec: QuerySpec, sort?: ShownSort | null, search?: unknown, status?: PagedStatus): { query: Query; layout: CompareLayout } {
+export function pagedQuery(spec: QuerySpec, sort?: ShownSort | null, search?: unknown, status?: PagedStatus, held?: string): { query: Query; layout: CompareLayout } {
     const { query, layout } = buildQuery(spec, status ? { status } : undefined);
-    let base = query.result ?? 'rows';
-    const steps = [...query.steps];
+    // (from a compare held in the engine, its status worked out once: runHeld; else the whole query again)
+    let base = held ? 'held' : query.result ?? 'rows';
+    const steps: Query['steps'] = held ? [{ as: 'held', from: held }] : [...query.steps];
     if (search !== undefined) {
         steps.push({ as: 'found', filter: base, test: { name: 'search', arg: search } });
         base = 'found';
@@ -720,9 +732,9 @@ export interface PagedStatus extends StatusPlaces {
 }
 
 /** The status counts (statusCounts') among the rows the search finds: the paged query up to its search, then a group over its status columns. */
-export async function pagedCounts(engineIn: QueryEngine | EngineHost, spec: QuerySpec, search: unknown, status: PagedStatus): Promise<StatusCounts | undefined> {
+export async function pagedCounts(engineIn: QueryEngine | EngineHost, spec: QuerySpec, search: unknown, status: PagedStatus, held?: string): Promise<StatusCounts | undefined> {
     const engine = hostOf(engineIn);
-    const { query, layout } = pagedQuery(spec, null, search, { ...status, filter: undefined });
+    const { query, layout } = pagedQuery(spec, null, search, { ...status, filter: undefined }, held);
     if (!layout.status) return undefined;
     const out = await engine.run({ steps: [...query.steps, statusCountsStep(query.result ?? 'rows', layout.status)], result: 'counts' });
     if (!('result' in out)) return undefined;
@@ -759,10 +771,23 @@ export interface PagedResult {
 }
 
 /** Runs a paged query: its result kept (release it when done); undefined when stopped. */
-export async function runPaged(engineIn: QueryEngine | EngineHost, spec: QuerySpec, sort?: ShownSort | null, onProgress?: (p: Progress) => void, search?: unknown, status?: PagedStatus): Promise<PagedResult | undefined> {
+export async function runPaged(engineIn: QueryEngine | EngineHost, spec: QuerySpec, sort?: ShownSort | null, onProgress?: (p: Progress) => void, search?: unknown, status?: PagedStatus, held?: string): Promise<PagedResult | undefined> {
     const engine = hostOf(engineIn);
-    const { query, layout } = pagedQuery(spec, sort, search, status);
+    const { query, layout } = pagedQuery(spec, sort, search, status, held);
     const out = await engine.run(query, { onProgress });
+    if ('cancelled' in out) return undefined;
+    if ('problems' in out) throw new Error(out.problems.map(p => p.message).join(' '));
+    return { id: out.result, total: out.total, layout };
+}
+
+/**
+ * A compare held in the engine for Results (RunOptions.hold): every row and its status worked out
+ * once, no sort, search or Status filter; Results' runs then start from it (pagedQuery's `held`).
+ */
+export async function runHeld(engineIn: QueryEngine | EngineHost, spec: QuerySpec, status: PagedStatus, onProgress?: (p: Progress) => void): Promise<PagedResult | undefined> {
+    const engine = hostOf(engineIn);
+    const { query, layout } = pagedQuery(spec, null, undefined, { ...status, filter: undefined });
+    const out = await engine.run(query, { onProgress, hold: true });
     if ('cancelled' in out) return undefined;
     if ('problems' in out) throw new Error(out.problems.map(p => p.message).join(' '));
     return { id: out.result, total: out.total, layout };

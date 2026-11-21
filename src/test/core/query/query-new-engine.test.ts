@@ -633,15 +633,19 @@ describe('Query compare on the new engine', () => {
         const data = { bl: runRows(0, 300), c1: runRows(1, 300), c2: runRows(2, 300) };
         const engine = new QueryEngine();
         for (const v of spec.views) loadView(engine, v.id, v.columns, data[v.id as keyof typeof data]);
-        // A host that counts its runs
+        // A host that counts its runs over the views (a sort of the held compare reads no view: not counted)
         const inner = localEngineHost(engine);
         let runs = 0;
-        const host = { ...inner, run: (...args: Parameters<typeof inner.run>) => { runs++; return inner.run(...args); } };
+        let fromHeld = 0;
+        const host = { ...inner, run: (...args: Parameters<typeof inner.run>) => { if ((args[0].steps[0] as { as?: string }).as === 'held') fromHeld++; else runs++; return inner.run(...args); } };
         const label = (v: string) => ({ bl: 'BL', c1: 'C1', c2: 'C2' } as Record<string, string>)[v];
         const status = { filter: undefined, label, placeOfColumn: (i: number) => label(resultColumns(spec)[i].view), hidden: [] as string[] };
         const sort = { column: 0, dir: 'desc' as const };
         const kept = (await runOnEngine(host, spec, undefined, { keep: true, sort, status }))!;
         assert.strictEqual(runs, 1, 'the Join step\'s figures and Distinct\'s count in one run');
+        // (a compare is held, its status worked out once; Results' remembered sort is a run from it)
+        assert.strictEqual(fromHeld, 1);
+        assert.ok(kept.held && kept.held.id !== kept.kept!.id);
         assert.ok(kept.kept && kept.stats.get('c1'));
         // Distinct's count: the rows alike in every column shown, as counted on the rows themselves
         const all = (await runOnEngine(engine, spec))!;

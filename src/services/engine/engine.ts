@@ -27,6 +27,23 @@ interface Col {
 }
 
 /** A step's rows: its columns, how many rows, and a value by row and column. */
+/** A select's parts worked out once a row (compile): each function part by what it says (exprKey). */
+interface Memo {
+    fns: Map<string, (row: number) => V>;
+    keys: WeakMap<object, string>;
+}
+
+/** What an expression says, as text: the same text, the same value for a row. Each part's text kept, so a big expression is read once. */
+function exprKey(e: Expr, keys: WeakMap<object, string>): string {
+    const had = keys.get(e);
+    if (had !== undefined) return had;
+    const key = 'column' in e ? `c${JSON.stringify([e.column, e.of ?? null])}`
+        : 'value' in e ? `v${JSON.stringify(e.value)}`
+            : `f${e.fn}(${e.args.map(a => exprKey(a, keys)).join(',')})`;
+    keys.set(e, key);
+    return key;
+}
+
 interface Relation {
     cols: Col[];
     rowCount: number;
@@ -237,6 +254,8 @@ export class QueryEngine implements Engine {
     private colsOf(input: string, known: Map<string, Col[]>, tableOnly: boolean): Col[] | string {
         if (!tableOnly && known.has(input)) return known.get(input)!;
         const t = this.tables.get(input);
+        // (a result held from an earlier run: its columns as it has them)
+        if (!t && this.results.has(input)) return this.results.get(input)!.cols.map(c => ({ name: c.name, owners: [input] }));
         if (!t) return `There is no table or step called "${input}".`;
         if (!t.complete) return `"${input}" is still loading.`;
         return t.columns.map(name => ({ name, owners: [input] }));
@@ -294,8 +313,9 @@ export class QueryEngine implements Engine {
             const answerName = query.result ?? stepName(query.steps[query.steps.length - 1], query.steps.length - 1);
             await this.countNotNumbers(answer, options?.countNotNumbers ?? [], slice, counted => { noted[answerName] = { ...noted[answerName], ...counted }; });
             if (this.cancelled.has(id)) { this.stepStats.delete(id); return { cancelled: true }; }
+            const kept = options?.hold ? await this.held(answer, slice) : answer;
             progress('Done', answer.rowCount, answer.rowCount);
-            this.results.set(id, answer);
+            this.results.set(id, kept);
             const steps: Record<string, number> = {};
             for (const [n, rel] of made) steps[n] = rel.rowCount;
             return { result: id, total: answer.rowCount, steps, ...(Object.keys(noted).length ? { notNumbers: noted } : {}) };
@@ -337,6 +357,17 @@ export class QueryEngine implements Engine {
         if (Object.keys(counted).length) give(counted);
     }
 
+    /** A relation's values worked out once and stored, column by column (RunOptions.hold). */
+    private async held(rel: Relation, slice: (stage: string, done: number, total: number) => Promise<void>): Promise<Relation> {
+        const n = rel.rowCount;
+        const columns = rel.cols.map(() => new Array<V>(n));
+        for (let r = 0; r < n; r++) {
+            if (r && r % SLICE === 0) await slice('Holding the rows', r, n);
+            for (let c = 0; c < columns.length; c++) columns[c][r] = rel.value(r, c);
+        }
+        return { cols: rel.cols, rowCount: n, value: (row, c) => columns[c][row] };
+    }
+
     private async stepRelation(step: Step, kind: Kind, name: string, input: (n: string) => Relation,
         slice: (stage: string, done: number, total: number) => Promise<void>, noted: Record<string, Record<string, number>>): Promise<Relation> {
         const from = inputsOf(step, kind)[0];
@@ -344,7 +375,9 @@ export class QueryEngine implements Engine {
         if (kind === 'from') return { ...base, cols: base.cols.map(c => ({ name: c.name, owners: [from, ...(step.as ? [step.as] : [])] })) };
         if (kind === 'select') {
             const s = step as Extract<Step, { select: string }>;
-            const exprs = s.columns.map(c => this.compile(c.value, base, from));
+            // (one memo for all its columns: a part said again, in one column or another, is worked out once a row)
+            const memo: Memo = { fns: new Map(), keys: new WeakMap() };
+            const exprs = s.columns.map(c => this.compile(c.value, base, from, memo));
             return { cols: s.columns.map(c => ({ name: c.name, owners: [] })), rowCount: base.rowCount, value: (row, c) => exprs[c](row) };
         }
         if (kind === 'sort') return this.sorted(step as Extract<Step, { sort: string }>, base, from, name, slice);
@@ -547,6 +580,9 @@ export class QueryEngine implements Engine {
     }
 
     private tableRelation(name: string): Relation {
+        // (a result held from an earlier run, read as a table: its owners are its name)
+        const held = !this.tables.has(name) ? this.results.get(name) : undefined;
+        if (held) return { ...held, cols: held.cols.map(c => ({ name: c.name, owners: [name] })) };
         const t = this.tables.get(name)!;
         // (a snapshot of its length: rows appended later are not in this result)
         const rowCount = t.rowCount;
@@ -554,7 +590,7 @@ export class QueryEngine implements Engine {
     }
 
     /** An expression as a function of a row of `rel` (read as `input`). Equality by sameValue, order by compareValues (engine-values.ts). */
-    private compile(e: Expr, rel: Relation, input: string): (row: number) => V {
+    private compile(e: Expr, rel: Relation, input: string, memo?: Memo): (row: number) => V {
         if ('column' in e) {
             const at = findColumn(e, rel.cols, input) as number;
             return row => rel.value(row, at);
@@ -563,9 +599,24 @@ export class QueryEngine implements Engine {
             const v = fromValue(e.value);
             return () => v;
         }
-        const args = e.args.map(a => this.compile(a, rel, input));
+        const key = memo ? exprKey(e, memo.keys) : '';
+        const known = memo?.fns.get(key);
+        if (known) return known;
+        const args = e.args.map(a => this.compile(a, rel, input, memo));
         const name: FunctionName = e.fn;
-        return row => callFunction(name, args.map(a => a(row)), this.ctx);
+        const f = (row: number) => callFunction(name, args.map(a => a(row)), this.ctx);
+        if (!memo) return f;
+        // Its value for the last row asked, kept (functions give the same value for the same row). Not while
+        // text that isn't a number is being counted: each column's own readings are counted, as without it
+        let at = -1;
+        let last: V = null;
+        const once = (row: number): V => {
+            if (notNumbers.on) return f(row);
+            if (row !== at) { last = f(row); at = row; }
+            return last;
+        };
+        memo.fns.set(key, once);
+        return once;
     }
 
     cancel(result: ResultId): void {

@@ -48,7 +48,7 @@ import type { QueryFileStore } from '../../services/query/query-file-store';
 import { localEngineHost, type EngineHost } from '../../services/engine/engine-host';
 import { QueryEngine } from '../../services/engine/engine';
 import { QUERY_ROW_TESTS, searchColumns, searchTest, type SearchArg } from './query-search';
-import { compareKeyExprs, resultsKey, sampleQueries, pagedCounts, readPagedRow, readStatusPage, type PagedStatus, eachPage, fnSampleQueries, formulaExpr, labelExpr, loadLookupInto, loadViewInto, onSqliteLine, pagedTotals, readPage, runPaged, spreadPage, type NotNumbers, type PagedResult, type ShownSort, queryWithColumns, recordQuery, runOnEngine, TooManyOnEngine, whyNotQueryOnEngine } from '../../services/query/query-new-engine';
+import { compareKeyExprs, resultsKey, sampleQueries, pagedCounts, readPagedRow, readStatusPage, type PagedStatus, eachPage, runHeld, fnSampleQueries, formulaExpr, labelExpr, loadLookupInto, loadViewInto, onSqliteLine, pagedTotals, readPage, runPaged, spreadPage, type NotNumbers, type PagedResult, type ShownSort, queryWithColumns, recordQuery, runOnEngine, TooManyOnEngine, whyNotQueryOnEngine } from '../../services/query/query-new-engine';
 import type { Query as EngineQuery, TableWindow } from '../../services/engine/engine-types';
 
 
@@ -1660,8 +1660,39 @@ export class QueryController {
 
     /** The current paged result is being replaced: the one before it goes now, this one when the next replaces it. */
     private retirePaged(host: EngineHost): void {
-        if (this.pagedRetired && this.pagedRetired.host.alive()) void this.pagedRetired.host.release(this.pagedRetired.id).catch(() => undefined);
+        if (this.pagedRetired && this.pagedRetired.host.alive() && this.pagedRetired.id !== this.pagedHeld?.result.id) void this.pagedRetired.host.release(this.pagedRetired.id).catch(() => undefined);
         this.pagedRetired = this.paged && this.paged.host === host ? { id: this.paged.result.id, host } : undefined;
+    }
+
+    /**
+     * A compare held in the engine, every row's status worked out once (runHeld): Results' sorts,
+     * searches, Status filters and counts are runs from it. Which query and hidden views it is for.
+     */
+    private pagedHeld: { key: string; result: PagedResult; host: EngineHost } | undefined;
+
+    /** Keep `held` as the compare Results reads from; the one before is let go (unless Results' rows are still it). */
+    private holdPaged(held: { key: string; result: PagedResult; host: EngineHost } | undefined): void {
+        const before = this.pagedHeld;
+        this.pagedHeld = held;
+        if (!before || before.result.id === held?.result.id || !before.host.alive()) return;
+        // (Results' rows still the old one: retirePaged lets it go a step later)
+        if (this.paged?.result.id === before.result.id || this.pagedRetired?.id === before.result.id) return;
+        void before.host.release(before.result.id).catch(() => undefined);
+    }
+
+    /** The held compare for this query and these hidden views: made when there is none (or another). */
+    private async heldFor(spec: QuerySpec, host: EngineHost, status: PagedStatus, onStage?: (stage: string) => void): Promise<PagedResult | undefined> {
+        const key = resultsKey(engineKey(spec), null, '', { ...status, filter: undefined });
+        if (this.pagedHeld && this.pagedHeld.key === key && this.pagedHeld.host === host) return this.pagedHeld.result;
+        let held: PagedResult | undefined;
+        try {
+            if (this.pagedRunning) host.cancel(this.pagedRunning);
+            held = await runHeld(host, spec, status, p => { this.pagedRunning = p.result; onStage?.(p.stage); });
+        } finally {
+            this.pagedRunning = undefined;
+        }
+        if (held) this.holdPaged({ key, result: held, host });
+        return held;
     }
 
     /** Results' rows in the engine for this query and sort (run again only when either changes). */
@@ -1675,8 +1706,14 @@ export class QueryController {
         let result: PagedResult | undefined;
         try {
             // (a newer search or sort stops Results' run still going: its own, never the step's count)
-            if (this.pagedRunning) host.cancel(this.pagedRunning);
-            result = await runPaged(host, spec, sort, p => { this.pagedRunning = p.result; onStage?.(p.stage); }, search ? this.searchArg(resultColumnRefs(spec), search) : undefined, status);
+            // (a compare: from its held rows, or the held rows themselves when nothing is sorted, searched or filtered)
+            const held = status ? await this.heldFor(spec, host, status, onStage) : undefined;
+            if (status && !held) return undefined;
+            if (held && !sort && !search && !status?.filter) result = held;
+            else {
+                if (this.pagedRunning) host.cancel(this.pagedRunning);
+                result = await runPaged(host, spec, sort, p => { this.pagedRunning = p.result; onStage?.(p.stage); }, search ? this.searchArg(resultColumnRefs(spec), search) : undefined, status, held?.id);
+            }
         } finally {
             this.pagedRunning = undefined;
         }
@@ -1706,8 +1743,9 @@ export class QueryController {
             const total = search || status?.filter ? this.pagedAll?.total ?? paged.total : paged.total;
             // The Status menu's counts: among the rows the search finds, and among them all (asked for with the first page only)
             const counts = status && paged.layout.status ? async () => {
-                const found = await pagedCounts(host, spec, search ? this.searchArg(columns, search) : undefined, status);
-                const every = search ? await pagedCounts(host, spec, undefined, status) : found;
+                const held = this.pagedHeld?.host === host ? this.pagedHeld.result.id : undefined;
+                const found = await pagedCounts(host, spec, search ? this.searchArg(columns, search) : undefined, status, held);
+                const every = search ? await pagedCounts(host, spec, undefined, status, held) : found;
                 return found && every ? { counts: found, countsAll: every } : undefined;
             } : undefined;
             return {
@@ -1931,7 +1969,7 @@ export class QueryController {
         // (a new engine when the views changed in a way the key resets, or the last one stopped working)
         const reuse = this.engine && this.engineKey.startsWith('[') && this.engine.alive();
         const engine = reuse ? this.engine! : (this.ports.engineHost?.() ?? localEngineHost(new QueryEngine(undefined, QUERY_ROW_TESTS)));
-        if (!reuse) { this.paged = undefined; this.pagedAll = undefined; }
+        if (!reuse) { this.paged = undefined; this.pagedAll = undefined; this.pagedHeld = undefined; }
         if (engine !== this.engine) { this.engine?.close(); this.engineLookups.clear(); }
         // (only the views not in it yet, or changed, go in again)
         const had = new Map<string, string>((JSON.parse(this.engineKey || '[]') as [string, string[], number][]).map(v => [v[0], JSON.stringify(v)]));
@@ -1976,6 +2014,7 @@ export class QueryController {
         this.engineNotNumbers = run.notNumbers;
         this.retirePaged(host);
         this.paged = { key: resultsKey(engineKey(spec), keptSort, '', keptStatus), result: run.kept, host };
+        if (run.held && keptStatus) this.holdPaged({ key: resultsKey(engineKey(spec), null, '', { ...keptStatus, filter: undefined }), result: run.held, host });
         this.pagedAll = { key: engineKey(spec), total: run.kept.total };
         console.log(`[query-engine] ${run.total} rows of ${spec.views.length} views, kept in the engine, in ${Math.round(performance.now() - started)} ms: ${laps.join(' · ')} (ms)`);
         return run.kept;

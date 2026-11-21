@@ -255,6 +255,12 @@ export interface RunOptions {
      * count"): RunOutcome's `notNumbers`, under the result step's name.
      */
     countNotNumbers?: string[];
+    /**
+     * Hold the result as plain stored values, each worked out once (a compare's status columns are
+     * long expressions): reading it, and later runs that start from it (a step `{ from: <its
+     * ResultId> }`), never work them out again.
+     */
+    hold?: boolean;
 }
 
 /**
