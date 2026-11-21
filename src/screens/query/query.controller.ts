@@ -45,13 +45,12 @@ import type { ChainHandoff } from '../../services/chain/chain-types';
 import type { APIEndpointConfig } from '../../apiConfigManager';
 import { readFileSheets, QueryFileRows, QueryFileSheet } from '../../services/query/query-file';
 import type { QueryFileStore } from '../../services/query/query-file-store';
-import * as searchMatcherScript from '../../webviews/shared/search-matcher.js';
-import { sharedScript } from '../../utils/shared-script';
 import { localEngineHost, type EngineHost } from '../../services/engine/engine-host';
+import { QueryEngine } from '../../services/engine/engine';
+import { QUERY_ROW_TESTS, searchColumns, searchTest, type SearchArg } from './query-search';
 import { compareKeyExprs, eachPage, fnSampleQueries, formulaExpr, labelExpr, loadLookupInto, loadViewInto, onSqliteLine, pagedTotals, readPage, runPaged, spreadPage, type PagedResult, type ShownSort, queryWithColumns, recordQuery, runOnEngine, TooManyOnEngine, whyNotQueryOnEngine } from '../../services/query/query-new-engine';
 import type { Query as EngineQuery, TableWindow } from '../../services/engine/engine-types';
 
-const { parseSearchExpression, matchesRow } = sharedScript<typeof searchMatcherScript>(searchMatcherScript, 'SearchMatcher');
 
 /** Query needs what Compare needs, and SQLite: the host starts sql.js its own way. */
 export interface QueryPorts extends ComparePorts {
@@ -140,6 +139,10 @@ export class QueryController {
     private engineNote = '';
     /** Results' rows kept in the engine (a query not a compare, no search): which query and sort, and the engine they are in. */
     private paged: { key: string; result: PagedResult; host: EngineHost } | undefined;
+    /** Results' own run still going (a search or sort), which a newer one stops. */
+    private pagedRunning: string | undefined;
+    /** How many rows the query makes before any search (what "n of m" counts against). */
+    private pagedAll: { key: string; total: number } | undefined;
     /** Rows alike in every column shown, from the last run: what Distinct would fold. */
     private engineDuplicates = 0;
     private engineOn = false;
@@ -1557,15 +1560,16 @@ export class QueryController {
 
     /**
      * Are Results' rows read from the engine a page at a time? On the new engine, a query that is
-     * not a compare (whose status needs every row: the next piece) with no search (the next too).
+     * not a compare (whose status comes from the engine's compare columns: the next piece); its
+     * search is the engine's filter by the search box's own rules (query-search.ts).
      */
-    private pagedOn(spec: QuerySpec, search: string): boolean {
-        return !search && !isCompare(spec.joins) && this.onEngine(spec);
+    private pagedOn(spec: QuerySpec, _search: string): boolean {
+        return !isCompare(spec.joins) && this.onEngine(spec);
     }
 
     /** Results' rows in the engine for this query and sort (run again only when either changes). */
-    private async pagedFor(spec: QuerySpec, sort: ShownSort | null, onStage?: (stage: string) => void): Promise<PagedResult | undefined> {
-        const key = `${engineKey(spec)}\n${JSON.stringify(sort)}`;
+    private async pagedFor(spec: QuerySpec, sort: ShownSort | null, onStage?: (stage: string) => void, search = ''): Promise<PagedResult | undefined> {
+        const key = `${engineKey(spec)}\n${JSON.stringify(sort)}${search ? `\n${search}` : ''}`;
         const host = await this.engineFor(spec);
         if (this.paged && this.paged.key === key && this.paged.host === host) return this.paged.result;
         if (this.paged && this.paged.host === host) void host.release(this.paged.result.id);
@@ -1573,11 +1577,14 @@ export class QueryController {
         await this.loadEngineLookups(host, lookupsUsed(spec));
         let result: PagedResult | undefined;
         try {
-            result = await runPaged(host, spec, sort, p => { this.engineRunning = p.result; onStage?.(p.stage); });
+            // (a newer search or sort stops Results' run still going: its own, never the step's count)
+            if (this.pagedRunning) host.cancel(this.pagedRunning);
+            result = await runPaged(host, spec, sort, p => { this.pagedRunning = p.result; onStage?.(p.stage); }, search ? this.searchArg(resultColumnRefs(spec), search) : undefined);
         } finally {
-            this.engineRunning = undefined;
+            this.pagedRunning = undefined;
         }
         if (result) this.paged = { key, result, host };
+        if (result && !search) this.pagedAll = { key: engineKey(spec), total: result.total };
         return result;
     }
 
@@ -1592,11 +1599,14 @@ export class QueryController {
             const columns = resultColumnRefs(spec);
             const sort = message.sort && Number.isInteger(message.sort.column) && message.sort.column >= 0 && message.sort.column < columns.length ? { column: message.sort.column, dir: message.sort.dir === 'desc' ? 'desc' as const : 'asc' as const } : null;
             await this.remember(search, sort);
-            const paged = await this.pagedFor(spec, sort);
+            // (the rows before the search: counted once, when there is a search and they are not known yet)
+            if (search && this.pagedAll?.key !== engineKey(spec)) await this.pagedFor(spec, null);
+            const paged = await this.pagedFor(spec, sort, undefined, search);
             const host = this.engine;
             if (!paged || !host) return null;
+            const total = search ? this.pagedAll?.total ?? paged.total : paged.total;
             return {
-                columns: paged.layout.columns, key: engineKey(spec), total: paged.total, shown: paged.total,
+                columns: paged.layout.columns, key: engineKey(spec), total, shown: paged.total,
                 page: async (offset, limit) => ({ rows: await readPage(host, paged, offset, limit) }),
                 each: each => eachPage(host, paged, each),
                 totals: () => pagedTotals(host, paged)
@@ -1801,7 +1811,7 @@ export class QueryController {
     private async engineLoad(spec: QuerySpec): Promise<EngineHost> {
         const key = JSON.stringify(spec.views.map(v => [v.id, v.columns, this.loaded.get(v.id)?.rows.length ?? 0]));
         if (this.engine && this.engineKey === key) return this.engine;
-        const engine = this.engine && this.engineKey.startsWith('[') ? this.engine : (this.ports.engineHost?.() ?? localEngineHost());
+        const engine = this.engine && this.engineKey.startsWith('[') ? this.engine : (this.ports.engineHost?.() ?? localEngineHost(new QueryEngine(undefined, QUERY_ROW_TESTS)));
         if (engine !== this.engine) { this.engine?.close(); this.engineLookups.clear(); }
         // (only the views not in it yet, or changed, go in again)
         const had = new Map<string, string>((JSON.parse(this.engineKey || '[]') as [string, string[], number][]).map(v => [v[0], JSON.stringify(v)]));
@@ -1837,6 +1847,7 @@ export class QueryController {
         this.engineDuplicates = run.duplicates;
         if (this.paged && this.paged.host === host) void host.release(this.paged.result.id);
         this.paged = { key: `${engineKey(spec)}\n${JSON.stringify(null)}`, result: run.kept, host };
+        this.pagedAll = { key: engineKey(spec), total: run.kept.total };
         console.log(`[query-engine] ${run.total} rows of ${spec.views.length} views, kept in the engine, in ${Math.round(performance.now() - started)} ms: ${laps.join(' · ')} (ms)`);
         return run.kept;
     }
@@ -1898,27 +1909,21 @@ export class QueryController {
 
     /** The rows the search keeps, read a few thousand at a time; a newer search stops this one. */
     private async search(result: { columns: ColumnRef[]; rows: unknown[][] }, search: string, seq: number): Promise<number[] | null> {
-        const terms = parseSearchExpression(search);
-        // A column answers to its name (@sku: any view's) and to its view's letter with it (@d.sku: that view's)
-        const letters = new Map(this.query?.sources.map(s => [s.id, s.name]) ?? []);
-        const cols = result.columns.map((c, i) => {
-            const letter = letters.get(c.view);
-            return { id: letter ? `${letter}.${c.column}`.toLowerCase() : `c${i}`, name: c.column, type: 'string' };
-        });
-        const get = (r: Record<string, unknown>, id: string) => r[id];
+        // A column answers to its name (@sku: any view's) and to its view's name with it (@stock.sku: that view's): query-search.ts
+        const test = searchTest(this.searchArg(result.columns, search));
         const out: number[] = [];
         for (let start = 0; start < result.rows.length; start += SEARCH_CHUNK) {
             if (start) await new Promise(resolve => setTimeout(resolve, 0));
             if (seq !== this.searchSeq || this.closed) return null;
             const end = Math.min(result.rows.length, start + SEARCH_CHUNK);
-            for (let i = start; i < end; i++) {
-                const flat: Record<string, string> = {};
-                const row = result.rows[i];
-                for (let c = 0; c < cols.length; c++) flat[cols[c].id] = row[c] === null || row[c] === undefined ? '' : String(row[c]);
-                if (matchesRow(terms, flat, cols, get)) out.push(i);
-            }
+            for (let i = start; i < end; i++) if (test(result.rows[i])) out.push(i);
         }
         return out;
+    }
+
+    /** What the search reads: the text, and Results' columns by the names it knows them by. */
+    private searchArg(columns: ColumnRef[], search: string): SearchArg {
+        return { search, cols: searchColumns(columns, new Map(this.query?.sources.map(s => [s.id, s.name]) ?? [])) };
     }
 }
 

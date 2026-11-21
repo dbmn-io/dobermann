@@ -499,15 +499,23 @@ export function recordQuery(view: string, key: Expr, value: Value): Query {
 /** Results' sort: a column of Results (its place), up or down. */
 export interface ShownSort { column: number; dir: 'asc' | 'desc' }
 
-/** The query Results pages through: buildQuery, then sorted as Results sorts when a column is picked. */
-export function pagedQuery(spec: QuerySpec, sort?: ShownSort | null): { query: Query; layout: CompareLayout } {
+/**
+ * The query Results pages through: buildQuery; the search box's rows (a filter step by the host's
+ * "search" row test, given `search`: query-search.ts); then sorted as Results sorts when a column is picked.
+ */
+export function pagedQuery(spec: QuerySpec, sort?: ShownSort | null, search?: unknown): { query: Query; layout: CompareLayout } {
     const { query, layout } = buildQuery(spec);
-    if (!sort || !Number.isInteger(sort.column) || sort.column < 0 || sort.column >= layout.columns.length) return { query, layout };
-    const base = query.result ?? 'rows';
-    return {
-        query: { steps: [...query.steps, { as: 'sorted', sort: base, by: [{ value: { column: `c${sort.column}` }, descending: sort.dir === 'desc', order: 'shown' }] }], result: 'sorted' },
-        layout
-    };
+    let base = query.result ?? 'rows';
+    const steps = [...query.steps];
+    if (search !== undefined) {
+        steps.push({ as: 'found', filter: base, test: { name: 'search', arg: search } });
+        base = 'found';
+    }
+    if (sort && Number.isInteger(sort.column) && sort.column >= 0 && sort.column < layout.columns.length) {
+        steps.push({ as: 'sorted', sort: base, by: [{ value: { column: `c${sort.column}` }, descending: sort.dir === 'desc', order: 'shown' }] });
+        base = 'sorted';
+    }
+    return { query: { steps, result: base }, layout };
 }
 
 /** A query's rows kept in the engine for Results to page through. */
@@ -518,9 +526,9 @@ export interface PagedResult {
 }
 
 /** Runs a paged query: its result kept (release it when done); undefined when stopped. */
-export async function runPaged(engineIn: QueryEngine | EngineHost, spec: QuerySpec, sort?: ShownSort | null, onProgress?: (p: Progress) => void): Promise<PagedResult | undefined> {
+export async function runPaged(engineIn: QueryEngine | EngineHost, spec: QuerySpec, sort?: ShownSort | null, onProgress?: (p: Progress) => void, search?: unknown): Promise<PagedResult | undefined> {
     const engine = hostOf(engineIn);
-    const { query, layout } = pagedQuery(spec, sort);
+    const { query, layout } = pagedQuery(spec, sort, search);
     const out = await engine.run(query, { onProgress });
     if ('cancelled' in out) return undefined;
     if ('problems' in out) throw new Error(out.problems.map(p => p.message).join(' '));

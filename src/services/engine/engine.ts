@@ -14,7 +14,7 @@ import { StoredTable, TextDictionary } from './engine-columns';
 import { COMPARE_RELATION, COMPARE_STATUS, runCompare } from './engine-compare';
 import {
     FUNCTIONS, ROW_LIMIT, type CompareStats, type Engine, type Expr, type FunctionName, type JoinKind, type JoinStats, type Problem,
-    type Query, type ResultId, type RunOptions, type RunOutcome, type Step, type StatsWindow, type Table, type TableWindow
+    type Query, type ResultId, type RowTests, type RunOptions, type Value, type RunOutcome, type Step, type StatsWindow, type Table, type TableWindow
 } from './engine-types';
 import { compareValues, fromValue, isNumber, num, readNumber, Real, toValue, truthy, type V } from './engine-values';
 
@@ -94,8 +94,11 @@ export class QueryEngine implements Engine {
         }
     };
 
-    /** @param rowLimit the most rows a join may make (ROW_LIMIT unless a test asks for less). */
-    constructor(private readonly rowLimit = ROW_LIMIT) {}
+    /**
+     * @param rowLimit the most rows a join may make (ROW_LIMIT unless a test asks for less).
+     * @param rowTests the row tests filter steps may name (Results' search).
+     */
+    constructor(private readonly rowLimit = ROW_LIMIT, private readonly rowTests: RowTests = {}) {}
 
     /* ---------- Tables ---------- */
 
@@ -203,7 +206,9 @@ export class QueryEngine implements Engine {
                     const seen = new Set<string>();
                     out.forEach(c => { if (seen.has(c.name)) say(`Two columns are called "${c.name}".`); seen.add(c.name); });
                 } else if (kind === 'filter') {
-                    this.checkExpr((step as Extract<Step, { filter: string }>).where, cols, input, say);
+                    const f = step as Extract<Step, { filter: string }>;
+                    if ('test' in f) { if (!this.rowTests[f.test?.name]) say(`There is no row test "${f.test?.name}".`); }
+                    else this.checkExpr(f.where, cols, input, say);
                 } else if (kind === 'group') {
                     const s = step as Extract<Step, { group: string }>;
                     s.by.forEach(b => this.checkExpr(b.value, cols, input, say));
@@ -314,12 +319,21 @@ export class QueryEngine implements Engine {
         }
         if (kind === 'sort') return this.sorted(step as Extract<Step, { sort: string }>, base, from, name, slice);
         if (kind === 'group') return this.grouped(step as Extract<Step, { group: string }>, base, from, name, slice);
-        // filter: the rows whose condition is true, as SQLite's WHERE reads it
-        const where = this.compile((step as Extract<Step, { filter: string }>).where, base, from);
+        // filter: the rows whose condition is true, as SQLite's WHERE reads it; or that pass the host's row test
+        const f = step as Extract<Step, { filter: string }>;
+        let pass: (r: number) => boolean;
+        if ('test' in f) {
+            const test = this.rowTests[f.test.name](f.test.arg, base.cols.map(c => c.name));
+            const n = base.cols.length;
+            pass = r => { const row = new Array<Value>(n); for (let c = 0; c < n; c++) row[c] = toValue(base.value(r, c)); return test(row); };
+        } else {
+            const where = this.compile(f.where, base, from);
+            pass = r => truthy(where(r)) === true;
+        }
         const kept: number[] = [];
         for (let r = 0; r < base.rowCount; r++) {
             if (r && r % SLICE === 0) await slice(`Filtering ${name}`, r, base.rowCount);
-            if (truthy(where(r)) === true) kept.push(r);
+            if (pass(r)) kept.push(r);
         }
         const rows = Int32Array.from(kept);
         return { cols: base.cols, rowCount: rows.length, value: (row, c) => base.value(rows[row], c) };

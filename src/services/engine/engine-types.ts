@@ -120,6 +120,12 @@ export type Step =
     | { as?: string; select: string; columns: { name: string; value: Expr }[] }
     | { as?: string; filter: string; where: Expr }
     /**
+     * A filter by a row test the host gives the engine by name (RowTests): `arg` says what to test
+     * (Results' search box: its text and columns). The rules live with the host, once
+     * (search-matcher.js), not copied into expressions.
+     */
+    | { as?: string; filter: string; test: { name: string; arg: unknown } }
+    /**
      * Rows grouped by the `by` values (blank is a value; 1 and 1.0 one group), a row per group in
      * the order each first appears, as SQLite's GROUP BY would give them sorted. With no `by`, one
      * row for all of them (even none). Aggregates as SQLite's: count (rows), countValues (values
@@ -218,6 +224,12 @@ export interface StatsWindow {
     from: number;
     count: number;
 }
+
+/**
+ * Row tests a host gives the engine, by name: each makes, from its `arg` and the input's column
+ * names, a test of one row (its values in column order). The engine stays free of them.
+ */
+export type RowTests = Record<string, (arg: unknown, columns: string[]) => (row: Value[]) => boolean>;
 
 /* ---------- Running ---------- */
 
