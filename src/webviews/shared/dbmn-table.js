@@ -1029,15 +1029,65 @@
             // column (a status, a key, the row numbers) or one given its width keeps what it needs:
             // stretched in proportion, the widest (a status of many tags) would grow the most
             const stays = this._columns.map(c => !!c.pinned || Number(c.width) > 0);
-            const fixed = widths.reduce((a, w, i) => a + (stays[i] ? w : 0), 0);
-            const grows = sum - fixed;
-            if (sum < room && grows > 0) widths = widths.map((w, i) => (stays[i] ? w : Math.floor(w * (room - fixed) / grows)));
-            else if (sum < room) widths = widths.map(w => Math.floor(w * room / sum));
+            if (sum < room) {
+                // The spare room goes first to a column whose values further down are wider than the
+                // first rows it was measured on (they would be cut), up to what they need; what is
+                // left, to every data column in proportion
+                let spare = room - sum;
+                const needs = this._needs(widths, stays);
+                const short = needs.map((n, i) => (stays[i] ? 0 : Math.max(0, n - widths[i])));
+                const lacking = short.reduce((a, b) => a + b, 0);
+                if (lacking > 0) {
+                    const give = Math.min(spare, lacking);
+                    widths = widths.map((w, i) => w + Math.floor(short[i] * give / lacking));
+                    spare = room - widths.reduce((a, b) => a + b, 0);
+                }
+                const grows = widths.reduce((a, w, i) => a + (stays[i] ? 0 : w), 0);
+                if (spare > 0 && grows > 0) widths = widths.map((w, i) => (stays[i] ? w : Math.floor(w * (grows + spare) / grows)));
+                else if (spare > 0 && !grows) widths = widths.map(w => Math.floor(w * room / (room - spare)));
+            }
             this._columns.forEach((column, i) => { if (!this._widths[column.id]) this._widths[column.id] = widths[i]; });
             this._sized = true;
             this._table.classList.add('is-sized');
             this._colgroup();
             this._rendered = { start: -1, end: -1 };
+        }
+
+        /**
+         * What each data column's values need, across the rows the table holds (not only the first
+         * ones it was measured on): its widest value's text in the cells' own font, and the cell's
+         * padding; at most 420 as a measured width is. A column the screen draws itself (render)
+         * keeps its measured width.
+         */
+        _needs(widths, stays) {
+            const rows = this._source ? [].concat(...this._pages.values()) : this._rows;
+            if (!rows.length || typeof document === 'undefined') return widths.slice();
+            const step = Math.max(1, Math.ceil(rows.length / 3000));
+            const canvas = this._measure || (this._measure = document.createElement('canvas'));
+            const pen = canvas.getContext && canvas.getContext('2d');
+            if (!pen) return widths.slice();
+            return this._columns.map((column, i) => {
+                if (stays[i] || column.render || column.nested) return widths[i];
+                // The three longest texts (the widest is nearly always among them)
+                const longest = [];
+                for (let r = 0; r < rows.length; r += step) {
+                    const value = rows[r] ? rows[r][column.id] : null;
+                    if (value === null || value === undefined || typeof value === 'object') continue;
+                    const text = typeof value === 'number' ? count(value) : String(value);
+                    if (longest.length < 3 || text.length > longest[longest.length - 1].length) {
+                        longest.push(text);
+                        longest.sort((a, b) => b.length - a.length);
+                        if (longest.length > 3) longest.pop();
+                    }
+                }
+                if (!longest.length) return widths[i];
+                const td = this._body.querySelector(`td:nth-child(${i + 1})`);
+                const style = td ? getComputedStyle(td) : null;
+                pen.font = style ? style.font : '13px sans-serif';
+                const pad = style ? (parseFloat(style.paddingLeft) || 0) + (parseFloat(style.paddingRight) || 0) + 2 : 20;
+                const text = Math.max(...longest.map(t => pen.measureText(t).width));
+                return Math.min(420, Math.max(widths[i], Math.ceil(text + pad)));
+            });
         }
 
         _setWidth(i, width) {

@@ -1344,3 +1344,33 @@ test('a column given its width keeps it; wrap puts a long status on a second lin
     await expect(cell).toHaveClass(/dbmn-cell-wrap/);
     expect(await cell.evaluate(td => getComputedStyle(td).whiteSpace)).toBe('normal');
 });
+
+test('spare room goes first to a column whose values are cut, then to the rest: a long sku later in the rows is not cut while description has room to spare', async ({ page }) => {
+    await page.setContent(`<!doctype html><html><head>
+<style>:root{--vscode-foreground:#ccc;--vscode-editor-background:#1e1e1e;--vscode-panel-border:#444;--vscode-input-background:#2a2a2a}
+${STYLES.map(read).join('\n')}
+body{margin:0;padding:16px;width:1200px;background:#1e1e1e;color:#ccc;font:13px sans-serif}</style>
+${SCRIPTS.map(rel => `<script>${read(rel)}</script>`).join('\n')}</head><body>
+<dbmn-table id="t" label="Input" searchable></dbmn-table>
+<script>
+  const t = document.getElementById('t');
+  t.columns = [{ id: 'row', name: '#', pinned: true }, { id: 'sku', name: 'sku' }, { id: 'description', name: 'description' }, { id: 'locationName', name: 'locationName' },
+      { id: 'uom', name: 'unitOfMeasure' }, { id: 'status', name: 'inventoryStatus' }, { id: 'lot', name: 'lotNumber' }];
+  // The first rows (what the widths are measured from) have short skus; the errors further down have long ones.
+  // The other columns are as wide as they need from the start, and fill most of the box
+  t.rows = Array.from({ length: 400 }, (_, i) => ({ row: i + 1, sku: i < 60 ? 'S' + i : 'SKU-WOOF-00' + String(i).padStart(4, '0') + '-ERR',
+      description: 'Kibble for large dogs, 10 kg bag', locationName: 'Distribution centre west 01', uom: 'EACH', status: 'AVAILABLE', lot: 'LOT-2026-11-0001' }));
+</script></body></html>`);
+    await expect(page.locator('#t .dbmn-table-body tr').first()).toBeVisible();
+    await page.locator('#t .search-input').fill('ERR');
+    await expect(page.locator('#t .dbmn-table-count')).toHaveText('340 of 400 rows');
+    const cut = await page.evaluate(() => {
+        const cell = document.querySelector('#t .dbmn-table-body tr td:nth-child(2)');
+        return { text: cell.textContent, cut: cell.scrollWidth > cell.clientWidth + 1 };
+    });
+    expect(cut.text).toContain('-ERR');
+    expect(cut.cut).toBe(false);
+    // and the room it took came from what had room to spare, not from the long column's share of everything
+    const w = id => page.evaluate(i => Math.round(document.querySelector(`#t th[data-col="${i}"]`).getBoundingClientRect().width), id);
+    expect(await w('sku')).toBeLessThan(420);
+});
