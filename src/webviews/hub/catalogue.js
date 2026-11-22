@@ -5,7 +5,7 @@
 
     const ALL_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'];
     const ORPHAN_SYSTEM_KEY = '__unknown__';
-    // Mirror of catalogue.service.ts — user-facing label for endpoints with no
+    // The user-facing label for endpoints with no
     // System. Distinct from any real System name so unassigned endpoints don't
     // render as a twin of an actual System.
     const ORPHAN_SYSTEM_LABEL = 'Unassigned';
@@ -1063,7 +1063,7 @@
         return window.SearchWords ? window.SearchWords.highlight(text, searchWords) : escapeHtml(text);
     }
 
-    // ─── Faceting logic (mirrors src/services/catalogue/catalogue.service.ts) ───
+    // ─── Faceting logic: the System and method chips, then the box's words ───
 
     function filterEndpoints(endpoints, filters) {
         const systemIds = (filters.systemIds && filters.systemIds.length > 0) ? new Set(filters.systemIds) : null;

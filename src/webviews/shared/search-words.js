@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Flexion Tech Pty Ltd
 /**
  * SearchWords — the word rule of the Hub's search (#444), shared by Endpoints, History
- * and the catalogue service (core).
+ * and Reporting.
  *
  * James, 2026-11-12: "I need to be able to go search for post space endpoint name or anything
  * that is in that endpoint... I can't do multiple searches." Plain words match anywhere in a

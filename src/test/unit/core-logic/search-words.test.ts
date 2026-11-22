@@ -1,15 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Flexion Tech Pty Ltd
 /**
- * The Hub's search rules (#444): shared/search-words.js, used by the API Catalogue, History and
- * the catalogue service.
+ * The Hub's search rules (#444): shared/search-words.js, used by the Hub's Endpoints, History and
+ * Reporting lists.
  *
  * James, 2026-11-12: "I need to be able to go search for post space endpoint name or anything that
  * is in that endpoint... I can't do multiple searches", and the query is just the text in the box.
  */
 import { expect } from 'chai';
-import { filterEndpoints } from '../../../services/catalogue/catalogue.service';
-import type { APIEndpointConfig } from '../../../apiConfigManager';
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const W = require('../../../webviews/shared/search-words.js');
@@ -121,27 +119,6 @@ describe('Hub search (#444)', () => {
 
         it('an empty query passes every row', () => {
             expect(find('  ')).to.have.length(2);
-        });
-    });
-
-    describe('the API Catalogue', () => {
-        const ep = (id: string, name: string, method: string, path: string, tags: string[] = []): APIEndpointConfig =>
-            ({ id, name, method, path, tags } as unknown as APIEndpointConfig);
-        const endpoints = [
-            ep('a', 'Bulk Inventory Upload', 'POST', '/inventory', ['inventory', 'load']),
-            ep('b', 'Get Carriers', 'GET', '/reference/carriers', ['reference']),
-            ep('c', 'Inventory Report', 'GET', '/inventory/report', ['inventory'])
-        ];
-        const ids = (out: APIEndpointConfig[]) => out.map(e => e.id);
-
-        it('finds by several words across name, method and path', () => {
-            expect(ids(filterEndpoints(endpoints, { search: 'post inventory' }))).to.deep.equal(['a']);
-            expect(ids(filterEndpoints(endpoints, { search: 'inventory -report' }))).to.deep.equal(['a']);
-        });
-
-        it('tags: any of them', () => {
-            expect(ids(filterEndpoints(endpoints, { tags: ['load'] }))).to.deep.equal(['a']);
-            expect(ids(filterEndpoints(endpoints, { tags: ['load', 'reference'] }))).to.deep.equal(['a', 'b']);
         });
     });
 });
