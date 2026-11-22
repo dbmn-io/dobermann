@@ -141,14 +141,14 @@ describe('Query: a compare on a key of two columns (new engine)', function () {
         vC1: { columns: ['sku', 'loc', 'qty'], rows: grid((s, l) => (s === 0 && l === 2 ? 99 : s * 10 + l)) }
     };
 
-    async function twoKey() {
+    async function twoKey(shared?: Map<string, unknown>) {
         const query = {
             id: 'qry-two', name: 'Two keys', letters: 'names', reached: 4, clashes: 'unticked', blanks: 'unticked', createdAt: '2026-11-22T00:00:00Z', updatedAt: '2026-11-22T00:00:00Z',
             sources: ['vBL', 'vC1'].map((id, i) => ({ id, name: ['Stock', 'Stock_C1'][i], endpointId: '', endpointName: 'stock.xlsx', view: '', executionId: '', isBatch: false, environment: '', executedAt: '2026-11-22T00:00:00Z', file: { name: 'stock.xlsx', sheet: id } })),
             joins: [{ view: 'vC1', kind: 'compare', on: ['sku', 'loc'].map(c => ({ left: { parts: [{ view: 'vBL', column: c }] }, right: { parts: [{ view: 'vC1', column: c }] } })) }],
             select: [{ view: 'vBL', column: 'qty', group: 'qty' }, { view: 'vC1', column: 'qty', group: 'qty' }]
         };
-        const store = new Map<string, unknown>([['queries', [query]]]);
+        const store = shared ?? new Map<string, unknown>([['queries', [query]]]);
         const seen: Msg[] = [];
         const session = new ScreenSession({ post: (m: Msg) => { seen.push(m); } } as never, { openExternal() { /* */ } } as never);
         const ports = {
@@ -163,7 +163,7 @@ describe('Query: a compare on a key of two columns (new engine)', function () {
         };
         const controller = new QueryController(session, ports as never, { queryId: 'qry-two' });
         await controller.handleMessage({ type: 'query.ready' } as never);
-        return { controller, seen };
+        return { controller, seen, store };
     }
 
     it('both key columns lead Results; a record is found by both, and its title is both', async () => {
@@ -198,5 +198,22 @@ describe('Query: a compare on a key of two columns (new engine)', function () {
             ['Same', '9'], ['DIFF', '1'], ['Filters', 'Status: DIFF · Only diffs']
         ]);
         controller.dispose();
+    });
+
+    it('what the compare found is kept for the Hub\'s line (#11); Side by side or Compact is remembered for the user (#18)', async () => {
+        const { controller, seen, store } = await twoKey();
+        await controller.handleMessage({ type: 'query.rows', seq: 1, offset: 0, limit: 50 } as never);
+        // S0 · L2 differs (qty 2 against 99): one DIFF, nothing missing
+        assert.deepStrictEqual((store.get('queries') as { found?: unknown }[])[0].found, { diff: 1, missing: 0 });
+        await controller.handleMessage({ type: 'query.preference', key: 'resultsView', value: 'compact' } as never);
+        await controller.handleMessage({ type: 'query.preference', key: 'anything', value: 1 } as never);
+        assert.deepStrictEqual(store.get('queryPreferences'), { resultsView: 'compact' });
+        controller.dispose();
+        // (the next query opened hears it)
+        const again = await twoKey(store);
+        const init = again.seen.find(m => m.type === 'query.init') as Msg & { prefs: Record<string, unknown> };
+        assert.deepStrictEqual(init.prefs, { resultsView: 'compact' });
+        again.controller.dispose();
+        void seen;
     });
 });

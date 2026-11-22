@@ -81,6 +81,10 @@
     function sides(c) {
         return c.sources.map((s, i) => [letter(i), s.environment].concat((s.header || []).map(h => h.value), [day(s.executedAt)]).join(' ')).join(' · ');
     }
+    function foundInQuery(f) {
+        if (!f.diff && !f.missing) return 'no differences';
+        return [f.diff ? `${f.diff.toLocaleString()} DIFF` : '', f.missing ? `${f.missing.toLocaleString()} missing` : ''].filter(Boolean).join(' · ');
+    }
     function found(c) {
         if (!c.comparedAt) return 'not compared yet';
         const n = c.counts || {};
@@ -185,7 +189,8 @@
             const sub = c.isLookup
                 ? [`${c.rows.toLocaleString()} row${c.rows === 1 ? '' : 's'}`, ago(new Date(c.updatedAt).getTime())].join(' · ')
                 : c.isQuery
-                ? [typeof c.rows === 'number' ? `${c.rows.toLocaleString()} rows` : 'not run yet', ago(new Date(c.updatedAt || c.createdAt).getTime())].join(' · ')
+                // (a compare says what it found when Results last counted it: "12 DIFF · 3 missing", "no differences", #11)
+                ? [!asQuery(c) && c.found ? foundInQuery(c.found) : typeof c.rows === 'number' ? `${c.rows.toLocaleString()} rows` : 'not run yet', ago(new Date(c.updatedAt || c.createdAt).getTime())].join(' · ')
                 : [found(c), ago(new Date(c.comparedAt || c.createdAt).getTime())].join(' · ');
             const glyph = c.isLookup ? 'sheet' : asQuery(c) ? 'blend' : 'scale';
             const kind = c.isLookup ? 'Lookup table' : asQuery(c) ? 'Query' : 'Compare';

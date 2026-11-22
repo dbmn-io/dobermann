@@ -338,6 +338,13 @@ export class QueryController {
             switch (message.type) {
                 case 'query.ready': return await this.open();
                 // Its row in the Reporting list clicked again while the tab is open: Edit, or Run
+                // A choice Results remembers for the user, for every query (Side by side or Compact)
+                case 'query.preference': {
+                    const key = String(message.key ?? '');
+                    if (!QUERY_PREFERENCE_KEYS.includes(key)) return;
+                    await this.ports.state.update(QUERY_PREFERENCES, { ...this.preferences(), [key]: message.value });
+                    return;
+                }
                 case 'query.start': {
                     this.post({ type: 'query.goTo', start: message.start === 'results' ? 'results' : 'edit' });
                     // (opened again from the Console's Add to Compare: its result is added now)
@@ -558,6 +565,23 @@ export class QueryController {
         }
     }
 
+    /** A compare's DIFF and Missing rows, kept on the query when they change (the Hub list says them, #11). */
+    private async rememberFound(counts: StatusCounts): Promise<void> {
+        const query = this.query;
+        if (!query) return;
+        const found = { diff: counts.diff ?? 0, missing: Object.values(counts.missing ?? {}).reduce((a, b) => a + b, 0) };
+        if (query.found && query.found.diff === found.diff && query.found.missing === found.missing) return;
+        query.found = found;
+        await saveQuery(this.ports.state, query);
+        this.ports.host.compared?.();
+    }
+
+    /** The user's Results choices, kept with their queries (so on every computer they sign in on). */
+    private preferences(): Record<string, unknown> {
+        const kept = this.ports.state.get<Record<string, unknown>>(QUERY_PREFERENCES);
+        return kept && typeof kept === 'object' ? kept : {};
+    }
+
     /** Results the Console asked to add (SavedQuery.adding), added as Add a view adds them; New Compare then offers runs. */
     private async addPending(): Promise<void> {
         const stored = getQuery(this.ports.state, this.config.queryId);
@@ -578,7 +602,7 @@ export class QueryController {
         if (!query) throw new Error('This query is no longer saved.');
         this.query = query;
         if (nameViews(query)) await saveQuery(this.ports.state, query);
-        this.post({ type: 'query.init', name: query.name, empty: query.sources.length === 0, reached: query.reached ?? 4, start: this.config.start === 'results' ? 'results' : 'edit' });
+        this.post({ type: 'query.init', name: query.name, empty: query.sources.length === 0, reached: query.reached ?? 4, start: this.config.start === 'results' ? 'results' : 'edit', prefs: this.preferences() });
         // The views show at once, by what is saved; their rows are read behind them
         this.postState({ reading: true });
         const t = Date.now();
@@ -2359,6 +2383,8 @@ export class QueryController {
                 };
                 const found = await counted(search);
                 const every = search ? await counted('') : found;
+                // (what the whole compare found, for the Hub list's line: kept when it changes)
+                if (every && !status.filter?.hidden?.length) await this.rememberFound(every);
                 return found && every ? { counts: found, countsAll: every } : undefined;
             } : undefined;
             return {
@@ -2759,6 +2785,10 @@ interface FileMessage {
     text?: string;
     base64?: string;
 }
+
+/** Where the user's Results choices are kept, and which they are: Side by side or Compact (#18). */
+const QUERY_PREFERENCES = 'queryPreferences';
+const QUERY_PREFERENCE_KEYS = ['resultsView'];
 
 interface RowsRequest {
     seq: number;

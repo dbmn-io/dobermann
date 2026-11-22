@@ -324,7 +324,7 @@
             clear.title = clear.disabled ? 'No filters on' : 'Clear all filters';
             clear.classList.toggle('is-active', !clear.disabled);
         }
-        [['queryViewSide', 'side'], ['queryViewCompact', 'compact']].forEach(([id, view]) => $(id).addEventListener('click', () => { if (ui.resultsView === view) return; ui.resultsView = view; renderTools(); ctx.redraw(); }));
+        [['queryViewSide', 'side'], ['queryViewCompact', 'compact']].forEach(([id, view]) => $(id).addEventListener('click', () => { if (ui.resultsView === view) return; ui.resultsView = view; ctx.post({ type: 'query.preference', key: 'resultsView', value: view }); renderTools(); ctx.redraw(); }));
         [['queryColsAll', false], ['queryColsChanged', true]].forEach(([id, on]) => $(id).addEventListener('click', () => { if (!!ui.diffsOnly === on) return; ui.diffsOnly = on; renderTools(); ctx.redraw(); }));
         $('queryClearFilters').addEventListener('click', () => setFilter({ kinds: null, columns: [], relations: null }));
 
@@ -531,7 +531,7 @@
             });
         }
 
-        return { leadColumns, groupHead, compactCell, renderTools, openRecord, recordDetail, slotMenu, closeMenus };
+        return { leadColumns, groupHead, compactCell, renderTools, openRecord, recordDetail, slotMenu, closeMenus, anyFilter };
     }
 
     window.QueryCompareResults = { create };

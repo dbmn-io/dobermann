@@ -164,6 +164,21 @@
         const fix = v.file ? 'Pick the file again on Views to bring it up to date.' : 'Read the newest result on Views to bring it up to date.';
         return `${level === 'month' ? 'Older than a month' : 'Older than a week'}: ${v.file ? 'read' : 'ran'} ${ageSpan(v.executedAt)} ago. ${fix}`;
     }
+    /**
+     * A result that did not fetch every page (a batch stopped before its last page, #23): its rows past it look
+     * Missing in a compare. Said on its slot (a warning sign), in its menu's summary, and once as the query opens.
+     */
+    function isIncomplete(v) {
+        return !!(v && !v.file && v.executionId && ((ui.sources || []).find(r => r.id === v.executionId) || {}).incomplete);
+    }
+    const INCOMPLETE_SAYS = 'Incomplete: not every page of this result was fetched, so rows on the pages it missed will look Missing.';
+    function incompleteIcon(v) {
+        if (!isIncomplete(v)) return null;
+        const icon = el('span', 'query-age-icon query-age-week query-incomplete-icon');
+        icon.dataset.icon = 'triangle-alert';
+        icon.title = INCOMPLETE_SAYS;
+        return icon;
+    }
     /** The age's icon: a yellow triangle past a week, a red octagon past a month. Nothing when fresh. */
     function ageIcon(v) {
         const level = ageLevel(v.executedAt);
@@ -219,7 +234,8 @@
         bar.render(states, ui.step);
         // On Results the wizard is done: the steps fold into what is on screen (click it for the steps)
         // (the row count shortened when it is big: the whole figure shows on hover)
-        bar.summary = [said[0], said[2], ui.shownText && (ui.shownExact && ui.shownExact !== ui.shownText ? { text: ui.shownText, title: ui.shownExact } : ui.shownText)].filter(Boolean);
+        const shown = ui.shownText && (ui.shownExact && ui.shownExact !== ui.shownText ? { text: ui.shownText, title: ui.shownExact } : ui.shownText);
+        bar.summary = (hasStatus() ? compareSummary(shown) : [said[0], said[2], shown]).filter(Boolean);
         // (once its rows are in: until then Results shows as a step that is working, then the steps shrink away)
         bar.folded = ui.step === 4 && !!ui.settled && !!ui.arrived;
         const next = $('queryNextBtn');
@@ -250,6 +266,26 @@
             ui.shownText || ''
         ];
     }
+    /**
+     * A compare's folded steps on Results say what it found (#29, as old Compare): its results, its key, how many DIFF and
+     * how many Missing (the Status menu's counts, among the rows the search finds), and the rows shown.
+     */
+    function compareSummary(shown) {
+        const s = ui.state;
+        const c = ui.counts;
+        const results = ((s.compare && s.compare.views) || []).filter(id => !ui.filter.hidden.includes(placeOfView(id))).length;
+        const first = (s.joins || []).find(j => j.kind === 'compare');
+        const key = first ? first.on.map(p => p.left && p.left.column).filter(Boolean).join(' + ') : '';
+        const missing = c ? Object.values(c.missing || {}).reduce((a, b) => a + b, 0) : 0;
+        return [
+            `${count(results)} results`,
+            key ? `on ${key}` : '',
+            c ? `${count(c.diff || 0)} DIFF` : '',
+            c ? `${count(missing)} missing` : '',
+            shown
+        ];
+    }
+    function placeOfView(id) { const v = view(id); return v ? (v.run || v.name) : id; }
     function goTo(n) {
         if (n < 1 || n > 4 || (n > ui.step && waitsFor(n))) return;
         if (n === 4 && ui.step !== 4) ui.arrived = false;
@@ -317,6 +353,7 @@
         const level = ageLevel(v.executedAt);
         lines.push(level ? { 0: v.file ? 'Read' : 'Ran', 1: `${day(v.executedAt)} · ${age(v.executedAt)}`, tone: 'warn' } : [v.file ? 'Read' : 'Ran', `${day(v.executedAt)} · ${age(v.executedAt)}`]);
         if (!v.reading) lines.push(['Rows', count(v.rows)]);
+        if (isIncomplete(v)) lines.push({ 0: 'Pages', 1: 'Not every page was fetched: some rows will look Missing', tone: 'warn' });
         return { title: v.run ? `${v.run} · ${(view(v.runOf) || v).name}` : v.name, lines: lines.map(l => (Array.isArray(l) ? l : Object.assign([l[0], l[1]], { tone: l.tone }))) };
     }
     function withSummary(v, items) {
@@ -433,6 +470,8 @@
             // Data a week old, or a month: said on the slot, on every step
             const old = ageIcon(v);
             if (old) name.prepend(old);
+            const part = incompleteIcon(v);
+            if (part) name.prepend(part);
             inner.append(name, what);
             // Where it comes from and how old it is: on the slot, quietly; whole on Views, and on hover here
             // (the whole of it is the click's summary, not the hover: James, 2026-11-22. Until the menu can show a
@@ -441,6 +480,7 @@
                 ? `${v.run || v.name}: click for its details`
                 : (() => { const sum = slotSummary(v); return [sum.title, ...sum.lines.map(l => `${l[0]}: ${l[1]}`)].join('\n'); })();
             if (old) inner.title += `\n${old.title}`;
+            if (part) inner.title += `\n${INCOMPLETE_SAYS}`;
             if (out) inner.title += v.off ? '\nHidden: left out of the report. Its menu shows it again.' : '\nNot joined yet: left out of the report until its columns are picked on Join.';
             if (v.off) { const eye = el('i', 'query-sign'); eye.dataset.icon = 'eye-off'; name.prepend(eye); }
             // In a compare: "to show" on a view joined in only to show. The views in it carry no mark: the join
@@ -2045,6 +2085,8 @@
     function loadRows(keep) {
         if (!ui.state) return;
         drawTable();
+        // (what an empty Results says: its Status filter or Only diffs left nothing, or its search found nothing, #34)
+        if (!table.emptyText) table.emptyText = ({ searched }) => (hasStatus() && (compareResults.anyFilter() || ui.diffsOnly) ? 'No rows match the filters.' : searched ? 'No rows match the search.' : 'No rows.');
         if (!table.source) table.source = { page };
         else table.reload(keep ? { keep: true } : undefined);
     }
@@ -2133,6 +2175,8 @@
             ui.counts = m.counts;
             ui.countsAll = m.countsAll;
             compareResults.renderTools();
+            // (the folded steps say the compare's DIFF and Missing: drawn again with them)
+            renderBar();
             if (columnsKey() !== was) setTimeout(() => { drawTable(); }, 0);
         }
         asked.resolve({ rows: m.rows.map((r, n) => { const row = {}; asked.ids.forEach((id, i) => { row[id] = r[i]; }); if (m.status) { row.__status = m.status[n]; row.__index = m.index[n]; } return row; }), total: m.shown });
@@ -2422,6 +2466,8 @@
         switch (m.type) {
             case 'query.init':
                 showName(m.name);
+                // Side by side or Compact, as the user left it in any query (#18)
+                if (m.prefs && m.prefs.resultsView === 'compact') ui.resultsView = 'compact';
                 // Always Views first, where each view's rows are seen coming in (James, 2026-11-22: reopened on Results,
                 // the loading couldn't be seen); a tab already open still goes where it's asked (query.goTo)
                 ui.start = 'edit';
@@ -2447,6 +2493,14 @@
             case 'query.sourceList':
                 // (this query's own results as it opens; every result once Add a view asks: `all`)
                 if (m.all || !ui.sourcesAll) { ui.sources = m.results || []; ui.sourceViews = Object.assign({}, ui.sourceViews, m.views || {}); }
+                // (an incomplete result in this query: said once, as it opens)
+                if (!ui.toldIncomplete && ui.state && window.DbmnToast) {
+                    const part = views().filter(isIncomplete);
+                    if (part.length) {
+                        ui.toldIncomplete = true;
+                        window.DbmnToast.warn(`${part.map(v => v.run || v.name).join(', ')}: not every page was fetched, so rows on the pages it missed will look Missing.`);
+                    }
+                }
                 if (m.all) { ui.sourcesAll = true; if (ui.onAllSources) { const done = ui.onAllSources; ui.onAllSources = null; done(); } }
                 if (ui.state) renderTop();
                 break;

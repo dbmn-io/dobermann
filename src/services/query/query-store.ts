@@ -88,6 +88,8 @@ export interface SavedQuery {
     updatedAt: string;
     /** Rows the query made when it last ran (the Hub list's line). */
     rows?: number;
+    /** A compare's DIFF and Missing rows when Results last counted them all (the Hub list's line, #11). */
+    found?: { diff: number; missing: number };
     /** 'unticked': columns picked before a shared name was left unticked have had theirs unticked, once (untickClashes). */
     clashes?: 'unticked';
     /** 'unticked': columns picked before an empty column was left unticked have had theirs unticked, once (untickBlanks). */
