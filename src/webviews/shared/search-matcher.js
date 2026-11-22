@@ -191,7 +191,10 @@ function columnNamed(col, name) {
     var id = String(col.id || '').toLowerCase();
     var heading = String(col.name || col.label || '').toLowerCase();
     var last = id.split(/[.\[\]]/).filter(Boolean).pop() || id;
-    return heading === want || id === want || last === want;
+    // `aliases`: other names it answers to, so one fact has one name everywhere (`@env` in the Hub's
+    // History and in Add a view, whose heading says Environment; 2026-11-22). Typed, never listed.
+    var aliases = Array.isArray(col.aliases) ? col.aliases : [];
+    return heading === want || id === want || last === want || aliases.some(function (a) { return String(a).toLowerCase() === want; });
 }
 
 function blankCell(value) {

@@ -213,6 +213,9 @@
      * Each is kept in the cell, in a span of its own, and its mark is drawn over it by CSS (dbmn-table.css):
      * the text itself never changes, so a copy, the column's fit and the cell's detail read the real text.
      */
+    /** The names a search may use for these columns: each one's name, and its aliases (typed, never in the @ list). */
+    const namesOf = columns => columns.flatMap(c => [c.name, ...(c.aliases || [])]);
+
     const SPECIAL_ONE = /[ \t\n\r\u00a0\u00ad\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f\u1680\u2000-\u200f\u2028\u2029\u202f\u205f-\u2064\u3000\ufeff]/;
     const SPECIAL_ALL = new RegExp(`\\r\\n|${SPECIAL_ONE.source}`, 'g');
     /** (marks for at most this many characters of a cell: past it, a cell shows nothing more) */
@@ -460,7 +463,7 @@
         _typeOf(heading, path) {
             const matcher = window.SearchMatcher;
             const low = String(heading).toLowerCase();
-            const column = this._all.find(c => !own(c.id) && String(c.name || c.id).toLowerCase() === low)
+            const column = this._all.find(c => !own(c.id) && [c.name || c.id, ...(c.aliases || [])].some(n => String(n).toLowerCase() === low))
                 || (this._fields || []).find(f => String(f.name || f.id).toLowerCase() === low);
             if (!column || !matcher || !matcher.typeOfValues) return '';
             const inside = path && path.length;
@@ -492,12 +495,12 @@
         _reading(text, columns) {
             const matcher = window.SearchMatcher;
             const cols = columns || this._searchColumns();
-            return matcher && matcher.describeSearch ? matcher.describeSearch(text, cols.map(c => c.name), (heading, path) => this._typeOf(heading, path), undefined, cols.filter(c => c.hidden).map(c => c.name)) : '';
+            return matcher && matcher.describeSearch ? matcher.describeSearch(text, namesOf(cols), (heading, path) => this._typeOf(heading, path), undefined, namesOf(cols.filter(c => c.hidden))) : '';
         }
         /** The box coloured: what it names, told apart as shown, not shown, or no column (one look at the columns per key). */
         _colour(mirror, text, columns) {
             if (!window.SearchMatcher || !mirror) return;
-            window.SearchMatcher.renderHighlight(mirror, text, columns.map(c => c.name), columns.filter(c => c.hidden).map(c => c.name));
+            window.SearchMatcher.renderHighlight(mirror, text, namesOf(columns), namesOf(columns.filter(c => c.hidden)));
         }
         _inHand() {
             const rows = [];
@@ -1345,7 +1348,7 @@
         _searchColumns() {
             // (`hidden`: not shown. A plain word skips it; `@@word` and `@name` reach it)
             const shown = new Set(this._columns.map(c => c.id));
-            const columns = this._all.filter(c => !own(c.id)).map(c => ({ id: c.id, name: c.name || c.id, hidden: !shown.has(c.id) }));
+            const columns = this._all.filter(c => !own(c.id)).map(c => ({ id: c.id, name: c.name || c.id, hidden: !shown.has(c.id), ...(Array.isArray(c.aliases) && c.aliases.length ? { aliases: c.aliases } : {}) }));
             const fields = (this._fields || []).filter(f => !columns.some(c => c.id === f.id)).map(f => ({ id: f.id, name: f.name || f.id, hidden: true }));
             return columns.concat(fields);
         }

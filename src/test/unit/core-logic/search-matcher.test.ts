@@ -824,6 +824,20 @@ describe('Search: @column terms on nested data', () => {
     });
 });
 
+// A column's aliases: one fact, one name everywhere (`@env` in History and in Add a view, 2026-11-22)
+describe('Search: a column answers to its aliases', () => {
+    const cols = [{ id: 'environment', name: 'Environment', aliases: ['env'] }, { id: 'runAt', name: 'Run at', aliases: ['ran'] }];
+    const rows = [{ environment: 'PROD', runAt: '2026-11-20' }, { environment: 'UAT', runAt: '2026-11-01' }];
+    const find = (text: string) => rows.filter(r => matchesRow(parseSearchExpression(text), r, cols, (row: Record<string, unknown>, id: string) => row[id])).map(r => r.environment);
+
+    it('by its alias as by its name; never listed in the @ list', () => {
+        expect(find('@env=prod')).to.deep.equal(['PROD']);
+        expect(find('@environment=uat')).to.deep.equal(['UAT']);
+        expect(find('@ran>2026-11-10')).to.deep.equal(['PROD']);
+        expect(columnSuggestions('@en', ['Environment', 'Run at']).map((s: { text: string }) => s.text)).to.deep.equal(['@Environment']);
+    });
+});
+
 // Letters meet a name at the start of a word, never inside one (James, 2026-11-22: "@bl" listed quantityAvailable)
 describe('Search: suggestions match at the start of a word', () => {
     const headings = ['quantityAvailable', 'quantityOnHand', 'BL.quantityOnHand', 'C1.quantityOnHand', 'sku', 'lot number', 'order_no'];

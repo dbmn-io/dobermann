@@ -1030,7 +1030,7 @@
     /** The box's fields, shown and not, for its colours and `@` list. */
     function boxFields() {
         const all = endpointFields();
-        return { headings: all.map(f => f.id), hidden: all.filter(f => f.hidden).map(f => f.id) };
+        return { headings: all.map(f => f.id), hidden: all.filter(f => f.hidden).map(f => f.id), aliases: all.flatMap(f => f.aliases || []), hiddenAliases: all.filter(f => f.hidden).flatMap(f => f.aliases || []) };
     }
     /** What `@field=` offers: methods, tags, Systems (the current one first), folders, with how many endpoints have each. */
     function fieldValues(heading) {

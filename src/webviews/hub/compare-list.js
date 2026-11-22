@@ -300,7 +300,7 @@
             { id: 'path', hidden: true, get: c => c.path || '' },
             { id: 'tag', hidden: true, get: c => (c.tags || []).map(t => String(t).trim()) },
             { id: 'system', hidden: true, get: c => systemName.get(c.systemId) || '' },
-            { id: 'env', hidden: true, get: envs },
+            { id: 'env', aliases: ['environment'], hidden: true, get: envs },
             { id: 'view', hidden: true, get: c => (c.sources || []).map(src => src.view).filter(Boolean) },
             { id: 'ran', hidden: true, get: when }
         ];
@@ -342,7 +342,7 @@
     /** The box's fields, shown and not, for its colours and `@` list. */
     function boxFields() {
         const all = fields(lastState || {});
-        return { headings: all.map(f => f.id), hidden: all.filter(f => f.hidden).map(f => f.id) };
+        return { headings: all.map(f => f.id), hidden: all.filter(f => f.hidden).map(f => f.id), aliases: all.flatMap(f => f.aliases || []), hiddenAliases: all.filter(f => f.hidden).flatMap(f => f.aliases || []) };
     }
 
     /** Import a query: paste what Copy the query copied; the host checks it, saves it as a new query and opens it. */

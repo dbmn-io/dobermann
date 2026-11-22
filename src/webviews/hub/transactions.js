@@ -591,7 +591,7 @@
             { id: 'endpoint', get: t => txSubtitle(t) },
             { id: 'status', get: t => String(t.status || '').toLowerCase() },
             { id: 'method', get: t => t.endpointMethod || '' },
-            { id: 'env', get: t => t.environment || '' },
+            { id: 'env', aliases: ['environment'], get: t => t.environment || '' },
             { id: 'http', get: t => (t.httpStatus != null ? String(t.httpStatus) : '') },
             { id: 'name', hidden: true, get: t => (ep(t) && ep(t).name) || t.endpointName || '' },
             { id: 'path', hidden: true, get: t => t.endpointPath || '' },
@@ -606,7 +606,7 @@
     /** The box's fields, shown and not, for its colours and `@` list. */
     function boxFields() {
         const all = runFields(null);
-        return { headings: all.map(f => f.id), hidden: all.filter(f => f.hidden).map(f => f.id) };
+        return { headings: all.map(f => f.id), hidden: all.filter(f => f.hidden).map(f => f.id), aliases: all.flatMap(f => f.aliases || []), hiddenAliases: all.filter(f => f.hidden).flatMap(f => f.aliases || []) };
     }
 
     // ─── #444: the search box's query ───────────────────────────────────

@@ -215,7 +215,7 @@
             const name = field === 'systems' ? now.system : now.env;
             t.values = t.values.map(v => (typeof v === 'string' && v.toLowerCase() === 'current' ? (name || '\u0000none') : v));
         }));
-        const columns = fields.map(f => ({ id: f.id, name: f.name || f.id, hidden: !!f.hidden }));
+        const columns = fields.map(f => ({ id: f.id, name: f.name || f.id, hidden: !!f.hidden, ...(f.aliases ? { aliases: f.aliases } : {}) }));
         const byId = new Map(fields.map(f => [f.id, f.get]));
         const read = (row, id) => { const get = byId.get(id); return get ? get(row) : undefined; };
         return row => sm.matchesRow(terms, row, columns, read);
@@ -280,7 +280,8 @@
         // A long query wraps: the box grows to fit it (a textarea, one line to start)
         const fit = () => {
             const f = fields();
-            if (sm && sm.renderHighlight) sm.renderHighlight(mirror, input.value, f.headings, f.hidden);
+            // (a field's aliases colour as it does: `@environment` as `@env`; the @ list keeps to the names)
+            if (sm && sm.renderHighlight) sm.renderHighlight(mirror, input.value, f.headings.concat(f.aliases || []), f.hidden.concat(f.hiddenAliases || []));
             else mirror.textContent = input.value;
             // (a last line break holds the height of a trailing empty line)
             mirror.appendChild(document.createTextNode('\n'));

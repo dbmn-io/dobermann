@@ -83,6 +83,7 @@ describe('Hub search (#444)', () => {
             { id: 'method', get: (r: Row) => r.method },
             { id: 'tag', hidden: true, get: (r: Row) => r.tags },
             { id: 'system', hidden: true, get: (r: Row) => r.system },
+            { id: 'env', aliases: ['environment'], hidden: true, get: () => 'PROD' },
             { id: 'body', hidden: true, get: (r: Row) => r.body }
         ];
         interface Row { name: string; method: string; tags: string[]; system: string; body: string }
@@ -91,6 +92,12 @@ describe('Hub search (#444)', () => {
             { name: 'Get items', method: 'GET', tags: ['items'], system: 'ERP', body: '' }
         ];
         const find = (query: string, current?: { system?: string; env?: string }) => rows.filter(W.rowTest(query, fields, current)).map(r => r.name);
+
+        it('a field answers to its aliases: @environment as @env (2026-11-22)', () => {
+            expect(find('@environment=prod')).to.deep.equal(['Bulk inventory upload', 'Get items']);
+            expect(find('@env=prod')).to.deep.equal(['Bulk inventory upload', 'Get items']);
+            expect(find('@environment=uat')).to.deep.equal([]);
+        });
 
         it('plain words: what the list shows only; @@: every field', () => {
             expect(find('bulk')).to.deep.equal(['Bulk inventory upload']);
