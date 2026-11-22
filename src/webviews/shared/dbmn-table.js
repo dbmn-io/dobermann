@@ -207,6 +207,48 @@
         return typeof value === 'object' ? JSON.stringify(value) : String(value);
     }
 
+    /*
+     * Special characters shown, as Word's ¶ (`specialCharacters`, James 2026-11-22): spaces, tabs, line
+     * breaks, non-breaking spaces and characters that draw nothing (zero-width, byte-order mark, controls).
+     * Each is kept in the cell, in a span of its own, and its mark is drawn over it by CSS (dbmn-table.css):
+     * the text itself never changes, so a copy, the column's fit and the cell's detail read the real text.
+     */
+    const SPECIAL_ONE = /[ \t\n\r\u00a0\u00ad\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f\u1680\u2000-\u200f\u2028\u2029\u202f\u205f-\u2064\u3000\ufeff]/;
+    const SPECIAL_ALL = new RegExp(`\\r\\n|${SPECIAL_ONE.source}`, 'g');
+    /** (marks for at most this many characters of a cell: past it, a cell shows nothing more) */
+    const SPECIAL_MAX = 2000;
+    function hasSpecial(text) { return text === '' || SPECIAL_ONE.test(text); }
+    function specialMark(found, breaks) {
+        const kind = found === ' ' ? 'space'
+            : found === '\t' ? 'tab'
+            : found === '\n' || found === '\r' || found === '\r\n' || found === '\u2028' || found === '\u2029' ? 'break'
+            : found === '\u00a0' || found === '\u202f' ? 'nbsp'
+            : 'code';
+        const mark = make('span', `dbmn-sc is-${kind}${kind === 'break' && breaks ? ' is-breaking' : ''}`, found);
+        if (kind === 'code') mark.dataset.code = found.codePointAt(0).toString(16).toUpperCase().padStart(4, '0');
+        return mark;
+    }
+    /**
+     * A text with its special characters marked: a fragment for a cell. `breaks`: a line break also ends the
+     * line (a column that wraps, a record's window); without, the row stays one line and the break is only "↵".
+     * Empty text is a grey "blank" (an empty cell is a missing value; "" was given).
+     */
+    function showSpecial(text, opts) {
+        const breaks = !!(opts && opts.breaks);
+        const frag = document.createDocumentFragment();
+        const whole = text === null || text === undefined ? '' : String(text);
+        if (whole === '') { frag.append(make('span', 'dbmn-sc is-blank')); return frag; }
+        const part = whole.slice(0, SPECIAL_MAX);
+        let at = 0;
+        for (const found of part.matchAll(SPECIAL_ALL)) {
+            if (found.index > at) frag.append(part.slice(at, found.index));
+            frag.append(specialMark(found[0], breaks));
+            at = found.index + found[0].length;
+        }
+        if (at < whole.length) frag.append(whole.slice(at));
+        return frag;
+    }
+
     class DbmnTable extends HTMLElement {
         constructor() {
             super();
@@ -325,6 +367,22 @@
         }
 
         redrawHeads() { if (this._built) this._heads(); }
+
+        /**
+         * Special characters shown (as Word's ¶), the whole table or none of it: in every text cell a faint
+         * mark over each space (·), tab (→), line break (↵) and non-breaking space (°), a boxed code for a
+         * character that draws nothing, and a grey "blank" for empty text. Drawing only: copy, search, sort
+         * and the cell's detail keep the real text. A column's own `render` (a Node) or `cell` draws its own:
+         * it may use DbmnTable.showSpecial, reading this.
+         */
+        set specialCharacters(on) {
+            on = !!on;
+            if (on === !!this._special) return;
+            this._special = on;
+            if (this._table) this._table.classList.toggle('shows-special', on);
+            if (this._built) this._render(true);
+        }
+        get specialCharacters() { return !!this._special; }
 
         /** A row of totals under the rows, by column id, from the screen. */
         set totals(map) {
@@ -473,7 +531,7 @@
             this._reads.hidden = true;
 
             this._scroll = make('div', 'table-container dbmn-table-scroll');
-            this._table = make('table', 'data-table dbmn-table-grid');
+            this._table = make('table', 'data-table dbmn-table-grid' + (this._special ? ' shows-special' : ''));
             if (this.hasAttribute('label')) this._table.setAttribute('aria-label', this.getAttribute('label'));
             this._cols = make('colgroup');
             this._head = make('thead');
@@ -1232,7 +1290,9 @@
                 if (drawn instanceof Node) td.append(drawn);
                 else {
                     const text = drawn === undefined ? textOf(value) : String(drawn);
-                    td.textContent = text;
+                    // (special characters shown: marked over the real text; "" given is "blank", a missing value stays empty)
+                    if (this._special && (text === '' ? value === '' || drawn === '' : hasSpecial(text))) td.append(showSpecial(text, { breaks: !!column.wrap }));
+                    else td.textContent = text;
                     // (a value cut short by its column's width is whole on hover)
                     if (text.length > 20) td.title = text;
                     if (text.length > LONG || text.includes('\n') || (value && typeof value === 'object') || structured(text)) {
@@ -2640,6 +2700,11 @@
             return { index: a.index, id: a.id, row: this._rowAt(a.index) };
         }
     });
+
+    /** For a screen's own cells (a column's render or cell, a record's window): the same marks. */
+    DbmnTable.showSpecial = showSpecial;
+    DbmnTable.hasSpecial = text => typeof text === 'string' && hasSpecial(text);
+    window.DbmnTable = DbmnTable;
 
     customElements.define('dbmn-table', DbmnTable);
 })();

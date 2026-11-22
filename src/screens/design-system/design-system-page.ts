@@ -384,6 +384,16 @@ orders.addEventListener('dbmn-table-shown', e =&gt; …e.detail.total…);
 
 locked                                     attribute: columns can be neither moved nor removed</code></pre>
 
+        <h3>Special characters</h3>
+        <p>As Word's ¶: the whole table shows its special characters, or none of it. Each space is a faint dot, a tab an arrow, a line break "↵", a non-breaking space "°", a character that draws nothing (a zero-width space, a control) its code in a box, and empty text a grey "blank" (an empty cell is a value that is missing). The marks are only drawn: copying, searching, sorting and the column's width read the real text. A screen's own cells use the same marks with <code>DbmnTable.showSpecial</code>.</p>
+        <p><label><input type="checkbox" id="dsSpecialOn" checked> Show special characters</label></p>
+        <div class="ds-demo">
+            <dbmn-table id="dsSpecial" label="Customers, as two runs gave them"></dbmn-table>
+        </div>
+        <pre class="ds-code"><code>table.specialCharacters = true;            // every text cell marked; false: plain again (no reload)
+DbmnTable.showSpecial(text, { breaks })    // the same marks for a screen's own cell: a fragment; breaks: a line break ends the line
+DbmnTable.hasSpecial(text)                 // any to show ("" counts: it is "blank")</code></pre>
+
         <h3>Editing</h3>
         <p>With <code>editable</code>, a table is a data-entry grid: every cell a box, one click puts the caret in it, Enter keeps it and opens the cell below, Tab the next one, Esc gives it up and holds the cell. A block copied from a spreadsheet pastes from the cell; Ctrl+Z undoes, Ctrl+Y does again. The screen hears every change and can refuse it. Try it: paste three rows from a spreadsheet onto <code>qty</code>.</p>
         <div class="ds-demo">

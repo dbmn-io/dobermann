@@ -217,7 +217,7 @@
         ['Rename dialog', 'Right-click → Rename in the Hub\'s lists: reports, endpoints, environments, runs', M, 'Hub lists', 'hub/hub-tabs.js (askRename)'],
         ['Tabs in a screen', 'A screen\'s own tabs (Environment, Console)', S, 'Environment, Console', 'shared/tabs.css'],
 
-        ['<dbmn-table>', 'A table of rows: search, sort, move, resize, only the rows in view drawn; rows the page holds, or asked for as they scroll', C, 'Query, Compare, Console, Run Batch (Validate), the request card\'s INPUT rows, Design system, <dbmn-log>', 'shared/dbmn-table.js'],
+        ['<dbmn-table>', 'A table of rows: search, sort, move, resize, only the rows in view drawn; rows the page holds, or asked for as they scroll; special characters shown or not', C, 'Query, Compare, Console, Run Batch (Validate), the request card\'s INPUT rows, Design system, <dbmn-log>', 'shared/dbmn-table.js'],
         ['Request card', 'One request: its header, the INPUT rows behind it, Body or Details, and the response. To become one component; built twice today (the Console, Run Batch\'s Review), the INPUT rows already shared', P, 'Console (Raw tab, Raw window), Run Batch (Review)', 'console/modules/raw-tab-handler.js, shared/request-preview.js'],
         ['<dbmn-log>', 'Log lines as a table: the newest in view, followed until you scroll up', C, 'Logs', 'shared/dbmn-log.js'],
         ['<dbmn-level>', 'How serious a log line is: an icon and a word', C, 'Logs, <dbmn-log>', 'shared/dbmn-level.js'],
@@ -391,6 +391,24 @@
                 setTimeout(() => { done(answer(start, count, asked)); note(); }, 350);
             })
         };
+    }
+
+    /* ── Tables: special characters (specialCharacters), over values that differ only in what can't be seen ── */
+    function drawSpecial() {
+        const table = $('dsSpecial');
+        if (!table) return;
+        table.style.setProperty('--table-height', '160px');
+        table.columns = [{ id: 'code', name: 'code' }, { id: 'name', name: 'name' }, { id: 'city', name: 'city' }, { id: 'note', name: 'note' }];
+        table.rows = [
+            { code: 'C-1001', name: 'Harbour Foods', city: 'Sydney', note: 'Same in both' },
+            { code: 'C-1001 ', name: 'Harbour  Foods', city: 'Sydney', note: 'A space after the code, two in the name' },
+            { code: 'C-1002', name: 'Kettle\u00a0and Co', city: '\tMelbourne', note: 'A non-breaking space; a tab first' },
+            { code: 'C-1003', name: 'Mill\u200bLane Deli', city: '', note: 'A zero-width space; the city empty text' },
+            { code: 'C-1004', name: 'Quay Street', city: null, note: 'The city missing' }
+        ];
+        const on = $('dsSpecialOn');
+        table.specialCharacters = on.checked;
+        on.addEventListener('change', () => { table.specialCharacters = on.checked; });
     }
 
     /* ── Tables: editing (editable), over a few made-up rows of stock to load ── */
@@ -759,6 +777,7 @@
     drawLanes();
     drawSampled();
     drawEdit();
+    drawSpecial();
     drawLookup();
     drawPaged();
     drawLog();

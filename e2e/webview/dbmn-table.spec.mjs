@@ -1602,3 +1602,61 @@ ${SCRIPTS.map(rel => `<script>${read(rel)}</script>`).join('\n')}</head><body>
     const w = id => page.evaluate(i => Math.round(document.querySelector(`#t th[data-col="${i}"]`).getBoundingClientRect().width), id);
     expect(await w('sku')).toBeLessThan(420);
 });
+
+test('special characters shown (as Word\'s ¶): marks over the real characters in every text cell, drawing only; off again, plain', async ({ page }) => {
+    await page.setContent(tablePage());
+    await page.evaluate(() => {
+        t.columns = [{ id: 'sku', name: 'sku' }, { id: 'note', name: 'note' }, { id: 'qty', name: 'qty', numbers: true }, { id: 'long', name: 'long', wrap: true }];
+        t.rows = [
+            { sku: ' A1 ', note: 'two  spaces\tthen tab', qty: 5, long: 'line one\nline two' },
+            { sku: 'B 2', note: 'zero​width', qty: 0, long: '' },
+            { sku: 'C3', note: null, qty: 7, long: 'plain' }
+        ];
+    });
+    const cell = (r, c) => page.locator('#t .dbmn-table-body tr').nth(r).locator('td').nth(c);
+    // Off: nothing marked
+    await expect(page.locator('#t .dbmn-sc')).toHaveCount(0);
+    await page.evaluate(() => { t.specialCharacters = true; });
+    expect(await page.evaluate(() => t.specialCharacters)).toBe(true);
+    // A mark per character, over it: the cell's text is still exactly the value
+    await expect(cell(0, 0).locator('.dbmn-sc.is-space')).toHaveCount(2);
+    expect(await cell(0, 0).textContent()).toBe(' A1 ');
+    await expect(cell(0, 1).locator('.dbmn-sc.is-space')).toHaveCount(3);
+    await expect(cell(0, 1).locator('.dbmn-sc.is-tab')).toHaveCount(1);
+    expect(await cell(0, 1).textContent()).toBe('two  spaces\tthen tab');
+    expect(await cell(0, 0).locator('.dbmn-sc.is-space').first().evaluate(e => getComputedStyle(e, '::after').content)).toBe('"·"');
+    expect(await cell(0, 1).locator('.dbmn-sc.is-tab').evaluate(e => getComputedStyle(e, '::after').content)).toBe('"→"');
+    // Spaces kept as they are: two spaces take two spaces' room, not one
+    const [one, two] = await cell(0, 1).locator('.dbmn-sc.is-space').evaluateAll(list => list.map(e => e.getBoundingClientRect()));
+    expect(two.left - one.left).toBeGreaterThan(2);
+    // A non-breaking space, and a character that draws nothing, boxed with its code
+    expect(await cell(1, 0).locator('.dbmn-sc.is-nbsp').evaluate(e => getComputedStyle(e, '::after').content)).toBe('"°"');
+    expect(await cell(1, 1).locator('.dbmn-sc.is-code').getAttribute('data-code')).toBe('200B');
+    // A line break: one line in a row ("↵"), a real break where the column wraps
+    expect(await cell(0, 3).locator('.dbmn-sc.is-break').evaluate(e => getComputedStyle(e, '::after').content)).toBe('"↵"');
+    await expect(cell(0, 3).locator('.dbmn-sc.is-break')).toHaveClass(/is-breaking/);
+    // "" given is "blank"; a missing value stays an empty cell; a number is left alone
+    await expect(cell(1, 3).locator('.dbmn-sc.is-blank')).toHaveCount(1);
+    expect(await cell(1, 3).locator('.dbmn-sc').evaluate(e => getComputedStyle(e, '::after').content)).toBe('"blank"');
+    await expect(cell(2, 1).locator('.dbmn-sc')).toHaveCount(0);
+    await expect(cell(2, 2).locator('.dbmn-sc')).toHaveCount(0);
+    // Every row the same height still: nothing wraps in a cell that doesn't
+    const heights = await page.locator('#t .dbmn-table-body tr').evaluateAll(rows => rows.slice(1).map(r => Math.round(r.getBoundingClientRect().height)));
+    expect(new Set(heights).size).toBe(1);
+    // Drawing only: search finds the real text
+    await page.locator('#t .search-input').fill('two  spaces');
+    await expect(page.locator('#t .dbmn-table-count')).toHaveText('1 of 3 rows');
+    await page.locator('#t .search-input').fill('');
+    // The same marks for a screen's own cells
+    const made = await page.evaluate(() => {
+        const box = document.createElement('div');
+        box.append(window.DbmnTable.showSpecial('a b\nc', { breaks: true }));
+        return { text: box.textContent, marks: [...box.querySelectorAll('.dbmn-sc')].map(m => m.className), has: [window.DbmnTable.hasSpecial('ab'), window.DbmnTable.hasSpecial('a b'), window.DbmnTable.hasSpecial('')] };
+    });
+    expect(made).toEqual({ text: 'a b\nc', marks: ['dbmn-sc is-space', 'dbmn-sc is-break is-breaking'], has: [false, true, true] });
+    if (process.env.SPECIAL_SHOT) await page.locator('#t').screenshot({ path: process.env.SPECIAL_SHOT });
+    // Off again: plain text, no marks
+    await page.evaluate(() => { t.specialCharacters = false; });
+    await expect(page.locator('#t .dbmn-sc')).toHaveCount(0);
+    expect(await cell(0, 0).textContent()).toBe(' A1 ');
+});

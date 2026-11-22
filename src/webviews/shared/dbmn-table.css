@@ -223,3 +223,42 @@ dbmn-table[selectable] .dbmn-table-body tr { cursor: pointer; }
 .dbmn-total-card-value { text-align: right; font-variant-numeric: tabular-nums; font-family: var(--dbmn-editor-font-family, monospace); }
 .dbmn-total-card-value.is-this { font-weight: 700; }
 .dbmn-total-card-value.is-different { color: var(--dbmn-editorWarning-foreground); }
+
+/*
+ * Special characters shown (the table's `specialCharacters`, as Word's ¶): each character stays in the cell
+ * in a span of its own, kept as it is (pre), and its mark is drawn over it, faint. A mark never adds to the
+ * text, so a copy, a search and the column's fit read the real characters.
+ */
+.dbmn-sc { position: relative; white-space: pre; }
+.dbmn-sc::after {
+    position: absolute;
+    inset: 0;
+    text-align: center;
+    color: var(--dbmn-descriptionForeground);
+    opacity: 0.75;
+    pointer-events: none;
+    font-weight: 400;
+}
+.dbmn-sc.is-space::after { content: '\00b7'; }
+.dbmn-sc.is-nbsp::after { content: '\00b0'; }
+.dbmn-sc.is-tab::after { content: '\2192'; text-align: left; }
+.dbmn-table-grid.shows-special td { tab-size: 2; }
+/* A line break: one line in a row (the break is a space under "↵"), a real break where the column wraps */
+.dbmn-sc.is-break { white-space: nowrap; }
+.dbmn-sc.is-break::after { content: '\21b5'; text-align: left; }
+.dbmn-sc.is-break.is-breaking { white-space: pre; }
+/* A character that draws nothing (zero-width, a control): its code, boxed, beside it */
+.dbmn-sc.is-code::after,
+.dbmn-sc.is-blank::after { position: static; }
+.dbmn-sc.is-code::after {
+    content: attr(data-code);
+    display: inline-block;
+    margin: 0 1px;
+    padding: 0 2px;
+    border: 1px solid currentColor;
+    border-radius: 2px;
+    font-size: 0.7em;
+    line-height: 1.2;
+    vertical-align: 1px;
+}
+.dbmn-sc.is-blank::after { content: 'blank'; font-style: italic; }
