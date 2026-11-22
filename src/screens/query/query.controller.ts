@@ -2206,9 +2206,12 @@ export class QueryController {
                 const every = search ? await counted('') : found;
                 // (what the whole compare found, for the Hub list's line: kept when it changes)
                 if (every && !status.filter?.hidden?.length) await this.rememberFound(every);
-                // (differences only in spaces or blanks, across the whole compare: Results shows the special characters then)
-                const made = await Promise.resolve(host.stats(paged.id, 'compare')).catch(() => undefined) as CompareStats | undefined;
-                return found && every ? { counts: found, countsAll: every, ...(made?.quiet ? { quiet: made.quiet } : {}) } : undefined;
+                // (differences only in spaces or blanks, across the whole compare: Results shows the special characters then.
+                // Taken when the compare was held (runHeld's figures): Results' runs start from the held compare, which has
+                // no compare step of its own; without one held, from this run's compare step)
+                const quiet = held ? (this.pagedHeld?.result as (PagedResult & { figures?: FullFigures }) | undefined)?.figures?.quiet
+                    : (await Promise.resolve(host.stats(paged.id, 'compare')).catch(() => undefined) as CompareStats | undefined)?.quiet;
+                return found && every ? { counts: found, countsAll: every, ...(quiet ? { quiet } : {}) } : undefined;
             } : undefined;
             return {
                 columns: paged.layout.columns, key: engineKey(spec), total, shown: paged.total,

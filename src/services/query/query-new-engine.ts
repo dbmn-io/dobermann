@@ -975,7 +975,8 @@ export async function runHeld(engineIn: QueryEngine | EngineHost, spec: QuerySpe
         stats: await joinFigures(spec, layout.places, async step => await engine.stats(out.result, step) as JoinStats | CompareStats, (step, st) => plainJoinStats(engine, out.result, step, st)),
         duplicates: spec.distinct ? 0 : undefined,
         notNumbers: notNumbersOf(out.notNumbers, query),
-        total: out.total
+        total: out.total,
+        ...await quietOf(engine, out.result)
     };
     const run = { id: out.result, total: out.total, layout };
     if (!layout.status?.native) return { ...run, figures };
@@ -986,6 +987,12 @@ export async function runHeld(engineIn: QueryEngine | EngineHost, spec: QuerySpe
     }
 }
 
+/** The compare step's unseen-only differences, when the run has a compare step (and some). */
+async function quietOf(engine: EngineHost, result: string): Promise<{ quiet?: number }> {
+    const stats = await Promise.resolve(engine.stats(result, 'compare')).catch(() => undefined) as CompareStats | undefined;
+    return stats && 'quiet' in stats && stats.quiet ? { quiet: stats.quiet } : {};
+}
+
 /** A compare's figures from its whole run (runHeld): what Join showed for a sample until then. */
 export interface FullFigures {
     stats: Map<string, QueryJoinStats>;
@@ -993,6 +1000,12 @@ export interface FullFigures {
     duplicates: number | undefined;
     notNumbers: NotNumbers;
     total: number;
+    /**
+     * DIFF cells that are only unseen characters or blank against null (CompareStats.quiet), over the
+     * whole compare: Results' hidden characters come on by themselves for them. Taken here because the
+     * held compare's status (holdStatus) is a result of its own, without the compare step's figures.
+     */
+    quiet?: number;
 }
 
 /** A compare's sample (Join and Columns): the Baseline's first records, how many there are in all, how many have their key in every view and in each. */
