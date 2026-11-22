@@ -172,6 +172,25 @@ describe('The engine, compare: James\'s rule for repeats and blanks, the old Com
         assert.deepStrictEqual((e.stats(out.result, 'step 1') as CompareStats).status, { same: 2, diff: 3, missing: 0, notInBaseline: 0, noKey: 2 });
     });
 
+    it('the Baseline the odd one out (two or more others, all alike, all unlike it): it is the Baseline that differs, DIFF BL', async () => {
+        const e = new QueryEngine();
+        // k: a BL odd one out; b: two others unlike each other; c: one other missing, the one left unlike BL; d: same
+        e.load('BL', { columns: ['k', 'v', 'w'], rows: [['a', 1, 'x'], ['b', 1, 'x'], ['c', 1, 'x'], ['d', 1, 'x']] });
+        e.load('C1', { columns: ['k', 'v', 'w'], rows: [['a', 2, 'x'], ['b', 2, 'x'], ['c', 2, 'x'], ['d', 1, 'x']] });
+        e.load('C2', { columns: ['k', 'v', 'w'], rows: [['a', 2, 'x'], ['b', 3, 'x'], ['d', 1, 'x']] });
+        const out = await e.run({ steps: [{ compare: ['BL', 'C1', 'C2'], on: [[col('k', 'BL')], [col('k', 'C1')], [col('k', 'C2')]], columns: ['v', 'w'].map(c => ({ name: c, values: [col(c, 'BL'), col(c, 'C1'), col(c, 'C2')] })) }] });
+        assert.ok('result' in out);
+        const got = e.read(out.result, 0, 99);
+        const at = (name: string) => (got.columns as unknown as (string | { name: string })[]).findIndex(c => (typeof c === 'string' ? c : c.name) === name);
+        const by = Object.fromEntries(got.rows.map(r => [r[0], [r[at('status')], r[at('diff:BL')], r[at('diff:C1')], r[at('diff:C2')], r[at('differs:v')]]]));
+        assert.deepStrictEqual(by, {
+            a: ['diff', 1, 0, 0, 1],   // C1 and C2 agree, BL is the odd one out
+            b: ['diff', 0, 1, 1, 1],   // C1 and C2 differ from each other too: each differs from BL
+            c: ['diff', 0, 1, 0, 1],   // one other has the record: it differs (two or more are needed)
+            d: ['same', 0, 0, 0, 0]
+        });
+    });
+
     it('a space is a difference (James, 2026-11-22: "Any string with a space at the end should show up as a diff"): trailing, leading, spaces only', async () => {
         const e = new QueryEngine();
         const cases: [string, string | null, string | null][] = [['trailing', 'abc', 'abc '], ['leading', 'abc', ' abc'], ['spaces only', '', '  '], ['inner', 'a b', 'a  b'], ['tab', 'abc', 'abc\t'], ['the same', 'abc', 'abc']];

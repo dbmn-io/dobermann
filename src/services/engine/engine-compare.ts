@@ -155,6 +155,23 @@ export async function runCompare(inputs: CompareInput[], columns: number, tick: 
                 if (!alike(first, value(r))) { differs[c][row] = 1; diffBy[p][row] = 1; changed = true; }
             }
         }
+        // The Baseline the odd one out (two or more others, all alike, all unlike it): it is the Baseline that
+        // differs, "DIFF BL", as old Compare said (2026-11-22)
+        if (changed && b >= 0) {
+            const others: number[] = [];
+            for (let p = 1; p < places; p++) if (!inputs[p].skipped && rowAt[p][row] >= 0) others.push(p);
+            if (others.length > 1 && others.every(p => diffBy[p][row] === 1)) {
+                const one = others[0];
+                let alikeAll = true;
+                for (let c = 0; c < columns && alikeAll; c++) {
+                    const v0 = inputs[one].values[c];
+                    if (!v0) continue;
+                    const first = v0(rowAt[one][row]);
+                    for (const p of others) { const v = inputs[p].values[c]; if (p !== one && v && !alike(first, v(rowAt[p][row]))) { alikeAll = false; break; } }
+                }
+                if (alikeAll) { for (const p of others) diffBy[p][row] = 0; diffBy[0][row] = 1; }
+            }
+        }
         status[row] = noKey[row] ? 4 : changed ? 1 : b < 0 ? 3 : missing ? 2 : 0;
         counts[COMPARE_STATUS[status[row]]]++;
     }

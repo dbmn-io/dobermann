@@ -286,8 +286,20 @@
             if (!list.length) return;
             if (list.length === 1) { td.textContent = list[0].t; return; }
             const pair = cells.length === 2;
+            // Plain: with two, the Baseline's; with more, the value most results hold, when the Baseline has the record and
+            // one value is held by more than any other; else none is plain, every value a pill (old Compare's rule, 2026-11-22)
+            const first = placeOf(cells[0]);
+            const baseHas = list.some(x => x.who.includes(first));
+            let plain = null;
+            if (pair) plain = list.find(x => x.who.includes(first)) || null;
+            else if (baseHas) {
+                const big = Math.max(...list.map(x => x.who.length));
+                const tops = list.filter(x => x.who.length === big);
+                if (tops.length === 1) plain = tops[0];
+            }
+            if (plain) list.splice(list.indexOf(plain), 1), list.unshift(plain);
             list.forEach((item, i) => {
-                if (i === 0) { td.appendChild(el('span', 'compare-compact-plain', item.t)); return; }
+                if (i === 0 && plain) { td.appendChild(el('span', 'compare-compact-plain', item.t)); return; }
                 const box = el('span', `compare-pill ${tone(item.who[0])}${pair ? ' is-bare' : ''}`);
                 if (!pair) { const who = el('span', 'compare-pill-who'); item.who.forEach(p => who.appendChild(tag(p))); box.appendChild(who); }
                 box.appendChild(el('span', '', item.t));

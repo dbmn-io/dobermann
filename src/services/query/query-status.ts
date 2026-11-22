@@ -83,6 +83,7 @@ export function rowStatus(
         keys.forEach(k => { const v = k[p]; if (v !== null && v !== undefined) count.set(text(v), (count.get(text(v)) ?? 0) + 1); });
         return count;
     });
+    const ownCompared = compared.every(g => g.cells.every(i => keyPlaces.includes(placeOfCell(i))));
     return {
         places,
         rows: rows.map((row, r) => {
@@ -97,6 +98,18 @@ export function rowStatus(
                 let differs = false;
                 cells.slice(1).forEach(i => { if (text(row[i]) !== first) { diff.add(placeOfCell(i)); differs = true; } });
                 if (differs) groups.push(g.name);
+            }
+            // The Baseline the odd one out (two or more others, all alike, all unlike it): it is the Baseline that differs,
+            // "DIFF BL", as old Compare and the engine say (2026-11-22). Where the compared columns are the compare's own
+            // (a view beside the compare, or a COMPARE calculation's sides, in one: measured against the first, as before)
+            const base = keyPlaces[0];
+            const others = keyPlaces.slice(1).filter(p => shown(p) && !missing.includes(p));
+            if (ownCompared && base !== undefined && shown(base) && !missing.includes(base) && others.length > 1 && others.every(p => diff.has(p))) {
+                const alike = compared.every(g => {
+                    const theirs = g.cells.filter(i => others.includes(placeOfCell(i))).map(i => text(row[i]));
+                    return theirs.every(t => t === theirs[0]);
+                });
+                if (alike) { others.forEach(p => diff.delete(p)); diff.add(base); }
             }
             const status: RowStatus = { diff: [...diff], missing, groups };
             if (keyPlaces.length) {

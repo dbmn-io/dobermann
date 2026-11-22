@@ -1982,8 +1982,17 @@
                     id: colId(c), name: placeOf(c), className: `compare-sub ${tint}`, numbers: c.type === 'number',
                     group: { id: `group:${c.group}`, name: c.group, head: th => compareResults.groupHead(th, c.group) },
                     cell: (td, v, row) => {
-                        const missing = row.__status && (row.__status.missing.includes(placeOf(c)) || row.__status.missing.includes(placeOf(first)));
-                        td.classList.toggle('compare-differs', colId(c) !== firstId && !missing && text(v) !== text(row[firstId]));
+                        const st = row.__status;
+                        if (!st) { td.classList.toggle('compare-differs', colId(c) !== firstId && text(v) !== text(row[firstId])); return; }
+                        // Tinted where its place is one that differs (Status) and its value is unlike the one it is measured
+                        // against: the Baseline's, or the first present when the Baseline lacks the record; the Baseline's own
+                        // when it is the odd one out ("DIFF BL", 2026-11-22: as old Compare)
+                        const place = placeOf(c);
+                        const cells = all.filter(x => x.group === c.group).filter(x => !st.missing.includes(placeOf(x)) && !ui.filter.hidden.includes(placeOf(x)));
+                        const here = !st.missing.includes(place) && st.diff.includes(place);
+                        const others = cells.filter(x => colId(x) !== colId(c));
+                        const against = colId(c) === firstId ? others : cells.slice(0, 1).filter(x => colId(x) !== colId(c));
+                        td.classList.toggle('compare-differs', here && against.some(x => text(row[colId(x)]) !== text(v)));
                     }
                 };
             }
