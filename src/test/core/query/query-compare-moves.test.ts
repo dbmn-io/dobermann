@@ -52,7 +52,7 @@ async function opened(engineOn: boolean) {
     await controller.handleMessage({ type: 'query.ready' } as never);
     const state = () => [...seen].reverse().find(m => m.type === 'query.state') as Msg & { error: string; total: number; compare: { baseline: string; views: string[] } | null; views: { id: string }[] };
     const send = (m: Msg) => controller.handleMessage(m as never);
-    return { send, state, toasts, saved: () => (store.get('queries') as SavedQuery[])[0], dispose: () => controller.dispose() };
+    return { send, state, toasts, seen, saved: () => (store.get('queries') as SavedQuery[])[0], dispose: () => controller.dispose() };
 }
 
 for (const engineOn of [true, false]) {
@@ -109,16 +109,56 @@ for (const engineOn of [true, false]) {
             q.dispose();
         });
 
-        it('a move that would change which view is first is refused, and said: the compare is as it was', async () => {
+        it('a move that makes another of the compare\'s views first makes it the Baseline (#7): the joins follow, the compare runs', async () => {
             const q = await opened(engineOn);
-            const before = JSON.stringify({ sources: q.saved().sources.map(s => s.id), joins: q.saved().joins });
             await q.send({ type: 'query.moveFirst', id: 'vC2' });
-            await q.send({ type: 'query.moveView', id: 'vC1', to: 0 });
-            await q.send({ type: 'query.moveView', id: 'vBL', to: 2 });
-            assert.strictEqual(JSON.stringify({ sources: q.saved().sources.map(s => s.id), joins: q.saved().joins }), before);
+            const after = q.saved();
+            assert.deepStrictEqual(after.sources.map(s => s.id), ['vC2', 'vBL', 'vC1', 'vC3']);
+            // Every other view of the compare, the old Baseline too, compared with C2 on the same key line, by its own column
+            assert.deepStrictEqual(after.joins.map(j => [j.view, j.kind, j.on.map(p => `${p.left.parts[0].view}.${p.left.parts[0].column}=${p.right.parts[0].view}.${p.right.parts[0].column}`)]), [
+                ['vBL', 'compare', ['vC2.sku=vBL.sku']], ['vC1', 'compare', ['vC2.sku=vC1.sku']], ['vC3', 'compare', ['vC2.sku=vC3.sku']]
+            ]);
             assert.strictEqual(q.state().error, '');
+            assert.strictEqual(q.state().compare?.baseline, 'vC2');
+            assert.deepStrictEqual(q.state().compare?.views, ['vC2', 'vBL', 'vC1', 'vC3']);
+            // C2 holds 18 records: the other two keys are only in the others now, and Results still has every key
+            await q.send({ type: 'query.rows', seq: 7, offset: 0, limit: 50 });
+            const page = q.seen.filter(m => m.type === 'query.rowsData' && m.seq === 7).pop() as Msg & { total: number; shown: number };
+            assert.strictEqual(page.shown, 20);
+            // Moved back by a drag of the old Baseline to the front: the compare as it began
+            await q.send({ type: 'query.moveView', id: 'vBL', to: 0 });
+            assert.deepStrictEqual(q.saved().sources.map(s => s.id), ['vBL', 'vC2', 'vC1', 'vC3']);
             assert.strictEqual(q.state().compare?.baseline, 'vBL');
-            assert.strictEqual(q.toasts.filter(t => t === 'The Baseline stays first in a compare.').length, 3);
+            assert.strictEqual(q.state().error, '');
+            // The Baseline moved right: the view after it is the Baseline now, the old one where it was put
+            await q.send({ type: 'query.moveView', id: 'vBL', to: 2 });
+            assert.deepStrictEqual(q.saved().sources.map(s => s.id), ['vC2', 'vC1', 'vBL', 'vC3']);
+            assert.strictEqual(q.state().compare?.baseline, 'vC2');
+            assert.strictEqual(q.state().error, '');
+            q.dispose();
+        });
+
+        it('runs of one view: the run made the Baseline is the view\'s first run, the old Baseline its run', async () => {
+            const q = await opened(engineOn);
+            const runs = q.saved();
+            runs.sources.forEach((s, i) => { if (i) { s.runOf = 'vBL'; s.run = `C${i}`; } });
+            await q.send({ type: 'query.moveFirst', id: 'vC2' });
+            const after = q.saved().sources.map(s => [s.id, s.runOf ?? '', s.run ?? '']);
+            assert.deepStrictEqual(after, [['vC2', '', ''], ['vBL', 'vC2', 'C2'], ['vC1', 'vC2', 'C1'], ['vC3', 'vC2', 'C3']]);
+            assert.strictEqual(q.state().error, '');
+            q.dispose();
+        });
+
+        it('a view outside the compare can\'t be made first while the compare is there: refused, said, nothing changed', async () => {
+            const q = await opened(engineOn);
+            const saved = q.saved();
+            saved.sources.push({ ...saved.sources[1], id: 'vX', name: 'Extra', file: { name: 'stock.xlsx', sheet: 'vBL' } });
+            saved.joins.push({ view: 'vX', kind: 'left', on: [{ left: { parts: [{ view: 'vBL', column: 'sku' }] }, right: { parts: [{ view: 'vX', column: 'sku' }] } }] });
+            const before = JSON.stringify({ sources: saved.sources.map(s => s.id), joins: saved.joins });
+            await q.send({ type: 'query.moveFirst', id: 'vX' });
+            await q.send({ type: 'query.moveView', id: 'vX', to: 0 });
+            assert.strictEqual(JSON.stringify({ sources: q.saved().sources.map(s => s.id), joins: q.saved().joins }), before);
+            assert.strictEqual(q.toasts.filter(t => t.startsWith('Only a view in the compare')).length, 2);
             q.dispose();
         });
     });

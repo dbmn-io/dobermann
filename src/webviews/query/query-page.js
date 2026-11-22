@@ -365,14 +365,16 @@
         if (!window.DbmnContextMenu) return;
         const place = viewAt(v.id);
         const first = place === 0;
-        // A compare's Baseline stays first: no move takes it from first place or puts another there (until a
-        // compare-aware re-baseline is built; the host refuses it too)
-        const compared = !!(ui.state && ui.state.compare);
+        // In a compare, the first view is its Baseline: any of the compare's views can be made it (#7, the joins follow);
+        // a view outside the compare can't go first while the compare is there (the host refuses it too)
+        const compare = ui.state && ui.state.compare;
+        const inCompare = id => !compare || compare.views.includes(id);
+        const all = views();
         const items = [
-            ...(compared ? [] : [{ id: 'first', label: first ? 'First: every row is kept' : 'Move to first', icon: 'chevrons-left', disabled: first }]),
+            ...(inCompare(v.id) ? [{ id: 'first', label: first ? (compare ? 'First: the Baseline' : 'First: every row is kept') : compare ? 'Make it the Baseline' : 'Move to first', icon: 'chevrons-left', disabled: first }] : []),
             // (what a drag of the slot does, for the keyboard)
-            { id: 'left', label: 'Move left', icon: 'chevron-left', disabled: first || (compared && place === 1) },
-            { id: 'right', label: 'Move right', icon: 'chevron-right', disabled: place === views().length - 1 || (compared && first) },
+            { id: 'left', label: 'Move left', icon: 'chevron-left', disabled: first || (place === 1 && !inCompare(v.id)) },
+            { id: 'right', label: 'Move right', icon: 'chevron-right', disabled: place === all.length - 1 || (first && !!all[1] && !inCompare(all[1].id)) },
             { id: 'rename', label: 'Rename', icon: 'pencil' },
             // Out of the report without losing it or its joins
             { id: 'toggle', label: v.off ? 'Show in the query' : 'Hide from the query', icon: v.off ? 'eye' : 'eye-off' },

@@ -524,7 +524,11 @@
                 const last = shownPlaces().length <= 2 && !hidden;
                 items.push({ id: 'toggle', label: hidden ? `Show ${place}` : `Hide ${place}`, icon: hidden ? 'eye' : 'eye-off', disabled: last, title: last ? 'Two results stay compared' : 'It is not compared while hidden' });
             }
+            // A run of the Baseline's view: the two runs swap their results (the views stay where they are). Any other view
+            // of the compare: it becomes the Baseline, first, the compare's joins turned to it (#7, query-store rebaseCompare)
+            const compare = ui.state && ui.state.compare;
             if (v.runOf) items.push({ id: 'baseline', label: `Make ${place} the Baseline`, icon: 'scale' });
+            else if (compare && compare.views.includes(v.id) && compare.baseline !== v.id) items.push({ id: 'rebase', label: `Make ${place} the Baseline`, icon: 'scale' });
             if (!v.file) items.push({ id: 'console', label: 'Open in the Console', icon: 'external-link' });
             // (its summary first, as every slot's menu: the page's withSummary)
             const shown = ctx.withSummary ? ctx.withSummary(v, items) : items;
@@ -532,6 +536,7 @@
             window.DbmnContextMenu.show(event, shown, id => {
                 if (id === 'toggle') setFilter({ hidden: hidden ? ui.filter.hidden.filter(p => p !== place) : ui.filter.hidden.concat(place) });
                 else if (id === 'baseline') { ctx.post({ type: 'query.makeBaseline', id: v.id }); }
+                else if (id === 'rebase') { ctx.post({ type: 'query.moveFirst', id: v.id }); }
                 else if (id === 'console') ctx.post({ type: 'query.openConsole', id: v.id });
             });
         }

@@ -9,7 +9,7 @@
  */
 import { freeReportName, REPORT_NAME_MAX } from '../compare/report-name';
 import type { IKeyValueStore } from '../../platform/interfaces/key-value-store.interface';
-import type { ColumnRef, QueryCalc, QueryJoin } from './query-types';
+import type { ColumnRef, QueryCalc, QueryJoin, QueryKey } from './query-types';
 import { isReservedWord } from './query-sql';
 
 export const QUERIES_KEY = 'queries';
@@ -273,20 +273,76 @@ export function untickBlanks(query: SavedQuery, empty: (viewId: string) => strin
 
 /** Make a view the first: the one FROM reads, whose rows a LEFT JOIN keeps. */
 export function moveViewFirst(query: SavedQuery, id: string): void {
+    if (rebaseCompare(query, id)) return;
     if (changesCompareBaseline(query, id, 0)) return;
     reanchorView(query, id, 0);
 }
 
 /**
- * Would this move change which view is first while the query holds a compare? The Baseline is the compare's first view,
- * and turning the joins round for a new one breaks the compare (its other views still point at the old Baseline):
- * refused until a compare-aware re-baseline is built (2026-11-22).
+ * Would this move change which view is first while the query holds a compare, in a way that can't be done? Moves that
+ * make another of the compare's views first are done by rebaseCompare; what is left (a view outside the compare made
+ * first, or a compare whose views don't all have their key) is refused.
  */
 export function changesCompareBaseline(query: SavedQuery, id: string, to: number): boolean {
     if (!query.joins.some(j => j.kind === 'compare')) return false;
     const at = query.sources.findIndex(s => s.id === id);
     const place = Math.max(0, Math.min(query.sources.length - 1, Math.floor(to)));
-    return at >= 0 && Number.isFinite(to) && place !== at && (at === 0 || place === 0);
+    if (at < 0 || !Number.isFinite(to) || place === at || (at !== 0 && place !== 0)) return false;
+    const first = place === 0 ? id : query.sources[1]?.id;
+    return !first || !canRebase(query, first);
+}
+
+/** The compare's views, the Baseline first, each with its key (one per key line), or nothing when a key is not whole. */
+function compareKeys(query: SavedQuery): { view: string; key: QueryKey[] }[] | undefined {
+    const compares = query.joins.filter(j => j.kind === 'compare');
+    const first = compares[0];
+    const baseline = first?.on[0]?.left.parts[0]?.view;
+    if (!first || !baseline) return undefined;
+    const lines = first.on.length;
+    const out = [{ view: baseline, key: first.on.map(p => p.left) }, ...compares.map(j => ({ view: j.view, key: j.on.map(p => p.right) }))];
+    const whole = (k: QueryKey) => k.parts.length > 0 && k.parts.every(p => !!p.column);
+    return out.every(v => v.key.length === lines && v.key.every(whole)) ? out : undefined;
+}
+
+function canRebase(query: SavedQuery, id: string): boolean {
+    const keys = compareKeys(query);
+    return !!keys && keys.some(k => k.view === id) && keys[0].view !== id;
+}
+
+/**
+ * Another of the compare's views made its Baseline (#7, 2026-11-22: as old Compare let any result be the Baseline): it
+ * goes first; every other view of the compare, the old Baseline too, is compared with it on the same key lines, each
+ * by its own columns; a run of the old Baseline's view becomes a run of the new one, the old Baseline its run in turn.
+ * Joins outside the compare stay as they are. False (nothing changed) when it can't be: not in the compare, or a key
+ * not whole yet.
+ */
+export function rebaseCompare(query: SavedQuery, id: string): boolean {
+    if (!canRebase(query, id)) return false;
+    const keys = compareKeys(query)!;
+    const oldBase = keys[0].view;
+    const newKey = keys.find(k => k.view === id)!.key;
+    // The new Baseline first; the others keep their order
+    const at = query.sources.findIndex(s => s.id === id);
+    query.sources.unshift(...query.sources.splice(at, 1));
+    const others = keys.filter(k => k.view !== id);
+    const order = new Map(query.sources.map((s, i) => [s.id, i]));
+    others.sort((a, b) => (order.get(a.view) ?? 0) - (order.get(b.view) ?? 0));
+    const compareJoins: QueryJoin[] = others.map(k => ({
+        view: k.view, kind: 'compare',
+        on: newKey.map((left, i) => ({ left: JSON.parse(JSON.stringify(left)) as QueryKey, right: JSON.parse(JSON.stringify(k.key[i])) as QueryKey }))
+    }));
+    query.joins = [...compareJoins, ...query.joins.filter(j => j.kind !== 'compare')];
+    // Runs: the new Baseline is its view's first run, the old Baseline the run it was (its label)
+    const head = query.sources.find(s => s.id === id)!;
+    if (head.runOf === oldBase) {
+        const label = head.run;
+        const old = query.sources.find(s => s.id === oldBase);
+        query.sources.forEach(s => { if (s.runOf === oldBase) s.runOf = id; });
+        delete head.runOf;
+        delete head.run;
+        if (old) { old.runOf = id; if (label) old.run = label; }
+    }
+    return true;
 }
 
 /**
@@ -299,7 +355,14 @@ export function moveView(query: SavedQuery, id: string, to: number): void {
     const at = query.sources.findIndex(s => s.id === id);
     const place = Math.max(0, Math.min(query.sources.length - 1, Math.floor(to)));
     if (at < 0 || !Number.isFinite(to) || place === at) return;
-    if (changesCompareBaseline(query, id, to)) return;
+    // (in a compare, a move that makes another of its views first makes it the Baseline; the view moved then takes its place)
+    if (query.joins.some(j => j.kind === 'compare') && (at === 0 || place === 0)) {
+        if (changesCompareBaseline(query, id, to)) return;
+        const first = place === 0 ? id : query.sources[1].id;
+        rebaseCompare(query, first);
+        if (place !== 0) { const now = query.sources.findIndex(s => s.id === id); query.sources.splice(place, 0, ...query.sources.splice(now, 1)); }
+        return;
+    }
     if (at === 0 || place === 0) { reanchorView(query, id, to); return; }
     query.sources.splice(place, 0, ...query.sources.splice(at, 1));
 }

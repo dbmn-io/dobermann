@@ -1290,7 +1290,7 @@ export class QueryController {
 
     /** A move that would change a compare's Baseline is refused (query-store changesCompareBaseline): said, plainly. */
     private sayBaselineStays(query: SavedQuery, id: string, to: number): void {
-        if (changesCompareBaseline(query, id, to)) this.ports.toast.info('The Baseline stays first in a compare.');
+        if (changesCompareBaseline(query, id, to)) this.ports.toast.info('Only a view in the compare, with its key picked, can be its Baseline.');
     }
 
     private async change(apply: (query: SavedQuery) => void | Promise<void>, refresh = true): Promise<void> {
