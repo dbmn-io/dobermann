@@ -645,6 +645,39 @@ describe('HubController: a header pick is drawn at once (2026-11-13)', () => {
         expect(all.transactions[1_199].id).to.equal('run-1199');
     });
 
+    it('An old saved compare is a query: listed as one, opened as one on Views (a reopened tab too), its notice said once', async () => {
+        const { saveCompare, getCompare } = await import('../../../services/compare/compare-store');
+        const { listQueries } = await import('../../../services/query/query-store');
+        const state = new MemoryKeyValueStore();
+        const run = (n: number) => ({ kind: 'result' as const, endpointId: 'ep-1', view: 'Default', executionId: `run-${n}`, isBatch: false, environment: 'QA', executedAt: '2026-11-10T00:00:00Z' });
+        await saveCompare(state, { id: 'cmp-old', name: 'Morning stock', sources: [run(0), run(1)], createdAt: '2026-11-10T00:00:00Z', setup: { keyColumns: ['sku'], compareColumns: ['qty'], relaxedColumns: ['qty'], join: 'full' } });
+        const opened: Array<Record<string, unknown>> = [];
+        const h = hub({
+            compares: { state: () => state },
+            tabs: {
+                endpoint: async () => ({ html: '', handle: async () => undefined, dispose: () => undefined }),
+                environment: async () => ({ html: '', handle: async () => undefined, dispose: () => undefined }),
+                compare: async (config: Record<string, unknown>) => { opened.push(config); return { html: '<p>query</p>', handle: async () => undefined, dispose: () => undefined }; }
+            }
+        });
+        await h.controller.handle({ type: 'ready' });
+        // Listed: the query, not the old compare (which is kept)
+        const listed = h.of('hubState').at(-1) as { compares: Array<{ id: string }>; queries: Array<{ id: string; name: string; fromCompare?: string }> };
+        expect(listed.compares).to.deep.equal([]);
+        const made = listed.queries.find(q => q.fromCompare === 'cmp-old')!;
+        expect(made.name).to.equal('Morning stock');
+        expect(getCompare(state, 'cmp-old')).to.not.equal(undefined);
+        // Opened by its old id (the list's old link, a reopened tab): the query's tab, its notice said once
+        await h.controller.handle({ type: 'openCompare', compareId: 'cmp-old' });
+        expect(opened.map(o => o.compareId)).to.deep.equal([made.id]);
+        expect(h.of('mountEmbeddedTab').at(-1)).to.include({ tabType: 'compare', refId: made.id });
+        expect(h.events.filter(e => e.includes('Relaxed matching is gone'))).to.have.length(1);
+        expect(listQueries(state).find(q => q.id === made.id)?.notice).to.equal(undefined);
+        // Made once: opening again makes no second query
+        await h.controller.handle({ type: 'openCompare', compareId: 'cmp-old' });
+        expect(listQueries(state).filter(q => q.fromCompare === 'cmp-old')).to.have.length(1);
+    });
+
     it('Rename from the Reporting list: a report not open is renamed by the same rules as its tab', async () => {
         const { createQuery, getQuery } = await import('../../../services/query/query-store');
         const state = new MemoryKeyValueStore();

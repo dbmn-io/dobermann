@@ -9,6 +9,8 @@
 import { freeReportName, REPORT_NAME_MAX, reportNameProblem } from '../../services/compare/report-name';
 import { duplicateCompare, getCompare, removeCompare, saveCompare, savedCompares, type SavedCompare } from '../../services/compare/compare-store';
 import { createQuery, duplicateQuery, getQuery, isQueryId, listQueries, removeQuery, saveQuery, type SavedQuery } from '../../services/query/query-store';
+import { queryFromCompare } from '../../services/query/query-from-compare';
+import { isDraft } from '../../services/compare/compare-store';
 import { validateShortIdentifier } from '../../data-loading/system-schema';
 import type { Disposable } from '../../platform/events';
 import type { ChainHandoff } from '../../services/chain/chain-types';
@@ -404,6 +406,9 @@ export class HubController {
 
     /** Everything the Hub renders. Embedded in the page at first paint, and posted on every change. */
     async initialState(): Promise<Record<string, unknown>> {
+        // Every old saved compare is a query now: made once, as the Hub lists them (the old one is kept, not listed)
+        const compareState = this.ports.compares?.state();
+        if (compareState) await this.convertCompares(compareState);
         const { endpoints: endpointStore, environments: environmentStore, systems: systemStore } = this.ports;
         const [endpoints, systems, environments, active, transactions] = await Promise.all([
             endpointStore.getAllEndpoints(),
@@ -426,7 +431,7 @@ export class HubController {
             activeSystemId: active?.systemId,
             transactions: transactions.slice(0, TRANSACTION_LIMIT),
             transactionsTotal: transactions.length,
-            compares: this.ports.compares ? savedCompares(this.ports.compares.state()) : [],
+            compares: this.ports.compares ? savedCompares(this.ports.compares.state()).filter(c => !listQueries(this.ports.compares!.state()).some(q => q.fromCompare === c.id)) : [],
             queries: this.ports.compares ? listQueries(this.ports.compares.state()) : [],
             // Lookup tables, kept with the queries: their names, columns and how many rows (Reporting's list)
             lookupTables: (await (await this.lookups())?.list()) ?? [],
@@ -1274,6 +1279,12 @@ export class HubController {
                 return;
             }
             const id = `compare:${compareId}`;
+            // What its conversion from an old compare could not keep: said once, as it first opens
+            if (query.notice && state) {
+                this.ports.toast.info(query.notice);
+                delete query.notice;
+                await saveQuery(state, query);
+            }
             // Its tab is its icon and its name: the icon says it is a query
             const title = query.name;
             if (this.tabs.has(id)) {
@@ -1292,6 +1303,11 @@ export class HubController {
         if (!compare) {
             this.ports.toast.warn('This compare is no longer saved.');
             return;
+        }
+        // An old saved compare opens as the query made from it (a reopened tab too), on Views, as every query does
+        if (state && !isDraft(compare)) {
+            const made = await this.queryOfCompare(state, compare);
+            if (made) { await this.openCompareTab(made.id, start); return; }
         }
         const tabId = `compare:${compareId}`;
         const endpoint = await this.ports.endpoints.getEndpoint(compare.sources[0].endpointId);
@@ -1312,6 +1328,28 @@ export class HubController {
         await this.mount(tabId, channel => factory({ compareId, endpointName: name, start }, channel),
             { type: 'mountEmbeddedTab', tabType: 'compare', refId: compareId, name });
         await this.broadcastState();
+    }
+
+    /** Every old saved compare (past Select) not yet a query, made one (queryFromCompare). Nothing is removed. */
+    private async convertCompares(state: NonNullable<ReturnType<NonNullable<HubPorts['compares']>['state']>>): Promise<void> {
+        for (const compare of savedCompares(state)) await this.queryOfCompare(state, compare);
+    }
+
+    /** The query an old compare became, made now if it hasn't been. */
+    private async queryOfCompare(state: NonNullable<ReturnType<NonNullable<HubPorts['compares']>['state']>>, compare: SavedCompare): Promise<SavedQuery | undefined> {
+        const had = listQueries(state).find(q => q.fromCompare === compare.id);
+        if (had) return had;
+        if (!compare.sources.length) return undefined;
+        try {
+            const endpoint = await this.ports.endpoints.getEndpoint(compare.sources[0].endpointId).catch(() => undefined);
+            const query = queryFromCompare(compare, endpoint ? { name: endpoint.name, method: endpoint.method, path: endpoint.path } : undefined);
+            await saveQuery(state, query);
+            return query;
+        } catch (error) {
+            // (left as it was: it still opens in the old screen)
+            console.error(`[Hub] could not make a query of compare ${compare.id}`, error);
+            return undefined;
+        }
     }
 
     /** A copy of a saved compare, opened on its results dialog to change it. */

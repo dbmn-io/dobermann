@@ -1218,7 +1218,7 @@ export class ConsoleController {
             }
 
             // #298: Compare, from the Completed tab
-            if (message.type === 'console.compare' || message.type === 'console.compareViews') {
+            if (message.type === 'console.report' || message.type === 'console.compareViews') {
                 await this.getCompareHandler().handle(message as { type: string; payload?: unknown });
                 return createResponseMessage(message.correlationId, true);
             }

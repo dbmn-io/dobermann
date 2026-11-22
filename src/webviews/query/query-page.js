@@ -2272,6 +2272,7 @@
             if (!had && m.views.some(v => v.id === p.left.view)) j.on.push(p);
         }));
         if (!m.reading) { ui.busy = ''; ui.settled = true; }
+        if (!m.reading && ui.onSettled) { const run = ui.onSettled; ui.onSettled = null; setTimeout(run, 0); }
         $('queryDistinct').checked = !!m.distinct;
         $('queryDistinct').disabled = !!m.ownSql;
         renderFigures(m);
@@ -2422,6 +2423,12 @@
                 $('queryResultsControls').classList.toggle('hidden', ui.step !== 4);
                 renderBar();
                 break;
+            // New Compare (the Console): its first view's other runs offered at once, once the page has settled
+            case 'query.pickRun': {
+                const offer = () => { const v = view(m.id); if (v) addView(v); };
+                if (ui.settled && !ui.busy) offer(); else ui.onSettled = offer;
+                break;
+            }
             case 'query.goTo':
                 if (!ui.settled) ui.start = m.start;
                 else goTo(m.start === 'results' && joinsReady() ? 4 : m.start === 'results' ? ui.step : 1);

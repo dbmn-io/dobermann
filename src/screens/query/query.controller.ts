@@ -338,7 +338,11 @@ export class QueryController {
             switch (message.type) {
                 case 'query.ready': return await this.open();
                 // Its row in the Reporting list clicked again while the tab is open: Edit, or Run
-                case 'query.start': return this.post({ type: 'query.goTo', start: message.start === 'results' ? 'results' : 'edit' });
+                case 'query.start': {
+                    this.post({ type: 'query.goTo', start: message.start === 'results' ? 'results' : 'edit' });
+                    // (opened again from the Console's Add to Compare: its result is added now)
+                    return await this.addPending();
+                }
                 case 'query.sources': return await this.postSources();
                 case 'query.addView': return await this.addView(message as unknown as { endpointId: string; executionId: string; view: string });
                 // Change view (a slot's menu): the run, and its other runs, read again through another of its endpoint's Views
@@ -554,6 +558,21 @@ export class QueryController {
         }
     }
 
+    /** Results the Console asked to add (SavedQuery.adding), added as Add a view adds them; New Compare then offers runs. */
+    private async addPending(): Promise<void> {
+        const stored = getQuery(this.ports.state, this.config.queryId);
+        const items = stored?.adding ?? [];
+        if (!this.query || !items.length) return;
+        const pickRun = !!stored?.pickRun;
+        delete this.query.adding;
+        delete this.query.pickRun;
+        const before = new Set(this.query.sources.map(s => s.id));
+        await this.addViews(items);
+        if (!this.query.sources.some(s => !before.has(s.id))) await saveQuery(this.ports.state, this.query);
+        const head = this.query.sources.find(s => !s.runOf && !s.file);
+        if (pickRun && head) this.post({ type: 'query.pickRun', id: head.id });
+    }
+
     private async open(): Promise<void> {
         const query = getQuery(this.ports.state, this.config.queryId);
         if (!query) throw new Error('This query is no longer saved.');
@@ -568,6 +587,8 @@ export class QueryController {
         // Only this query's own endpoints now (its slots' header values): every result in History, for Add a view, is
         // read when Add a view first opens (James, 2026-11-22: the whole app froze for seconds as a query opened)
         await this.postSources(new Set((this.query?.sources ?? []).map(x => x.endpointId).filter(Boolean)));
+        // (made from the Console: its result added now)
+        await this.addPending();
         console.log(`[query-open] views and query ${t1 - t}  ms · this query's results ${Date.now() - t1} ms`);
     }
 

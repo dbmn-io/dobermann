@@ -100,6 +100,17 @@ export interface SavedQuery {
      * before this was kept, all open.
      */
     reached?: number;
+    /** The old saved compare it was made from (query-from-compare.ts): opening that compare opens this. */
+    fromCompare?: string;
+    /** Said once when it next opens, then dropped (what a conversion could not keep). */
+    notice?: string;
+    /**
+     * Results to add as it next opens (the Console's New Query / New Compare / Add to Compare): its screen adds them
+     * as Add a view does (a run of a view already in it joins its compare), then drops this.
+     */
+    adding?: { endpointId: string; executionId: string; view: string }[];
+    /** With `adding`: then offer its first view's other runs at once (New Compare). */
+    pickRun?: boolean;
 }
 
 /** How many views a query takes. */
@@ -341,6 +352,11 @@ export async function removeQuery(state: QueryState, id: string): Promise<void> 
 
 function newId(prefix: string): string {
     return `${prefix}${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+/** A new query's id. */
+export function newQueryId(): string {
+    return newId(ID_PREFIX);
 }
 
 export function newSourceId(): string {

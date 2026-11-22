@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Flexion Tech Pty Ltd
 /**
- * Issue #298: Compare in the Console page, the one way a compare starts.
- *
- *  - Compare button (toolbar, beside Chain): on the Completed tab of a finished run. This result,
- *    through the View the tab shows, is the Baseline (BL). console.compare opens Compare on its
- *    Select step, which picks C1 to C3.
+ * Reporting from the Console page: its database button (toolbar, beside Chain), on the Completed tab of a
+ * finished run. This result, through the View the tab shows, goes into (2026-11-22, James):
+ *  - New Query: a new query with it as its first view;
+ *  - New Compare: a new compare with it as the Baseline, its other runs offered at once;
+ *  - Add to Compare: a saved compare, picked from a second menu (a run of its view joins the compare).
+ * console.report does it on the host (console-compare-handler.ts), which opens the query.
  *  - The View list flags the Views saved compares read (console.compareViews), and the View
  *    editor warns before one is changed (viewsInCompares, read by console-page.js).
  *
@@ -15,10 +16,10 @@
 (function () {
     'use strict';
 
-    const state = { tab: null, status: '', views: {}, queries: {}, asked: false };
+    const state = { tab: null, status: '', views: {}, queries: {}, compares: [], asked: false };
     // Statuses after which no more rows will arrive (as Chain): the result is final
     const ENDED = ['completed', 'stopped', 'error', 'cancelled', 'failed', 'completed_with_errors'];
-    const TITLE = 'Compare this result with other results of this endpoint';
+    const TITLE = 'Query or compare this result';
 
     function post(type, payload) {
         if (!window.vscode) return;
@@ -48,11 +49,26 @@
         btn.classList.toggle('hidden', state.tab !== 'success');
         const ended = ENDED.includes(state.status);
         btn.disabled = !ended;
-        btn.title = ended ? TITLE : 'Compare can start once this run has finished';
+        btn.title = ended ? TITLE : 'This result can go in a query once its run has finished';
     }
 
-    function start() {
-        post('console.compare', { view: viewName() });
+    /** The button's menu: New Query, New Compare, Add to Compare (its saved compares in a second menu). */
+    function start(event) {
+        const btn = event.currentTarget;
+        if (!window.DbmnContextMenu) { post('console.report', { view: viewName(), kind: 'query' }); return; }
+        const none = !state.compares.length;
+        window.DbmnContextMenu.show(btn, [
+            { id: 'query', label: 'New Query', icon: 'database' },
+            { id: 'compare', label: 'New Compare', icon: 'scale' },
+            { id: 'add', label: 'Add to Compare', icon: 'plus', disabled: none, ...(none ? { detail: 'No saved compares yet' } : {}) }
+        ], id => {
+            if (id === 'query' || id === 'compare') post('console.report', { view: viewName(), kind: id });
+            else if (id === 'add') {
+                window.DbmnContextMenu.show(btn, state.compares.map(c => ({ id: c.id, label: c.name, icon: 'scale' })), queryId => {
+                    if (queryId) post('console.report', { view: viewName(), kind: 'add', queryId });
+                });
+            }
+        });
     }
 
     function onMessage(event) {
@@ -60,6 +76,7 @@
         if (message.type === 'console.compareViews') {
             state.views = (message.payload && message.payload.views) || {};
             state.queries = (message.payload && message.payload.queries) || {};
+            state.compares = (message.payload && message.payload.compares) || [];
             refresh();
             if (typeof window.onCompareViewsChanged === 'function') window.onCompareViewsChanged();
         }
