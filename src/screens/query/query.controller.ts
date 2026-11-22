@@ -525,7 +525,6 @@ export class QueryController {
                     q.calc = q.calc?.filter(c => c.name !== message.name);
                     q.select = q.select?.filter(c => !(c.view === CALC_VIEW && c.column === message.name));
                 });
-                case 'query.setSql': return await this.setSql(String(message.sql ?? ''));
                 case 'query.latest': return await this.useLatest(String(message.id));
                 case 'query.viewRows': return await this.viewRows(message);
                 case 'query.viewRowsClosed': { const next = this.viewLine.then(() => this.viewRowsClosed()); this.viewLine = next.catch(() => undefined); return await next; }
@@ -1255,27 +1254,6 @@ export class QueryController {
         });
     }
 
-    /** The user's own SQL for Results, or none (the steps' SQL again). One SELECT, tried before it is kept. */
-    private async setSql(sqlIn: string): Promise<void> {
-        const sql = sqlIn.trim().replace(/;\s*$/, '');
-        if (sql) {
-            if (!/^\s*(select|with)\b/i.test(sql) || sql.includes(';')) throw new Error('Write one SELECT.');
-            // (your own SQL is SQLite's: its tables are loaded for it, the new engine's setting or not)
-            const { spec } = this.spec();
-            const session = this.session ?? (spec.views.length ? await this.sessionFor(spec, this.version) : undefined);
-            if (!session) throw new Error('Add a view first.');
-            try {
-                session.run(`SELECT * FROM (${sql}) LIMIT 1`);
-            } catch (error) {
-                throw new Error(`That SQL does not run: ${error instanceof Error ? error.message : String(error)}`);
-            }
-        }
-        await this.change(q => {
-            q.sql = sql || undefined;
-            q.sort = null;
-        });
-    }
-
     /** Read a view from its endpoint's newest result in the same environment. Nothing is sent. */
     private async useLatest(id: string): Promise<void> {
         const source = this.query?.sources.find(s => s.id === id);
@@ -1599,7 +1577,6 @@ export class QueryController {
         let preview: unknown[][] = [];
         let columns: ColumnRef[] = [];
         let failure = '';
-        let sqlError = '';
         let resultColumns: ColumnRef[] | undefined;
         // What kind of values each of Results' columns holds, going by its first rows
         let resultTypes: ColumnType[] = [];
@@ -1707,17 +1684,6 @@ export class QueryController {
                     const sampled = this.sampleRow(session, spec, columns);
                     sampleRow = sampled.row;
                     columnCells = sampled.cells;
-                    if (query.sql) {
-                        // The user's own SQL: Results shows what it makes
-                        try {
-                            const own = this.read(session, spec);
-                            total = own.rows.length;
-                            resultColumns = own.columns;
-                            resultTypes = columnTypes(spread(own.rows, TYPE_SAMPLE), own.columns.length);
-                        } catch (error) {
-                            sqlError = error instanceof Error ? error.message : String(error);
-                        }
-                    }
                 }
             } catch (error) {
                 failure = error instanceof Error ? error.message : String(error);
@@ -1727,7 +1693,7 @@ export class QueryController {
             query.rows = total;
             await saveQuery(this.ports.state, query);
         }
-        this.postState({ waiting, stats: new Map(spec.joins.map((j, i) => [j.view, stats[i]])), columns, resultColumns, resultTypes, sampleRow, columnCells, duplicates, notNumbers, sql, total, preview, error: failure, sqlError, ...(sample ? { sample } : {}) });
+        this.postState({ waiting, stats: new Map(spec.joins.map((j, i) => [j.view, stats[i]])), columns, resultColumns, resultTypes, sampleRow, columnCells, duplicates, notNumbers, sql, total, preview, error: failure, ...(sample ? { sample } : {}) });
         // The Join step's counts, every record, run by run (on the new engine)
         if (version === this.version && !this.closed) {
             // (why there are no counts, when there are none: said where they would be, never a bar that waits forever)
@@ -1902,7 +1868,7 @@ export class QueryController {
     }
 
     /** Everything the steps show. `reading`: a view was just added and its rows are still being read. */
-    private postState(now: { reading?: boolean; counting?: string; waiting?: string[]; stats?: Map<string, QueryJoinStats | null>; columns?: ColumnRef[]; resultColumns?: ColumnRef[]; resultTypes?: ColumnType[]; sampleRow?: { view: string; column: string; value: string }[]; columnCells?: { value: string; differs: boolean }[]; duplicates?: number; notNumbers?: NotNumbers; sql?: string; total?: number; preview?: unknown[][]; error?: string; sqlError?: string; sample?: SampleFacts }): void {
+    private postState(now: { reading?: boolean; counting?: string; waiting?: string[]; stats?: Map<string, QueryJoinStats | null>; columns?: ColumnRef[]; resultColumns?: ColumnRef[]; resultTypes?: ColumnType[]; sampleRow?: { view: string; column: string; value: string }[]; columnCells?: { value: string; differs: boolean }[]; duplicates?: number; notNumbers?: NotNumbers; sql?: string; total?: number; preview?: unknown[][]; error?: string; sample?: SampleFacts }): void {
         const query = this.query;
         if (!query) return;
         const tables = tableNames(query.sources.map(s => ({ id: s.id, name: s.name, columns: [] })));
@@ -1960,7 +1926,6 @@ export class QueryController {
             calc: query.calc ?? [],
             // (each calculated column left out, and why: Columns says so, with Change and Delete)
             brokenCalcs: [...this.brokenCalcs].map(([name, error]) => ({ name, error })),
-            ownSql: query.sql ?? '', sqlError: now.sqlError ?? '',
             search: query.search ?? '', sort: query.sort ?? null, totals: !!query.totals,
             widths: query.widths ?? {},
             sql: now.sql ?? '', total: now.total ?? 0, preview: now.preview ?? [], error: now.error ?? '',
@@ -2051,7 +2016,7 @@ export class QueryController {
      */
     private async moveColumn(from: number, to: number): Promise<void> {
         const query = this.query;
-        if (!query || query.sql) return;
+        if (!query) return;
         const { spec } = this.spec();
         // (a column keeps its functions, and its place in a compared column)
         const columns = (spec.select.length ? spec.select : defaultColumns(spec)).map(c => ({ ...c }));
@@ -2452,21 +2417,15 @@ export class QueryController {
         const { spec } = this.spec();
         if (!spec.views.length) return undefined;
         let result: QueryResult;
-        try {
-            if (this.onEngine(spec)) {
-                const ran = await this.engineRead(spec, engineKey(spec));
-                if (!ran) return undefined;
-                result = ran;
-            } else {
-                const session = this.session;
-                if (!session) return undefined;
-                await this.loadLookups(session, spec);
-                result = this.read(session, spec);
-            }
-        } catch (error) {
-            // The user's own SQL no longer runs (the page says why): no rows. The steps' SQL failing is an error
-            if (this.query?.sql) return undefined;
-            throw error;
+        if (this.onEngine(spec)) {
+            const ran = await this.engineRead(spec, engineKey(spec));
+            if (!ran) return undefined;
+            result = ran;
+        } else {
+            const session = this.session;
+            if (!session) return undefined;
+            await this.loadLookups(session, spec);
+            result = this.read(session, spec);
         }
         const search = String(message.search ?? '').trim();
         const sort = message.sort && Number.isInteger(message.sort.column) && message.sort.column < result.columns.length ? message.sort : null;
@@ -2577,7 +2536,7 @@ export class QueryController {
     /** The places Results' Status names (each view of the compare, each place a compared column has), or null when nothing is compared. */
     private statusPlaces(): string[] | null {
         const query = this.query;
-        if (!query || query.sql) return null;
+        if (!query) return null;
         const { spec } = this.spec();
         if (!spec.views.length) return null;
         const label = (viewId: string): string => runName(query, viewId) || spec.views.find(v => v.id === viewId)?.name || viewId;
@@ -2586,27 +2545,21 @@ export class QueryController {
     }
 
     /**
-     * Every row of Results, read once: the steps' SQL, or the user's own. With compared columns,
+     * Every row of Results, read once (the steps' SQL). With compared columns,
      * each row's status too (rowStatus): which views' values differ, and which views of the compare
      * have no record.
      */
     private read(session: QuerySession, spec: QuerySpec): QueryResult {
-        const own = this.query?.sql;
-        const key = own ?? session.sql();
+        const key = session.sql();
         if (!this.result || this.result.key !== key) {
-            const tooMany = own ? undefined : session.tooManyRows();
+            const tooMany = session.tooManyRows();
             if (tooMany) throw new Error(tooManyRowsText(tooMany, spec));
-            if (own) {
-                const out = session.run(own);
-                this.result = { key, columns: out.columns.map(column => ({ view: CALC_VIEW, column })), rows: out.rows };
-            } else {
-                const columns = resultColumnRefs(spec);
-                const keys = compareKeySql(spec);
-                const out = session.rows(keys.length ? { extra: keys.map(k => k.sql) } : undefined);
-                const rows = keys.length ? out.rows.map(r => r.slice(0, columns.length)) : out.rows;
-                const keyValues = keys.length ? out.rows.map(r => r.slice(columns.length)) : [];
-                this.result = this.compareResult(key, spec, columns, rows, keyValues, keys.map(k => k.view));
-            }
+            const columns = resultColumnRefs(spec);
+            const keys = compareKeySql(spec);
+            const out = session.rows(keys.length ? { extra: keys.map(k => k.sql) } : undefined);
+            const rows = keys.length ? out.rows.map(r => r.slice(0, columns.length)) : out.rows;
+            const keyValues = keys.length ? out.rows.map(r => r.slice(columns.length)) : [];
+            this.result = this.compareResult(key, spec, columns, rows, keyValues, keys.map(k => k.view));
             this.filtered = undefined;
         }
         return this.result;
@@ -2641,7 +2594,7 @@ export class QueryController {
     private onEngine(spec: QuerySpec): boolean {
         const on = !!this.ports.newCompareEngine?.();
         // Every query, but one with SQL of its own or a calculated column written as SQL
-        const why = on ? (this.query?.sql ? 'it has SQL of its own' : whyNotQueryOnEngine(spec)) : undefined;
+        const why = on ? whyNotQueryOnEngine(spec) : undefined;
         // (a join still to make is not said: the step shows it)
         this.engineNote = on && why && why !== 'a join has no key yet' ? onSqliteLine(why) : '';
         this.engineOn = on && !why;

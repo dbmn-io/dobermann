@@ -359,18 +359,16 @@ describe('Query', () => {
             assert.match(viewNameProblem('', []), /needs a name/);
         });
 
-        it('renamed, its calculated columns, own SQL and search follow', () => {
+        it('renamed, its calculated columns and search follow', () => {
             const query = {
                 id: 'q-1', name: 'q', joins: [], createdAt: '', updatedAt: '',
                 sources: [{ id: 'v1', name: 'Stock' }, { id: 'v2', name: 'Products' }] as QuerySource[],
                 calc: [{ name: 'short', expr: 'Stock.onHand - Products.reorderPoint' }],
-                sql: 'SELECT Stock.sku, Products."name" FROM Stock JOIN Products ON Products.sku = Stock.sku WHERE Stock.stockStatus = 1',
                 search: '@stock.sku=A1'
             } as SavedQuery;
             assert.strictEqual(renameView(query, 'v1', 'Low'), '');
             assert.strictEqual(query.sources[0].name, 'Low');
             assert.strictEqual(query.calc?.[0].expr, 'Low.onHand - Products.reorderPoint');
-            assert.strictEqual(query.sql, 'SELECT Low.sku, Products."name" FROM Low JOIN Products ON Products.sku = Low.sku WHERE Low.stockStatus = 1');
             assert.strictEqual(query.search, '@Low.sku=A1');
             // A name another view has is refused, and nothing changes
             assert.match(renameView(query, 'v1', 'products'), /already called/);

@@ -75,8 +75,6 @@ export interface SavedQuery {
     distinct?: boolean;
     /** Calculated columns, each an SQL expression. */
     calc?: QueryCalc[];
-    /** The user's own SQL: when set, Results shows what it makes, not what the steps write. */
-    sql?: string;
     /** Results as it was left: its search, its sort and whether totals show. */
     search?: string;
     sort?: { column: number; dir: 'asc' | 'desc' } | null;
@@ -183,13 +181,11 @@ function renamed(text: string, was: string, now: string): string {
 
 function rewrite(query: SavedQuery, change: (text: string) => string): void {
     query.calc?.forEach(c => { c.expr = change(c.expr); });
-    if (query.sql) query.sql = change(query.sql);
     if (query.search) query.search = change(query.search);
 }
 
 /**
- * Call a view something else. Its calculated columns, the user's own SQL and the saved search
- * follow. Returns why it can't be, or ''.
+ * Call a view something else. Its calculated columns and the saved search follow. Returns why it can't be, or ''.
  */
 export function renameView(query: SavedQuery, id: string, name: string): string {
     const source = query.sources.find(s => s.id === id);
@@ -464,7 +460,7 @@ export function queryForSupport(query: SavedQuery): QueryCopy {
     const sources = query.sources.map(s => keep(s, ['id', 'name', 'endpointId', 'endpointName', 'request', 'system', 'view', 'executionId', 'isBatch', 'environment', 'executedAt', 'file', 'off', 'runOf', 'run']) as QuerySource);
     return {
         kind: 'dbmn.query', version: 1, copiedAt: new Date().toISOString(),
-        query: { ...keep(query, ['name', 'joins', 'select', 'distinct', 'calc', 'sql', 'search', 'sort', 'totals', 'widths', 'createdAt', 'updatedAt']), sources }
+        query: { ...keep(query, ['name', 'joins', 'select', 'distinct', 'calc', 'search', 'sort', 'totals', 'widths', 'createdAt', 'updatedAt']), sources }
     };
 }
 

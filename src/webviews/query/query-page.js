@@ -71,7 +71,6 @@
         total: 0,
         seq: 0,
         loading: false,
-        sqlOpen: false,
         statsOpen: {},      // a join's stats shown, by its view
         joinCounts: null    // the Join step's counts, run by run (the host's query.joinCounts)
     };
@@ -1903,7 +1902,6 @@
         applyLanes(box);
         injectIcons(box);
         placeAdds();
-        renderSql();
         requestAnimationFrame(() => drawLinks(box));
     }
 
@@ -2020,7 +2018,7 @@
     function columnsKey() {
         // (a compare's headings carry its filters and counts: they are drawn again when either changes)
         const compare = hasStatus() ? `\u0002status:${JSON.stringify([ui.filter, ui.resultsView, ui.diffsOnly, ui.counts && ui.counts.columns, ui.counts && ui.counts.relations])}` : '';
-        return resultCols().map(c => `${colId(c)}#${c.type || ''}#${c.group || ''}`).join('\u0001') + (ui.state && ui.state.ownSql ? '\u0002own' : '') + compare;
+        return resultCols().map(c => `${colId(c)}#${c.type || ''}#${c.group || ''}`).join('\u0001') + compare;
     }
 
     /** The table's columns: each in its view's colour, the same name in two views saying whose it is. */
@@ -2045,7 +2043,7 @@
         const v = view(c.view);
         return v ? (v.run || v.name) : c.view;
     }
-    function hasStatus() { return !!(ui.state && ui.state.statusPlaces && !ui.state.ownSql); }
+    function hasStatus() { return !!(ui.state && ui.state.statusPlaces); }
     function tableColumns() {
         const all = resultCols();
         const groupSize = new Map();
@@ -2123,7 +2121,7 @@
         grid.key = key;
         const columns = resultCols();
         // The user's own SQL makes its own columns: they are neither moved nor taken out here
-        table.toggleAttribute('locked', !!ui.state.ownSql || columns.length < 2);
+        table.toggleAttribute('locked', columns.length < 2);
         table.columns = tableColumns();
         const kept = (ui.state && ui.state.widths) || {};
         const widths = {};
@@ -2322,30 +2320,6 @@
         }
     }
 
-    /* ---------- The SQL: read it, or write your own ---------- */
-
-    /** The box holds SQL the user is typing: a new state leaves it alone. */
-    let sqlTyped = false;
-    function openSql(open) {
-        ui.sqlOpen = open;
-        $('querySqlPanel').classList.toggle('hidden', !open);
-        $('querySqlBtn').setAttribute('aria-expanded', String(open));
-        $('querySqlBtn').classList.toggle('is-active', open);
-    }
-    function renderSql() {
-        const s = ui.state;
-        if (!sqlTyped || s.ownSql === $('queryResultsSql').value.trim()) {
-            $('queryResultsSql').value = s.ownSql || s.sql || '';
-            sqlTyped = false;
-        }
-        $('querySqlReset').classList.toggle('hidden', !s.ownSql);
-        const hint = $('querySqlHint');
-        hint.classList.toggle('query-warn', !!s.sqlError);
-        hint.textContent = s.sqlError ? `Your SQL no longer runs: ${s.sqlError}`
-            : s.ownSql ? 'Your own SQL. Join and Columns no longer change Results.'
-            : 'Each view is a table, by its name. Change the SQL and press Run to use your own.';
-    }
-
     /* ---------- State ---------- */
 
     function setBusy(text) {
@@ -2403,7 +2377,6 @@
         if (!m.reading) { ui.busy = ''; ui.settled = true; }
         if (!m.reading && ui.onSettled) { const run = ui.onSettled; ui.onSettled = null; setTimeout(run, 0); }
         $('queryDistinct').checked = !!m.distinct;
-        $('queryDistinct').disabled = !!m.ownSql;
         renderFigures(m);
         if (firstState) {
             // Results as it was left: its search, its sort, its totals
@@ -2417,7 +2390,6 @@
             $('queryTotals').setAttribute('aria-pressed', String(ui.totals));
             // (a search kept from last time lights Filter)
             compareResults.renderTools();
-            if (m.ownSql || m.sqlError) openSql(true);
         }
         if (!m.reading && ui.sort && ui.sort.column >= m.resultColumns.length) ui.sort = null;
         renderTop();
@@ -2438,32 +2410,12 @@
         'query:addFile': () => addsEl('queryAddFile').click(),
         'query:back': () => goTo(ui.step - 1),
         'query:next': () => goTo(ui.step + 1),
-        'query:copySql': () => {
-            const sql = (ui.state && (ui.state.ownSql || ui.state.sql)) || '';
-            if (window.DbmnClipboard) window.DbmnClipboard.writeText(sql).then(() => window.DbmnToast && window.DbmnToast.success('SQL copied'));
-        },
         // The rows Results shows now (its search and sort), as a workbook
         'query:export': () => {
             setBusy('Exporting…');
             // (what Results shows: its search and sort, and a compare's Status filters and hidden results)
             // (and the Status menu's counts as shown, for the file's summary: #13)
             post({ type: 'query.export', search: ui.search, sort: ui.sort, ...(hasStatus() ? { filter: ui.filter, counts: ui.counts || null, diffsOnly: !!ui.diffsOnly } : {}) });
-        },
-        'query:toggleSql': () => openSql(!ui.sqlOpen),
-        'query:runSql': () => {
-            const typed = $('queryResultsSql').value.trim();
-            // The steps' SQL, unchanged, is no SQL of the user's own
-            const own = typed === (ui.state.sql || '').trim() ? '' : typed;
-            if (!own && !ui.state.ownSql) return loadRows();
-            ui.sort = null;
-            setBusy('Running…');
-            post({ type: 'query.setSql', sql: own });
-        },
-        'query:resetSql': () => {
-            ui.sort = null;
-            sqlTyped = false;
-            setBusy('Running…');
-            post({ type: 'query.setSql', sql: '' });
         },
         // The rows Results shows become a Run Batch's input: the Console's Chain (its dialog answers console.chainOptions)
         'query:chain': () => post({ type: 'console.chain', payload: {} })
@@ -2490,7 +2442,6 @@
         ui.specialAuto = false;
         applySpecial();
     });
-    $('queryResultsSql').addEventListener('input', () => { sqlTyped = true; });
     $('queryDistinct').addEventListener('change', () => { setBusy('Updating…'); post({ type: 'query.distinct', on: $('queryDistinct').checked }); });
     let searchTimer = 0;
     window.SearchMatcher.followScroll($('querySearch'), $('querySearchMirror'));
@@ -2661,7 +2612,6 @@
                 ui.state.sql = m.sql;
                 ui.state.allSelected = false;
                 renderColumns();
-                renderSql();
                 break;
             case 'query.exported': setBusy(''); break;
             case 'query.idle': setBusy(''); break;

@@ -84,8 +84,6 @@ export function buildQueryPage(asset: AssetUrl, config: { queryId: string; name:
                         <input type="text" id="querySearch" class="search-input" placeholder="Search rows, or @column=value" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off" data-help="console#search">
                     </div>
                 </div>
-                <!-- The SQL box is not offered (James, 2026-11-22): the button stays, hidden, for a query saved with SQL of its own, whose box still opens by itself so it can be put back -->
-                <button type="button" class="compare-tool-btn icon" id="querySqlBtn" data-click="query:toggleSql" aria-expanded="false" title="The SQL: read it, or write your own" aria-label="The SQL" data-icon="braces" hidden></button>
                 <button type="button" id="queryChainBtn" class="export-button" data-click="query:chain" title="Send these rows to another API as its Run Batch input">Chain <span class="inline-icon" data-icon="chevron-right"></span></button>
                 <button type="button" class="compare-tool-btn icon" id="queryExportBtn" data-click="query:export" title="Export to Excel" aria-label="Export to Excel" data-icon="download"></button>
             </div>
@@ -121,16 +119,6 @@ export function buildQueryPage(asset: AssetUrl, config: { queryId: string; name:
 
         <!-- Step 4: Results -->
         <div id="queryResultsStep" class="csv-step hidden">
-            <!-- The SQL: what the steps wrote, or the user's own (one SELECT over the views' tables) -->
-            <section id="querySqlPanel" class="dbmn-modal-field hidden">
-                <textarea id="queryResultsSql" class="dbmn-modal-input font-mono font-size-12" rows="6" spellcheck="false" autocomplete="off" autocapitalize="off" aria-label="The SQL"></textarea>
-                <p class="query-row">
-                    <button type="button" class="btn btn-primary" id="querySqlRun" data-click="query:runSql">Run</button>
-                    <button type="button" class="btn btn-secondary hidden" id="querySqlReset" data-click="query:resetSql">Back to the steps' SQL</button>
-                    <button type="button" class="compare-tool-btn icon" data-click="query:copySql" title="Copy the SQL" aria-label="Copy the SQL" data-icon="copy"></button>
-                    <span class="form-hint" id="querySqlHint"></span>
-                </p>
-            </section>
             <!-- The design system's table (shared/dbmn-table.js): the rows stay with the host and are asked for as they scroll into view -->
             <!-- New engine: a column where text read as a number wasn't one (left blank) says how many rows -->
             <dbmn-status id="queryNotNumbers" class="query-engine-note hidden" inline tone="warn"></dbmn-status>
