@@ -205,9 +205,25 @@
     const EMPTY_REPORT = 'Pick a column for the report first: nothing is in it.';
     // (through ui: the step bar can draw before the Columns step is made)
     function reportEmpty() { const c = ui.columnsStep; return !!(c && typeof c.isEmpty === 'function' && c.isEmpty()); }
+    /**
+     * With more than one view in, every view after the first needs a column to join on before Columns: until then it
+     * sits out, and Columns and Results would show the first view alone (James, 2026-11-22). A view hidden is not in.
+     */
+    const JOIN_FIRST = 'Pick a column to join on first.';
+    function joinMissing() {
+        const s = ui.state;
+        if (!s) return false;
+        const within = s.views.filter(v => !v.off);
+        if (within.length < 2) return false;
+        const picked = part => !!(part && part.column);
+        return within.slice(1).some(v => {
+            const join = (s.joins || []).find(j => j.view === v.id);
+            return !join || !join.on.length || join.on.some(p => !picked(p.left) || !picked(p.right));
+        });
+    }
     function waitsFor(n) {
         if (n >= 2 && views().length === 0) return 'Views';
-        if (n >= 3 && !joinsReady()) return 'Join';
+        if (n >= 3 && (!joinsReady() || joinMissing())) return 'Join';
         if (n >= 4 && reportEmpty()) return 'Columns';
         // A new query is walked through: a step opens once the one before it has been visited, so
         // Join and Columns are seen before Results (a view left unjoined still sits out and holds
@@ -225,7 +241,7 @@
             const blocked = waitsFor(n);
             if (!blocked) return { status: 'available', summary: '', title: `Go to ${STEPS[i].label}` };
             // (an empty report says what to do, in the footer's status, as the step bar's reason)
-            const says = blocked === 'Columns' && reportEmpty() ? EMPTY_REPORT : `Waits for ${blocked}`;
+            const says = blocked === 'Columns' && reportEmpty() ? EMPTY_REPORT : blocked === 'Join' && joinMissing() ? JOIN_FIRST : `Waits for ${blocked}`;
             return n === ui.step + 1 ? { status: 'blocked', waitsFor: blocked, summary: says } : { status: 'pending', summary: '' };
         });
         // What each step holds, for the list the folded steps open
@@ -242,7 +258,7 @@
         next.classList.toggle('hidden', ui.step === 4);
         next.textContent = ui.step < 4 ? `Next: ${STEPS[ui.step].label}` : 'Next';
         next.disabled = !!waitsFor(ui.step + 1) || !!ui.busy;
-        next.title = ui.step === 3 && reportEmpty() ? EMPTY_REPORT : '';
+        next.title = ui.step === 3 && reportEmpty() ? EMPTY_REPORT : ui.step === 2 && joinMissing() ? JOIN_FIRST : '';
         // (and on the Columns step itself, where the columns are put back)
         const emptyNote = $('queryColumnsEmpty');
         if (emptyNote) {
