@@ -1677,3 +1677,55 @@ test('hidden characters shown (as Word\'s ¶): marks over the real characters in
     await expect(page.locator('#t .dbmn-sc')).toHaveCount(0);
     expect(await cell(0, 0).textContent()).toBe(' A1 ');
 });
+
+test('a column the search filters shows a funnel; its click, or removing the column, takes its terms out of the box', async ({ page }) => {
+    // James, 2026-11-23: "if a column is removed from table, so should its search filter… a FILTER icon in columns added to search query box"
+    await page.setContent(tablePage());
+    const box = page.locator('#t .search-input');
+    const funnels = () => page.locator('#t thead th').evaluateAll(ths => ths.filter(th => th.querySelector('.dbmn-col-funnel')).map(th => th.dataset.col));
+    await box.fill('kettle');
+    expect(await funnels()).toEqual([]);
+    await box.fill('@qty=49 kettle');
+    await expect.poll(funnels).toEqual(['qty']);
+    // `@@word` is a word in every column, never a column's: no funnel for it
+    await box.fill('@@awaiting @customer=kettle');
+    await expect.poll(funnels).toEqual(['customer']);
+    // The funnel clears that column's terms only, and the rows are searched again
+    await page.locator('#t thead th[data-col="customer"] .dbmn-col-funnel').click();
+    await expect(box).toHaveValue('@@awaiting');
+    await expect(page.locator('#t .dbmn-table-count')).toHaveText('1 of 3,000 rows');
+    expect(await funnels()).toEqual([]);
+    // The funnel sits between the name and the sort, all on the heading's one line
+    await box.fill('@qty>40, @customer~mill');
+    await expect.poll(funnels).toEqual(['customer', 'qty']);
+    if (process.env.FUNNEL_SHOT) await page.locator('#t thead').screenshot({ path: process.env.FUNNEL_SHOT });
+    const parts = await page.locator('#t thead th[data-col="qty"]').evaluate(th => ['.column-name', '.dbmn-col-funnel', '.col-sort-btn'].map(s => { const r = th.querySelector(s).getBoundingClientRect(); return { left: r.left, mid: r.top + r.height / 2 }; }));
+    expect(parts[0].left).toBeLessThan(parts[1].left);
+    expect(parts[1].left).toBeLessThan(parts[2].left);
+    expect(Math.abs(parts[1].mid - parts[2].mid)).toBeLessThan(2);
+    // Removing a column takes its terms out (the OR's comma with them), and the search runs again
+    await page.locator('#t thead th[data-col="qty"] .col-hide-btn').click();
+    await expect(box).toHaveValue('@customer~mill');
+    await expect(page.locator('#t .dbmn-table-count')).toHaveText('1,000 of 3,000 rows');
+    expect(await funnels()).toEqual(['customer']);
+});
+
+test('filtered: a screen that runs its own search names the columns; the funnel\'s click is the screen\'s', async ({ page }) => {
+    await page.setContent(tablePage());
+    await page.evaluate(() => {
+        window.unfiltered = [];
+        t.addEventListener('dbmn-table-unfilter', e => window.unfiltered.push(e.detail.id));
+        t.filtered = ['notes'];
+    });
+    const funnel = page.locator('#t thead th[data-col="notes"] .dbmn-col-funnel');
+    await expect(funnel).toBeVisible();
+    await expect(funnel).toHaveAttribute('title', 'Clear this column\'s search');
+    await funnel.click();
+    expect(await page.evaluate(() => window.unfiltered)).toEqual(['notes']);
+    // The table's own box is not the screen's: what it says does not draw the funnels while `filtered` is set
+    await page.locator('#t .search-input').fill('@qty=1');
+    expect(await page.locator('#t thead .dbmn-col-funnel').count()).toBe(1);
+    await page.evaluate(() => { t.filtered = null; });
+    await expect(page.locator('#t thead th[data-col="qty"] .dbmn-col-funnel')).toBeVisible();
+    expect(await page.locator('#t thead .dbmn-col-funnel').count()).toBe(1);
+});

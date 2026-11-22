@@ -33,6 +33,15 @@ dbmn-table [hidden] { display: none !important; }
 .dbmn-table-grid.is-sized { table-layout: fixed; }
 .dbmn-table-grid th { text-align: left; cursor: default; overflow: hidden; white-space: nowrap; }
 .dbmn-table-grid th .column-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* The search box filters this column (an @column term names it): the funnel Results' filters use, a click clears it */
+.dbmn-table-grid th .dbmn-col-funnel {
+    display: inline-flex; flex: none; margin-left: 4px; padding: 2px;
+    border: none; border-radius: 3px; background: none; line-height: 0; cursor: pointer;
+    color: var(--dbmn-textLink-foreground);
+}
+.dbmn-table-grid th .dbmn-col-funnel:hover,
+.dbmn-table-grid th .dbmn-col-funnel:focus-visible { background: var(--dbmn-toolbar-hoverBackground, color-mix(in srgb, var(--dbmn-foreground) 12%, transparent)); }
+.dbmn-table-grid th .dbmn-col-funnel svg { width: 12px; height: 12px; }
 .dbmn-table-grid th .header-actions { padding-right: 6px; }
 .dbmn-table-grid td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* A column given wrap: its cells take a second line rather than a wider column (a status of DIFF and Missing) */

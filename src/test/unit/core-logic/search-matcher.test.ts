@@ -8,7 +8,7 @@
 import { expect } from 'chai';
 import { describe, it } from 'mocha';
 
-const { parseSearchExpression, matchesValue, matchesRow, tokenizeForDisplay, columnSuggestions, nestedKeys, nestedKeysFor } = require('../../../webviews/shared/search-matcher.js');
+const { parseSearchExpression, matchesValue, matchesRow, tokenizeForDisplay, columnSuggestions, nestedKeys, nestedKeysFor, columnTerms, columnsIn, withoutColumns } = require('../../../webviews/shared/search-matcher.js');
 
 // Helper to extract a flat value from a row by key
 function extractValue(row: Record<string, unknown>, key: string): unknown {
@@ -1255,5 +1255,48 @@ describe('SearchMatcher: a column\'s values offered after @column= (the Hub\'s t
     it('after a |, the next value, not one already picked; a column with no values offers nothing', () => {
         expect(texts('@tag=inventory|')).to.deep.equal(['items', '"puppy school"']);
         expect(texts('@system=')).to.deep.equal([]);
+    });
+});
+
+// James, 2026-11-23: "if a column is removed from table, so should its search filter… a FILTER icon in columns added to search query box"
+describe('Search: the columns a search filters, and taking a column\'s terms out', () => {
+    const cols = [{ id: 'status', name: 'Status' }, { id: 'bl.sku', name: 'sku' }, { id: 'c1.sku', name: 'sku' }, { id: 'env', name: 'Environment', aliases: ['env'] }, { id: 'lines', name: 'lines' }];
+    const status = [{ id: 'status', name: 'Status' }];
+
+    it('finds each column term where it is: its sign, name, operator and value; never @@word, a word in quotes or an @ inside a word', () => {
+        const text = 'a -@status=error @@deep "@quoted=x" x@y=1 @"sales order"~open, @sku';
+        expect(columnTerms(text).map((t: { start: number; end: number; name: string }) => [text.slice(t.start, t.end), t.name])).to.deep.equal([
+            ['-@status=error', 'status'], ['@"sales order"~open', 'sales order'], ['@sku', 'sku']
+        ]);
+    });
+
+    it('names the columns a search filters: by heading, id, alias, view and key inside', () => {
+        expect(columnsIn('404 @status=error', cols)).to.deep.equal(['status']);
+        expect(columnsIn('@sku=1', cols)).to.deep.equal(['bl.sku', 'c1.sku']);
+        expect(columnsIn('@bl.sku=1 @environment=uat @lines.item=3', cols)).to.deep.equal(['bl.sku', 'env', 'lines']);
+        expect(columnsIn('@env=uat', cols)).to.deep.equal(['env']);
+        expect(columnsIn('@@status words @nothing=1', cols)).to.deep.equal([]);
+        expect(columnsIn('@qty=1', ['qty', 'notes'])).to.deep.equal(['qty']);
+    });
+
+    it('takes a gone column\'s terms out and keeps the rest as typed, the comma and spaces tidied', () => {
+        expect(withoutColumns('@status=error 404', status)).to.equal('404');
+        expect(withoutColumns('404 -@status=error @@foo', status)).to.equal('404 @@foo');
+        expect(withoutColumns('a, @status=x, b', status)).to.equal('a, b');
+        expect(withoutColumns('@status=x, b', status)).to.equal('b');
+        expect(withoutColumns('b, @status="in progress"', status)).to.equal('b');
+        expect(withoutColumns('@status @env=prod', status)).to.equal('@env=prod');
+        // Not a term of that column: as it was
+        expect(withoutColumns('@stat', status)).to.equal('@stat');
+        expect(withoutColumns('@@status x@status=y "@status=z"', status)).to.equal('@@status x@status=y "@status=z"');
+        expect(withoutColumns('@status=x', [])).to.equal('@status=x');
+    });
+
+    it('keeps a term that still names a column shown: @sku with BL\'s sku gone and C1\'s still there', () => {
+        const blSku = [{ id: 'bl.sku', name: 'sku' }];
+        const c1Sku = [{ id: 'c1.sku', name: 'sku' }];
+        expect(withoutColumns('@sku=1 @bl.sku=2', blSku, c1Sku)).to.equal('@sku=1');
+        expect(withoutColumns('@sku=1 @bl.sku=2', blSku)).to.equal('');
+        expect(withoutColumns('@environment=uat', [{ id: 'env', name: 'Environment', aliases: ['env'] }])).to.equal('');
     });
 });

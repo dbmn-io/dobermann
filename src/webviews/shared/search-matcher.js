@@ -930,6 +930,76 @@ function tokenizeForDisplay(searchString, headings, hidden) {
 }
 
 /**
+ * The column terms in a search, where they are in the text: `@name`, its operator and its value
+ * (`-@status=error` with its `-`). Not `@@word`: that is a word in every column, never a column's.
+ * As the box's colours read them: a term starts at the start, or after a space or a comma.
+ *
+ * @param {string} text
+ * @returns {Array<{start: number, end: number, name: string}>}   name: unquoted, as typed
+ */
+function columnTerms(text) {
+    var out = [];
+    var s = String(text || '');
+    for (var i = 0; i < s.length; i++) {
+        var ch = s.charAt(i);
+        if (ch === '"') { var close = s.indexOf('"', i + 1); if (close < 0) break; i = close; continue; }
+        if (ch !== '@') continue;
+        if (s.charAt(i + 1) === '@') { var deep = /^@@("[^"]*"?|[^\s,]*)/.exec(s.slice(i)); i += deep[0].length - 1; continue; }
+        // (`-@name` and `+@name`: the sign goes with the term)
+        var start = i;
+        if (i > 0 && /[-+]/.test(s.charAt(i - 1)) && (i === 1 || /[\s,]/.test(s.charAt(i - 2)))) start = i - 1;
+        else if (i > 0 && !/[\s,]/.test(s.charAt(i - 1))) continue;
+        var m = DISPLAY_TERM_AT.exec(s.slice(i));
+        // (no operator: the term is the name alone, the space after it not its own)
+        var end = i + (m[3] ? m[0].length : 1 + m[1].length);
+        var name = unquote(m[1]);
+        if (name) out.push({ start: start, end: end, name: name });
+        i = end - 1;
+    }
+    return out;
+}
+
+/**
+ * Which of `columns` the search's column terms name (James, 2026-11-23: a filter icon in their
+ * headings). Columns as the search takes them, { id, name, aliases }, or names; a term with a key
+ * inside a column (`@lines.item`) names that column.
+ *
+ * @returns {string[]}   the ids named (for names given as text: the names)
+ */
+function columnsIn(text, columns) {
+    var cols = (columns || []).map(function (c) { return typeof c === 'string' ? { id: c, name: c } : c; });
+    var ids = [];
+    columnTerms(text).forEach(function (t) {
+        columnsNamed(cols, t.name).columns.forEach(function (c) { if (ids.indexOf(c.id) < 0) ids.push(c.id); });
+    });
+    return ids;
+}
+
+/**
+ * The search without the terms that name any of `columns` (James, 2026-11-23: "if a column is
+ * removed from table, so should its search filter"). Every other part is kept as typed: words,
+ * `@@word`s, other columns' terms. The comma or the spaces the term leaves are tidied.
+ *
+ * @param {string} text
+ * @param {Array} columns   the columns gone, { id, name, aliases } or names
+ * @param {Array} [keep]    the columns still there: a term that names one of them too stays
+ *                          (`@sku=1` with BL's sku gone and C1's sku still shown)
+ * @returns {string}
+ */
+function withoutColumns(text, columns, keep) {
+    var s = String(text || '');
+    var asCols = function (list) { return (list || []).map(function (c) { return typeof c === 'string' ? { id: c, name: c } : c; }); };
+    var cols = asCols(columns);
+    var kept = asCols(keep);
+    if (!cols.length) return s;
+    var gone = columnTerms(s).filter(function (t) { return columnsNamed(cols, t.name).columns.length > 0 && !columnsNamed(kept, t.name).columns.length; });
+    if (!gone.length) return s;
+    for (var k = gone.length - 1; k >= 0; k--) s = s.slice(0, gone[k].start) + s.slice(gone[k].end);
+    // (a comma left with nothing on one side goes; spaces close up)
+    return s.replace(/\s*,(\s*,)+/g, ',').replace(/^\s*,\s*/, '').replace(/\s*,\s*$/, '').replace(/[ \t]{2,}/g, ' ').trim();
+}
+
+/**
  * GitHub Issue #261: paint the find box's highlight mirror (the coloured copy of what is typed,
  * behind the transparent input). Shared by the Console and Compare (#298).
  */
@@ -1308,8 +1378,8 @@ function followScroll(input, mirror) {
 // Export for use in both browser and Node.js environments
 if (typeof module !== 'undefined' && module.exports) {
     // Node.js/CommonJS
-    module.exports = { parseSearchExpression, matchesValue, matchesRow, planSearch, tokenizeForDisplay, renderHighlight, columnSuggestions, nestedKeys, nestedKeysFor, COLUMN_OPS, resolveTime, timeOfCell, typeOfValues, describeSearch };
+    module.exports = { parseSearchExpression, matchesValue, matchesRow, planSearch, tokenizeForDisplay, columnTerms, columnsIn, withoutColumns, renderHighlight, columnSuggestions, nestedKeys, nestedKeysFor, COLUMN_OPS, resolveTime, timeOfCell, typeOfValues, describeSearch };
 } else {
     // Browser/Global
-    window.SearchMatcher = { parseSearchExpression, matchesValue, matchesRow, planSearch, tokenizeForDisplay, renderHighlight, columnSuggestions, nestedKeys, nestedKeysFor, attachColumnSuggest, followScroll, COLUMN_OPS, resolveTime, timeOfCell, typeOfValues, describeSearch };
+    window.SearchMatcher = { parseSearchExpression, matchesValue, matchesRow, planSearch, tokenizeForDisplay, columnTerms, columnsIn, withoutColumns, renderHighlight, columnSuggestions, nestedKeys, nestedKeysFor, attachColumnSuggest, followScroll, COLUMN_OPS, resolveTime, timeOfCell, typeOfValues, describeSearch };
 }

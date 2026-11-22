@@ -435,6 +435,20 @@
         /** What the search box holds (the table's own, or the screen's); set it to search from script. */
         set search(text) { const input = this._box(); if (input) { input.value = text || ''; this._searched(); } }
         get search() { const input = this._box(); return input ? input.value : ''; }
+        /**
+         * The columns a search the screen runs itself filters (a box the table does not own: Query's
+         * Results), by id: their headings show the funnel, and its click is the screen's
+         * (`dbmn-table-unfilter`, { id }). null: the table's own box says.
+         */
+        set filtered(ids) { this._filtered = Array.isArray(ids) ? ids.slice() : null; this._refunnel(); }
+        get filtered() { return Array.isArray(this._filtered) ? this._filtered.slice() : null; }
+        /** The headings drawn again when the columns the search filters change. */
+        _refunnel() {
+            const key = [...this._filteredIds()].sort().join('\u0001');
+            if (key === (this._funnelKey || '')) return;
+            this._funnelKey = key;
+            if (this._head && this._columns && this._columns.length) this._heads();
+        }
 
         /** The screen's own search box searches this table, with the @column suggestions. `mirror`: its coloured copy, when it has one. */
         searchWith(input, mirror) {
@@ -964,6 +978,57 @@
             this._render(true);
             this._tell('removed', { id: unit.group ? unit.group.id : unit.columns[0].column.id, ids: [...gone] });
             if (sorted && this._source) this._again(true);
+            this._unsearch(unit.columns.map(x => x.column));
+        }
+
+        /**
+         * The columns the search box filters: those its @column terms name (the box the table
+         * searches with), or the screen's own list (`filtered`, for a box the table does not own).
+         */
+        _filteredIds() {
+            if (Array.isArray(this._filtered)) return new Set(this._filtered);
+            const input = this._box();
+            const text = input ? input.value : '';
+            const matcher = window.SearchMatcher;
+            if (!text.trim() || !matcher || !matcher.columnsIn) return new Set();
+            return new Set(matcher.columnsIn(text, this._searchColumns()));
+        }
+        /** A column's heading funnel: the search filters it; a click takes its terms out of the box. */
+        _funnel(column, name) {
+            const b = make('button', 'dbmn-col-funnel icon');
+            b.type = 'button';
+            b.dataset.icon = 'funnel';
+            if (window.Icons) window.Icons.setIcon(b, 'funnel');
+            b.title = 'Clear this column\'s search';
+            b.setAttribute('aria-label', `Clear the search on ${name}`);
+            // (never the start of a drag, a sort or the heading's menu)
+            ['pointerdown', 'mousedown'].forEach(type => b.addEventListener(type, event => event.stopPropagation()));
+            b.addEventListener('click', event => {
+                event.stopPropagation();
+                if (Array.isArray(this._filtered)) {
+                    this.dispatchEvent(new CustomEvent('dbmn-table-unfilter', { bubbles: true, detail: { id: column.id } }));
+                    return;
+                }
+                this._unsearch([column], true);
+            });
+            return b;
+        }
+        /**
+         * Columns gone from the table take their @column terms out of the search box (James,
+         * 2026-11-23: "if a column is removed from table, so should its search filter"); a term that
+         * names a column still shown stays. `all`: every term naming them (the funnel's click).
+         */
+        _unsearch(columns, all) {
+            const input = this._box();
+            const matcher = window.SearchMatcher;
+            if (!input || !input.value.trim() || !matcher || !matcher.withoutColumns || Array.isArray(this._filtered)) return;
+            const asSearched = c => ({ id: c.id, name: c.name || c.id, ...(Array.isArray(c.aliases) && c.aliases.length ? { aliases: c.aliases } : {}) });
+            const shown = all ? [] : this._columns.map(asSearched);
+            const next = matcher.withoutColumns(input.value, columns.map(asSearched), shown);
+            if (next === input.value) return;
+            input.value = next;
+            // (as if typed: the table searches again, and the screen's own box listeners hear it)
+            input.dispatchEvent(new Event('input', { bubbles: true }));
         }
 
         _heads() {
@@ -1001,7 +1066,10 @@
                     label.prepend(key);
                     label.title += '. The key: each value in one row only';
                 }
-                content.append(label, actions);
+                content.append(label);
+                // The search box filters this column (an @column term names it): the funnel, a click clears it
+                if (this._filteredIds().has(column.id)) content.append(this._funnel(column, name));
+                content.append(actions);
                 th.append(content);
                 if (head) th.append(head.edge());
                 if (typeof column.head === 'function') column.head(th);
@@ -1447,6 +1515,7 @@
             this._colour(mirror, text, columns);
             const reads = this._reading(text, columns);
             if (input === this._input) { this._reads.textContent = reads; this._reads.hidden = !reads; }
+            this._refunnel();
             this.dispatchEvent(new CustomEvent('dbmn-table-search', { bubbles: true, detail: { text: text.trim(), reads } }));
             if (this._source) {
                 // The screen's rows: asked for again a moment after the last key, from the top
@@ -1517,6 +1586,7 @@
             this._tell('removed', { id: gone.id });
             // (the screen's rows were in that column's order: asked for again as given)
             if (sorted && this._source) this._again(true);
+            this._unsearch([gone]);
         }
 
         _menu(event, th) {

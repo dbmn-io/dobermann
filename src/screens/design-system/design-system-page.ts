@@ -383,7 +383,8 @@ SearchMatcher.renderHighlight(mirror, text, headings, hidden)              the b
         <h2>Tables <span class="ds-chip is-component">Component</span></h2>
         <p>One table, whether the page holds the rows or they stay with the screen. This one holds 5,000 rows and draws only the ones in view. Try it:</p>
         <ul class="ds-rules">
-            <li><strong>Search</strong> as in the Console: words, <code>"exact"</code>, <code>-not</code>, <code>a,b</code> for either, and <code>@status=Open</code> or <code>@qty&gt;40</code> for one column. Type <code>@</code> for the list: it says what each column is (text, number, yes/no, date, nested) and offers what fits. A date takes <code>@placed&gt;7d</code>, <code>@placed=today</code> or <code>@placed=30d..7d</code>; a yes/no column <code>@urgent=true</code>. The line under the box says how the search is being read. No type shows in a heading, and values show as they came.</li>
+            <li><strong>Search</strong> as in the Console: words, <code>"exact"</code>, <code>-not</code>, <code>a,b</code> for either, and <code>@status=Open</code> or <code>@qty&gt;40</code> for one column. Type <code>@</code> for the list: it says what each column is (text, number, yes/no, date, nested) and offers what fits. A date takes <code>@placed&gt;7d</code>, <code>@placed=today</code> or <code>@placed=30d..7d</code>; a yes/no column <code>@urgent=true</code>. The line under the box says how the search is being read. No type shows in a heading, and values show as they came. <code>@@word</code> looks in every column, shown or not, and is no column's.</li>
+            <li><strong>A column the search filters</strong> (an <code>@qty&gt;40</code> names it) shows a funnel in its heading, before the sort: a click takes that column's terms out of the box. Removing a column takes its terms out too, unless they name a column still shown.</li>
             <li><strong>A heading:</strong> the icon sorts (one way, the other, then as given), the name drags the column, x removes it, the right edge resizes and a double-click fits. A right-click lists all of it.</li>
             <li><strong>A long value</strong> opens in full with a click (the notes column).</li>
         </ul>
@@ -410,7 +411,11 @@ orders.addEventListener('dbmn-table-shown', e =&gt; …e.detail.shown, e.detail.
 
 orders.columns = [...];
 orders.layout = saved;                     // the order, widths, hidden columns and sort kept from last time
-orders.searchWith(searchInput);            // the screen's box searches it
+orders.searchWith(searchInput);            // the screen's box searches it (funnels and removed columns' terms: the table's)
+orders.filtered = ['qty'];                 // a box the table does not own (Query's): the screen says which headings
+orders.addEventListener('dbmn-table-unfilter', e =&gt; …take e.detail.id's terms out, search again…);
+SearchMatcher.columnsIn(text, columns)     // the ids the text's @column terms name
+SearchMatcher.withoutColumns(text, gone, stillShown)   // the text without the gone columns' terms
 orders.source = { page: (start, count, { search, sort }) =&gt; askTheHost(start, count, search, sort) };
                                            // answers rows, or { rows, total }, now or later
 orders.reload();                           // the rows changed: ask again from the top; { keep: true } stays put
