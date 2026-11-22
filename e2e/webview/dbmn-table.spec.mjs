@@ -867,6 +867,23 @@ test('columns in groups: the group\'s name over its columns, each sorting on its
     expect([after[0], after[1], after[2], after[3], after[5]]).toEqual([before[0], before[1], before[2], before[3], before[5]]);
 });
 
+test('while a column is held, the headings it cannot go to fade their words, never their fill (rows never show through)', async ({ page }) => {
+    await page.setContent(groupedPage());
+    await page.evaluate(() => document.documentElement.style.setProperty('--vscode-list-headerBackground', '#252526'));
+    await page.locator('#t .dbmn-table-scroll').evaluate(box => { box.scrollTop = 300; });
+    const grab = await page.locator('#t th[data-group="desc"]:not([data-col]) .column-name').boundingBox();
+    await page.mouse.move(grab.x + 10, grab.y + grab.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(grab.x - 60, grab.y + grab.height / 2, { steps: 6 });
+    const sku = page.locator('#t th[data-col="sku"]');
+    await expect(sku).toHaveClass(/col-out/);
+    const look = await sku.evaluate(th => ({ opacity: getComputedStyle(th).opacity, bg: getComputedStyle(th).backgroundColor, words: getComputedStyle(th.firstElementChild).opacity }));
+    expect(look.opacity).toBe('1');
+    expect(look.bg).toBe('rgb(37, 37, 38)');
+    expect(Number(look.words)).toBeCloseTo(0.45, 2);
+    await page.mouse.up();
+});
+
 test('a group moves and is removed as one, never past a pinned column', async ({ page }) => {
     await page.setContent(groupedPage());
     const ids = () => page.locator('#t th[data-col]').evaluateAll(ths => ths.map(th => th.dataset.col));

@@ -58,5 +58,7 @@
     }
 }
 
-/* Headings that are no place for the column being held (another group, a fixed column) */
-table.col-dragging thead th.col-out { opacity: 0.45; }
+/* Headings that are no place for the column being held (another group, a fixed column): what they say
+   fades, never their fill, so a heading stays solid over the rows scrolled under it (James, 2026-11-22:
+   Status and Join type went see-through while a column was held over them) */
+table.col-dragging thead th.col-out > * { opacity: 0.45; }
