@@ -23,7 +23,7 @@ export function buildDesignSystemPage(asset: AssetUrl): string {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Design system</title>
-    ${sharedStyleLinks(asset, ['atomic', 'core', 'buttons', 'modals', 'tables', 'tabs', 'toast', 'console', 'data-transformer', 'compare', 'column-drag', 'column-head', 'query', 'dbmn-footer', 'dbmn-table', 'dbmn-log', 'dbmn-name', 'dbmn-functions', 'dbmn-map', 'dbmn-lanes'])}
+    ${sharedStyleLinks(asset, ['atomic', 'core', 'buttons', 'modals', 'tables', 'tabs', 'toast', 'console', 'search', 'data-transformer', 'compare', 'column-drag', 'column-head', 'query', 'dbmn-footer', 'dbmn-table', 'dbmn-log', 'dbmn-name', 'dbmn-functions', 'dbmn-map', 'dbmn-lanes'])}
     <link rel="stylesheet" href="${asset('design-system/design-system.css')}">
 </head>
 <body class="editor-slide-in ds-page">
@@ -46,6 +46,7 @@ export function buildDesignSystemPage(asset: AssetUrl): string {
             <a href="#buttons">Buttons</a>
             <a href="#icons">Icons</a>
             <a href="#dialogs">Dialogs and messages</a>
+            <a href="#search">Search</a>
             <a href="#tables">Tables</a>
             <a href="#mapping">Lining columns up</a>
             <a href="#lanes">Lanes</a>
@@ -355,6 +356,27 @@ DbmnContextMenu.show(button, [{ id: 'left', label: 'Left join', detail: 'All of 
 // [{ id, params }] in the order ticked, or null
 { id: 'first', label: 'First characters', sql: ['SUBSTR(', 'x', ', 1, ', { key: 'n', label: 'How many', number: true }, ')'] }
 { key: 'table', label: 'Lookup table', kind: 'lookup', options: [{ id, name, count }] }   // a value picked from saved tables</code></pre>
+    </section>
+
+    <section class="ds-section" id="search">
+        <h2>Search <span class="ds-chip">Shared module</span></h2>
+        <p>One search, learnt once: the Hub's lists (Endpoints, History, Reporting), every table, Query's Add a view and Results. The text in the box is the whole search: a filter dialog only writes the box. The box colours what it reads, and <code>@</code> lists what can be named, what each is, and its values.</p>
+        <ul class="ds-rules">
+            <li><code>inventory get</code>: Rows with both words, in what the row shows (space is and).</li>
+            <li><code>"out of stock"</code>: The words together.</li>
+            <li><code>-draft</code>: Rows without it.</li>
+            <li><code>get, post</code>: Either side of the comma.</li>
+            <li><code>@status=error</code> <code>@qty&gt;40</code> <code>@sku~WOOF</code>: One column or field, shown or not (= is, != is not, ~ contains, &gt; &lt; &gt;= &lt;=).</li>
+            <li><code>@tag=inv|items</code> <code>@qty=10..90</code>: Any of, between.</li>
+            <li><code>@ran&gt;7d</code> <code>@ran=today</code>: Dates: since, on, between (<code>30d..7d</code>).</li>
+            <li><code>@system=current</code> <code>@env=current</code>: The Hub's current System or environment.</li>
+            <li><code>@@urgent</code>: A word in every field, shown or not (a request's body, its headers).</li>
+            <li><code>@BL.qty</code> <code>@qty</code>: In a query: one view's column (its alias), or that column in every view.</li>
+        </ul>
+        <pre class="ds-code"><code>SearchMatcher.matchesRow(parseSearchExpression(text), row, columns, read)   columns: [{ id, name, hidden? }]
+SearchMatcher.attachColumnSuggest({ input, headings, hidden, types, values })   the @ list
+SearchMatcher.renderHighlight(mirror, text, headings, hidden)              the box's colours
+&lt;dbmn-table searchable&gt;  or  table.searchWith(input, mirror)              a table does all three</code></pre>
     </section>
 
     <section class="ds-section" id="tables">

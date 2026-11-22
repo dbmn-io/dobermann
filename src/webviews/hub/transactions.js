@@ -159,7 +159,8 @@
         if (search && window.SearchWords) {
             chipBox = window.SearchWords.attach({
                 input: search,
-                candidates: queryCandidates,
+                fields: boxFields,
+                values: fieldValues,
                 onText: (text) => {
                     clearTimeout(searchDebounceTimer);
                     searchDebounceTimer = setTimeout(() => {
@@ -263,7 +264,8 @@
         // Content search is always on — the host reads the body files of the runs the chips
         // leave, for each typed word. Tiny words (< 2 chars) match too much to be worth a disk
         // scan; the details still find them.
-        const words = window.SearchWords ? window.SearchWords.parseWords(view.filters.search || '').include.filter(w => w.length >= 2) : [];
+        // Only `@@word`s reach the bodies: a plain word looks in what the list shows (James, 2026-11-21)
+        const words = window.SearchWords ? window.SearchWords.deepWords(view.query || '').filter(w => w.length >= 2) : [];
         if (words.length === 0) {
             contentMatchIds = null;
             return;
@@ -312,7 +314,7 @@
         if (!list || !empty) return;
 
         deriveFilters(state);
-        searchWords = window.SearchWords ? window.SearchWords.parseWords(view.filters.search || '') : searchWords;
+        searchWords = window.SearchWords ? window.SearchWords.parseWords(view.filters.words || '') : searchWords;
         // Strip batch members from the visible set — surface batches as a single
         // row; clicking opens the batch report which shows the members.
         const all = runsOf(state).filter(t => t.executionType !== 'batch_member');
@@ -497,12 +499,16 @@
         const statuses = filters.statuses && filters.statuses.length > 0 ? filters.statuses : null;
         const methods = filters.methods && filters.methods.length > 0 ? filters.methods : null;
         const endpointId = filters.endpointId || '';
-        const words = filters.search && window.SearchWords ? window.SearchWords.parseWords(filters.search) : null;
-        const search = words && (words.include.length || words.exclude.length) ? words : null;
         const environments = filters.environments && filters.environments.length ? filters.environments.map(e => String(e).toLowerCase()) : null;
-        const tags = filters.tags && filters.tags.length ? filters.tags.map(t => String(t).toLowerCase()) : null;
+        // @tag=: each its own group (all of them), `a|b` either; a builder's list of tags, any of them
+        const tagGroups = filters.tagGroups && filters.tagGroups.length ? filters.tagGroups
+            : filters.tags && filters.tags.length ? [filters.tags.map(t => String(t).toLowerCase())] : null;
         const hubState = (host && host.getState && host.getState()) || {};
         const endpointsById = new Map((hubState.endpoints || []).map(e => [e.id, e]));
+        // The rest of the query: the tables' search over the run's fields (plain words in what its row shows)
+        const search = filters.search && String(filters.search).trim() && window.SearchWords && window.SearchWords.rowTest
+            ? window.SearchWords.rowTest(filters.search, runFields(endpointsById))
+            : null;
         // `@name`: runs in that System's environments (a run knows its environment, not its System)
         let systemEnvs = null;
         if (filters.systemNames && filters.systemNames.length) {
@@ -525,20 +531,17 @@
             if (endpointId && t.endpointId !== endpointId) return false;
             if (environments && environments.indexOf(String(t.environment || '').toLowerCase()) === -1) return false;
             if (systemEnvs && !systemEnvs.has(t.environmentId) && !systemEnvs.has(t.environment)) return false;
-            if (tags) {
+            if (tagGroups) {
                 const ep = endpointsById.get(t.endpointId);
                 const epTags = (ep && Array.isArray(ep.tags) ? ep.tags : []).map(x => String(x).trim().toLowerCase());
-                // #444: the same sign repeated is any of them
-                if (!tags.some(x => epTags.indexOf(x) !== -1)) return false;
+                if (!tagGroups.every(g => g.some(x => epTags.indexOf(x) !== -1))) return false;
             }
             if (dateFrom != null || dateTo != null) {
                 const ts = txTimestamp(t);
                 if (dateFrom != null && (!ts || ts < dateFrom)) return false;
                 if (dateTo != null && (!ts || ts > dateTo)) return false;
             }
-            // #444: every word, in the run's details or (content search) its bodies
-            if (search && !window.SearchWords.matches(search, buildSearchHaystack(t, endpointsById),
-                w => !!(contentMatchIds && contentMatchIds.get(w) && contentMatchIds.get(w).has(t.id)))) return false;
+            if (search && !search(t)) return false;
             return true;
         });
     }
@@ -570,31 +573,59 @@
             : (t.endpointPath || '');
     }
 
-    /** #444: everything a run is found by, its endpoint's current name and tags included. */
-    function buildSearchHaystack(t, endpointsById) {
-        const ep = endpointsById && endpointsById.get(t.endpointId);
+    /**
+     * What the search reaches on a run (the tables' search): its title, endpoint and path, status,
+     * method, environment and HTTP status are on its row; the rest (the endpoint's current name and
+     * tags, organisation, error, when it ran) is found by @@word or @field. Its bodies are searched
+     * by the host for `@@word`s: `body` reads as the words found in this run's.
+     */
+    function runFields(endpointsById) {
+        const ep = t => endpointsById && endpointsById.get(t.endpointId);
+        // A run knows its environment, not its System: the environment's System
+        const state = (host && host.getState && host.getState()) || {};
+        const systemName = new Map((state.systems || []).map(x => [x.id, x.name]));
+        const envSystem = new Map();
+        (state.environments || []).forEach(e => { const n = systemName.get(e.systemId); if (n) { envSystem.set(e.id, n); if (e.name) envSystem.set(e.name, n); } });
         return [
-            txTitle(t), t.endpointName, ep && ep.name, t.endpointPath, t.endpointMethod,
-            t.endpointMethod && t.endpointPath ? t.endpointMethod + ' ' + t.endpointPath : '',
-            t.status, t.environment, t.organization, t.errorMessage,
-            t.httpStatusText, t.httpStatus != null ? String(t.httpStatus) : '',
-            ep && Array.isArray(ep.tags) ? ep.tags.join(' ') : ''
-        ].filter(Boolean).join('\n');
+            { id: 'title', get: t => txTitle(t) },
+            { id: 'endpoint', get: t => txSubtitle(t) },
+            { id: 'status', get: t => String(t.status || '').toLowerCase() },
+            { id: 'method', get: t => t.endpointMethod || '' },
+            { id: 'env', get: t => t.environment || '' },
+            { id: 'http', get: t => (t.httpStatus != null ? String(t.httpStatus) : '') },
+            { id: 'name', hidden: true, get: t => (ep(t) && ep(t).name) || t.endpointName || '' },
+            { id: 'path', hidden: true, get: t => t.endpointPath || '' },
+            { id: 'tag', hidden: true, get: t => (ep(t) && Array.isArray(ep(t).tags) ? ep(t).tags : []) },
+            { id: 'system', hidden: true, get: t => envSystem.get(t.environmentId) || envSystem.get(t.environment) || '' },
+            { id: 'organization', hidden: true, get: t => t.organization || '' },
+            { id: 'error', hidden: true, get: t => [t.errorMessage, t.httpStatusText].filter(Boolean).join('\n') },
+            { id: 'ran', hidden: true, get: t => { const ms = txTimestamp(t); return ms ? new Date(ms).toISOString() : ''; } },
+            { id: 'body', hidden: true, get: t => (contentMatchIds ? Array.from(contentMatchIds.keys()).filter(w => contentMatchIds.get(w).has(t.id)).join('\n') : '') }
+        ];
+    }
+    /** The box's fields, shown and not, for its colours and `@` list. */
+    function boxFields() {
+        const all = runFields(null);
+        return { headings: all.map(f => f.id), hidden: all.filter(f => f.hidden).map(f => f.id) };
     }
 
     // ─── #444: the search box's query ───────────────────────────────────
 
     /**
-     * view.filters and the two scopes from the query (search-words.js): `@` / `@name` System,
-     * `~` / `~name` environment, `!status`, methods, `#tag`, `7d` or `2026-11-01..2026-11-12`, words.
+     * view.filters and the two scopes from the query (search-words.js): @system=current|name,
+     * @env=current|name, @status, @method, @tag, @ran>7d or @ran=2026-11-01..2026-11-12; the rest
+     * (words, @@words, other @fields) is `search`, read by the tables' search over a run's fields.
      */
     function deriveFilters(state) {
         const W = window.SearchWords;
-        const q = W ? W.parseQuery(view.query || '') : { methods: [], tags: [], systems: [], statuses: [], envs: [], dates: [], text: view.query || '' };
+        const q = W ? W.parseQuery(view.query || '') : { methods: [], tags: [], tagGroups: [], systems: [], statuses: [], envs: [], dates: [], text: view.query || '', words: view.query || '' };
         const f = view.filters;
         f.methods = q.methods.slice();
         f.statuses = q.statuses.map(x => x.toLowerCase());
         f.tags = q.tags.map(x => x.toLowerCase());
+        // each @tag= its own (all of them), `a|b` in one either
+        f.tagGroups = q.tagGroups.map(g => g.map(x => x.toLowerCase()));
+        f.words = q.words;
         f.endpointId = '';
         view.envFilter = q.envs.indexOf('') !== -1;
         f.environments = q.envs.filter(Boolean);
@@ -629,34 +660,36 @@
         if (draw !== false) render(host.getState());
     }
 
-    /** What the box suggests: `@` `~` `!` `#`, methods and dates, with how many runs have each. */
-    function queryCandidates() {
+    /** What `@field=` offers: methods, statuses, environments and Systems (the current ones first), tags, with how many runs have each. */
+    function fieldValues(heading) {
         const state = host.getState();
         const all = runsOf(state).filter(t => t.executionType !== 'batch_member');
         const endpointsById = new Map((state.endpoints || []).map(e => [e.id, e]));
-        const counts = {};
-        const count = (sign, value) => {
-            if (!value) return;
-            const k = sign + '\u0000' + String(value).toLowerCase();
-            if (!counts[k]) counts[k] = { sign, value: String(value), count: 0 };
-            counts[k].count++;
+        const field = String(heading).toLowerCase();
+        const tally = pick => {
+            const counts = new Map();
+            all.forEach(t => new Set([].concat(pick(t)).map(v => String(v || '').trim()).filter(Boolean)).forEach(v => {
+                const had = counts.get(v.toLowerCase());
+                counts.set(v.toLowerCase(), { value: had ? had.value : v, count: (had ? had.count : 0) + 1 });
+            }));
+            return Array.from(counts.values());
         };
-        all.forEach(t => {
-            count('method', String(t.endpointMethod || '').toUpperCase());
-            count('!', String(t.status || '').toLowerCase());
-            count('~', t.environment);
-            const ep = endpointsById.get(t.endpointId);
-            (ep && Array.isArray(ep.tags) ? ep.tags : []).forEach(tag => count('#', String(tag).trim().toLowerCase()));
-        });
-        (state.systems || []).forEach(sys => { if (sys && sys.name) count('@', sys.name); });
-        const out = Object.keys(counts).map(k => counts[k]);
-        if (state.activeEnvironmentId) {
-            const env = (state.environments || []).find(e => e.id === state.activeEnvironmentId);
-            const sys = (state.systems || []).find(x => x.id === (state.activeSystemId || (env && env.systemId)));
-            out.push({ sign: '~', value: '', label: 'current environment' + (env ? ': ' + env.name : '') });
-            out.push({ sign: '@', value: '', label: 'current System' + (sys ? ': ' + sys.name : '') });
+        const env = (state.environments || []).find(e => e.id === state.activeEnvironmentId);
+        const sys = (state.systems || []).find(x => x.id === (state.activeSystemId || (env && env.systemId)));
+        if (field === 'method') return tally(t => String(t.endpointMethod || '').toLowerCase());
+        if (field === 'status') return tally(t => String(t.status || '').toLowerCase());
+        if (field === 'tag') return tally(t => { const ep = endpointsById.get(t.endpointId); return ep && Array.isArray(ep.tags) ? ep.tags : []; });
+        if (field === 'env') {
+            const out = tally(t => t.environment);
+            if (env) out.unshift({ value: 'current', label: 'current environment: ' + env.name });
+            return out;
         }
-        return out;
+        if (field === 'system') {
+            const out = (state.systems || []).filter(x => x && x.name).map(x => ({ value: x.name }));
+            if (sys) out.unshift({ value: 'current', label: 'current System: ' + sys.name });
+            return out;
+        }
+        return [];
     }
 
     /** #444: the Catalogue's right-click → Show history: that endpoint's runs, nothing else. */

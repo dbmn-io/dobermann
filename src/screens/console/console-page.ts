@@ -53,7 +53,7 @@ const SCRIPTS: Record<string, string> = {
 };
 
 /** The Raw tab's transaction card is shared with Run Batch Step 4 (GitHub Issue #308). */
-const STYLES = ['atomic', 'core', 'modals', 'tables', 'tabs', 'toast', 'console', 'transaction-card', 'column-drag', 'column-head', 'dbmn-footer', 'dbmn-table'];
+const STYLES = ['atomic', 'core', 'modals', 'tables', 'tabs', 'toast', 'console', 'search', 'transaction-card', 'column-drag', 'column-head', 'dbmn-footer', 'dbmn-table'];
 
 function base64Utf8(text: string): string {
     const bytes = new TextEncoder().encode(text);

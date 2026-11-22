@@ -1224,3 +1224,22 @@ describe('planSearch', () => {
         expect(planSearch(parseSearchExpression(''), cols).rowMatches(() => false)).to.equal(true);
     });
 });
+
+describe('SearchMatcher: a column\'s values offered after @column= (the Hub\'s tags, Systems, environments)', () => {
+    const headings = ['name', 'tag', 'system'];
+    const values = (h: string) => (h === 'tag' ? [{ value: 'inventory', count: 12 }, { value: 'puppy school', count: 3 }, { value: 'items', count: 7 }] : []);
+    const texts = (typed: string) => columnSuggestions(typed, headings, undefined, undefined, [], values).map((s: { text: string }) => s.text);
+
+    it('after @tag=, every value, the most used first; typed, those holding it, starting ones first', () => {
+        expect(texts('@tag=')).to.deep.equal(['inventory', 'items', '"puppy school"']);
+        expect(texts('@tag=i')).to.deep.equal(['inventory', 'items']);
+        expect(texts('@tag=sch')).to.deep.equal(['"puppy school"']);
+        expect(texts('@tag=it')).to.deep.equal(['items']);
+        expect(columnSuggestions('@tag=', headings, undefined, undefined, [], values)[0].label).to.equal('12');
+    });
+
+    it('after a |, the next value, not one already picked; a column with no values offers nothing', () => {
+        expect(texts('@tag=inventory|')).to.deep.equal(['items', '"puppy school"']);
+        expect(texts('@system=')).to.deep.equal([]);
+    });
+});

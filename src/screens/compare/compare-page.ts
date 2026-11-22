@@ -24,7 +24,7 @@ export function buildComparePage(asset: AssetUrl, config: { compareId: string; e
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Compare: ${attr(config.endpointName)}</title>
-    ${sharedStyleLinks(asset, ['atomic', 'core', 'buttons', 'modals', 'tables', 'tabs', 'toast', 'console', 'data-transformer', 'compare', 'column-drag', 'column-head', 'dbmn-footer', 'dbmn-table', 'dbmn-name'])}
+    ${sharedStyleLinks(asset, ['atomic', 'core', 'buttons', 'modals', 'tables', 'tabs', 'toast', 'console', 'search', 'data-transformer', 'compare', 'column-drag', 'column-head', 'dbmn-footer', 'dbmn-table', 'dbmn-name'])}
 </head>
 <body class="editor-slide-in" data-endpoint-name="${attr(config.endpointName)}">
     <script src="${asset('shared/button-contrast.js')}"></script>

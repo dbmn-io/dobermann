@@ -155,7 +155,7 @@
         if (!list || !empty || !lastState) return;
         const all = reports(lastState);
         const shown = all.filter(passes(lastState));
-        const words = window.SearchWords ? window.SearchWords.parseWords(window.SearchWords.parseQuery(query).text) : null;
+        const words = window.SearchWords ? window.SearchWords.parseWords(window.SearchWords.parseQuery(query).words) : null;
         const marked = text => (words ? window.SearchWords.highlight(text, words) : escapeHtml(text));
         empty.hidden = all.length > 0;
         if (summary) summary.textContent = all.length ? `${shown.length} report${shown.length === 1 ? '' : 's'}` : '';
@@ -199,7 +199,7 @@
                 '<span class="tx-status-icon icon" data-icon="' + glyph + '" title="' + kind + '"></span>' +
                 '<span class="tx-row-main">' +
                     '<span class="catalogue-row-name" title="' + escapeHtml(c.endpointName) + '">' + (c.endpointName ? marked(c.endpointName) : '(unnamed)') + '</span>' +
-                    '<span class="catalogue-row-path" title="' + escapeHtml(second !== null ? second : sides(c)) + '">' + marked(second !== null ? second : `${c.endpoint && c.endpoint !== c.endpointName ? c.endpoint + ' · ' : ''}${c.sources[0].view} · ${sides(c)}`) + '</span>' +
+                    '<span class="catalogue-row-path" title="' + escapeHtml(second !== null ? second : sides(c)) + '">' + marked(details(c)) + '</span>' +
                 '</span>' +
                 '<span class="tx-row-meta"><span class="tx-row-sub">' + escapeHtml(sub) + '</span></span>';
             const open = start => host && host.postMessage(c.isLookup ? { type: 'openLookup', id: c.id } : { type: 'openCompare', compareId: c.id, start });
@@ -262,66 +262,77 @@
     }
 
     /** #444: does a compare pass the query in the box? */
+    /** A report's details, as its second line says them: a lookup's columns, a query's views, a compare's View and results. */
+    function details(c) {
+        return c.isLookup ? lookupColumns(c) : c.isQuery ? joined(c)
+            : `${c.endpoint && c.endpoint !== c.endpointName ? c.endpoint + ' · ' : ''}${c.sources[0].view} · ${sides(c)}`;
+    }
+    /** When a report was last made or changed (what @ran asks). */
+    function when(c) {
+        const t = new Date(c.updatedAt || c.comparedAt || c.createdAt).getTime();
+        return t ? new Date(t).toISOString() : '';
+    }
+    /**
+     * What the search reaches on a report (search-words.js rowTest, the tables' search): its name,
+     * kind and details are on the row; the rest is found by @@word or @field.
+     */
+    function fields(state) {
+        const systemName = new Map(((state || {}).systems || []).map(x => [x.id, x.name]));
+        const envs = c => Array.from(new Set((c.sources || []).map(src => src.environment).filter(Boolean)));
+        return [
+            { id: 'name', get: c => c.endpointName || '' },
+            { id: 'kind', get: c => (c.isLookup ? 'Lookup table' : asQuery(c) ? 'Query' : 'Compare') },
+            { id: 'details', get: details },
+            // (a compare's results line: each result's environment, header values and day)
+            { id: 'results', get: c => (c.isLookup || c.isQuery ? '' : found(c)) },
+            { id: 'endpoint', hidden: true, get: c => (c.isQuery ? (c.sources || []).map(src => src.endpointName).filter(Boolean) : c.endpoint || '') },
+            { id: 'method', hidden: true, get: c => (c.method ? String(c.method).toUpperCase() : '') },
+            { id: 'path', hidden: true, get: c => c.path || '' },
+            { id: 'tag', hidden: true, get: c => (c.tags || []).map(t => String(t).trim()) },
+            { id: 'system', hidden: true, get: c => systemName.get(c.systemId) || '' },
+            { id: 'env', hidden: true, get: envs },
+            { id: 'view', hidden: true, get: c => (c.sources || []).map(src => src.view).filter(Boolean) },
+            { id: 'ran', hidden: true, get: when }
+        ];
+    }
+    /** The current System's and environment's names (what `current` stands for). */
+    function current(state) {
+        const activeEnv = ((state || {}).environments || []).find(e => e.id === state.activeEnvironmentId);
+        const systemId = state.activeSystemId || (activeEnv && activeEnv.systemId);
+        const sys = ((state || {}).systems || []).find(x => x.id === systemId);
+        return { system: sys ? sys.name : '', env: activeEnv ? activeEnv.name : '' };
+    }
     function passes(state) {
         const W = window.SearchWords;
         if (!W || !query.trim()) return () => true;
-        const q = W.parseQuery(query);
-        const words = W.parseWords(q.text);
-        const lower = list => list.map(v => String(v).toLowerCase());
-        const tags = lower(q.tags);
-        const activeEnv = (state.environments || []).find(e => e.id === state.activeEnvironmentId);
-        const envs = q.envs.map(v => (v ? v.toLowerCase() : String((activeEnv && activeEnv.name) || '\u0000').toLowerCase()));
-        const systems = q.systems.map(v => {
-            if (!v) return state.activeSystemId || (activeEnv && activeEnv.systemId) || '\u0000';
-            const sys = (state.systems || []).find(x => String(x.name || '').toLowerCase() === v.toLowerCase());
-            return sys ? sys.id : '\u0000';
-        });
-        const date = q.dates[0] || '';
-        const since = W.sinceMs(date);
-        const range = W.between(date);
-        return c => {
-            if (q.methods.length && q.methods.indexOf(String(c.method).toUpperCase()) === -1) return false;
-            if (tags.length && !lower(c.tags).some(t => tags.indexOf(t) !== -1)) return false;
-            if (systems.length && systems.indexOf(c.systemId) === -1) return false;
-            if (envs.length && c.isLookup) return false;
-            if (envs.length && !c.sources.some(src => envs.indexOf(String(src.environment || '').toLowerCase()) !== -1)) return false;
-            const when = new Date(c.updatedAt || c.comparedAt || c.createdAt).getTime();
-            if (since && !(when >= Date.now() - since)) return false;
-            if (range) {
-                if (range.from && when < new Date(range.from + 'T00:00:00').getTime()) return false;
-                if (range.to && when > new Date(range.to + 'T23:59:59.999').getTime()) return false;
-            }
-            if (c.isLookup) return W.matches(words, `${c.endpointName}\nlookup table\n${lookupColumns(c)}`);
-            return W.matches(words, c.isQuery
-                ? `${c.endpointName}\nquery\n${joined(c)}\n${c.sources.map(src => src.endpointName).join(' ')}`
-                : `${c.endpointName}\n${c.endpoint}\n${c.path}\n${c.method}\n${c.sources[0].view}\n${sides(c)}\n${found(c)}\n${(c.tags || []).join(' ')}`);
-        };
+        return W.rowTest(query, fields(state), current(state));
     }
 
-    /** What the box suggests: the compares' methods, `#tags`, `@Systems` and `~environments`. */
-    function candidates() {
+    /** What `@field=` offers: each field's values, with how many reports have each. */
+    function values(heading) {
         const state = lastState || {};
-        const counts = {};
-        const count = (sign, value) => {
-            if (!value) return;
-            const k = sign + '\u0000' + String(value).toLowerCase();
-            if (!counts[k]) counts[k] = { sign, value: String(value), count: 0 };
-            counts[k].count++;
-        };
-        const systemName = new Map((state.systems || []).map(x => [x.id, x.name]));
-        compares(state).forEach(c => {
-            count('method', String(c.method).toUpperCase());
-            new Set(c.tags.map(t => String(t).trim().toLowerCase())).forEach(t => count('#', t));
-            count('@', systemName.get(c.systemId));
-            new Set(c.sources.map(src => src.environment).filter(Boolean)).forEach(env => count('~', env));
+        const field = fields(state).find(f => f.id === String(heading).toLowerCase());
+        if (!field) return [];
+        const counts = new Map();
+        reports(state).forEach(c => {
+            const v = field.get(c);
+            const list = Array.isArray(v) ? v : [v];
+            new Set(list.map(x => String(x || '').trim()).filter(Boolean)).forEach(x => {
+                const k = x.toLowerCase();
+                const had = counts.get(k);
+                counts.set(k, { value: had ? had.value : x, count: (had ? had.count : 0) + 1 });
+            });
         });
-        const out = Object.keys(counts).map(k => counts[k]);
-        if (state.activeEnvironmentId) {
-            const env = (state.environments || []).find(e => e.id === state.activeEnvironmentId);
-            out.push({ sign: '~', value: '', label: 'current environment' + (env ? ': ' + env.name : '') });
-            out.push({ sign: '@', value: '', label: 'current System' });
-        }
-        return out;
+        const out = Array.from(counts.values());
+        const now = current(state);
+        if (field.id === 'system' && now.system) out.unshift({ value: 'current', label: 'current System: ' + now.system });
+        if (field.id === 'env' && now.env) out.unshift({ value: 'current', label: 'current environment: ' + now.env });
+        return field.id === 'ran' ? [] : out;
+    }
+    /** The box's fields, shown and not, for its colours and `@` list. */
+    function boxFields() {
+        const all = fields(lastState || {});
+        return { headings: all.map(f => f.id), hidden: all.filter(f => f.hidden).map(f => f.id) };
     }
 
     function init(h) {
@@ -336,7 +347,7 @@
         if (bulk) bulk.addEventListener('click', () => void removeSelected());
         const search = document.getElementById('compareSearch');
         if (!search) return;
-        if (window.SearchWords) window.SearchWords.attach({ input: search, candidates, onText: text => { query = text; render(); } });
+        if (window.SearchWords) window.SearchWords.attach({ input: search, fields: boxFields, values, onText: text => { query = text; render(); } });
         else search.addEventListener('input', () => { query = search.value; render(); });
     }
 

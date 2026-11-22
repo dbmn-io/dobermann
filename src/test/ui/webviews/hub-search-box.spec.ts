@@ -5,6 +5,8 @@
  * (transparent) text. James, 2026-11-12: selecting text showed it "off centre... moved up out
  * of the text box". The copy must sit on the box's text letter for letter, one line high, and
  * grow with it when a long query wraps. Ctrl+A then Delete clears it, like any text box.
+ * Since 2026-11-21 the box is the tables' (search-matcher.js): a field the list shows in the
+ * link colour, one it doesn't purple; `@` lists the fields, shown then not.
  */
 import { test, expect, openList } from '../harness/fixtures';
 
@@ -50,15 +52,16 @@ test.describe('Hub search box (#444)', () => {
         await openList(page, 'catalogue');
         const box = page.locator('#catalogueSearch');
         await box.click();
-        await box.pressSequentially('@ get #inventory bulk');
+        await box.pressSequentially('bulk @method=get @tag=inventory');
         const one = await measure(page);
         expect(one.boxHeight, 'one line').toBeLessThanOrEqual(32);
         expect(one.mirrorHeight, 'the copy as high as the box').toBe(one.boxHeight);
         expect(one.copy, 'the copy is drawn').not.toBeNull();
         expect(Math.abs(one.copy!.x - one.text.x), `across: copy ${one.copy!.x}, text ${one.text.x}`).toBeLessThanOrEqual(1);
         expect(Math.abs(one.copy!.y - one.text.y), `down: copy ${one.copy!.y}, text ${one.text.y}`).toBeLessThanOrEqual(1);
-        await expect(page.locator('.search-box-mirror .search-tok-method')).toHaveText('get');
-        await expect(page.locator('.search-box-mirror .search-tok-tag')).toHaveText('#inventory');
+        // A field the row shows (method), and one it doesn't (tag, unless grouped by it): told apart
+        await expect(page.locator('.search-box-mirror .search-tok-col-name')).toHaveText('@method');
+        await expect(page.locator('.search-box-mirror .search-tok-col-hidden')).toHaveText('@tag');
 
         // A long query wraps: the box grows, the copy with it
         await box.pressSequentially(' and some more words to make it wrap onto a second line in the list panel');
@@ -71,5 +74,25 @@ test.describe('Hub search box (#444)', () => {
         await box.press('Delete');
         await expect(box).toHaveValue('');
         expect((await measure(page)).boxHeight).toBeLessThanOrEqual(32);
+    });
+
+    test('@ lists the fields, shown then not, @@ first; Esc closes the list, a second Esc clears the box', async ({ dbmn, page }) => {
+        await dbmn.openHub();
+        await openList(page, 'catalogue');
+        const box = page.locator('#catalogueSearch');
+        await box.click();
+        await box.pressSequentially('@');
+        const list = page.locator('.catalogue-search:has(#catalogueSearch) .column-suggest');
+        await expect(list).toBeVisible();
+        const texts = await list.locator('.column-suggest-text').allTextContents();
+        expect(texts[0]).toBe('@@');
+        expect(texts).toContain('@name');
+        expect(texts).toContain('@body');
+        await expect(list.locator('.column-suggest-option.is-hidden', { hasText: '@body' })).toHaveCount(1);
+        await box.press('Escape');
+        await expect(list).toBeHidden();
+        await expect(box).toHaveValue('@');
+        await box.press('Escape');
+        await expect(box).toHaveValue('');
     });
 });

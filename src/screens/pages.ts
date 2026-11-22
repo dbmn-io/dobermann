@@ -145,6 +145,8 @@ export function buildHubPage(
         HUB_LOGO_URI: asset('shared/dbmn-logo.svg'),
         HUB_ACTIVITY_JS_URI: asset('hub/hub-activity.js'),
         SEARCH_WORDS_JS_URI: asset('shared/search-words.js'), // #444: the Catalogue's and History's search
+        SEARCH_MATCHER_JS_URI: asset('shared/search-matcher.js'), // the tables' search: the Hub's lists read and colour the same
+        SEARCH_CSS_URI: asset('shared/search.css'),
         CATALOGUE_JS_URI: asset('hub/catalogue.js'),
         HUB_TAG_MANAGER_JS_URI: asset('hub/hub-tag-manager.js'),
         TRANSACTIONS_JS_URI: asset('hub/transactions.js'),

@@ -80,6 +80,8 @@
             EXECUTION_ACTIONS_JS_URI: asset(base, 'shared/execution-actions.js'),
             DBMN_CONTEXT_MENU_JS_URI: asset(base, 'shared/dbmn-context-menu.js'),
             SEARCH_WORDS_JS_URI: asset(base, 'shared/search-words.js'), // #444
+            SEARCH_MATCHER_JS_URI: asset(base, 'shared/search-matcher.js'),
+            SEARCH_CSS_URI: asset(base, 'shared/search.css'),
             HUB_TABS_JS_URI: asset(base, 'hub/hub-tabs.js'),
             HELP_MODE_JS_URI: asset(base, 'shared/help-mode.js'),
             THEME_PICKER_JS_URI: asset(base, 'shared/theme-picker.js'),

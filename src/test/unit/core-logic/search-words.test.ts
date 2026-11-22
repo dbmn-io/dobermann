@@ -46,17 +46,23 @@ describe('Hub search (#444)', () => {
         });
     });
 
-    describe('the query', () => {
-        it('reads the signs: methods, #tag, @System, !status, ~environment, dates; the rest is words', () => {
-            expect(W.parseQuery('@ get #"puppy school" bulk -report ~ !error 7d 2026-11-01..2026-11-12 "get" @dbmn ~prod #')).to.deep.equal({
-                methods: ['GET'], tags: ['puppy school'], systems: ['', 'dbmn'], statuses: ['error'], envs: ['', 'prod'],
-                dates: ['7d', '2026-11-01..2026-11-12'], text: 'bulk -report "get"'
-            });
+    describe('the query (the tables\' search: James, 2026-11-21)', () => {
+        it('reads the fields the dialogs write: @system (current is \'\'), @env, @status, @method, @tag groups, @ran; the rest is kept as typed', () => {
+            const q = W.parseQuery('@system=current|dbmn @method=get @tag="puppy school" @tag=inv|items bulk -report @@body @env=prod @status=error @ran>7d @ran=2026-11-01..2026-11-12 @path~orders');
+            expect(q.systems).to.deep.equal(['', 'dbmn']);
+            expect(q.methods).to.deep.equal(['GET']);
+            expect(q.tagGroups).to.deep.equal([['puppy school'], ['inv', 'items']]);
+            expect(q.tags).to.deep.equal(['puppy school', 'inv', 'items']);
+            expect(q.envs).to.deep.equal(['prod']);
+            expect(q.statuses).to.deep.equal(['error']);
+            expect(q.dates).to.deep.equal(['7d', '2026-11-01..2026-11-12']);
+            expect(q.text).to.equal('bulk -report @@body @path~orders');
+            expect(q.words).to.equal('bulk -report');
         });
 
-        it('is written back in one order, quoting a name with a space', () => {
-            expect(W.buildQuery(W.parseQuery('bulk #inv @ get !error ~prod 7d'))).to.equal('@ ~prod !error get #inv 7d bulk');
-            expect(W.buildQuery({ systems: [], envs: [], statuses: [], methods: ['POST'], tags: ['puppy school'], dates: [], text: '' })).to.equal('post #"puppy school"');
+        it('is written back in one order, quoting a value with a space; current for \'\'', () => {
+            expect(W.buildQuery(W.parseQuery('bulk @tag=inv @system=current @method=get @status=error @env=prod @ran>7d'))).to.equal('@system=current @env=prod @status=error @method=get @tag=inv @ran>7d bulk');
+            expect(W.buildQuery({ systems: [], envs: [], statuses: [], methods: ['POST', 'GET'], tags: ['puppy school', 'x'], dates: ['2026-11-01..'], text: '' })).to.equal('@method=post|get @tag="puppy school"|x @ran=2026-11-01..');
         });
 
         it('dates: 24h, 7d, 2w since then; a..b between', () => {
@@ -65,41 +71,49 @@ describe('Hub search (#444)', () => {
             expect(W.sinceMs('7x')).to.equal(null);
             expect(W.between('2026-11-01..')).to.deep.equal({ from: '2026-11-01', to: '' });
         });
+
+        it('@@ words, for a host that searches bodies itself', () => {
+            expect(W.deepWords('get @@urgent -@@draft @@"out of stock" urgent')).to.deep.equal(['urgent', 'draft', 'out of stock']);
+        });
     });
 
-    describe('suggestions', () => {
-        const candidates = [
-            { sign: '#', value: 'bulk-upload', count: 4 },
-            { sign: '#', value: 'dbmn', count: 2 },
-            { sign: '#', value: 'puppy school', count: 1 },
-            { sign: '@', value: 'dbmn', count: 9 },
-            { sign: '@', value: '', label: 'current System: Training' },
-            { sign: 'method', value: 'POST', count: 3 },
-            { sign: 'method', value: 'GET', count: 5 },
-            { sign: '!', value: 'error', count: 2 },
-            { sign: '!', value: 'completed', count: 8 }
+    describe('a row test over a list\'s fields (SearchMatcher)', () => {
+        const fields = [
+            { id: 'name', get: (r: Row) => r.name },
+            { id: 'method', get: (r: Row) => r.method },
+            { id: 'tag', hidden: true, get: (r: Row) => r.tags },
+            { id: 'system', hidden: true, get: (r: Row) => r.system },
+            { id: 'body', hidden: true, get: (r: Row) => r.body }
         ];
-        const say = (typed: string) => W.suggestionsFor(typed, candidates).map((s: { text: string; start: number }) => `${s.text}@${s.start}`);
+        interface Row { name: string; method: string; tags: string[]; system: string; body: string }
+        const rows: Row[] = [
+            { name: 'Bulk inventory upload', method: 'POST', tags: ['inventory', 'bulk'], system: 'WMS', body: '{"urgent":true}' },
+            { name: 'Get items', method: 'GET', tags: ['items'], system: 'ERP', body: '' }
+        ];
+        const find = (query: string, current?: { system?: string; env?: string }) => rows.filter(W.rowTest(query, fields, current)).map(r => r.name);
 
-        it('a sign alone lists its values, the current one first, then the most used', () => {
-            expect(say('#')).to.deep.equal(['#bulk-upload@0', '#dbmn@0', '#"puppy school"@0']);
-            expect(say('@')).to.deep.equal(['@@0', '@dbmn@0']);
-            expect(say('!')).to.deep.equal(['!completed@0', '!error@0']);
-            expect(say('#"pup')).to.deep.equal(['#"puppy school"@0']);
+        it('plain words: what the list shows only; @@: every field', () => {
+            expect(find('bulk')).to.deep.equal(['Bulk inventory upload']);
+            expect(find('urgent')).to.deep.equal([]);
+            expect(find('@@urgent')).to.deep.equal(['Bulk inventory upload']);
+            expect(find('wms')).to.deep.equal([]);
         });
 
-        it('a word: every kind that holds it', () => {
-            expect(say('db')).to.deep.equal(['@dbmn@0', '#dbmn@0']);
-            expect(say('po')).to.deep.equal(['post@0']);
+        it('@tag= is any of a row\'s tags; a|b either; @tag twice, both', () => {
+            expect(find('@tag=items')).to.deep.equal(['Get items']);
+            expect(find('@tag=items|bulk')).to.deep.equal(['Bulk inventory upload', 'Get items']);
+            expect(find('@tag=inventory @tag=bulk')).to.deep.equal(['Bulk inventory upload']);
+            expect(find('@tag=inventory @tag=items')).to.deep.equal([]);
         });
 
-        it('several words can be one name: `bulk up` is #bulk-upload, replacing both', () => {
-            expect(say('post bulk up')).to.deep.equal(['#bulk-upload@5']);
+        it('@system=current is the current System by name; with none current, nothing', () => {
+            expect(find('@system=current', { system: 'ERP' })).to.deep.equal(['Get items']);
+            expect(find('@system=current|wms', { system: 'ERP' })).to.deep.equal(['Bulk inventory upload', 'Get items']);
+            expect(find('@system=current')).to.deep.equal([]);
         });
 
-        it('nothing after a space, nor for what is already in the query', () => {
-            expect(say('post ')).to.deep.equal([]);
-            expect(say('#dbmn db')).to.deep.equal(['@dbmn@6']);
+        it('an empty query passes every row', () => {
+            expect(find('  ')).to.have.length(2);
         });
     });
 

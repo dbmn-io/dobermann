@@ -233,7 +233,7 @@ test.describe('Hub', () => {
         await expect(recent).toHaveCount(0);
     });
 
-    test('`@` in the search (#444, the current System): Recent stays, limited to that System', async ({ dbmn, page }) => {
+    test('`@system=current` in the search (the current System): Recent stays, limited to that System', async ({ dbmn, page }) => {
         // The active env (dev) belongs to ACMEWMS; endpoint 003 lives in DBMN.
         dbmn.seed.recentEndpoints = [
             { id: 'test-endpoint-003', touchedAt: Date.parse('2026-09-30T12:00:00Z') },
@@ -241,7 +241,7 @@ test.describe('Hub', () => {
         ];
         await dbmn.openHub();
         await openList(page, 'catalogue');
-        await page.locator('#catalogueSearch').fill('@');
+        await page.locator('#catalogueSearch').fill('@system=current');
 
         const rows = page.locator('#catalogueList .catalogue-recent .catalogue-row');
         await expect(rows).toHaveCount(1);

@@ -104,7 +104,8 @@
         if (search && window.SearchWords) {
             chipBox = window.SearchWords.attach({
                 input: search,
-                candidates: queryCandidates,
+                fields: boxFields,
+                values: fieldValues,
                 onText: (text) => {
                     clearTimeout(searchDebounceTimer);
                     searchDebounceTimer = setTimeout(() => {
@@ -166,7 +167,7 @@
 
     function render(state) {
         deriveFilters(state);
-        searchWords = window.SearchWords ? window.SearchWords.parseWords(view.filters.search || '') : searchWords;
+        searchWords = window.SearchWords ? window.SearchWords.parseWords(view.filters.words || '') : searchWords;
         // Derive systemIds from the user's mode + the current activeSystemId.
         // Rebuilt every render so env switches Just Work.
         const systemIds = effectiveSystemIds(state);
@@ -953,14 +954,18 @@
     const CURRENT_SYSTEM = '__current__';
 
     /**
-     * view.filters from the query (search-words.js: `@ get #tag words`). `!status`, `~env` and
-     * dates are History's; here they narrow nothing.
+     * view.filters from the query (search-words.js: `@system=current @method=get @tag=… words`).
+     * @status, @env and @ran are History's; here they narrow nothing. What is left (words, @@words,
+     * other @fields) is `search`, read by the tables' search over an endpoint's fields.
      */
     function deriveFilters(state) {
-        const q = window.SearchWords ? window.SearchWords.parseQuery(view.query || '') : { methods: [], tags: [], systems: [], text: view.query || '' };
+        const q = window.SearchWords ? window.SearchWords.parseQuery(view.query || '') : { methods: [], tags: [], tagGroups: [], systems: [], text: view.query || '', words: view.query || '' };
         const systems = state.systems || [];
         view.filters.methods = q.methods.slice();
         view.filters.tags = q.tags.map(t => t.toLowerCase());
+        // each @tag= its own (all of them), `a|b` in one either
+        view.filters.tagGroups = q.tagGroups.map(g => g.map(t => t.toLowerCase()));
+        view.filters.words = q.words;
         view.filters.systems = q.systems.map(name => {
             const n = name.toLowerCase();
             if (!n) return CURRENT_SYSTEM;
@@ -981,6 +986,8 @@
                 : ((systems.find(x => x.id === id) || {}).name || id)),
             methods: choice.methods || [],
             tags: choice.tags || [],
+            // (the box's own @tag= groups, kept as they were typed; a dialog's ticks are one group)
+            tagGroups: choice.tagGroups || [],
             text: view.filters.search || ''
         });
     }
@@ -992,28 +999,63 @@
         render(host.getState());
     }
 
-    /** What the box suggests: methods, `#tags`, `@Systems`, with how many endpoints have each. */
-    function queryCandidates() {
+    /**
+     * What the search reaches on an endpoint (the tables' search): its method, name and path are
+     * on its row (and its tag or folder, when the list is grouped by them); the rest (System,
+     * description, body, headers, query parameters, variables) is found by @@word or @field.
+     */
+    function endpointFields() {
+        const state = host && host.getState ? host.getState() : {};
+        const systemName = new Map((state.systems || []).map(x => [x.id, x.name]));
+        const records = list => {
+            const parts = [];
+            (list || []).forEach(r => addRecordTokens(parts, r));
+            return parts.filter(Boolean).join('\n');
+        };
+        const flavours = e => (Array.isArray(e.flavours) ? e.flavours : []);
+        return [
+            { id: 'method', get: e => e.method || '' },
+            { id: 'name', get: e => e.name || '' },
+            { id: 'path', get: e => e.path || '' },
+            { id: 'tag', hidden: view.groupBy !== 'tag', get: e => (Array.isArray(e.tags) ? e.tags : []) },
+            { id: 'folder', hidden: view.groupBy !== 'folder', get: e => e.folder || '' },
+            { id: 'system', hidden: true, get: e => systemName.get(e.systemId) || '' },
+            { id: 'description', hidden: true, get: e => e.description || '' },
+            { id: 'body', hidden: true, get: e => [e.body, e.bodyWithComments].concat(flavours(e).map(f => f && f.body)).filter(Boolean).join('\n') },
+            { id: 'headers', hidden: true, get: e => records([e.headers]) },
+            { id: 'params', hidden: true, get: e => records([e.queryParams].concat(flavours(e).map(f => f && f.queryParams))) },
+            { id: 'variables', hidden: true, get: e => records([e.environmentVariables]) }
+        ];
+    }
+    /** The box's fields, shown and not, for its colours and `@` list. */
+    function boxFields() {
+        const all = endpointFields();
+        return { headings: all.map(f => f.id), hidden: all.filter(f => f.hidden).map(f => f.id) };
+    }
+    /** What `@field=` offers: methods, tags, Systems (the current one first), folders, with how many endpoints have each. */
+    function fieldValues(heading) {
         const state = host.getState();
         const endpoints = state.endpoints || [];
-        const out = [];
-        const methods = new Map();
-        const systems = new Map();
-        endpoints.forEach(e => {
-            const m = String(e.method || '').toUpperCase();
-            if (m) methods.set(m, (methods.get(m) || 0) + 1);
-            if (e.systemId) systems.set(e.systemId, (systems.get(e.systemId) || 0) + 1);
-        });
-        methods.forEach((count, m) => out.push({ sign: 'method', value: m, count }));
-        aggregateTagCounts(endpoints, {}).forEach((count, tag) => out.push({ sign: '#', value: tag, count }));
-        if (state.activeEnvironmentId) {
+        const field = String(heading).toLowerCase();
+        const tally = pick => {
+            const counts = new Map();
+            endpoints.forEach(e => new Set([].concat(pick(e)).map(v => String(v || '').trim()).filter(Boolean)).forEach(v => {
+                const had = counts.get(v.toLowerCase());
+                counts.set(v.toLowerCase(), { value: had ? had.value : v, count: (had ? had.count : 0) + 1 });
+            }));
+            return Array.from(counts.values());
+        };
+        if (field === 'method') return tally(e => String(e.method || '').toLowerCase());
+        if (field === 'tag') { const out = []; aggregateTagCounts(endpoints, {}).forEach((count, tag) => out.push({ value: tag, count })); return out; }
+        if (field === 'folder') return tally(e => e.folder);
+        if (field === 'system') {
+            const systemName = new Map((state.systems || []).map(x => [x.id, x.name]));
+            const out = tally(e => systemName.get(e.systemId));
             const current = (state.systems || []).find(x => x.id === state.activeSystemId);
-            out.push({ sign: '@', value: '', label: 'current System' + (current ? ': ' + current.name : '') });
+            if (state.activeEnvironmentId) out.unshift({ value: 'current', label: 'current System' + (current ? ': ' + current.name : '') });
+            return out;
         }
-        (state.systems || []).forEach(sys => {
-            if (systems.has(sys.id)) out.push({ sign: '@', value: sys.name, count: systems.get(sys.id) });
-        });
-        return out;
+        return [];
     }
 
     /** #444: the endpoint's name/path with the searched-for words marked. */
@@ -1026,11 +1068,14 @@
     function filterEndpoints(endpoints, filters) {
         const systemIds = (filters.systemIds && filters.systemIds.length > 0) ? new Set(filters.systemIds) : null;
         const methods = (filters.methods && filters.methods.length > 0) ? new Set(filters.methods) : null;
-        // #444: every typed word, anywhere in the endpoint, any order ("phrase", -word)
-        const words = filters.search && window.SearchWords ? window.SearchWords.parseWords(filters.search) : null;
-        const search = words && (words.include.length || words.exclude.length) ? words : null;
-        const tags = (filters.tags && filters.tags.length > 0)
-            ? filters.tags.map(t => (t || '').trim().toLowerCase())
+        // The rest of the query (words, @@words, other @fields): the tables' search over the endpoint's
+        // fields, plain words in what its row shows (search-words.js rowTest)
+        const search = filters.search && String(filters.search).trim() && window.SearchWords && window.SearchWords.rowTest
+            ? window.SearchWords.rowTest(filters.search, endpointFields())
+            : null;
+        // @tag=: each its own group (all of them), `a|b` either; a builder's list of tags, any of them
+        const tagGroups = (filters.tagGroups && filters.tagGroups.length) ? filters.tagGroups
+            : (filters.tags && filters.tags.length > 0) ? [filters.tags.map(t => (t || '').trim().toLowerCase())]
             : null;
 
         return endpoints.filter(e => {
@@ -1039,14 +1084,13 @@
                 if (!systemIds.has(sid)) return false;
             }
             if (methods && !methods.has(e.method)) return false;
-            if (tags) {
+            if (tagGroups) {
                 const epTags = Array.isArray(e.tags)
                     ? e.tags.map(t => (t || '').trim().toLowerCase())
                     : [];
-                // #444: the same sign repeated is any of them (`#a #b`: either tag)
-                if (!tags.some(t => epTags.indexOf(t) !== -1)) return false;
+                if (!tagGroups.every(g => g.some(t => epTags.indexOf(t) !== -1))) return false;
             }
-            if (search && !window.SearchWords.matches(search, buildSearchHaystack(e))) return false;
+            if (search && !search(e)) return false;
             return true;
         });
     }
@@ -1057,7 +1101,7 @@
      * Returns a Map<tag, count>.
      */
     function aggregateTagCounts(endpoints, otherFilters) {
-        const scope = filterEndpoints(endpoints, Object.assign({}, otherFilters, { tags: [] }));
+        const scope = filterEndpoints(endpoints, Object.assign({}, otherFilters, { tags: [], tagGroups: [] }));
         const counts = new Map();
         scope.forEach(e => {
             if (!Array.isArray(e.tags)) return;
@@ -1072,30 +1116,7 @@
         return counts;
     }
 
-    /**
-     * Build a single lowercase string containing every searchable field on an
-     * endpoint. Mirrors `buildSearchHaystack` in the TS service.
-     */
-    function buildSearchHaystack(e) {
-        const parts = [
-            e.name, e.path, e.method, e.description,
-            e.body, e.bodyWithComments, e.folder
-        ];
-        if (Array.isArray(e.tags)) parts.push(e.tags.join(' '));
-        addRecordTokens(parts, e.headers);
-        addRecordTokens(parts, e.queryParams);
-        addRecordTokens(parts, e.environmentVariables);
-        // Flavour bodies + queryParams, when present (forward-compat for P1)
-        if (Array.isArray(e.flavours)) {
-            e.flavours.forEach(f => {
-                parts.push(f && f.name);
-                parts.push(f && f.body);
-                if (f) addRecordTokens(parts, f.queryParams);
-            });
-        }
-        return parts.filter(Boolean).join('\n').toLowerCase();
-    }
-
+    /** A record's keys and values (headers, query parameters, variables) as words, into `parts`. */
     function addRecordTokens(parts, record) {
         if (!record || typeof record !== 'object') return;
         Object.keys(record).forEach(key => {

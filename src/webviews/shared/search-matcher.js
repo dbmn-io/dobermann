@@ -1043,7 +1043,7 @@ function wordStartAt(name, typed) {
     return -1;
 }
 var OP_WORDS = { '=': 'is (a|b either, 1..9 between)', '!=': 'is not', '~': 'contains', '!~': "doesn't contain", '>': 'more than', '<': 'less than', '>=': 'at least', '<=': 'at most' };
-function columnSuggestions(typed, headings, keysOf, typesOf, hidden) {
+function columnSuggestions(typed, headings, keysOf, typesOf, hidden, valuesOf) {
     var text = String(typed || '');
     var names = (headings || []).filter(function (h) { return h; });
     // Columns searched but not shown in the table: offered after the shown ones, and marked
@@ -1060,14 +1060,25 @@ function columnSuggestions(typed, headings, keysOf, typesOf, hidden) {
         var start = names.filter(function (h) { return low.indexOf(h.toLowerCase() + '.') === 0; }).sort(function (a, b) { return b.length - a.length; })[0];
         return start ? { heading: start, path: name.slice(start.length + 1).split('.').filter(Boolean) } : null;
     };
-    // `@column>` with a value begun: what a yes/no or a date column can be asked
-    var valued = typesOf ? /(^|[\s,])@("[^"]+"|[^\s=!~<>",]+)(!=|!~|>=|<=|=|~|>|<)([^\s",|]*)$/.exec(text) : null;
+    // `@column>` with a value begun: what a yes/no or a date column can be asked; with `valuesOf`,
+    // the values a column holds (a list's tags, Systems…), the one after the last `|` when several
+    var valued = typesOf || valuesOf ? /(^|[\s,])@("[^"]+"|[^\s=!~<>",]+)(!=|!~|>=|<=|=|~|>|<)((?:[^\s",|]*\|)*)([^\s",|]*)$/.exec(text) : null;
     if (valued) {
         var col = named(unquote(valued[2]));
         var kind = col ? typeOf(col.heading, col.path) : '';
-        var begun = valued[4].toLowerCase();
-        var from = text.length - valued[4].length;
+        var begun = valued[5].toLowerCase();
+        var from = text.length - valued[5].length;
         var offer = kind === 'yesno' ? [['true', ''], ['false', '']] : kind === 'date' ? (DATE_VALUES[valued[3]] || []) : [];
+        var picked = valued[4].split('|').filter(Boolean).map(function (v) { return v.toLowerCase(); });
+        var known = col && valuesOf ? (valuesOf(col.heading) || []) : [];
+        if (!offer.length && known.length && (valued[3] === '=' || valued[3] === '!=' || valued[3] === '~' || valued[3] === '!~')) {
+            // (a value with a space is written in quotes; those already picked before a `|` aren't offered again)
+            return known
+                .filter(function (v) { var low = String(v.value).toLowerCase(); return low.indexOf(begun) !== -1 && low !== begun && picked.indexOf(low) === -1; })
+                .sort(function (a, b) { var x = String(a.value).toLowerCase().indexOf(begun) === 0 ? 0 : 1, y = String(b.value).toLowerCase().indexOf(begun) === 0 ? 0 : 1; return x - y || (b.count || 0) - (a.count || 0); })
+                .slice(0, 10)
+                .map(function (v) { return { text: /\s/.test(v.value) ? '"' + v.value + '"' : String(v.value), label: v.label || (v.count != null ? String(v.count) : ''), start: from, end: text.length }; });
+        }
         return offer
             .filter(function (o) { return o[0].indexOf(begun) === 0 && o[0] !== begun; })
             .map(function (o) { return { text: o[0], label: o[1], start: from, end: text.length }; });
@@ -1089,7 +1100,8 @@ function columnSuggestions(typed, headings, keysOf, typesOf, hidden) {
             .map(function (h) { return { h: h, pos: wordStartAt(h, partial) }; })
             .filter(function (x) { return x.pos !== -1; })
             .sort(function (a, b) { return (isHidden(a.h) ? 1 : 0) - (isHidden(b.h) ? 1 : 0) || (a.pos === 0 ? 0 : 1) - (b.pos === 0 ? 0 : 1) || a.h.localeCompare(b.h); })
-            .slice(0, 10)
+            // (the list scrolls: every field a Hub list has fits, hidden ones last)
+            .slice(0, 30)
             .map(function (x) {
                 var label = TYPE_WORDS[typeOf(x.h, [])] || (keys(x.h, []).length ? 'column, nested' : 'column');
                 var item = { text: '@' + quote(x.h), label: isHidden(x.h) ? label + ' · not shown' : label, start: start, end: text.length };
@@ -1204,6 +1216,8 @@ function describeSearch(text, headings, typesOf, now, hidden) {
  *       keys: (heading, path) => ['key', 'value', …],       optional: the keys inside a column's nested
  *                                                           data, listed after `@column.` (nestedKeysFor)
  *       types: (heading, path) => 'date',                   optional: the kind of a column or a key inside it
+ *       values: heading => [{ value, count?, label? }],      optional: a column's values, offered after `@column=`
+ *                                                           (a list's tags, Systems, environments)
  *       hidden: () => ['customer', …] })                    optional: those of the headings searched but not
  *                                                           shown in the table (listed last, marked "not shown")
  *                                                           ('text', 'number', 'yesno', 'date', 'nested';
@@ -1226,7 +1240,7 @@ function attachColumnSuggest(opts) {
     function close() { list.hidden = true; shown = []; }
     function render() {
         var caret = input.selectionEnd == null ? input.value.length : input.selectionEnd;
-        shown = caret === input.value.length ? columnSuggestions(input.value, opts.headings ? opts.headings() : [], opts.keys, opts.types, opts.hidden ? opts.hidden() : []) : [];
+        shown = caret === input.value.length ? columnSuggestions(input.value, opts.headings ? opts.headings() : [], opts.keys, opts.types, opts.hidden ? opts.hidden() : [], opts.values) : [];
         if (!shown.length) { close(); return; }
         if (active >= shown.length) active = 0;
         list.innerHTML = shown.map(function (s, i) {

@@ -1,0 +1,82 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Copyright (C) 2026 Flexion Tech Pty Ltd */
+/* A search box's colours and its `@` list (search-matcher.js: renderHighlight, attachColumnSuggest):
+   the same in every table's box, Query's and Compare's Results, the Console, Logs and the Hub's
+   lists. The box's own shape is its screen's (.search-input-mirror in console.css, the Hub's in hub.css). */
+
+/* Distinct, theme-distinct hex fallbacks so highlighting is visible even when
+   the VS Code variable resolves to a colour close to the foreground. Colour only, never
+   bold: the coloured copy must be exactly as wide as the text typed over it, or the caret
+   drifts away from the letters as the line grows. */
+
+.search-tok-op-and  { color: var(--vscode-charts-blue,   #569cd6); }
+.search-tok-op-not  { color: var(--vscode-charts-red,    #f48771); }
+.search-tok-quoted  { color: var(--vscode-charts-yellow, #dcdcaa); }
+.search-tok-wildcard{ color: var(--vscode-charts-green,  #4ec9b0); }
+.search-tok-term-1  { color: var(--vscode-input-foreground); }
+.search-tok-term-2  { color: var(--vscode-input-foreground); }
+
+/* A column term: @column in the link colour, its operator orange, its value as quoted text */
+.search-tok-col-name  { color: var(--vscode-textLink-foreground, #3794ff); }
+/* A column the table does not have (the box is given the table's column names): red, and underlined so it is not told by colour alone */
+.search-tok-col-unknown { color: var(--vscode-errorForeground, #f14c4c); text-decoration: underline wavy; text-decoration-skip-ink: none; }
+/* A column searched but not shown in the table: its own colour, dotted underline (not told by colour alone) */
+.search-tok-col-hidden, .search-tok-deep { color: var(--vscode-charts-purple, #b180d7); text-decoration: underline dotted; text-decoration-skip-ink: none; text-underline-offset: 2px; }
+.search-tok-col-op    { color: var(--vscode-charts-orange, #d18616); }
+.search-tok-col-value { color: var(--vscode-charts-yellow, #dcdcaa); }
+
+/* `@` in a find box: the columns, then the operators, in a list under it */
+.column-suggest {
+    position: absolute;
+    top: calc(100% + 2px);
+    left: 0;
+    min-width: 220px;
+    max-width: 360px;
+    max-height: 280px;
+    overflow-y: auto;
+    z-index: 30;
+    padding: 4px 0;
+    background: var(--vscode-editorWidget-background, var(--vscode-input-background));
+    border: 1px solid var(--vscode-editorWidget-border, var(--vscode-panel-border));
+    border-radius: 4px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+}
+.column-suggest-option {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 4px 10px;
+    cursor: pointer;
+    font-size: 12px;
+}
+/* The one the keyboard is on (Enter takes it) is chosen; the one under the pointer only takes the hover
+   tint, so two never look picked at once (James, 2026-11-22) */
+.column-suggest-option.is-active {
+    background: var(--vscode-list-activeSelectionBackground, var(--vscode-list-hoverBackground));
+    color: var(--vscode-list-activeSelectionForeground, inherit);
+}
+.column-suggest-option:hover:not(.is-active) {
+    background: var(--vscode-list-hoverBackground);
+}
+.column-suggest-text {
+    font-family: var(--vscode-editor-font-family, monospace);
+}
+.column-suggest-label {
+    color: var(--vscode-descriptionForeground);
+}
+/* A column searched but not shown: after the shown ones, quieter */
+.column-suggest-option.is-hidden .column-suggest-text { color: var(--vscode-charts-purple, #b180d7); opacity: 0.85; }
+
+/* Comma renders as an inverted chip so it punches the OR boundary visually
+   without depending on a single hue. */
+.search-tok-op-or {
+    background: var(--vscode-input-foreground);
+    color: var(--vscode-input-background);
+    border-radius: 2px;
+}
+
+/* Chip backgrounds — each OR group gets a subtle tint so adjacent groups read
+   as separate chunks. The comma between groups is tagged orGroup=-1 and keeps
+   the default mirror background, acting as the visible separator. */
+.search-tok-grp-0   { background: rgba(86, 156, 214, 0.10); }
+.search-tok-grp-1   { background: rgba(206, 145, 120, 0.12); }

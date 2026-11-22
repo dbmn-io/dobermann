@@ -64,6 +64,7 @@ export function buildRunBatchPage(asset: AssetUrl, batchConfig: { endpointId: st
     <link rel="stylesheet" href="${asset('shared/dbmn-footer.css')}">
     <!-- Validate's grid is the design system's table (shared/dbmn-table.js) -->
     <link rel="stylesheet" href="${asset('shared/console.css')}">
+    <link rel="stylesheet" href="${asset('shared/search.css')}">
     <link rel="stylesheet" href="${asset('shared/column-head.css')}">
     <link rel="stylesheet" href="${asset('shared/column-drag.css')}">
     <link rel="stylesheet" href="${asset('shared/dbmn-table.css')}">

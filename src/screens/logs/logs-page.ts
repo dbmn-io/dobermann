@@ -19,7 +19,7 @@ export function buildLogsPage(asset: AssetUrl): string {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Logs</title>
-    ${sharedStyleLinks(asset, ['atomic', 'core', 'buttons', 'modals', 'tables', 'tabs', 'toast', 'console', 'column-drag', 'column-head', 'dbmn-footer', 'dbmn-table', 'dbmn-log'])}
+    ${sharedStyleLinks(asset, ['atomic', 'core', 'buttons', 'modals', 'tables', 'tabs', 'toast', 'console', 'search', 'column-drag', 'column-head', 'dbmn-footer', 'dbmn-table', 'dbmn-log'])}
     <link rel="stylesheet" href="${asset('logs/logs.css')}">
 </head>
 <body class="editor-slide-in logs-body">

@@ -21,7 +21,7 @@ export function buildLookupPage(asset: AssetUrl, config: { name: string }): stri
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>${title}</title>
-    ${sharedStyleLinks(asset, ['atomic', 'core', 'buttons', 'modals', 'tables', 'tabs', 'toast', 'console', 'column-drag', 'column-head', 'dbmn-footer', 'dbmn-table'])}
+    ${sharedStyleLinks(asset, ['atomic', 'core', 'buttons', 'modals', 'tables', 'tabs', 'toast', 'console', 'search', 'column-drag', 'column-head', 'dbmn-footer', 'dbmn-table'])}
     <link rel="stylesheet" href="${asset('lookup/lookup.css')}">
 </head>
 <body class="editor-slide-in lookup-body">
