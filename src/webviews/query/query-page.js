@@ -2141,6 +2141,7 @@
     function loadRows(keep) {
         if (!ui.state) return;
         drawTable();
+        markFiltered();
         // (what an empty Results says: its Status filter or Only diffs left nothing, or its search found nothing, #34)
         if (!table.emptyText) table.emptyText = ({ searched }) => (hasStatus() && (compareResults.anyFilter() || ui.diffsOnly) ? 'No rows match the filters.' : searched ? 'No rows match the search.' : 'No rows.');
         if (!table.source) table.source = { page };
@@ -2364,7 +2365,17 @@
         if (ui.state) ui.state.joins.forEach(j => { drafts[j.view] = j.on.filter(p => !(p.left.column && p.right.column) && (p.left.column || p.right.column || p.picked)); });
         // A view whose rows have just come in: its cell finishes its bar and fades into the count (justRead)
         if (ui.state) ui.state.views.forEach(v => { if (v.reading && m.views.some(x => x.id === v.id && !x.reading)) justRead[v.id] = Date.now(); });
+        // Results' columns as the search knew them, before this state (a view taken out is still named here)
+        const searchedBefore = ui.state && ui.search ? searchCols(resultCols()) : null;
         ui.state = m;
+        // A column gone from Results takes its search terms with it (James, 2026-11-23: "if a column is removed
+        // from table, so should its search filter"); a term another column still answers to stays. The reload below searches again
+        if (searchedBefore && window.SearchMatcher.withoutColumns) {
+            const now = new Set((m.resultColumns || []).map(colId));
+            const gone = searchedBefore.filter(c => !now.has(c.id));
+            const next = gone.length ? window.SearchMatcher.withoutColumns(ui.search, gone, searchCols(m.resultColumns || [])) : ui.search;
+            if (next !== ui.search) setSearch(next, false);
+        }
         showName(m.name);
         showKind(m.compare);
         if (!m.statusPlaces) { ui.filter = { kinds: null, columns: [], relations: null, hidden: [] }; ui.diffsOnly = false; }
@@ -2453,6 +2464,25 @@
      * the same names (query.controller.ts searchArg).
      */
     const aliasOf = v => (v && (v.run || v.name)) || '';
+    /** Results' columns as the search names them (search-matcher's columnsIn / withoutColumns): each by its id, its own name, and its run's or view's when Results has two or more (BL.sku). */
+    function searchCols(cols) {
+        const many = new Set(cols.map(c => c.view).filter(id => view(id))).size > 1;
+        return cols.map(c => ({ id: colId(c), name: c.column, aliases: many && view(c.view) ? [`${aliasOf(view(c.view))}.${c.column}`] : [] }));
+    }
+    /** The headings the search box filters: each wears the table's funnel (James, 2026-11-23); a click on one clears its terms. */
+    function markFiltered() {
+        table.filtered = ui.search && window.SearchMatcher.columnsIn ? window.SearchMatcher.columnsIn(ui.search, searchCols(resultCols())) : [];
+    }
+    /** The search box set to `text` (a term taken out): Results searches again. */
+    function setSearch(text, reload) {
+        clearTimeout(searchTimer);
+        ui.search = text;
+        $('querySearch').value = text;
+        window.SearchMatcher.renderHighlight($('querySearchMirror'), text, searchHeadings());
+        renderReads();
+        compareResults.renderTools();
+        if (reload) loadRows();
+    }
     function searchHeadings() {
         const columns = resultCols();
         const names = columns.map(c => c.column);
@@ -2506,6 +2536,11 @@
 
     // The table says what was done to its headings (sorted, moved, removed, resized)
     table.addEventListener('dbmn-table-layout', event => tableChanged(event.detail));
+    // A heading's funnel clicked: that column's search terms go, and Results searches again
+    table.addEventListener('dbmn-table-unfilter', event => {
+        const col = resultCols().find(c => colId(c) === event.detail.id);
+        if (col && ui.search && window.SearchMatcher.withoutColumns) setSearch(window.SearchMatcher.withoutColumns(ui.search, searchCols([col])), true);
+    });
 
     window.addEventListener('message', event => {
         const m = event.data || {};
