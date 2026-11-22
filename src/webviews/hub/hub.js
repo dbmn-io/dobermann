@@ -1587,6 +1587,8 @@
             compares: message.compares || [],
             // The saved queries, on the same list
             queries: message.queries || [],
+            // The lookup tables, on the same list (Reporting's): without them here the list never shows one
+            lookupTables: message.lookupTables || [],
             activeEnvironmentId: message.activeEnvironmentId,
             activeSystemId: message.activeSystemId,
             // Drives the catalogue's run-control visibility — execution requires

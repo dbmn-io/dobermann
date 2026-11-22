@@ -18,6 +18,18 @@ test.describe('Hub', () => {
         await expect(page).toHaveScreenshot('catalogue.png', { mask: [page.locator('#hubHomeTipText')] });
     });
 
+    test('Reporting lists lookup tables beside the reports (the Hub\'s state carries them; the page kept only reports until 2026-11-23)', async ({ dbmn, page }) => {
+        await dbmn.openHub();
+        await dbmn.push({
+            type: 'hubState', endpoints: [], systems: [], environments: [], transactions: [], compares: [], queries: [],
+            lookupTables: [{ id: 'lkp-units', name: 'Units', columns: [{ id: 'c1', name: 'code', key: true }, { id: 'c2', name: 'value' }], rows: 2, updatedAt: '2026-11-23T00:00:00Z' }]
+        });
+        await page.locator('.hub-nav-item[data-section="compare"]').click();
+        await expect(page.locator('#compareEmpty')).toBeHidden();
+        await expect(page.locator('#compareSummary')).toHaveText('1 report');
+        await expect(page.locator('#compareList')).toContainText('Units');
+    });
+
     test('signed out of DBMN, the header offers Sign in beside the environment selector (#418: everything runs signed out)', async ({ dbmn, page }) => {
         await dbmn.openHub();
 
