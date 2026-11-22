@@ -1,0 +1,5 @@
+# This checkout's own pre-push hook, when one is installed: git reads hooks from .husky/_, not
+# .git/hooks, so without this an installed pre-push hook never runs
+hook="$(git rev-parse --git-common-dir)/hooks/pre-push"
+[ -x "$hook" ] && exec "$hook" "$@"
+exit 0
