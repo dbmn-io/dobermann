@@ -824,6 +824,30 @@ describe('Search: @column terms on nested data', () => {
     });
 });
 
+// Letters meet a name at the start of a word, never inside one (James, 2026-11-22: "@bl" listed quantityAvailable)
+describe('Search: suggestions match at the start of a word', () => {
+    const headings = ['quantityAvailable', 'quantityOnHand', 'BL.quantityOnHand', 'C1.quantityOnHand', 'sku', 'lot number', 'order_no'];
+    const texts = (typed: string) => columnSuggestions(typed, headings).map((s: { text: string }) => s.text);
+
+    it('never inside a word: "bl" is not in "Available"', () => {
+        expect(texts('@bl')).to.deep.equal(['@BL.quantityOnHand']);
+        expect(texts('@avail')).to.deep.equal(['@quantityAvailable']);
+    });
+
+    it('a word of a camelCase name, after a dot, an underscore or a space; typed on across words', () => {
+        expect(texts('@hand')).to.deep.equal(['@BL.quantityOnHand', '@C1.quantityOnHand', '@quantityOnHand']);
+        expect(texts('@onhand')).to.deep.equal(['@BL.quantityOnHand', '@C1.quantityOnHand', '@quantityOnHand']);
+        expect(texts('@num')).to.deep.equal(['@"lot number"']);
+        expect(texts('@no')).to.deep.equal(['@order_no']);                      // (not the "On" of quantityOnHand: "no" starts no word there)
+        expect(texts('@bl.qua')).to.deep.equal(['@BL.quantityOnHand']);
+        expect(texts('@bl.')).to.deep.equal(['@BL.quantityOnHand']);
+    });
+
+    it('names that start with it first', () => {
+        expect(texts('@qua')).to.deep.equal(['@quantityAvailable', '@quantityOnHand', '@BL.quantityOnHand', '@C1.quantityOnHand']);
+    });
+});
+
 // `@column.` lists the keys inside a column's nested data, then the operators
 describe('Search: suggestions inside nested data', () => {
     const cells = [[{ key: 'A-2207', value: 'Olive oil', dims: { weight: 1, 'box size': 3 } }], [{ key: 'B-0418', qty: 6 }], 'plain', null];

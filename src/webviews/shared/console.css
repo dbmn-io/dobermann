@@ -454,10 +454,14 @@
     cursor: pointer;
     font-size: 12px;
 }
-.column-suggest-option.is-active,
-.column-suggest-option:hover {
+/* The one the keyboard is on (Enter takes it) is chosen; the one under the pointer only takes the hover
+   tint, so two never look picked at once (James, 2026-11-22) */
+.column-suggest-option.is-active {
     background: var(--vscode-list-activeSelectionBackground, var(--vscode-list-hoverBackground));
     color: var(--vscode-list-activeSelectionForeground, inherit);
+}
+.column-suggest-option:hover:not(.is-active) {
+    background: var(--vscode-list-hoverBackground);
 }
 .column-suggest-text {
     font-family: var(--vscode-editor-font-family, monospace);

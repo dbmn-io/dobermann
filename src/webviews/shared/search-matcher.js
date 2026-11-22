@@ -1024,6 +1024,24 @@ var DATE_VALUES = {
 DATE_VALUES['>='] = [['today', 'today or later'], ['yesterday', 'yesterday or later'], ['7d', 'in the last 7 days'], ['30d', 'in the last 30 days']];
 DATE_VALUES['<='] = [['today', 'today or earlier'], ['yesterday', 'yesterday or earlier'], ['7d', '7 days ago or earlier']];
 
+/**
+ * Where `typed` meets a name at the start of one of its words, or -1: the name's own start, after a
+ * `.` `_` `-` `/` or space, or a capital after a small letter or a digit (quantityOnHand: quantity, On,
+ * Hand). Never inside a word, so "bl" is not found in "Available" (James, 2026-11-22: "@bl" listed
+ * quantityAvailable). Typed text may run on across words ("onhand", "bl.qua").
+ */
+function wordStartAt(name, typed) {
+    var text = String(name);
+    var low = text.toLowerCase();
+    var want = String(typed || '').toLowerCase();
+    if (!want) return 0;
+    var gap = /[._\-\/\s]/;
+    for (var i = 0; i < text.length; i++) {
+        var starts = i === 0 || (gap.test(text[i - 1]) && !gap.test(text[i])) || (/[A-Z]/.test(text[i]) && /[a-z0-9]/.test(text[i - 1]));
+        if (starts && low.indexOf(want, i) === i) return i;
+    }
+    return -1;
+}
 var OP_WORDS = { '=': 'is (a|b either, 1..9 between)', '!=': 'is not', '~': 'contains', '!~': "doesn't contain", '>': 'more than', '<': 'less than', '>=': 'at least', '<=': 'at most' };
 function columnSuggestions(typed, headings, keysOf, typesOf, hidden) {
     var text = String(typed || '');
@@ -1068,7 +1086,7 @@ function columnSuggestions(typed, headings, keysOf, typesOf, hidden) {
         // Typed in full: on to the operators (and a dot, when it holds nested data)
         if (exact.length && at[2].length) return opSuggestions(text, text.length, keys(exact[0], []).length > 0, typeOf(exact[0], []));
         return deepFirst.concat(names
-            .map(function (h) { return { h: h, pos: h.toLowerCase().indexOf(partial) }; })
+            .map(function (h) { return { h: h, pos: wordStartAt(h, partial) }; })
             .filter(function (x) { return x.pos !== -1; })
             .sort(function (a, b) { return (isHidden(a.h) ? 1 : 0) - (isHidden(b.h) ? 1 : 0) || (a.pos === 0 ? 0 : 1) - (b.pos === 0 ? 0 : 1) || a.h.localeCompare(b.h); })
             .slice(0, 10)
@@ -1103,7 +1121,7 @@ function nestedSuggestions(typedName, names, keys, start, text, typeOf) {
     var whole = found.filter(function (k) { return k.toLowerCase() === last.toLowerCase(); });
     if (whole.length && last.length) return opSuggestions(text, text.length, keys(heading, path.concat([whole[0]])).length > 0, typeOf(heading, path.concat([whole[0]])));
     return found
-        .map(function (k) { return { k: k, pos: k.toLowerCase().indexOf(last.toLowerCase()) }; })
+        .map(function (k) { return { k: k, pos: wordStartAt(k, last) }; })
         .filter(function (x) { return x.pos !== -1; })
         .sort(function (a, b) { return (a.pos === 0 ? 0 : 1) - (b.pos === 0 ? 0 : 1); })
         .slice(0, 12)
