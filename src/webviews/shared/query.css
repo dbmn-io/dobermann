@@ -303,8 +303,13 @@
 /* A view still being read: its Rows cell is the footer's progress bar, the whole cell (dbmn-progress inline) */
 .query-at.is-reading { display: flex; align-items: stretch; padding: 0; }
 .query-read-progress { flex: 1 1 auto; min-width: 0; border-radius: 0; text-align: left; font-family: var(--vscode-font-family); font-weight: 400; }
-/* One line, never wrapped (the fill's glide is dbmn-progress's own) */
-.query-read-progress { flex-wrap: nowrap; white-space: nowrap; overflow: hidden; }
+/* One line, never wrapped (the fill's glide is dbmn-progress's own); "Loading" at the right, where the count will be,
+   so nothing jumps across when it lands (James, 2026-11-22) */
+.query-read-progress { flex-wrap: nowrap; white-space: nowrap; overflow: hidden; justify-content: flex-end; text-align: right; }
+/* (its right edge where the count's will be: the cell's 10px, no gap before the empty count) */
+dbmn-progress[inline].query-read-progress { padding-right: 10px; column-gap: 0; }
+dbmn-progress[inline].query-read-progress .dbmn-progress-phase { margin-left: auto; }
+dbmn-progress[inline].query-read-progress .dbmn-progress-count { margin-left: 0; }
 /* Done: the cell starts as a full bar and fades to the count, which fades in (no jump from bar to number) */
 .query-at.is-read-done { animation: query-read-done 1400ms ease-out; }
 .query-read-done { animation: query-read-in 600ms ease-out; }
