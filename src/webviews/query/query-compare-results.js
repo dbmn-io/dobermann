@@ -62,12 +62,16 @@
         const ticked = value => !ui.filter.kinds || ui.filter.kinds.includes(value);
         const statusFiltered = () => statusOptions().some(o => !ticked(o.value));
         const anyFilter = () => statusFiltered() || ui.filter.columns.length > 0 || !!ui.filter.relations;
-        function setFilter(change) {
+        /**
+         * `stay`: from a filter menu's Show or Only: the filter applies at once and the menu stays open, drawn again with
+         * its new ticks, so lines can be combined; Esc or a click outside closes it (James, 2026-11-22)
+         */
+        function setFilter(change, stay) {
             Object.assign(ui.filter, change);
             // Every line ticked is no filter at all
             if (ui.filter.kinds && statusOptions().every(o => ui.filter.kinds.includes(o.value))) ui.filter.kinds = null;
             if (ui.filter.relations && RELATIONS.filter(k => relationCount(k)).every(k => ui.filter.relations.includes(k))) ui.filter.relations = null;
-            closeMenus();
+            if (stay && openRender) openRender(); else closeMenus();
             renderTools();
             // (a result hidden or shown again: its slot says so, and its cells leave or come back)
             if ('hidden' in change) { ctx.renderSlots(); ctx.redraw(); return; }
@@ -91,7 +95,10 @@
             button.setAttribute('aria-expanded', 'true');
             return true;
         }
+        /** The open menu's drawing, to draw it again as its filter changes or its counts come in. */
+        let openRender = null;
         function closeMenus() {
+            openRender = null;
             ['queryStatusMenu', 'queryRelationMenu'].forEach(id => { const m = $(id); if (m) m.classList.remove('show'); });
             document.querySelectorAll('#queryTable [aria-expanded="true"]').forEach(b => b.setAttribute('aria-expanded', 'false'));
         }
@@ -146,16 +153,16 @@
             const countOf = o => (o.n === o.of ? ctx.count(o.n) : `${ctx.count(o.n)} of ${ctx.count(o.of)}`);
             const current = () => ui.filter.kinds || options.map(o => o.value);
             tickMenu('queryStatusMenu', options, o => ticked(o.value),
-                (o, on) => setFilter({ kinds: on ? current().concat(o.value) : current().filter(v => v !== o.value) }),
-                (o, alone) => setFilter({ kinds: alone ? null : [o.value] }), pillOf, countOf, nameOf);
+                (o, on) => setFilter({ kinds: on ? current().concat(o.value) : current().filter(v => v !== o.value) }, true),
+                (o, alone) => setFilter({ kinds: alone ? null : [o.value] }, true), pillOf, countOf, nameOf);
         }
         function renderRelationMenu() {
             const kinds = RELATIONS.filter(k => relationCount(k) > 0).map(value => ({ value }));
             const current = () => ui.filter.relations || kinds.map(k => k.value);
             const isOn = o => !ui.filter.relations || ui.filter.relations.includes(o.value);
             tickMenu('queryRelationMenu', kinds, isOn,
-                (o, on) => setFilter({ relations: on ? current().concat(o.value) : current().filter(v => v !== o.value) }),
-                (o, alone) => setFilter({ relations: alone ? null : [o.value] }),
+                (o, on) => setFilter({ relations: on ? current().concat(o.value) : current().filter(v => v !== o.value) }, true),
+                (o, alone) => setFilter({ relations: alone ? null : [o.value] }, true),
                 o => { const l = el('span', 'compare-relation-option'); l.appendChild(window.RelationGlyph.svg(o.value)); return l; },
                 o => ctx.count(relationCount(o.value)), o => RELATION_NAMES[o.value]);
         }
@@ -177,7 +184,7 @@
             b.setAttribute('aria-expanded', 'false');
             b.setAttribute('aria-label', on ? `Filter ${label} (active filter)` : `Filter ${label}`);
             b.title = b.getAttribute('aria-label');
-            b.addEventListener('click', e => { e.stopPropagation(); render(); openMenu(menuId, b); });
+            b.addEventListener('click', e => { e.stopPropagation(); render(); if (openMenu(menuId, b)) openRender = render; });
             const actions = th.querySelector('.header-actions') || th;
             actions.appendChild(b);
             if (on) actions.appendChild(funnel(clear));
@@ -317,6 +324,8 @@
         function renderTools() {
             const box = $('queryStatusTools');
             if (!box) return;
+            // (an open filter menu takes the new counts)
+            if (openRender) openRender();
             // Filter: lit while anything narrows the rows (a filter, or text in the search), a click clears it all; dimmed with none
             const clear = $('queryClearFilters');
             const filtered = (ctx.hasStatus() && anyFilter()) || !!String(ui.search || '').trim();
