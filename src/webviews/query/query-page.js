@@ -266,13 +266,6 @@
             if (!emptyNote.hidden && emptyNote.textContent !== EMPTY_REPORT) emptyNote.textContent = EMPTY_REPORT;
         }
         $('queryBackBtn').disabled = ui.step === 1 || !!ui.busy;
-        // Reset joins: on the Join step, once any join has a column picked
-        const reset = $('queryResetJoinsBtn');
-        if (reset) {
-            const anyPicked = !!ui.state && (ui.state.joins || []).some(j => (j.on || []).some(p => (p.left && p.left.column) || (p.right && p.right.column)));
-            reset.hidden = !(ui.step === 2 && anyPicked);
-            reset.disabled = !!ui.busy;
-        }
     }
     /** A line per step: its views, its joins, its columns, its rows. */
     function stepSummaries() {
@@ -1267,6 +1260,12 @@
             ['outer', 'Outer join', 'Every row of both, matched where they can be']
         ];
     }
+    /** Every join back to "Pick a column" (the views, columns and filters stay), after a confirm: the join menu's Reset joins. */
+    function resetJoins() {
+        window.DbmnModal.confirm({ title: 'Reset every join?', body: 'Every join goes back to "Pick a column". The views and the report\'s columns stay.', confirmLabel: 'Reset joins', confirmVariant: 'danger' })
+            .then(yes => { if (!yes) return; setBusy('Joining…'); post({ type: 'query.resetJoins' }); });
+    }
+
     /**
      * Which rows a join keeps: its picture (the shared RelationGlyph.join, in the two views'
      * colours) and a caret; a click opens the kinds under it, each with its picture, name and
@@ -1298,10 +1297,14 @@
                 detail: id === 'compare' && full ? `A compare takes ${ui.state.maxCompare || 4} views: take one out to put ${v.name} in` : detail,
                 disabled: id === 'compare' && full
             }));
-            // Delete join, at the bottom: the view (a compare: every view in it) goes back to not joined
-            items.push({ separator: true }, { id: 'delete', label: 'Delete join', icon: 'trash-2' });
+            // Delete join, at the bottom: the view (a compare: every view in it) goes back to not joined.
+            // Reset joins under it, for every join (James, 2026-11-23: "Just in the menu", not the footer)
+            const anyPicked = (ui.state.joins || []).some(j => (j.on || []).some(p => (p.left && p.left.column) || (p.right && p.right.column)));
+            items.push({ separator: true }, { id: 'delete', label: 'Delete join', icon: 'trash-2' },
+                { id: 'reset', label: 'Reset joins', icon: 'undo-2', disabled: !anyPicked, detail: anyPicked ? 'Every join back to "Pick a column"' : 'No join has a column picked yet' });
             window.DbmnContextMenu.show(b, items, id => {
                 b.setAttribute('aria-expanded', 'false');
+                if (id === 'reset') { resetJoins(); return; }
                 if (id === 'delete') {
                     const gone = join.kind === 'compare' ? ui.state.joins.filter(j => j.kind === 'compare').map(j => j.view) : [join.view];
                     setBusy('Joining…');
@@ -2425,11 +2428,6 @@
         'query:addFile': () => addsEl('queryAddFile').click(),
         'query:back': () => goTo(ui.step - 1),
         'query:next': () => goTo(ui.step + 1),
-        // Every join back to "Pick a column" (the views, columns and filters stay), after a confirm
-        'query:resetJoins': () => {
-            window.DbmnModal.confirm({ title: 'Reset every join?', body: 'Every join goes back to "Pick a column". The views and the report\'s columns stay.', confirmLabel: 'Reset joins', confirmVariant: 'danger' })
-                .then(yes => { if (!yes) return; setBusy('Joining…'); post({ type: 'query.resetJoins' }); });
-        },
         'query:copySql': () => {
             const sql = (ui.state && (ui.state.ownSql || ui.state.sql)) || '';
             if (window.DbmnClipboard) window.DbmnClipboard.writeText(sql).then(() => window.DbmnToast && window.DbmnToast.success('SQL copied'));
