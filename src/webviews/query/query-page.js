@@ -744,7 +744,7 @@
     /**
      * Add a view: the saved results on the shared table (dbmn-table), searched with its own box,
      * as many ticked as the query takes. Each with what tells runs of one request apart: its
-     * header values (ORG...), its rows, whether a batch is complete, when it ran. Every result
+     * header values (ORG...), how many requests it sent, whether a batch is complete, when it ran. Every result
      * ticked comes in, through its endpoint's standard View (Change view on its slot picks another); a query takes up to ten,
      * and four of one endpoint (a compare's four). Another run of a view: only that endpoint's
      * results it hasn't already, read through its View.
@@ -772,14 +772,15 @@
         body.append(note);
         if (!list.length) note.textContent = runOf ? `No other result of ${runOf.name}'s endpoint. Run it again, and the result can be added here.` : 'No results yet. Run a request, and its result can be added here.';
         tableEl.columns = [
-            { id: 'request', name: 'Request' }, { id: 'endpoint', name: 'Endpoint' }, { id: 'system', name: 'System' }, { id: 'environment', name: 'Environment' },
+            { id: 'method', name: 'Method' }, { id: 'path', name: 'Path' }, { id: 'endpoint', name: 'Endpoint' }, { id: 'system', name: 'System' }, { id: 'environment', name: 'Environment' },
             ...headerNames.map(n => ({ id: `h:${n}`, name: n })),
-            { id: 'rows', name: 'Rows', numbers: true }, { id: 'complete', name: 'Complete' }, { id: 'runAt', name: 'Run at' }, { id: 'type', name: 'Type' }
+            // How many requests the run sent (a batch's size). Not the View's rows: those are only known once it is read
+            { id: 'requests', name: 'Requests', numbers: true }, { id: 'complete', name: 'Complete' }, { id: 'runAt', name: 'Run at' }, { id: 'type', name: 'Type' }
         ];
         tableEl.rows = list.map(r => Object.assign({
             _id: r.id, _result: r,
-            request: r.request, endpoint: r.endpoint, system: r.system, environment: r.environment,
-            rows: r.rows === '' ? '' : Number(r.rows),
+            method: r.method || '', path: r.path || '', endpoint: r.endpoint, system: r.system, environment: r.environment,
+            requests: r.rows === '' ? '' : Number(r.rows),
             complete: r.isBatch ? (r.incomplete ? 'Incomplete' : 'Complete') : '',
             runAt: day(r.executedAt), type: r.isBatch ? 'Batch' : 'Single'
         }, Object.fromEntries(headerNames.map(n => [`h:${n}`, ((r.header || []).find(h => h.name === n) || {}).value || '']))));

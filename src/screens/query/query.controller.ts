@@ -655,6 +655,9 @@ export class QueryController {
                 endpointId: e.endpointId,
                 endpoint: endpoint?.name || e.endpointName || 'Endpoint',
                 request: method && path ? getEndpointViewScopeKey(method, path) : '',
+                // Shown and searched apart in Add views (@method, @path)
+                method: method ? method.toUpperCase() : '',
+                path: path ?? '',
                 system: await systemName(endpoint?.systemId ?? (e.endpointConfig as Known | undefined)?.systemId),
                 isBatch: e.executionType === 'batch',
                 environment: e.environment || 'Unknown',
