@@ -1935,7 +1935,7 @@
 
     /** The table's columns: each in its view's colour, the same name in two views saying whose it is. */
     const compareResults = window.QueryCompareResults.create({
-        el, ui, post, view, views, colour, count, hasStatus: () => hasStatus(), withSummary: (v, items) => withSummary(v, items),
+        el, ui, post, view, views, colour, count, day, hasStatus: () => hasStatus(), withSummary: (v, items) => withSummary(v, items),
         reload: () => loadRows(),
         redraw: () => { grid.key = ''; drawTable(); loadRows(true); },
         renderSlots: () => renderTop()

@@ -2410,6 +2410,7 @@ export class QueryController {
      * for its key, side by side, and where they differ.
      */
     private async record(index: number, hidden: string[]): Promise<void> {
+        const RECORD_ROWS = 200;
         const { spec } = this.spec();
         const onEngine = this.onEngine(spec);
         // On Results' pages: the row read from the engine by its place, its keys with it, its status as the page had it
@@ -2432,39 +2433,53 @@ export class QueryController {
         const tables = tableNames(spec.views);
         const keys = compareKeySql(spec);
         const places: string[] = [];
+        const placeViews: string[] = [];
         const records: Record<string, unknown>[][] = [];
         for (const [p, viewId] of result.keyViews.entries()) {
             const place = result.keyPlaces![p];
             if (hidden.includes(place)) continue;
             places.push(place);
+            placeViews.push(viewId);
             const value = result.keyValues![index][p];
             const view = spec.views.find(v => v.id === viewId);
             if (value === null || value === undefined || !view) { records.push([]); continue; }
             if (onEngine) {
-                // On the new engine: the view's rows whose key is the row's (up to five)
+                // On the new engine: every one of the view's rows whose key is the row's (old Compare showed them all; a
+                // key held more than RECORD_ROWS times shows that many, and says so)
                 const parts = pagedRow?.parts[p];
                 const whole = partKeys.find(k => k.view === viewId);
                 const key = engineKeys.find(k => k.view === viewId);
-                const out = whole && parts && parts.length === whole.exprs.length ? await this.engineWindow(spec, recordQuery(viewId, whole.exprs, parts), 5)
-                    : key ? await this.engineWindow(spec, recordQuery(viewId, key.expr, value as string | number), 5) : { columns: [], rows: [] };
+                const out = whole && parts && parts.length === whole.exprs.length ? await this.engineWindow(spec, recordQuery(viewId, whole.exprs, parts), RECORD_ROWS)
+                    : key ? await this.engineWindow(spec, recordQuery(viewId, key.expr, value as string | number), RECORD_ROWS) : { columns: [], rows: [] };
                 records.push(out.rows.map(r => Object.fromEntries(out.columns.map((c, i) => [c, r[i]]))));
                 continue;
             }
             if (!session) { records.push([]); continue; }
-            const out = session.run(`SELECT * FROM ${quoteName(tables.get(viewId) ?? '')} AS ${quoteName(refNames(spec.views).get(viewId) ?? '')} WHERE ${keys[p].sql} = ${typeof value === 'number' ? value : `'${String(value).replace(/'/g, "''")}'`} LIMIT 5`);
+            const out = session.run(`SELECT * FROM ${quoteName(tables.get(viewId) ?? '')} AS ${quoteName(refNames(spec.views).get(viewId) ?? '')} WHERE ${keys[p].sql} = ${typeof value === 'number' ? value : `'${String(value).replace(/'/g, "''")}'`} LIMIT ${RECORD_ROWS}`);
             records.push(out.rows.map(r => Object.fromEntries(out.columns.map((c, i) => [c, r[i]]))));
         }
         const names = [...new Set(records.flatMap(rs => rs.flatMap(r => Object.keys(r))))];
         const text = (v: unknown): string => (v === null || v === undefined ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v));
+        // Each field: its values by place; `absent` where the place's records have no such column (not in that view: told
+        // apart from null and from blank, #21); `compared` when it is one of the compare's compared columns (marked by
+        // default, #5); `differs` by its values' text where it is present
+        const comparedNames = new Set(spec.select.filter(c => c.group && !c.fns?.length).map(c => c.column));
         const fields = names.map(name => {
-            const values = records.map(rs => rs.map(r => r[name]));
-            const held = values.filter(v => v.length).map(v => JSON.stringify(v.map(text)));
-            return { name, values, differs: new Set(held).size > 1 };
+            const values = records.map(rs => rs.map(r => (name in r ? r[name] : null)));
+            const absent = records.map(rs => rs.length > 0 && rs.every(r => !(name in r)));
+            const held = values.filter((v, i) => v.length && !absent[i]).map(v => JSON.stringify(v.map(x => (x === null || x === undefined ? null : text(x)))));
+            return { name, values, absent, compared: comparedNames.has(name), differs: new Set(held).size > 1 };
         });
+        const more = records.some(rs => rs.length >= RECORD_ROWS);
         const status = result.statusOf ? result.statusOf(hidden)[index] : undefined;
         // Its title: the whole key, every part (the first place that has the record)
         const keyText = pagedRow?.parts.find(ps => ps.length && ps.every(v => v !== null && v !== undefined))?.map(v => text(v)).join(' · ');
-        this.post({ type: 'query.recordDetail', index, places, fields, status, ...(keyText ? { keyText } : {}) });
+        // Each place's heading: its run, its environment, its header values, when it ran (#19)
+        const heads = placeViews.map(id => {
+            const source = this.query?.sources.find(x => x.id === id);
+            return source ? { environment: source.file ? '' : source.environment, executedAt: source.executedAt, file: source.file?.name ?? '', execution: source.executionId } : {};
+        });
+        this.post({ type: 'query.recordDetail', index, places, placeViews, heads, fields, status, ...(keyText ? { keyText } : {}), ...(more ? { more: RECORD_ROWS } : {}) });
     }
 
     /** The places Results' Status names (each view of the compare, each place a compared column has), or null when nothing is compared. */

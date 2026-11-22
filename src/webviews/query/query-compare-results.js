@@ -339,23 +339,58 @@
             const toggle = el('div', 'toggle-group compare-record-toggle');
             toggle.setAttribute('role', 'group');
             toggle.setAttribute('aria-label', 'Show the record as');
+            const marks = el('div', 'toggle-group compare-record-toggle');
+            marks.setAttribute('role', 'group');
+            marks.setAttribute('aria-label', 'Mark the differences in');
             const box = el('div', 'table-container');
             const text = v => (v === null || v === undefined ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v));
+            // A field marked as different: in the compared columns only (the default, as old Compare), or in every field
+            const marked = f => f.differs && (ui.recordMarks === 'all' || f.compared || !m.fields.some(x => x.compared));
+            // Which cells of a marked field are tinted, in their result's colour (as Results): those unlike the first result that
+            // has it; the first's own, instead, when Status names it (the Baseline the odd one out, DIFF BL)
+            const shownAs = (f, i, k) => JSON.stringify(k === undefined ? f.values[i].map(text) : text(f.values[i][k]));
+            const tinted = (f, i, k) => {
+                if (!marked(f)) return false;
+                const has = j => !(f.absent && f.absent[j]) && f.values[j] && f.values[j].length > (k || 0);
+                const base = m.places.findIndex((_, j) => has(j));
+                if (base < 0 || !has(i)) return false;
+                const odd = !!(m.status && m.status.diff.includes(m.places[base]));
+                if (i === base) return odd && m.places.some((_, j) => j !== base && has(j) && shownAs(f, j, k) !== shownAs(f, base, k));
+                return !odd && shownAs(f, i, k) !== shownAs(f, base, k);
+            };
+            // null, blank and not in this view told apart (#21): each its own grey word; a value as it is
+            const valueNode = v => {
+                if (v === null || v === undefined) return el('span', 'compare-record-none', 'null');
+                const t = text(v);
+                return t === '' ? el('span', 'compare-record-none', 'blank') : document.createTextNode(t);
+            };
+            // Each place's heading (#19): its run, its environment, its header values, when it ran (a file: its name)
+            const head = (p, i) => {
+                const th = el('th', `compare-sub compare-record-head ${tone(p)}`);
+                th.appendChild(el('strong', '', p));
+                const h = (m.heads && m.heads[i]) || {};
+                const header = (((ui.sources || []).find(r => r.id === h.execution) || {}).header || []).map(x => String(x.value));
+                const said = (h.file ? [h.file] : [h.environment, ...header]).filter(Boolean);
+                if (h.executedAt) said.push(ctx.day(h.executedAt));
+                if (said.length) th.appendChild(el('span', 'compare-record-head-line', said.join(' · ')));
+                return th;
+            };
             const asTable = () => {
                 const table = el('table', 'data-table');
-                const head = el('tr');
-                head.appendChild(el('th', '', 'Column'));
-                m.places.forEach(p => { const th = el('th', `compare-sub compare-record-head ${tone(p)}`); th.appendChild(el('strong', '', p)); head.appendChild(th); });
+                const row = el('tr');
+                row.appendChild(el('th', '', 'Column'));
+                m.places.forEach((p, i) => row.appendChild(head(p, i)));
                 const thead = el('thead');
-                thead.appendChild(head);
+                thead.appendChild(row);
                 const body = el('tbody');
                 m.fields.forEach(f => {
                     const tr = el('tr');
                     tr.appendChild(el('td', 'font-mono', f.name));
-                    f.values.forEach(values => {
-                        const td = el('td', f.differs ? 'highlight-cell font-mono' : 'font-mono');
-                        if (!values.length) td.appendChild(el('span', 'color-description', 'no row'));
-                        values.forEach((v, i) => { if (i) td.appendChild(el('br')); td.appendChild(document.createTextNode(text(v))); });
+                    f.values.forEach((values, i) => {
+                        const td = el('td', tinted(f, i) ? `compare-differs ${tone(m.places[i])} font-mono` : 'font-mono');
+                        if (f.absent && f.absent[i]) td.appendChild(el('span', 'compare-record-none', 'not in this view'));
+                        else if (!values.length) td.appendChild(el('span', 'compare-record-none', 'no record'));
+                        else values.forEach((v, k) => { if (k) td.appendChild(el('br')); td.appendChild(valueNode(v)); });
                         tr.appendChild(td);
                     });
                     body.appendChild(tr);
@@ -363,29 +398,86 @@
                 table.append(thead, body);
                 return table;
             };
+            /**
+             * JSON (#3): each record as its system sent it, as far as its view's columns hold it: the fields nested by their
+             * paths ("address.city" inside "address"), one line a field, lined up across the results so a line holds the
+             * same field in each; a line that differs tinted. A file's row is its columns, flat. Several records for one
+             * key: each in turn ("Record 2").
+             */
             const asJson = () => {
-                const table = el('table', 'data-table');
-                const head = el('tr');
-                m.places.forEach(p => { const th = el('th', `compare-sub compare-record-head ${tone(p)}`); th.appendChild(el('strong', '', p)); head.appendChild(th); });
-                const thead = el('thead');
-                thead.appendChild(head);
-                const tr = el('tr');
-                m.places.forEach((_, i) => {
-                    const record = {};
-                    m.fields.forEach(f => { if (f.values[i] && f.values[i].length) record[f.name] = f.values[i][0]; });
-                    tr.appendChild(el('td', 'compare-json-line font-mono', Object.keys(record).length ? JSON.stringify(record, null, 2) : 'no record'));
+                const paths = m.fields.map(f => ({ f, parts: f.name.split('.') }));
+                // The lines: an object's opening before its first field, its closing after its last
+                const lines = [];
+                let open = [];
+                paths.forEach(({ f, parts }) => {
+                    const branch = parts.slice(0, -1);
+                    let same = 0;
+                    while (same < open.length && same < branch.length && open[same] === branch[same]) same++;
+                    for (let d = open.length - 1; d >= same; d--) lines.push({ close: true, depth: d, path: open.slice(0, d + 1) });
+                    for (let d = same; d < branch.length; d++) lines.push({ open: branch[d], depth: d, path: branch.slice(0, d + 1) });
+                    open = branch;
+                    lines.push({ f, key: parts[parts.length - 1], depth: branch.length });
                 });
+                for (let d = open.length - 1; d >= 0; d--) lines.push({ close: true, depth: d, path: open.slice(0, d + 1) });
+                const most = Math.max(1, ...m.fields.map(f => Math.max(0, ...f.values.map(v => v.length))));
+                const table = el('table', 'data-table compare-json');
+                const row = el('tr');
+                m.places.forEach((p, i) => row.appendChild(head(p, i)));
+                const thead = el('thead');
+                thead.appendChild(row);
                 const body = el('tbody');
-                body.appendChild(tr);
+                const has = (i, k, path) => m.fields.some(f => f.name.startsWith(path.join('.') + '.') && !(f.absent && f.absent[i]) && f.values[i] && f.values[i].length > k);
+                // A line in a result's record: a field it has, an object holding one it has
+                const present = (line, i, k) => (line.f ? !(line.f.absent && line.f.absent[i]) && line.f.values[i] && line.f.values[i].length > k : has(i, k, line.path));
+                // Its comma: when a later field (or object) of the same object follows in that record
+                const comma = (at, i, k) => {
+                    const d = lines[at].depth;
+                    for (let j = at + 1; j < lines.length; j++) {
+                        const x = lines[j];
+                        if (x.depth < d) return '';
+                        if (x.depth === d && !x.close && present(x, i, k)) return ',';
+                    }
+                    return '';
+                };
+                for (let k = 0; k < most; k++) {
+                    if (most > 1) { const tr = el('tr', 'compare-json-record'); const td = el('td', 'color-description', `Record ${k + 1}`); td.colSpan = m.places.length; tr.appendChild(td); body.appendChild(tr); }
+                    const brace = el('tr');
+                    m.places.forEach((_, i) => brace.appendChild(el('td', 'compare-json-line font-mono', m.fields.some(f => f.values[i] && f.values[i].length > k) ? '{' : '')));
+                    body.appendChild(brace);
+                    lines.forEach((line, at) => {
+                        const tr = el('tr');
+                        const pad = '  '.repeat(line.depth + 1);
+                        m.places.forEach((_, i) => {
+                            const td = el('td', 'compare-json-line font-mono');
+                            if (line.f) {
+                                const f = line.f;
+                                const here = !(f.absent && f.absent[i]) && f.values[i] && f.values[i].length > k;
+                                if (here) {
+                                    const v = f.values[i][k];
+                                    td.append(document.createTextNode(`${pad}${JSON.stringify(line.key)}: `));
+                                    td.appendChild(v === null || v === undefined ? el('span', 'compare-record-none', 'null') : document.createTextNode(JSON.stringify(v)));
+                                    td.appendChild(document.createTextNode(comma(at, i, k)));
+                                    if (tinted(f, i, k)) td.classList.add('compare-differs', ...tone(m.places[i]).split(' ').filter(Boolean));
+                                }
+                            } else if (has(i, k, line.path)) td.textContent = line.open !== undefined ? `${pad}${JSON.stringify(line.open)}: {` : `${pad}}${comma(at, i, k)}`;
+                            tr.appendChild(td);
+                        });
+                        body.appendChild(tr);
+                    });
+                    const shut = el('tr');
+                    m.places.forEach((_, i) => shut.appendChild(el('td', 'compare-json-line font-mono', m.fields.some(f => f.values[i] && f.values[i].length > k) ? '}' : (k ? '' : 'no record'))));
+                    body.appendChild(shut);
+                }
                 table.append(thead, body);
                 return table;
             };
             const show = view => {
                 ui.recordView = view;
                 toggle.querySelectorAll('button').forEach(b => { b.classList.toggle('active', b.dataset.view === view); b.setAttribute('aria-pressed', String(b.dataset.view === view)); });
+                marks.querySelectorAll('button').forEach(b => { const on = b.dataset.marks === (ui.recordMarks || 'compared'); b.classList.toggle('active', on); b.setAttribute('aria-pressed', String(on)); });
                 box.replaceChildren(view === 'json' ? asJson() : asTable());
             };
-            [['table', 'Table', 'The View’s columns'], ['json', 'JSON', 'Each record as one']].forEach(([view, label, title]) => {
+            [['table', 'Table', 'The View’s columns'], ['json', 'JSON', 'Each record as its system sent it, lined up']].forEach(([view, label, title]) => {
                 const b = el('button', 'toggle-btn', label);
                 b.type = 'button';
                 b.title = title;
@@ -393,8 +485,21 @@
                 b.addEventListener('click', () => show(view));
                 toggle.appendChild(b);
             });
+            // (only where some field is compared: otherwise every difference is marked)
+            if (m.fields.some(f => f.compared)) {
+                [['compared', 'Compared columns', 'Mark the differences in the compared columns'], ['all', 'All fields', 'Mark every field that differs']].forEach(([key, label, title]) => {
+                    const b = el('button', 'toggle-btn', label);
+                    b.type = 'button';
+                    b.title = title;
+                    b.dataset.marks = key;
+                    b.addEventListener('click', () => { ui.recordMarks = key; show(ui.recordView || 'table'); });
+                    marks.appendChild(b);
+                });
+            }
             const bar = el('div', 'compare-record-bar');
             bar.appendChild(toggle);
+            if (marks.childNodes.length) bar.appendChild(marks);
+            if (m.more) bar.appendChild(el('span', 'color-description', `The first ${ctx.count(m.more)} records of each result`));
             wrap.append(bar, box);
             show(ui.recordView || 'table');
             // (the whole key from the host, every part of it; else the first field's value, as before)

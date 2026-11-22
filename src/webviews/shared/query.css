@@ -310,6 +310,8 @@
 /* On the grid (dbmn-lanes): Query's pieces read one colour, --compare-c, from the grid's colour
    classes (dbmn-view-N, dbmn-run-N): slots, chips, group headings, Status tags */
 .query-page [class*="dbmn-view-"], .query-page [class*="dbmn-run-"] { --compare-c: var(--lanes-c); }
+/* (the record window is a dialog outside the page: its results' colours the same) */
+.compare-record [class*="dbmn-view-"], .compare-record [class*="dbmn-run-"] { --compare-c: var(--lanes-c); }
 /* The top: the slots' row, as wide as the step's lines under it */
 .query-page .query-top { flex: 1 1 100%; min-width: 0; }
 .query-page .query-slots { align-items: end; }
@@ -418,3 +420,9 @@ dbmn-table.is-reading .dbmn-table-none { visibility: hidden; }
 
 /* Duplicate: the Join step's duplicates dialog marks a key's later records with it (never on Results) */
 .status-pill-generic.compare-duplicate { color: var(--dbmn-charts-pink, #e07bb5); background: color-mix(in srgb, var(--dbmn-charts-pink, #e07bb5) 16%, transparent); border: 1px solid color-mix(in srgb, var(--dbmn-charts-pink, #e07bb5) 45%, transparent); }
+
+/* The record window: null, blank and not in this view told apart; each result's heading line; JSON lined up */
+.compare-record-none { color: var(--vscode-descriptionForeground); font-style: italic; }
+.compare-record-head-line { display: block; font-weight: normal; font-size: 0.85em; color: var(--vscode-descriptionForeground); white-space: nowrap; }
+.compare-json .compare-json-line { white-space: pre; padding-top: 0; padding-bottom: 0; }
+.compare-json .compare-json-record td { padding-top: 8px; }

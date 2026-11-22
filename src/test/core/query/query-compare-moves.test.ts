@@ -183,6 +183,11 @@ describe('Query: a compare on a key of two columns (new engine)', function () {
         assert.deepStrictEqual(field('loc').values, [['L2'], ['L2']]);
         assert.deepStrictEqual(field('qty').values, [[2], [99]]);
         assert.strictEqual(field('qty').differs, true);
+        // The record window's own (#5, #19, #21): which fields are compared (marked by default), each result's heading,
+        // a field every view has is never "not in this view"
+        assert.deepStrictEqual(detail.fields.map(f => [f.name, (f as unknown as { compared: boolean }).compared]), [['sku', false], ['loc', false], ['qty', true]]);
+        assert.deepStrictEqual((detail as unknown as { heads: { file: string; executedAt: string }[] }).heads.map(h => h.file), ['stock.xlsx', 'stock.xlsx']);
+        assert.deepStrictEqual(detail.fields.map(f => (f as unknown as { absent: boolean[] }).absent), [[false, false], [false, false], [false, false]]);
         controller.dispose();
     });
 });
