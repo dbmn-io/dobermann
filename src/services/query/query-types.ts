@@ -14,8 +14,6 @@ import type { ColumnFn } from '../column-functions/column-functions';
 export interface QueryView {
     id: string;
     name: string;
-    /** Its letter: the SQL's alias for it (FROM stock AS d ... d.sku). Without one the SQL uses the table's name. */
-    alias?: string;
     columns: string[];
     /** Its columns with no value in any row: left out of the columns shown until they are picked. */
     empty?: string[];

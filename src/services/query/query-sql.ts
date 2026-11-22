@@ -59,21 +59,19 @@ export function tableNames(views: QueryView[]): Map<string, string> {
 
 /**
  * What the SQL calls each view: its name as it is written when that is the table's own name but
- * for its capitals (Products.sku), else the table's name. A view given a letter goes by it (d.sku).
+ * for its capitals (Products.sku), else the table's name.
  */
 export function refNames(views: QueryView[]): Map<string, string> {
     const tables = tableNames(views);
     return new Map(views.map(v => {
         const table = tables.get(v.id) ?? '';
-        if (v.alias) return [v.id, v.alias.toLowerCase()];
         return [v.id, v.name.toLowerCase() === table ? v.name : table];
     }));
 }
 
-/** A view's table as FROM and JOIN write it: `Products`, or `stock AS d` when it has a letter. */
+/** A view's table as FROM and JOIN write it: `Products`. */
 export function tableSql(view: QueryView, tables: Map<string, string>): string {
     const table = tables.get(view.id) ?? '';
-    if (view.alias) return `${quoteName(table)} AS ${view.alias.toLowerCase()}`;
     return quoteName(view.name.toLowerCase() === table ? view.name : table);
 }
 

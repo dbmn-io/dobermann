@@ -22,8 +22,6 @@ export interface QuerySource {
     id: string;
     /** Its name, on its slot and in the SQL (Products.sku) and the search (@Products.sku): short, no spaces (cleanViewName). */
     name: string;
-    /** The letter it went by before views had one name (see nameViews). */
-    alias?: string;
     endpointId: string;
     endpointName: string;
     /** Its request ("GET /path") and its System's name, as they were when it was added. */
@@ -93,12 +91,6 @@ export interface SavedQuery {
     specialOff?: boolean;
     /** A compare's DIFF and Missing rows when Results last counted them all (the Hub list's line, #11). */
     found?: { diff: number; missing: number };
-    /** 'unticked': columns picked before a shared name was left unticked have had theirs unticked, once (untickClashes). */
-    clashes?: 'unticked';
-    /** 'unticked': columns picked before an empty column was left unticked have had theirs unticked, once (untickBlanks). */
-    blanks?: 'unticked';
-    /** 'names': each view has one short name, which the SQL uses (see nameViews). */
-    letters?: 'abc' | 'names';
     /**
      * The furthest step reached while the query was being built (1 Views … 4 Results). A new query's
      * steps open one at a time; once it has reached Results they are all open. Absent: a query made
@@ -206,70 +198,8 @@ export function renameView(query: SavedQuery, id: string, name: string): string 
     if (problem) return problem;
     const was = source.name;
     source.name = name;
-    delete source.alias;
     rewrite(query, text => renamed(text, was, name));
     return '';
-}
-
-/**
- * Views first went by a letter (stock AS a ... a.sku) beside a longer name. Now a view has one
- * short name and the SQL uses it. A query saved before is given names from what its views were
- * called, and its calculated columns, own SQL and search follow. True when it changed.
- */
-export function nameViews(query: SavedQuery): boolean {
-    if (query.letters === 'names') return false;
-    query.letters = 'names';
-    const moves: { letter: string; table: string; name: string }[] = [];
-    const taken: string[] = [];
-    for (const source of query.sources) {
-        const name = guessViewName(source.name, taken);
-        taken.push(name);
-        moves.push({ letter: source.alias ?? '', table: source.name.trim().toLowerCase().replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, ''), name });
-        source.name = name;
-        delete source.alias;
-    }
-    rewrite(query, text => {
-        let out = text;
-        // "stock AS a" becomes the name alone; then a letter before a column, then the table's old name
-        for (const m of moves) if (m.table && m.letter) out = out.replace(new RegExp(`\\b${escaped(m.table)}\\s+AS\\s+${escaped(m.letter)}\\b`, 'gi'), `\u0000${m.name}\u0000`);
-        for (const m of moves) if (m.letter) out = out.replace(new RegExp(`\\b${escaped(m.letter)}(?=\\.(?=["\\w]))`, 'gi'), `\u0000${m.name}\u0000`);
-        return out.replace(/\u0000/g, '');
-    });
-    return true;
-}
-
-/**
- * A column whose name an earlier view has is left unticked, for the user to tick. A query whose
- * columns were picked before that still shows both: once, the later view's is unticked.
- * `columns`: each view's column names. True when the query changed.
- */
-export function untickClashes(query: SavedQuery, columns: (viewId: string) => string[]): boolean {
-    if (query.clashes === 'unticked') return false;
-    query.clashes = 'unticked';
-    if (!query.select?.length) return true;
-    const earlier = new Map<string, Set<string>>();
-    const seen = new Set<string>();
-    for (const source of query.sources) {
-        earlier.set(source.id, new Set(seen));
-        columns(source.id).forEach(name => seen.add(name));
-    }
-    query.select = query.select.filter(c => !earlier.get(c.view)?.has(c.column));
-    return true;
-}
-
-/**
- * A column with no value in any row is left unticked, for the user to tick. A query whose
- * columns were picked before that still shows them: once, they are unticked.
- * `empty`: each view's columns with no value. True when the query changed.
- */
-export function untickBlanks(query: SavedQuery, empty: (viewId: string) => string[]): boolean {
-    if (query.blanks === 'unticked') return false;
-    query.blanks = 'unticked';
-    if (!query.select?.length) return true;
-    const kept = query.select.filter(c => !empty(c.view).includes(c.column));
-    // Never down to nothing: a query shows at least what it showed
-    if (kept.length) query.select = kept;
-    return true;
 }
 
 /** Make a view the first: the one FROM reads, whose rows a LEFT JOIN keeps. */
@@ -277,8 +207,7 @@ export function untickBlanks(query: SavedQuery, empty: (viewId: string) => strin
  * A saved query made whole as it opens, so no shape it can be saved in leaves it stuck (2026-11-22: a support case is a
  * query the user can't edit their way out of). Every view after the first has exactly one join, in the views' order (a
  * join missing is made, empty: "Pick a column"; one for the first view, for a view no longer there, or said twice, goes);
- * a pair naming a view no longer there goes (the join asks for its columns again); a join written the old way (left /
- * right as one column) is read; a run of a view no longer there is a view of its own; the report's columns of a view
+ * a pair naming a view no longer there goes (the join asks for its columns again); a run of a view no longer there is a view of its own; the report's columns of a view
  * no longer there go; a compare's views come first (compareLeads). True when anything changed.
  */
 export function repairQuery(query: SavedQuery): boolean {
@@ -295,12 +224,10 @@ export function repairQuery(query: SavedQuery): boolean {
         const head = s.runOf ? query.sources.find(h => h.id === s.runOf) : undefined;
         if (head?.runOf) s.runOf = head.runOf;
     }
-    // A key side as it is saved now, from the old way (one column) when it is that
-    type OldSide = { view?: string; column?: string; fns?: QueryKey['fns'] };
+    // A key side's parts, each naming a view
     const side = (k: unknown): QueryKey => {
-        const key = (k ?? {}) as QueryKey & OldSide;
-        if (Array.isArray(key.parts)) return { ...key, parts: key.parts.filter(p => p && typeof p.view === 'string') };
-        return { parts: key.view ? [{ view: key.view, column: key.column ?? '', ...(key.fns?.length ? { fns: key.fns } : {}) }] : [] };
+        const key = (k ?? {}) as QueryKey;
+        return { ...key, parts: (Array.isArray(key.parts) ? key.parts : []).filter(p => p && typeof p.view === 'string') };
     };
     const first = query.sources[0]?.id;
     const joins = new Map<string, QueryJoin>();
@@ -519,7 +446,7 @@ export function newSourceId(): string {
 export async function createQuery(state: QueryState): Promise<SavedQuery> {
     const name = freeReportName(state, 'New query');
     const now = new Date().toISOString();
-    const query: SavedQuery = { id: newId(ID_PREFIX), name, sources: [], joins: [], letters: 'names', reached: 1, createdAt: now, updatedAt: now };
+    const query: SavedQuery = { id: newId(ID_PREFIX), name, sources: [], joins: [], reached: 1, createdAt: now, updatedAt: now };
     await saveQuery(state, query);
     return query;
 }
@@ -534,10 +461,10 @@ export interface QueryCopy { kind: 'dbmn.query'; version: 1; copiedAt: string; q
  */
 export function queryForSupport(query: SavedQuery): QueryCopy {
     const keep = <T extends object>(o: T, keys: (keyof T)[]): Partial<T> => Object.fromEntries(keys.filter(k => o[k] !== undefined).map(k => [k, o[k]])) as Partial<T>;
-    const sources = query.sources.map(s => keep(s, ['id', 'name', 'alias', 'endpointId', 'endpointName', 'request', 'system', 'view', 'executionId', 'isBatch', 'environment', 'executedAt', 'file', 'off', 'runOf', 'run']) as QuerySource);
+    const sources = query.sources.map(s => keep(s, ['id', 'name', 'endpointId', 'endpointName', 'request', 'system', 'view', 'executionId', 'isBatch', 'environment', 'executedAt', 'file', 'off', 'runOf', 'run']) as QuerySource);
     return {
         kind: 'dbmn.query', version: 1, copiedAt: new Date().toISOString(),
-        query: { ...keep(query, ['name', 'joins', 'select', 'distinct', 'calc', 'sql', 'search', 'sort', 'totals', 'widths', 'letters', 'clashes', 'blanks', 'createdAt', 'updatedAt']), sources }
+        query: { ...keep(query, ['name', 'joins', 'select', 'distinct', 'calc', 'sql', 'search', 'sort', 'totals', 'widths', 'createdAt', 'updatedAt']), sources }
     };
 }
 

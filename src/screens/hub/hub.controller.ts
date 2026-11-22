@@ -1218,17 +1218,13 @@ export class HubController {
 
     // ─── Lookup tables (src/services/lookup-tables): kept with the saved queries ───
 
-    /** Lookup tables: one file each in the data folder (tables kept in the state store before move across, once). */
+    /** Lookup tables: one file each in the workspace's Lookup Tables folder. */
     private async lookups(): Promise<LookupTablesStore | undefined> {
         const compares = this.ports.compares;
         if (!compares) return undefined;
         if (!compares.lookups) return new LookupTablesStore(compares.state());
-        const store = new LookupTablesStore(compares.lookups);
-        if (!this.lookupsMoved) this.lookupsMoved = store.migrateFrom(compares.state()).catch(() => 0);
-        await this.lookupsMoved;
-        return store;
+        return new LookupTablesStore(compares.lookups);
     }
-    private lookupsMoved: Promise<number> | null = null;
 
     /** A lookup table's tab: one per table, its name its title. Gone since: said so. */
     async openLookupTab(id: string): Promise<void> {

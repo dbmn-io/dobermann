@@ -26,7 +26,7 @@ function savedCompare(): SavedQuery {
     const src = (id: string, i: number) => ({ id, name: ['Stock', 'Stock_C1', 'Stock_C2', 'Stock_C3'][i], endpointId: '', endpointName: 'stock.xlsx', view: '', executionId: '', isBatch: false, environment: '', executedAt: '2026-11-22T00:00:00Z', file: { name: 'stock.xlsx', sheet: id } });
     const ids = ['vBL', 'vC1', 'vC2', 'vC3'];
     return {
-        id: 'qry-moves', name: 'Stock compare', sources: ids.map(src), letters: 'names', reached: 4, createdAt: '2026-11-22T00:00:00Z', updatedAt: '2026-11-22T00:00:00Z',
+        id: 'qry-moves', name: 'Stock compare', sources: ids.map(src), reached: 4, createdAt: '2026-11-22T00:00:00Z', updatedAt: '2026-11-22T00:00:00Z',
         joins: ids.slice(1).map(id => ({ view: id, kind: 'compare' as const, on: [{ left: { parts: [{ view: 'vBL', column: 'sku' }] }, right: { parts: [{ view: id, column: 'sku' }] } }] }))
     } as SavedQuery;
 }
@@ -183,7 +183,7 @@ describe('Query: a compare on a key of two columns (new engine)', function () {
 
     async function twoKey(shared?: Map<string, unknown>) {
         const query = {
-            id: 'qry-two', name: 'Two keys', letters: 'names', reached: 4, clashes: 'unticked', blanks: 'unticked', createdAt: '2026-11-22T00:00:00Z', updatedAt: '2026-11-22T00:00:00Z',
+            id: 'qry-two', name: 'Two keys', reached: 4, createdAt: '2026-11-22T00:00:00Z', updatedAt: '2026-11-22T00:00:00Z',
             sources: ['vBL', 'vC1'].map((id, i) => ({ id, name: ['Stock', 'Stock_C1'][i], endpointId: '', endpointName: 'stock.xlsx', view: '', executionId: '', isBatch: false, environment: '', executedAt: '2026-11-22T00:00:00Z', file: { name: 'stock.xlsx', sheet: id } })),
             joins: [{ view: 'vC1', kind: 'compare', on: ['sku', 'loc'].map(c => ({ left: { parts: [{ view: 'vBL', column: c }] }, right: { parts: [{ view: 'vC1', column: c }] } })) }],
             select: [{ view: 'vBL', column: 'qty', group: 'qty' }, { view: 'vC1', column: 'qty', group: 'qty' }]
@@ -263,7 +263,7 @@ describe('Query: a compare\'s views lead (compareLeads)', function () {
         const { compareLeads } = await import('../../../services/query/query-store');
         const src = (id: string, extra: Record<string, unknown> = {}) => ({ id, name: id, endpointId: 'e', endpointName: 'e', view: 'v', executionId: id, isBatch: true, environment: '', executedAt: '', ...extra });
         const q = {
-            id: 'q', name: 'q', letters: 'names', createdAt: '', updatedAt: '',
+            id: 'q', name: 'q', createdAt: '', updatedAt: '',
             sources: [src('vX'), src('vBL'), src('vC1', { runOf: 'vBL', run: 'C1' })],
             joins: [
                 { view: 'vBL', kind: 'left' as const, on: [{ left: { parts: [{ view: 'vX', column: 'sku' }] }, right: { parts: [{ view: 'vBL', column: 'code' }] } }] },

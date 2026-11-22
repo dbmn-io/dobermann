@@ -11,7 +11,7 @@ import { QuerySession, QueryRowData } from '../../../services/query/query-engine
 import { defaultColumns, joinKeyColumns, quoteName, tableNames, writeSql } from '../../../services/query/query-sql';
 import { readFileRows } from '../../../services/query/query-file';
 import * as XLSX from 'xlsx';
-import { cleanViewName, guessViewName, moveView, moveViewFirst, nameViews, QuerySource, renameView, SavedQuery, untickBlanks, untickClashes, viewNameProblem } from '../../../services/query/query-store';
+import { cleanViewName, guessViewName, moveView, moveViewFirst, QuerySource, renameView, SavedQuery, viewNameProblem } from '../../../services/query/query-store';
 import type { QueryKey, QuerySpec } from '../../../services/query/query-types';
 import { SQL_WASM_PATH } from '../fixtures/temp-storage';
 
@@ -315,40 +315,14 @@ describe('Query', () => {
             session.close();
         });
     });
-    describe('view letters', () => {
-        // Letters the engine's own names once used (r, n), to show they cannot clash
-        const LETTERS: Record<string, string> = { inv: 'R', itm: 'N', sup: 'D', loc: 'B' };
-        const LETTERED: QuerySpec = { ...STOCK, views: STOCK.views.map(v => ({ ...v, alias: LETTERS[v.id] })) };
-
-        it('the SQL names each table once and then goes by its letter', () => {
-            assert.strictEqual(writeSql(LETTERED), [
-                'SELECT r.sku, n.description, r.quantityOnHand, d.name, b.zone',
-                'FROM inventory AS r',
-                '  LEFT JOIN items AS n     ON n.sku = r.sku',
-                '  LEFT JOIN suppliers AS d ON d.id = n.supplierId',
-                '  JOIN locations AS b      ON b.id = r.locationId',
-                '                           AND b.facilityId = r.facilityId'
-            ].join('\n'));
-        });
-
-        it('makes the same rows and the same join counts as the query without letters', async () => {
-            const plain = await open(STOCK, DATA);
-            const lettered = await open(LETTERED, DATA);
-            assert.deepStrictEqual(lettered.rows().rows, plain.rows().rows);
-            STOCK.joins.forEach((_, i) => assert.deepStrictEqual(lettered.joinStats(i), plain.joinStats(i)));
-            plain.close();
-            lettered.close();
-        });
-
-        it('a calculated column is its expression AS its name, last unless placed', async () => {
-            const spec: QuerySpec = { ...LETTERED, select: [], calc: [{ name: 'double qty', expr: 'r.quantityOnHand * 2' }] };
-            assert.ok(writeSql(spec).split('\nFROM')[0].endsWith('(r.quantityOnHand * 2) AS "double qty"'));
-            const placed: QuerySpec = { ...spec, select: [{ view: '', column: 'double qty' }, { view: 'inv', column: 'sku' }] };
-            assert.strictEqual(writeSql(placed).split('\n')[0], 'SELECT (r.quantityOnHand * 2) AS "double qty", r.sku');
-            const session = await open(placed, DATA);
-            assert.deepStrictEqual(session.rows().rows[0], [240, 'WOOF-001']);
-            session.close();
-        });
+    it('a calculated column is its expression AS its name, last unless placed', async () => {
+        const spec: QuerySpec = { ...STOCK, select: [], calc: [{ name: 'double qty', expr: 'inventory.quantityOnHand * 2' }] };
+        assert.ok(writeSql(spec).split('\nFROM')[0].endsWith('(inventory.quantityOnHand * 2) AS "double qty"'));
+        const placed: QuerySpec = { ...spec, select: [{ view: '', column: 'double qty' }, { view: 'inv', column: 'sku' }] };
+        assert.strictEqual(writeSql(placed).split('\n')[0], 'SELECT (inventory.quantityOnHand * 2) AS "double qty", inventory.sku');
+        const session = await open(placed, DATA);
+        assert.deepStrictEqual(session.rows().rows[0], [240, 'WOOF-001']);
+        session.close();
     });
     describe('a view has one short name, which the SQL uses', () => {
         it('the SQL writes the name as it is typed: FROM, JOIN and before each column', () => {
@@ -387,7 +361,7 @@ describe('Query', () => {
 
         it('renamed, its calculated columns, own SQL and search follow', () => {
             const query = {
-                id: 'q-1', name: 'q', joins: [], createdAt: '', updatedAt: '', letters: 'names',
+                id: 'q-1', name: 'q', joins: [], createdAt: '', updatedAt: '',
                 sources: [{ id: 'v1', name: 'Stock' }, { id: 'v2', name: 'Products' }] as QuerySource[],
                 calc: [{ name: 'short', expr: 'Stock.onHand - Products.reorderPoint' }],
                 sql: 'SELECT Stock.sku, Products."name" FROM Stock JOIN Products ON Products.sku = Stock.sku WHERE Stock.stockStatus = 1',
@@ -403,54 +377,15 @@ describe('Query', () => {
             assert.strictEqual(query.sources[0].name, 'Low');
         });
 
-        it('a query saved with letters is given names, in its SQL, calculated columns and search too', () => {
-            const query = {
-                id: 'q-1', name: 'q', joins: [], createdAt: '', updatedAt: '', letters: 'abc',
-                sources: [{ id: 'v1', name: 'Get Stock', alias: 'A' }, { id: 'v2', name: 'Items', alias: 'B' }, { id: 'v3', name: 'Bins', alias: 'C' }] as QuerySource[],
-                calc: [{ name: 'short', expr: 'a.onHand - b.reorderPoint' }],
-                sql: 'SELECT a.sku, b."name", c.bin FROM get_stock AS a JOIN items AS b ON b.sku = a.sku LEFT JOIN bins AS c ON c.sku = a.sku',
-                search: '@c.bin=A1'
-            } as SavedQuery;
-            assert.strictEqual(nameViews(query), true);
-            assert.deepStrictEqual(query.sources.map(s => [s.name, s.alias]), [['Stock', undefined], ['Items', undefined], ['Bins', undefined]]);
-            assert.strictEqual(query.calc?.[0].expr, 'Stock.onHand - Items.reorderPoint');
-            assert.strictEqual(query.sql, 'SELECT Stock.sku, Items."name", Bins.bin FROM Stock JOIN Items ON Items.sku = Stock.sku LEFT JOIN Bins ON Bins.sku = Stock.sku');
-            assert.strictEqual(query.search, '@Bins.bin=A1');
-            assert.strictEqual(nameViews(query), false);
-        });
     });
-    it('columns picked before a shared name was left unticked have the later view\'s unticked, once', () => {
-        const query = {
-            id: 'q-1', name: 'q', joins: [], createdAt: '', updatedAt: '',
-            sources: [{ id: 'a', name: 'Stock' }, { id: 'b', name: 'Products' }] as QuerySource[],
-            select: [{ view: 'a', column: 'sku' }, { view: 'b', column: 'sku' }, { view: 'b', column: 'price' }, { view: '', column: 'spare' }]
-        } as SavedQuery;
-        const columns = (id: string) => (id === 'a' ? ['sku', 'qty'] : ['sku', 'price']);
-        assert.strictEqual(untickClashes(query, columns), true);
-        assert.deepStrictEqual(query.select, [{ view: 'a', column: 'sku' }, { view: 'b', column: 'price' }, { view: '', column: 'spare' }]);
-        // Ticked again by the user, it stays
-        query.select!.push({ view: 'b', column: 'sku' });
-        assert.strictEqual(untickClashes(query, columns), false);
-        assert.strictEqual(query.select!.length, 4);
-    });
-    it('a column with no value in any row is left out until it is picked; picked before, it is unticked once', () => {
+    it('a column with no value in any row is left out of the default columns until it is picked', () => {
         const spec: QuerySpec = { views: [{ id: 'a', name: 'a', columns: ['sku', 'note', 'qty'], empty: ['note'] }], joins: [], select: [] };
         assert.deepStrictEqual(defaultColumns(spec).map(c => c.column), ['sku', 'qty']);
-        const query = {
-            id: 'q-1', name: 'q', joins: [], createdAt: '', updatedAt: '', sources: [{ id: 'a', name: 'a' }] as QuerySource[],
-            select: [{ view: 'a', column: 'sku' }, { view: 'a', column: 'note' }]
-        } as SavedQuery;
-        const empty = () => ['note'];
-        assert.strictEqual(untickBlanks(query, empty), true);
-        assert.deepStrictEqual(query.select, [{ view: 'a', column: 'sku' }]);
-        query.select!.push({ view: 'a', column: 'note' });
-        assert.strictEqual(untickBlanks(query, empty), false);
-        assert.strictEqual(query.select!.length, 2);
     });
     describe('Move to first', () => {
         const pair = (a: string, ac: string, b: string, bc: string) => ({ left: col(a, ac), right: col(b, bc) });
         const saved = (): SavedQuery => ({
-            id: 'q-1', name: 'q', createdAt: '', updatedAt: '', letters: 'names',
+            id: 'q-1', name: 'q', createdAt: '', updatedAt: '',
             sources: [{ id: 'stock', name: 'Stock' }, { id: 'prod', name: 'Products' }, { id: 'loc', name: 'Locations' }, { id: 'asn', name: 'ASNs' }] as QuerySource[],
             joins: [
                 { view: 'prod', kind: 'inner', on: [pair('stock', 'gtin', 'prod', 'gtin')] },

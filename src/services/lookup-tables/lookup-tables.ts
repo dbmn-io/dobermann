@@ -14,8 +14,7 @@
  * the id inside its file, so the file's name is only for people; renaming the table renames it.
  * An edit rewrites that table's file only. Small: up to 1,000 rows ("it's just a translation table").
  *
- * (Tables made before that were kept in the app's small state store, key `lookupTables`:
- * migrateFrom(state) moves them into files once. Tests may still give the store a state.)
+ * (A host with no folder, and the tests, may give the store its state store instead.)
  *
  * A column has an id that never changes (a rename keeps it), so a saved query's
  * { table, from, to } keeps working when a column is renamed.
@@ -220,26 +219,6 @@ export class LookupTablesStore implements LookupTablesReader {
         }
         const folder = await this.folder();
         for (const { file, table } of this.entries(folder)) if (table.id === id) fs.rmSync(path.join(folder, file), { force: true });
-    }
-
-    /**
-     * Tables kept in the state store before they had files of their own: written to files (one
-     * not already there), then gone from the state. Returns how many were moved.
-     */
-    async migrateFrom(state: Pick<IKeyValueStore, 'get' | 'update'>): Promise<number> {
-        if (!isFolder(this.backing)) return 0;
-        const kept = state.get<unknown>(LOOKUP_TABLES_KEY);
-        if (!Array.isArray(kept) || !kept.length) return 0;
-        const have = new Set((await this.readAll()).map(t => t.id));
-        let moved = 0;
-        for (const raw of kept) {
-            const table = clean(raw);
-            if (!table || have.has(table.id)) continue;
-            await this.writeOne(table);
-            moved++;
-        }
-        await state.update(LOOKUP_TABLES_KEY, undefined);
-        return moved;
     }
 
     private tell(change: LookupChange): void {

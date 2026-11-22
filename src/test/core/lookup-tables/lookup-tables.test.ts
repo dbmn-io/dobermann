@@ -142,21 +142,6 @@ describe('Lookup tables: one JSON file each (James, 2026-11-21)', () => {
         fs.rmSync(dir, { recursive: true, force: true });
     });
 
-    it('tables kept in the state store before move into files once, and leave the state', async () => {
-        const { dir, folder } = folderFor();
-        const state = new MemoryKeyValueStore();
-        const old = new LookupTablesStore(state);
-        const a = await old.create('Units');
-        await old.save({ ...a, rows: [{ c1: 'EA', c2: 'each' }] });
-        await old.create('Sites');
-        const store = new LookupTablesStore(folder);
-        assert.strictEqual(await store.migrateFrom(state), 2);
-        assert.strictEqual(state.get(LOOKUP_TABLES_KEY), undefined);
-        assert.deepStrictEqual((await store.get(a.id))?.rows, [{ c1: 'EA', c2: 'each' }]);
-        assert.strictEqual(await store.migrateFrom(state), 0, 'once');
-        fs.rmSync(dir, { recursive: true, force: true });
-    });
-
     it('a renamed table renames its file; the file is found by the id inside, whatever it is called', async () => {
         const { dir, folder } = folderFor();
         const store = new LookupTablesStore(folder, { now: () => NOW });

@@ -25,7 +25,7 @@ const FILES: Record<string, { columns: string[]; rows: Record<string, unknown>[]
 
 const src = (id: string, extra: Record<string, unknown> = {}) => ({ id, name: id.slice(1), endpointId: '', endpointName: 'stock.xlsx', view: '', executionId: '', isBatch: false, environment: '', executedAt: '2026-11-22T00:00:00Z', file: { name: 'stock.xlsx', sheet: id }, ...extra });
 const pair = (left: string, right: string, column = 'sku') => ({ left: { parts: [{ view: left, column }] }, right: { parts: [{ view: right, column }] } });
-const query = (sources: unknown[], joins: unknown[], extra: Record<string, unknown> = {}) => ({ id: 'qry-stuck', name: 'Stuck', sources, joins, letters: 'names', reached: 4, createdAt: '2026-11-22T00:00:00Z', updatedAt: '2026-11-22T00:00:00Z', ...extra }) as unknown as SavedQuery;
+const query = (sources: unknown[], joins: unknown[], extra: Record<string, unknown> = {}) => ({ id: 'qry-stuck', name: 'Stuck', sources, joins, reached: 4, createdAt: '2026-11-22T00:00:00Z', updatedAt: '2026-11-22T00:00:00Z', ...extra }) as unknown as SavedQuery;
 
 async function open(initial: SavedQuery) {
     const store = new Map<string, unknown>([['queries', [initial]]]);
@@ -90,14 +90,6 @@ describe('Query: no saved shape opens stuck (repairQuery)', function () {
         const q = await open(query([src('vA'), src('vX')], [{ view: 'vX', kind: 'left', on: [pair('vGone', 'vX')] }]));
         assert.deepStrictEqual(q.saved().joins[0].on, []);
         await editable(q, 'pair to a removed view');
-        q.dispose();
-    });
-
-    it('a join saved the old way (left and right as one column each) is read', async () => {
-        const q = await open(query([src('vA'), src('vX')], [{ view: 'vX', kind: 'left', on: [{ left: { view: 'vA', column: 'sku' }, right: { view: 'vX', column: 'sku' } }] }]));
-        assert.deepStrictEqual(q.saved().joins[0].on[0].left.parts, [{ view: 'vA', column: 'sku' }]);
-        assert.strictEqual(q.state().error, '');
-        assert.strictEqual(q.state().total, 10);
         q.dispose();
     });
 

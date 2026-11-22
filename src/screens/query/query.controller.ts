@@ -30,7 +30,7 @@ import { FORMULA_FUNCTIONS, formulaSql, fullRef, fullText, parseFormula, shortRe
 import type { FormulaNode } from '../../services/query/formula';
 import { reportNameProblem } from '../../services/compare/report-name';
 import { loadQueryFolder } from '../../services/query/query-folder';
-import { cleanViewName, getQuery, rebaseCompare, repairQuery, guessViewName, viewNameFromPath, VIEW_NAME_MAX, MAX_QUERY_VIEWS, moveView, moveViewFirst, changesCompareBaseline, nameViews, newSourceId, nextRunName, QuerySource, renameView, runName, saveQuery, SavedQuery, untickBlanks, untickClashes } from '../../services/query/query-store';
+import { cleanViewName, getQuery, rebaseCompare, repairQuery, guessViewName, viewNameFromPath, VIEW_NAME_MAX, MAX_QUERY_VIEWS, moveView, moveViewFirst, changesCompareBaseline, newSourceId, nextRunName, QuerySource, renameView, runName, saveQuery, SavedQuery } from '../../services/query/query-store';
 import { columnTypes, spread, TYPE_SAMPLE, type ColumnType } from '../../services/query/column-types';
 import { CALC_VIEW, QUERY_JOIN_KINDS } from '../../services/query/query-types';
 import { comparableRuns, type RequestTemplates, type RunHeaderValue } from '../../services/compare/compare-runs';
@@ -619,8 +619,7 @@ export class QueryController {
         this.query = query;
         // Made whole as it opens (repairQuery: a join for every view, none to a view no longer there, the compare first),
         // so no saved shape leaves it stuck
-        const named = nameViews(query);
-        if (repairQuery(query) || named) await saveQuery(this.ports.state, query);
+        if (repairQuery(query)) await saveQuery(this.ports.state, query);
         this.post({ type: 'query.init', name: query.name, empty: query.sources.length === 0, reached: query.reached ?? 4, start: this.config.start === 'results' ? 'results' : 'edit', prefs: this.preferences(), ...(query.specialOff ? { specialOff: true } : {}) });
         // The views show at once, by what is saved; their rows are read behind them
         this.postState({ reading: true });
@@ -805,7 +804,6 @@ export class QueryController {
             environment: run.environment || 'Unknown', executedAt: iso(run.startedAt || run.createdAt)
         };
         delete source.off;
-        delete source.alias;
         await this.change(q => { q.sources.push(source); }, false);
         this.postState({ reading: true });
         await this.load(source);
@@ -1583,8 +1581,6 @@ export class QueryController {
             // (each view's count shows as soon as it is read, the next one's bar starts: one at a time, in order)
             if (query.sources.slice(i + 1).some(s => !this.loaded.has(s.id))) this.postState({ reading: true });
         }
-        const tidied = untickClashes(query, id => this.loaded.get(id)?.columns ?? []);
-        if (untickBlanks(query, id => this.emptyColumns(id)) || tidied) await saveQuery(this.ports.state, query);
         const { spec, waiting } = this.spec();
         this.result = undefined;
         this.filtered = undefined;

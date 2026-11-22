@@ -68,7 +68,7 @@ export function queryFromCompare(compare: SavedCompare, endpoint: CompareEndpoin
         id: newQueryId(), name: compare.name || endpointName, sources, joins,
         ...(select.length ? { select } : {}),
         ...(sortAt >= 0 ? { sort: { column: sortAt, dir: setup!.sort!.dir } } : {}),
-        letters: 'names', reached: keys.length ? 4 : 2,
+        reached: keys.length ? 4 : 2,
         createdAt: compare.createdAt || now, updatedAt: now,
         fromCompare: compare.id,
         ...(notice ? { notice } : {})
