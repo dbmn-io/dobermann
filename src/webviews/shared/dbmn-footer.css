@@ -119,7 +119,7 @@ dbmn-progress .dbmn-progress-fill {
     inset: 0 auto 0 0;
     width: var(--progress, 0%);
     background: color-mix(in srgb, var(--progress-c) 28%, transparent);
-    transition: width 0.3s ease;
+    /* (no transition: the component glides --progress itself, timed to how often figures come) */
 }
 dbmn-progress .dbmn-progress-phase,
 dbmn-progress .dbmn-progress-count {

@@ -334,6 +334,41 @@ test('progress: the box is the bar, and says so to a screen reader', async ({ pa
     await expect(page.locator('.dbmn-progress-stats')).toHaveCount(0);
 });
 
+test('progress: the fill glides from figure to figure, never a hop then a wait; going back is at once', async ({ page }) => {
+    await page.setContent(footerPage(1000, '<dbmn-steps id="steps" hidden></dbmn-steps><dbmn-progress id="bar" phase="Loading" value="0"></dbmn-progress>'));
+    // A figure every 250ms (as a view's pages come in); the fill's width read every frame
+    const frames = await page.evaluate(() => new Promise(done => {
+        const bar = document.getElementById('bar');
+        const seen = [];
+        let value = 0;
+        const step = setInterval(() => {
+            value += 10;
+            bar.setAttribute('value', String(value));
+            if (value >= 60) clearInterval(step);
+        }, 250);
+        const start = performance.now();
+        const look = t => {
+            seen.push({ t: t - start, at: parseFloat(bar.style.getPropertyValue('--progress')), value });
+            if (t - start < 2600) requestAnimationFrame(look); else done(seen);
+        };
+        requestAnimationFrame(look);
+    }));
+    // Never past the figure it was given, and no hop: well under a figure's 10% in any one frame
+    for (const f of frames) expect(f.at).toBeLessThanOrEqual(f.value + 0.001);
+    const hops = frames.slice(1).map((f, i) => f.at - frames[i].at);
+    expect(Math.max(...hops)).toBeLessThan(6);
+    // Between the first figure and the last it never waits: every 150ms it has moved
+    const running = frames.filter(f => f.t > 300 && f.t < 1500);
+    for (let i = 0; i < running.length; i++) {
+        const later = running.find(f => f.t >= running[i].t + 150);
+        if (later) expect(later.at).toBeGreaterThan(running[i].at);
+    }
+    // It settles on the last figure, then a figure going back (a new run) is there at once
+    expect(frames[frames.length - 1].at).toBe(60);
+    await page.locator('#bar').evaluate(e => e.setAttribute('value', '5'));
+    expect(await page.locator('#bar').evaluate(e => e.style.getPropertyValue('--progress'))).toBe('5%');
+});
+
 // The page itself: built by the screen's own builder (compiled by `npm run build`), its files served from src/
 const builder = join(ROOT, 'out/screens/design-system/design-system-page.js');
 const TYPES = { '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.woff2': 'font/woff2' };
