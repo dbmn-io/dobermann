@@ -52,10 +52,27 @@
         btn.title = ended ? TITLE : 'This result can go in a query once its run has finished';
     }
 
-    /** The button's menu: New Query, New Compare, Add to Compare (its saved compares in a second menu). */
+    /**
+     * The button's menu: New Query, New Compare, Add to Compare (its saved compares in a second menu).
+     * The saved compares are asked for again first, so one made in another tab is in the list (a
+     * compare made since this Console last asked); the menu opens when they come, or from what is
+     * held if they take longer than half a second.
+     */
+    let menuFor = null;
+    let menuTimer = 0;
     function start(event) {
         const btn = event.currentTarget;
         if (!window.DbmnContextMenu) { post('console.report', { view: viewName(), kind: 'query' }); return; }
+        menuFor = btn;
+        clearTimeout(menuTimer);
+        menuTimer = setTimeout(openMenu, 500);
+        post('console.compareViews');
+    }
+    function openMenu() {
+        clearTimeout(menuTimer);
+        const btn = menuFor;
+        menuFor = null;
+        if (!btn) return;
         const none = !state.compares.length;
         window.DbmnContextMenu.show(btn, [
             { id: 'query', label: 'New Query', icon: 'database' },
@@ -79,6 +96,7 @@
             state.compares = (message.payload && message.payload.compares) || [];
             refresh();
             if (typeof window.onCompareViewsChanged === 'function') window.onCompareViewsChanged();
+            if (menuFor) openMenu();
         }
     }
     // After the page's own listener (see console-chain.js: the first listener gets the early queue)

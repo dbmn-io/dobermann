@@ -154,6 +154,15 @@ interface JoinCounts {
     results?: { state: 'counting' | 'done'; rows: number; inEvery: number; stale?: boolean };
 }
 
+/**
+ * A view's join, in place of any it has. The first change that puts a view in already gives it an
+ * empty join (repairQuery: every view after the first has one); the join made once its rows are
+ * read takes that one's place, never sits beside it (repairQuery would keep the first, the empty one).
+ */
+function setJoin(q: SavedQuery, join: QueryJoin): void {
+    q.joins = [...q.joins.filter(j => j.view !== join.view), join];
+}
+
 export class QueryController {
     private closed = false;
     private readonly views: ConsoleViewsStore;
@@ -735,11 +744,11 @@ export class QueryController {
                 if (!q.sources.includes(source) || (firstEver && i === 0)) return;
                 if (source.runOf) {
                     // A run: matched with its first run on the compare's key ("sku, the same"); its columns sit in the view's compared ones
-                    q.joins.push(runJoin(q.joins, source.id, source.runOf));
+                    setJoin(q, runJoin(q.joins.filter(j => j.view !== source.id), source.id, source.runOf));
                     alignCompareJoins(q.joins, runsOf(q));
                     return;
                 }
-                q.joins.push({ view: source.id, kind: 'left', on: [] });
+                setJoin(q, { view: source.id, kind: 'left', on: [] });
                 const mine = this.loaded.get(source.id)?.columns ?? [];
                 const taken = new Set(q.sources.filter(s => s !== source).flatMap(s => this.loaded.get(s.id)?.columns ?? []));
                 const blank = new Set(this.emptyColumns(source.id));
@@ -809,7 +818,7 @@ export class QueryController {
         await this.load(source);
         await this.change(q => {
             if (!q.sources.includes(source)) return;
-            q.joins.push(runJoin(q.joins, source.id, head.id));
+            setJoin(q, runJoin(q.joins.filter(j => j.view !== source.id), source.id, head.id));
             alignCompareJoins(q.joins, runsOf(q));
         });
     }
@@ -953,7 +962,7 @@ export class QueryController {
             const mine = this.loaded.get(source.id)?.columns ?? [];
             await this.change(q => {
                 if (!q.sources.includes(source)) return;
-                q.joins.push({ view: source.id, kind: 'left', on: [] });
+                setJoin(q, { view: source.id, kind: 'left', on: [] });
                 // Columns picked by hand: the new view's join them (before any calculated ones stay where they are)
                 // but for a name an earlier view has: two columns of one name are picked by hand
                 const taken = new Set(q.sources.filter(s => s !== source).flatMap(s => this.loaded.get(s.id)?.columns ?? []));

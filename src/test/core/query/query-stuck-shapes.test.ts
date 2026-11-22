@@ -10,6 +10,8 @@ import initSqlJs from 'sql.js';
 import { QueryController } from '../../../screens/query/query.controller';
 import { ScreenSession } from '../../../screens/screen-session';
 import { repairQuery, type SavedQuery } from '../../../services/query/query-store';
+import { queryFromCompare } from '../../../services/query/query-from-compare';
+import type { SavedCompare } from '../../../services/compare/compare-store';
 import { SQL_WASM_PATH } from '../fixtures/temp-storage';
 
 type Msg = Record<string, unknown> & { type: string };
@@ -32,7 +34,7 @@ async function open(initial: SavedQuery) {
     const seen: Msg[] = [];
     const session = new ScreenSession({ post: (m: Msg) => { seen.push(m); } } as never, { openExternal() { /* */ } } as never);
     const ports = {
-        metadata: { getUnifiedExecutionHistory: async () => [] },
+        metadata: { getUnifiedExecutionHistory: async () => [], getExecution: async (id: string) => ({ id, executionType: 'individual', status: 'completed', environment: 'TEST', startedAt: '2026-11-23T00:00:00Z' }), getBatchExecution: async () => undefined },
         environments: { getEnvironment: async () => undefined, getEnvironments: async () => [], listEnvironments: async () => [] },
         endpoints: { getEndpoint: async () => undefined, updateEndpoint: async () => undefined },
         state: { get: (k: string) => store.get(k), update: async (k: string, v: unknown) => { store.set(k, v); } },
@@ -226,5 +228,41 @@ describe('Query: Copy the query and Import a query (for support)', function () {
         }
         assert.match((await importQueryCopy(state as never, '{"kind":"dbmn.query","version":2,"query":{"sources":[],"joins":[]}}')).problem ?? '', /newer DBMN/);
         assert.strictEqual(store.get('queries'), undefined);
+    });
+});
+
+describe('Query: round 3 (2026-11-23)', function () {
+    this.timeout(20000);
+
+    it('a query that becomes a compare again (+ run) keeps the key its joins are on, not "Pick a column"', async () => {
+        // Stock (a run of an endpoint) joined to two files on sku; no compare. + run on Stock: a compare of Stock's runs, on sku
+        const stock = src('vS', { file: undefined, endpointId: 'ep-stock', executionId: 'run-1', view: 'Default' });
+        const q = await open(query([stock, src('vA'), src('vB')], [{ view: 'vA', kind: 'left', on: [pair('vS', 'vA')] }, { view: 'vB', kind: 'left', on: [pair('vS', 'vB')] }]));
+        await q.send({ type: 'query.addRun', of: 'vS', executionId: 'run-2' });
+        const run = q.saved().sources.find(x => x.runOf === 'vS');
+        assert.ok(run, 'the run is in');
+        const joins = q.saved().joins.filter(j => j.view === run!.id);
+        assert.strictEqual(joins.length, 1, 'one join for the run');
+        assert.strictEqual(joins[0].kind, 'compare');
+        assert.deepStrictEqual(joins[0].on.map(p => [p.left.parts.map(c => c.column), p.right.parts.map(c => c.column)]), [[['sku'], ['sku']]], 'the compare is on sku, both sides');
+        q.dispose();
+    });
+
+    it('an old saved compare opened as a query: its compared columns are compared across BL and C1, none unticked', async () => {
+        const compare = {
+            id: 'cmp-old', name: 'Old stock compare', createdAt: '2026-11-10T00:00:00Z',
+            sources: ['run-1', 'run-2'].map(executionId => ({ endpointId: 'ep-stock', view: 'Default', executionId, isBatch: false, environment: 'TEST', executedAt: '2026-11-10T00:00:00Z' })),
+            setup: { keyColumns: ['sku'], compareColumns: ['qty'], relaxedColumns: [], join: 'full' }
+        } as unknown as SavedCompare;
+        const made = queryFromCompare(compare, { name: 'stock' });
+        // (read from files in this test: the BL and C1 rows of vA and vB)
+        made.sources.forEach((x, i) => { (x as unknown as { file: unknown }).file = { name: 'stock.xlsx', sheet: i ? 'vB' : 'vA' }; FILES[x.id] = FILES[i ? 'vB' : 'vA']; });
+        const q = await open(made);
+        const columns = (q.state() as unknown as { columns: { view: string; column: string; group?: string }[] }).columns;
+        const qty = columns.filter(c => c.column === 'qty');
+        assert.deepStrictEqual(qty.map(c => c.view), made.sources.map(x => x.id), 'qty from BL and from C1');
+        assert.ok(qty.every(c => c.group === 'qty'), 'one compared column');
+        assert.deepStrictEqual(q.saved().select?.filter(c => c.column === 'qty').length, 2, 'still both, saved');
+        q.dispose();
     });
 });
