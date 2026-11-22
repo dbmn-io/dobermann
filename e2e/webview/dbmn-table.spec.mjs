@@ -1603,7 +1603,7 @@ ${SCRIPTS.map(rel => `<script>${read(rel)}</script>`).join('\n')}</head><body>
     expect(await w('sku')).toBeLessThan(420);
 });
 
-test('special characters shown (as Word\'s ¶): marks over the real characters in every text cell, drawing only; off again, plain', async ({ page }) => {
+test('hidden characters shown (as Word\'s ¶): marks over the real characters in every text cell, drawing only; off again, plain', async ({ page }) => {
     await page.setContent(tablePage());
     await page.evaluate(() => {
         t.columns = [{ id: 'sku', name: 'sku' }, { id: 'note', name: 'note' }, { id: 'qty', name: 'qty', numbers: true }, { id: 'long', name: 'long', wrap: true }];

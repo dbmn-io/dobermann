@@ -225,7 +225,7 @@ dbmn-table[selectable] .dbmn-table-body tr { cursor: pointer; }
 .dbmn-total-card-value.is-different { color: var(--dbmn-editorWarning-foreground); }
 
 /*
- * Special characters shown (the table's `specialCharacters`, as Word's ¶): each character stays in the cell
+ * Hidden characters shown (the table's `specialCharacters`, as Word's ¶): each character stays in the cell
  * in a span of its own, kept as it is (pre), and its mark is drawn over it, faint. A mark never adds to the
  * text, so a copy, a search and the column's fit read the real characters.
  */

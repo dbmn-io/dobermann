@@ -283,6 +283,20 @@ name.addEventListener('dbmn-name-change', e =&gt; post({ type: 'query.rename', n
 &lt;button class="compare-tool-btn icon" data-icon="download" title="Export to Excel" aria-label="Export to Excel"&gt;&lt;/button&gt;
 
 DbmnActions.register({ saveEndpoint });     never an inline click handler: the web app refuses it</code></pre>
+
+        <h3>Toggle buttons</h3>
+        <p>An icon that is on or off: what a table shows, not something it does. Off is an icon button's tile; on is the selected tint, as a chosen menu item. Square, and as tall as the two-row toggles beside it, so a row of controls lines up. No words on it: its name and what it does are its hover text. The screen holds the state and sets <code>aria-pressed</code>; the button only draws it. One that has nothing to do (Filter with no filter on) is disabled: dimmed, and clicking it does nothing.</p>
+        <div class="ds-demo ds-row" id="dsToggles">
+            <button type="button" class="dbmn-toggle" id="dsToggleTotals" aria-pressed="true" data-icon="square-sigma" title="Totals: a total under each column of numbers" aria-label="Totals"></button>
+            <button type="button" class="dbmn-toggle" id="dsToggleHidden" aria-pressed="false" data-icon="pilcrow" title="Hidden characters: show spaces, tabs, line breaks and empty text in every cell" aria-label="Hidden characters"></button>
+            <button type="button" class="dbmn-toggle" id="dsToggleFilter" aria-pressed="true" data-icon="funnel" title="Filters are on: click to clear them all" aria-label="Clear all filters"></button>
+            <button type="button" class="btn btn-secondary" id="dsToggleRefilter" hidden>Put a filter back</button>
+        </div>
+        <pre class="ds-code"><code>&lt;button type="button" class="dbmn-toggle" aria-pressed="false" data-icon="square-sigma"
+        title="Totals: a total under each column of numbers" aria-label="Totals"&gt;&lt;/button&gt;
+
+button.setAttribute('aria-pressed', on ? 'true' : 'false');      the screen sets it, on a click or when the state changes elsewhere
+button.disabled = true;                                           nothing to do: dimmed and inert</code></pre>
     </section>
 
     <section class="ds-section" id="icons">
@@ -384,9 +398,9 @@ orders.addEventListener('dbmn-table-shown', e =&gt; …e.detail.total…);
 
 locked                                     attribute: columns can be neither moved nor removed</code></pre>
 
-        <h3>Special characters</h3>
-        <p>As Word's ¶: the whole table shows its special characters, or none of it. Each space is a faint dot, a tab an arrow, a line break "↵", a non-breaking space "°", a character that draws nothing (a zero-width space, a control) its code in a box, and empty text a grey "blank" (an empty cell is a value that is missing). The marks are only drawn: copying, searching, sorting and the column's width read the real text. A screen's own cells use the same marks with <code>DbmnTable.showSpecial</code>.</p>
-        <p><label><input type="checkbox" id="dsSpecialOn" checked> Show special characters</label></p>
+        <h3>Hidden characters</h3>
+        <p>As Word's ¶: the whole table shows its hidden characters, or none of it. Each space is a faint dot, a tab an arrow, a line break "↵", a non-breaking space "°", a character that draws nothing (a zero-width space, a control) its code in a box, and empty text a grey "blank" (an empty cell is a value that is missing). The marks are only drawn: copying, searching, sorting and the column's width read the real text. A screen's own cells use the same marks with <code>DbmnTable.showSpecial</code>.</p>
+        <p class="ds-row"><button type="button" class="dbmn-toggle" id="dsSpecialOn" aria-pressed="true" data-icon="pilcrow" title="Hidden characters: show spaces, tabs, line breaks and empty text in every cell" aria-label="Hidden characters"></button></p>
         <div class="ds-demo">
             <dbmn-table id="dsSpecial" label="Customers, as two runs gave them"></dbmn-table>
         </div>

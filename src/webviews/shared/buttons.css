@@ -290,6 +290,58 @@ body .catalogue-chip:hover:not(.is-active) {
     background: var(--dbmn-hover);
 }
 
+/* ─── Toggle button: an icon that is on or off (James, 2026-11-22) ───────────────────────
+   `<button type="button" class="dbmn-toggle" aria-pressed="false" data-icon="square-sigma"
+   title="What it does" aria-label="Its name">`. Off is the icon button's tile; on is the
+   selected tint, as a chosen menu item. The page sets aria-pressed (it holds the state); the
+   button only draws it. Disabled: dimmed and inert (Filter, with no filter on). The same
+   height as the segmented toggles beside it (two rows of 17px and their border: 34px), square. */
+body .dbmn-toggle {
+    --dbmn-toggle-size: 34px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    box-sizing: border-box;
+    width: var(--dbmn-toggle-size);
+    height: var(--dbmn-toggle-size);
+    margin: 0;
+    padding: 0;
+    background: var(--dbmn-tile);
+    color: var(--vscode-descriptionForeground);
+    border: 1px solid var(--dbmn-tile-border);
+    border-radius: var(--dbmn-radius);
+    line-height: 0;
+    cursor: pointer;
+    transition: background-color 0.12s ease, color 0.12s ease;
+}
+
+body .dbmn-toggle svg {
+    width: 18px;
+    height: 18px;
+    pointer-events: none;
+}
+
+body .dbmn-toggle:hover:not(:disabled):not([aria-pressed="true"]) {
+    background: var(--dbmn-hover);
+    color: var(--vscode-foreground);
+}
+
+body .dbmn-toggle[aria-pressed="true"] {
+    background: var(--dbmn-selected);
+    color: var(--dbmn-on-selected);
+}
+
+body .dbmn-toggle:focus-visible {
+    outline: 1px solid var(--vscode-focusBorder);
+    outline-offset: 1px;
+}
+
+body .dbmn-toggle:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
 /* ─── Every button: keyboard focus, and off ──────────────────────────────────────────── */
 
 body .btn:focus-visible,

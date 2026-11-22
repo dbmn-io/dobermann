@@ -208,7 +208,7 @@
     }
 
     /*
-     * Special characters shown, as Word's ¶ (`specialCharacters`, James 2026-11-22): spaces, tabs, line
+     * Hidden characters shown, as Word's ¶ (`specialCharacters`, James 2026-11-22): spaces, tabs, line
      * breaks, non-breaking spaces and characters that draw nothing (zero-width, byte-order mark, controls).
      * Each is kept in the cell, in a span of its own, and its mark is drawn over it by CSS (dbmn-table.css):
      * the text itself never changes, so a copy, the column's fit and the cell's detail read the real text.
@@ -229,7 +229,7 @@
         return mark;
     }
     /**
-     * A text with its special characters marked: a fragment for a cell. `breaks`: a line break also ends the
+     * A text with its hidden characters marked: a fragment for a cell. `breaks`: a line break also ends the
      * line (a column that wraps, a record's window); without, the row stays one line and the break is only "↵".
      * Empty text is a grey "blank" (an empty cell is a missing value; "" was given).
      */
@@ -369,7 +369,7 @@
         redrawHeads() { if (this._built) this._heads(); }
 
         /**
-         * Special characters shown (as Word's ¶), the whole table or none of it: in every text cell a faint
+         * Hidden characters shown (as Word's ¶), the whole table or none of it: in every text cell a faint
          * mark over each space (·), tab (→), line break (↵) and non-breaking space (°), a boxed code for a
          * character that draws nothing, and a grey "blank" for empty text. Drawing only: copy, search, sort
          * and the cell's detail keep the real text. A column's own `render` (a Node) or `cell` draws its own:
@@ -1290,7 +1290,7 @@
                 if (drawn instanceof Node) td.append(drawn);
                 else {
                     const text = drawn === undefined ? textOf(value) : String(drawn);
-                    // (special characters shown: marked over the real text; "" given is "blank", a missing value stays empty)
+                    // (hidden characters shown: marked over the real text; "" given is "blank", a missing value stays empty)
                     if (this._special && (text === '' ? value === '' || drawn === '' : hasSpecial(text))) td.append(showSpecial(text, { breaks: !!column.wrap }));
                     else td.textContent = text;
                     // (a value cut short by its column's width is whole on hover)
