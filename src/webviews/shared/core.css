@@ -2324,6 +2324,22 @@ body.editor-slide-out {
     border: 1px solid var(--vscode-menu-border, var(--vscode-widget-border));
     border-radius: 6px;
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+    /* Never taller than the window: the actions scroll, the summary above them stays */
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+    max-height: calc(100vh - 8px);
+}
+.dbmn-context-menu > .dbmn-context-menu-summary,
+.dbmn-context-menu > .dbmn-context-menu-separator { flex: none; }
+.dbmn-context-menu-list {
+    flex: 0 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    /* (a thin bar in the theme's colours, so a long list plainly scrolls) */
+    scrollbar-width: thin;
+    scrollbar-color: var(--dbmn-scrollbarSlider-background, rgba(121, 121, 121, 0.4)) transparent;
 }
 .dbmn-context-menu-item {
     display: flex;

@@ -9,7 +9,8 @@
  *       { id: 'delete', label: 'Delete', icon: 'trash-2', danger: true }
  *   ], (id) => { ... });
  *
- * One menu at a time; closes on choice, Escape, outside click, scroll or blur.
+ * One menu at a time; closes on choice, Escape, outside click, scroll (the page's, not its own) or blur.
+ * Never taller than the window: with more than fits, its actions scroll (the summary stays above them).
  * Keyboard: arrows move, Enter chooses. Icons come from window.Icons.
  *
  * Opened from a button instead of a right-click: pass the button (an Element) for the event, and
@@ -43,9 +44,11 @@
         document.removeEventListener('mousedown', onOutside, true);
         document.removeEventListener('keydown', onKey, true);
         window.removeEventListener('blur', close);
-        window.removeEventListener('scroll', close, true);
+        window.removeEventListener('scroll', onScroll, true);
     }
     function onOutside(e) { if (current && !current.contains(e.target)) close(); }
+    // (the page scrolled: the menu would be left behind, so it closes; its own actions scrolling is not that)
+    function onScroll(e) { if (current && !(e.target instanceof Node && current.contains(e.target))) close(); }
     function onKey(e) {
         if (!current) return;
         const items = Array.from(current.querySelectorAll('.dbmn-context-menu-item:not([aria-disabled="true"])'));
@@ -92,14 +95,21 @@
         const menu = document.createElement('div');
         menu.className = 'dbmn-context-menu';
         menu.setAttribute('role', 'menu');
+        // The actions, in a part of their own that scrolls when the window is too short for them all;
+        // the summary and its line stay above it, always in sight
+        const list = document.createElement('div');
+        list.className = 'dbmn-context-menu-list';
+        list.setAttribute('role', 'none');
+        let into = menu;
         items.forEach(item => {
-            if (item.summary) { menu.appendChild(summaryOf(item.summary)); return; }
+            if (item.summary) { into.appendChild(summaryOf(item.summary)); return; }
             if (item.separator) {
                 const sep = document.createElement('div');
                 sep.className = 'dbmn-context-menu-separator';
-                menu.appendChild(sep);
+                into.appendChild(sep);
                 return;
             }
+            into = list;
             const el = document.createElement('button');
             el.type = 'button';
             el.className = 'dbmn-context-menu-item' + (item.danger ? ' is-danger' : '') + (item.detail ? ' has-detail' : '');
@@ -135,18 +145,27 @@
                 close();
                 if (typeof onChoose === 'function') onChoose(item.id);
             });
-            menu.appendChild(el);
+            list.appendChild(el);
         });
+        menu.appendChild(list);
         document.body.appendChild(menu);
         current = menu;
 
-        // At the pointer, or under the button it was opened from (above it with no room below); on screen
-        const rect = menu.getBoundingClientRect();
+        // At the pointer, or under the button it was opened from (above it with no room below); on screen.
+        // (never taller than the window, by its CSS; under a button, no taller than the side it opens on)
+        let rect = menu.getBoundingClientRect();
         let x, y;
         if (anchor) {
             const at = anchor.getBoundingClientRect();
+            const below = window.innerHeight - 4 - (at.bottom + 4);
+            const above = at.top - 4 - 4;
+            const down = rect.height <= below || (rect.height > above && below >= above);
+            if (rect.height > (down ? below : above)) {
+                menu.style.maxHeight = Math.max(0, down ? below : above) + 'px';
+                rect = menu.getBoundingClientRect();
+            }
             x = at.left;
-            y = at.bottom + 4 + rect.height <= window.innerHeight - 4 ? at.bottom + 4 : at.top - 4 - rect.height;
+            y = down ? at.bottom + 4 : at.top - 4 - rect.height;
             menu.classList.add('is-anchored');
         } else {
             x = event && typeof event.clientX === 'number' ? event.clientX : 0;
@@ -158,7 +177,7 @@
         document.addEventListener('mousedown', onOutside, true);
         document.addEventListener('keydown', onKey, true);
         window.addEventListener('blur', close);
-        window.addEventListener('scroll', close, true);
+        window.addEventListener('scroll', onScroll, true);
         (menu.querySelector('.dbmn-context-menu-item[aria-checked="true"]') || menu.querySelector('.dbmn-context-menu-item'))?.focus();
         return menu;
     }
