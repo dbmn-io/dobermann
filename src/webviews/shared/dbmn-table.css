@@ -203,7 +203,7 @@ dbmn-table[selectable] .dbmn-table-body tr { cursor: pointer; }
 
 /* A compared column's totals, all in one card under the pointer: one under another, the numbers
    lined up on the right so they compare at a glance; each result's name in its colour */
-.dbmn-table-foot td.has-group-total { cursor: help; }
+.dbmn-table-foot td.has-group-total { cursor: default; }  /* the card is a tooltip: the ordinary pointer, never "help" (a question mark on Linux; James, 2026-11-22) */
 .dbmn-total-card {
     position: fixed;
     z-index: 10000;
