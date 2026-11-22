@@ -334,39 +334,40 @@ test('progress: the box is the bar, and says so to a screen reader', async ({ pa
     await expect(page.locator('.dbmn-progress-stats')).toHaveCount(0);
 });
 
-test('progress: the fill glides from figure to figure, never a hop then a wait; going back is at once', async ({ page }) => {
+test('progress: the fill glides from figure to figure, still moving while the page is busy; going back is at once', async ({ page }) => {
     await page.setContent(footerPage(1000, '<dbmn-steps id="steps" hidden></dbmn-steps><dbmn-progress id="bar" phase="Loading" value="0"></dbmn-progress>'));
-    // A figure every 250ms (as a view's pages come in); the fill's width read every frame
-    const frames = await page.evaluate(() => new Promise(done => {
+    // As Query reads a view in the web app: the page's own thread busy 250ms, then a figure, again and again.
+    // After each figure the fill must be gliding (a transition of its scale, which the graphics side runs
+    // while the thread is busy), and for longer than the wait, so it never stops before the next figure.
+    const seen = await page.evaluate(() => {
         const bar = document.getElementById('bar');
-        const seen = [];
-        let value = 0;
-        const step = setInterval(() => {
-            value += 10;
+        const fill = bar.querySelector('.dbmn-progress-fill');
+        const busy = ms => { const end = performance.now() + ms; while (performance.now() < end) { /* reading */ } };
+        const out = [];
+        for (let value = 10; value <= 60; value += 10) {
+            busy(250);
             bar.setAttribute('value', String(value));
-            if (value >= 60) clearInterval(step);
-        }, 250);
-        const start = performance.now();
-        const look = t => {
-            seen.push({ t: t - start, at: parseFloat(bar.style.getPropertyValue('--progress')), value });
-            if (t - start < 2600) requestAnimationFrame(look); else done(seen);
-        };
-        requestAnimationFrame(look);
-    }));
-    // Never past the figure it was given, and no hop: well under a figure's 10% in any one frame
-    for (const f of frames) expect(f.at).toBeLessThanOrEqual(f.value + 0.001);
-    const hops = frames.slice(1).map((f, i) => f.at - frames[i].at);
-    expect(Math.max(...hops)).toBeLessThan(6);
-    // Between the first figure and the last it never waits: every 150ms it has moved
-    const running = frames.filter(f => f.t > 300 && f.t < 1500);
-    for (let i = 0; i < running.length; i++) {
-        const later = running.find(f => f.t >= running[i].t + 150);
-        if (later) expect(later.at).toBeGreaterThan(running[i].at);
+            const glides = fill.getAnimations().filter(a => a.transitionProperty === 'transform');
+            out.push({ value, glides: glides.length, ms: glides.length ? glides[0].effect.getTiming().duration : 0, to: getComputedStyle(fill).getPropertyValue('--progress-x') || bar.style.getPropertyValue('--progress-x') });
+        }
+        return out;
+    });
+    for (const s of seen) expect(s.to).toBe(String(s.value / 100));
+    // (the first figure has no pace yet; from the second, each glide outlasts the 250ms wait)
+    for (const s of seen.slice(1)) {
+        expect(s.glides).toBe(1);
+        expect(s.ms).toBeGreaterThan(250);
+        expect(s.ms).toBeLessThanOrEqual(1500);
     }
-    // It settles on the last figure, then a figure going back (a new run) is there at once
-    expect(frames[frames.length - 1].at).toBe(60);
-    await page.locator('#bar').evaluate(e => e.setAttribute('value', '5'));
-    expect(await page.locator('#bar').evaluate(e => e.style.getPropertyValue('--progress'))).toBe('5%');
+    // It settles on the last figure: the fill spans 60% of the track
+    await expect.poll(() => page.locator('.dbmn-progress-fill').evaluate(e => Math.round(100 * e.getBoundingClientRect().width / e.parentNode.getBoundingClientRect().width))).toBe(60);
+    // A figure going back (a new run) is there at once, no glide
+    const back = await page.locator('#bar').evaluate(e => {
+        e.setAttribute('value', '5');
+        const fill = e.querySelector('.dbmn-progress-fill');
+        return { glides: fill.getAnimations().filter(a => a.transitionProperty === 'transform').length, width: Math.round(100 * fill.getBoundingClientRect().width / fill.parentNode.getBoundingClientRect().width) };
+    });
+    expect(back).toEqual({ glides: 0, width: 5 });
 });
 
 // The page itself: built by the screen's own builder (compiled by `npm run build`), its files served from src/

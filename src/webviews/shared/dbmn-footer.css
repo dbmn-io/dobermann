@@ -117,9 +117,17 @@ dbmn-progress[tone="error"] { --progress-c: var(--foot-error); }
 dbmn-progress .dbmn-progress-fill {
     position: absolute;
     inset: 0 auto 0 0;
-    width: var(--progress, 0%);
+    /*
+     * The fill is the whole track, scaled to how far: a scale glides on the graphics side, so it keeps moving
+     * while the page is busy (Query reads a view on the page's own thread, and a width would freeze then jump).
+     * The component sets how far (--progress-x, 0 to 1) and how long the glide takes (--progress-glide).
+     */
+    width: 100%;
+    transform-origin: left center;
+    transform: scaleX(var(--progress-x, 0));
+    transition: transform var(--progress-glide, 0ms) linear;
+    will-change: transform;
     background: color-mix(in srgb, var(--progress-c) 28%, transparent);
-    /* (no transition: the component glides --progress itself, timed to how often figures come) */
 }
 dbmn-progress .dbmn-progress-phase,
 dbmn-progress .dbmn-progress-count {

@@ -165,54 +165,34 @@
             this._draw();
         }
 
-        disconnectedCallback() {
-            this._close();
-            this._tick(false);
-            if (this._raf) { cancelAnimationFrame(this._raf); this._raf = 0; this._set(this._target); }
-        }
+        disconnectedCallback() { this._close(); this._tick(false); }
 
         /**
          * The fill glides to each new figure rather than jumping (James, 2026-11-22: "dook dook dook").
-         * It follows the figure on an easing as long as the time between figures, so it is still moving
-         * when the next one arrives: one smooth run, never a hop then a wait. Its first figure, a figure
-         * going back, or reduced motion: there at once.
+         * The glide is a CSS transition of the fill's scale, which runs on the graphics side: it keeps
+         * moving while the page's thread is busy (in the web app Query reads a view on that same thread,
+         * so anything the page animates itself freezes, then jumps). It is linear and a little longer than
+         * the time between figures, so it is still moving when the next one arrives: one steady run, never
+         * a hop then a wait. Its first figure, a figure going back, or reduced motion: there at once.
          */
         _glide(value) {
             const now = performance.now();
             const still = this._shown == null || value < this._shown || !this.isConnected
                 || (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-            if (still) {
-                if (this._raf) { cancelAnimationFrame(this._raf); this._raf = 0; }
-                this._target = value;
-                this._at = now;
-                this._set(value);
-                return;
+            let glide = 0;
+            if (!still) {
+                if (value === this._shown) return;
+                // (how often figures come: smoothed, so one late figure doesn't slow the whole run)
+                const gap = now - (this._at || now);
+                this._gap = this._gap ? this._gap * 0.6 + gap * 0.4 : gap || 300;
+                glide = Math.round(Math.min(1500, Math.max(200, this._gap * 1.3)));
+                // (to the end: quickly, so a finished run reads as finished)
+                if (value >= 100) glide = Math.min(glide, 300);
             }
-            if (value === this._target) return;
-            // (how often figures come: smoothed, so one late figure doesn't slow the whole run)
-            const gap = now - (this._at || now);
-            this._gap = this._gap ? this._gap * 0.6 + gap * 0.4 : gap || 300;
             this._at = now;
-            this._target = value;
-            if (!this._raf) {
-                this._frameAt = now;
-                this._raf = requestAnimationFrame(t => this._frame(t));
-            }
-        }
-        _frame(t) {
-            const dt = Math.max(0, t - this._frameAt);
-            this._frameAt = t;
-            // (to the end: quickly, so a finished run reads as finished)
-            const ease = this._target >= 100 ? 200 : Math.min(1000, Math.max(150, this._gap));
-            let shown = this._shown + (this._target - this._shown) * (1 - Math.exp(-dt / ease));
-            // (the last quarter of a percent is too small to see: settle, and stop asking for frames)
-            if (this._target - shown < 0.25) shown = this._target;
-            this._set(shown);
-            this._raf = shown === this._target ? 0 : requestAnimationFrame(next => this._frame(next));
-        }
-        _set(value) {
             this._shown = value;
-            this.style.setProperty('--progress', `${value}%`);
+            this.style.setProperty('--progress-glide', `${glide}ms`);
+            this.style.setProperty('--progress-x', String(value / 100));
         }
 
         /** A Stop or Again link: fires dbmn-progress-stop / dbmn-progress-again, never opens the stats. */
