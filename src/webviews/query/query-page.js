@@ -959,12 +959,21 @@
     /* ---------- Join ---------- */
 
     /** The functions as SQL around `name`, the first innermost. */
-    function fnSql(fns, name) {
-        return (fns || []).reduce((sql, f) => {
+    /** What a column's functions do, in words and in order: "gtin: Trim spaces, then First characters (4)". */
+    function fnWords(fns, name) {
+        const said = (fns || []).map(f => {
+            // Translate values: its lookup table, by name
+            if (f.fn === 'translate') {
+                const table = lookupTables().find(t => t.id === f.table);
+                return table ? `Translate values (${table.name})` : 'Translate values';
+            }
             const def = FNS.find(d => d.id === f.fn);
-            if (!def) return sql;
-            return def.sql.map(piece => piece === 'x' ? sql : typeof piece === 'string' ? piece : String(f[piece.key] ?? '')).join('');
-        }, name);
+            if (!def) return '';
+            // (the values typed for it, as the dialog asks for them; a lookup table's id says nothing to a person)
+            const values = def.sql.filter(p => p && typeof p === 'object' && p.kind !== 'lookup').map(p => String(f[p.key] ?? '')).filter(v => v !== '');
+            return values.length ? `${def.label} (${values.join(' → ')})` : def.label;
+        }).filter(Boolean);
+        return said.length ? `${name}: ${said.join(', then ')}` : name;
     }
 
     /** One side of a pair, under its view's slot: the column and ƒ. The left side has a box under
@@ -995,12 +1004,12 @@
         wrap.appendChild(cs);
         // ƒ belongs to the column picked: a box that is waiting has none
         if (!mine && ref.column) return wrap;
-        // ƒ says how many functions the column has; what they make is on hover and in the SQL
+        // ƒ says how many functions the column has; which ones, in order, on hover
         const has = (ref.fns || []).length;
         const fx = el('button', 'compare-tool-btn font-mono' + (has ? ' text-link font-bold' : ''), has ? `ƒ ${has}` : 'ƒ');
         fx.dataset.fx = side;
         fx.type = 'button';
-        fx.title = has ? fnSql(ref.fns, ref.column) : 'Functions on this column before it joins';
+        fx.title = has ? fnWords(ref.fns, ref.column) : 'Functions on this column before it joins';
         fx.setAttribute('aria-label', 'Functions on this column');
         fx.addEventListener('click', () => pickFns(join, ref));
         wrap.appendChild(fx);
