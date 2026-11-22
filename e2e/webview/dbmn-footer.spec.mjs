@@ -336,8 +336,10 @@ test('progress: the box is the bar, and says so to a screen reader', async ({ pa
 
 test('progress: the fill glides from figure to figure, still moving while the page is busy; going back is at once', async ({ page }) => {
     await page.setContent(footerPage(1000, '<dbmn-steps id="steps" hidden></dbmn-steps><dbmn-progress id="bar" phase="Loading" value="0"></dbmn-progress>'));
+    // First it sits empty a while (a view waiting its turn): that wait must not slow the glide once figures come
+    await page.waitForTimeout(1500);
     // As Query reads a view in the web app: the page's own thread busy 250ms, then a figure, again and again.
-    // After each figure the fill must be gliding (a transition of its scale, which the graphics side runs
+    // After each figure the fill must be gliding (an animation of its scale, which the graphics side runs
     // while the thread is busy), and for longer than the wait, so it never stops before the next figure.
     const seen = await page.evaluate(() => {
         const bar = document.getElementById('bar');
@@ -347,8 +349,8 @@ test('progress: the fill glides from figure to figure, still moving while the pa
         for (let value = 10; value <= 60; value += 10) {
             busy(250);
             bar.setAttribute('value', String(value));
-            const glides = fill.getAnimations().filter(a => a.transitionProperty === 'transform');
-            out.push({ value, glides: glides.length, ms: glides.length ? glides[0].effect.getTiming().duration : 0, to: getComputedStyle(fill).getPropertyValue('--progress-x') || bar.style.getPropertyValue('--progress-x') });
+            const glides = fill.getAnimations();
+            out.push({ value, glides: glides.length, ms: glides.length ? glides[0].effect.getTiming().duration : 0, from: glides.length ? parseFloat(glides[0].effect.getKeyframes()[0].transform.replace('scaleX(', '')) : 0, to: getComputedStyle(fill).getPropertyValue('--progress-x') || bar.style.getPropertyValue('--progress-x') });
         }
         return out;
     });
@@ -357,15 +359,19 @@ test('progress: the fill glides from figure to figure, still moving while the pa
     for (const s of seen.slice(1)) {
         expect(s.glides).toBe(1);
         expect(s.ms).toBeGreaterThan(250);
-        expect(s.ms).toBeLessThanOrEqual(1500);
     }
+    // Each glide starts where the fill is, never back behind where the one before it started (no jump back)
+    seen.slice(1).forEach((s, i) => expect(s.from).toBeGreaterThan(seen[i].from));
+    // Every glide keeps pace with the figures (250ms apart), the first included: it never falls behind,
+    // so it is not still at half when the last figure comes (James: smooth to 50%, then it just finishes)
+    for (const s of seen) expect(s.ms).toBeLessThanOrEqual(500);
     // It settles on the last figure: the fill spans 60% of the track
     await expect.poll(() => page.locator('.dbmn-progress-fill').evaluate(e => Math.round(100 * e.getBoundingClientRect().width / e.parentNode.getBoundingClientRect().width))).toBe(60);
     // A figure going back (a new run) is there at once, no glide
     const back = await page.locator('#bar').evaluate(e => {
         e.setAttribute('value', '5');
         const fill = e.querySelector('.dbmn-progress-fill');
-        return { glides: fill.getAnimations().filter(a => a.transitionProperty === 'transform').length, width: Math.round(100 * fill.getBoundingClientRect().width / fill.parentNode.getBoundingClientRect().width) };
+        return { glides: fill.getAnimations().length, width: Math.round(100 * fill.getBoundingClientRect().width / fill.parentNode.getBoundingClientRect().width) };
     });
     expect(back).toEqual({ glides: 0, width: 5 });
 });

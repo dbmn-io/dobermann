@@ -169,30 +169,57 @@
 
         /**
          * The fill glides to each new figure rather than jumping (James, 2026-11-22: "dook dook dook").
-         * The glide is a CSS transition of the fill's scale, which runs on the graphics side: it keeps
-         * moving while the page's thread is busy (in the web app Query reads a view on that same thread,
-         * so anything the page animates itself freezes, then jumps). It is linear and a little longer than
-         * the time between figures, so it is still moving when the next one arrives: one steady run, never
-         * a hop then a wait. Its first figure, a figure going back, or reduced motion: there at once.
+         * The glide is an animation of the fill's scale, which runs on the graphics side: it keeps moving
+         * while the page's thread is busy (in the web app Query reads a view on that same thread, so
+         * anything the page animates itself freezes, then jumps). It is linear and a little longer than the
+         * time between figures, so it is still moving when the next one arrives: one steady run, never a
+         * hop then a wait. Each glide starts from where the fill is by its own reckoning: a CSS transition
+         * would restart from where the busy page last heard it was, sometimes well behind, and the fill
+         * jumped back. Its first figure, a figure going back, a sweep, or reduced motion: there at once.
          */
         _glide(value) {
             const now = performance.now();
-            const still = this._shown == null || value < this._shown || !this.isConnected
+            const fill = this._fill;
+            const still = this._shown == null || value < this._shown || !this.isConnected || this.hasAttribute('busy')
                 || (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-            let glide = 0;
-            if (!still) {
-                if (value === this._shown) return;
-                // (how often figures come: smoothed, so one late figure doesn't slow the whole run)
-                const gap = now - (this._at || now);
-                this._gap = this._gap ? this._gap * 0.6 + gap * 0.4 : gap || 300;
-                glide = Math.round(Math.min(1500, Math.max(200, this._gap * 1.3)));
-                // (to the end: quickly, so a finished run reads as finished)
-                if (value >= 100) glide = Math.min(glide, 300);
-            }
+            if (!still && value === this._shown) return;
+            const from = this._showing(now);
+            if (this._anim) { this._anim.cancel(); this._anim = null; }
+            this._run = null;
+            // (where it rests once a glide is over, and where it is at once without one)
+            this.style.setProperty('--progress-x', String(value / 100));
+            const was = this._at;
             this._at = now;
             this._shown = value;
-            this.style.setProperty('--progress-glide', `${glide}ms`);
-            this.style.setProperty('--progress-x', String(value / 100));
+            if (still) {
+                // (nothing moving yet: its pace is learnt afresh from the figures that move it)
+                this._gap = 0;
+                this._moving = false;
+                return;
+            }
+            // How often figures come, from the gaps between figures that moved it, smoothed so one late
+            // figure doesn't slow the whole run. Never the time it sat still before its first move (a view
+            // waiting its turn): that paced the glide far slower than the figures, so it was still at half
+            // when the reading was done, and finished with a jump.
+            if (this._moving) {
+                const gap = now - was;
+                this._gap = this._gap ? this._gap * 0.5 + gap * 0.5 : gap;
+            }
+            this._moving = true;
+            let glide = this._gap ? Math.round(Math.min(1000, Math.max(200, this._gap * 1.3))) : 300;
+            // (to the end: quickly, so a finished run reads as finished)
+            if (value >= 100) glide = Math.min(glide, 300);
+            const to = value / 100;
+            if (typeof fill.animate !== 'function') return;
+            this._anim = fill.animate([{ transform: `scaleX(${from})` }, { transform: `scaleX(${to})` }], { duration: glide, easing: 'linear' });
+            this._run = { from, to, start: now, glide };
+        }
+        /** Where the fill is now, as a scale (0 to 1): part way along its glide, or at rest. */
+        _showing(now) {
+            const run = this._run;
+            if (!run) return (this._shown || 0) / 100;
+            const part = Math.min(1, Math.max(0, (now - run.start) / run.glide));
+            return run.from + (run.to - run.from) * part;
         }
 
         /** A Stop or Again link: fires dbmn-progress-stop / dbmn-progress-again, never opens the stats. */

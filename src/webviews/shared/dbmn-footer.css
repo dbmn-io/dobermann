@@ -120,12 +120,11 @@ dbmn-progress .dbmn-progress-fill {
     /*
      * The fill is the whole track, scaled to how far: a scale glides on the graphics side, so it keeps moving
      * while the page is busy (Query reads a view on the page's own thread, and a width would freeze then jump).
-     * The component sets how far (--progress-x, 0 to 1) and how long the glide takes (--progress-glide).
+     * The component sets how far (--progress-x, 0 to 1), and glides there itself (an animation of the scale).
      */
     width: 100%;
     transform-origin: left center;
     transform: scaleX(var(--progress-x, 0));
-    transition: transform var(--progress-glide, 0ms) linear;
     will-change: transform;
     background: color-mix(in srgb, var(--progress-c) 28%, transparent);
 }
