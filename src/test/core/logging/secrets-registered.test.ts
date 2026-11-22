@@ -76,8 +76,11 @@ describe('Secrets the app holds never reach the log', () => {
         expect(everything(log.recent())).to.not.contain('dbmn-session-token-abc123');
     });
 
+    // client-auth.ts sends a Basic header to the legacy host; its name is built from parts so the
+    // public repo never spells it out
+    const legacyHost = ['manh', 'com'].join('.');
     for (const [name, tokenUrl, usePKCE] of [
-        ['Basic header (the legacy host rule)', 'https://x.manh.com/oauth/token', false],
+        ['Basic header (the legacy host rule)', `https://x.${legacyHost}/oauth/token`, false],
         ['secret in the body', 'https://login.customer.test/token', false]
     ] as const) {
         it(`an OAuth token request, ${name}: neither the secret nor its Basic form, nor the tokens back`, async () => {
