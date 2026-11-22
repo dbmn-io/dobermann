@@ -273,6 +273,51 @@ export function untickBlanks(query: SavedQuery, empty: (viewId: string) => strin
 
 /** Make a view the first: the one FROM reads, whose rows a LEFT JOIN keeps. */
 /**
+ * A saved query made whole as it opens, so no shape it can be saved in leaves it stuck (2026-11-22: a support case is a
+ * query the user can't edit their way out of). Every view after the first has exactly one join, in the views' order (a
+ * join missing is made, empty: "Pick a column"; one for the first view, for a view no longer there, or said twice, goes);
+ * a pair naming a view no longer there goes (the join asks for its columns again); a join written the old way (left /
+ * right as one column) is read; a run of a view no longer there is a view of its own; the report's columns of a view
+ * no longer there go; a compare's views come first (compareLeads). True when anything changed.
+ */
+export function repairQuery(query: SavedQuery): boolean {
+    const before = JSON.stringify([query.sources, query.joins, query.select]);
+    // Views: each once, each with an id
+    const seen = new Set<string>();
+    query.sources = (Array.isArray(query.sources) ? query.sources : []).filter(s => s && typeof s.id === 'string' && !seen.has(s.id) && !!seen.add(s.id));
+    const ids = new Set(query.sources.map(s => s.id));
+    for (const s of query.sources) {
+        if (s.runOf && (!ids.has(s.runOf) || s.runOf === s.id)) { delete s.runOf; delete s.run; }
+    }
+    // (a run of a run: of the first run)
+    for (const s of query.sources) {
+        const head = s.runOf ? query.sources.find(h => h.id === s.runOf) : undefined;
+        if (head?.runOf) s.runOf = head.runOf;
+    }
+    // A key side as it is saved now, from the old way (one column) when it is that
+    type OldSide = { view?: string; column?: string; fns?: QueryKey['fns'] };
+    const side = (k: unknown): QueryKey => {
+        const key = (k ?? {}) as QueryKey & OldSide;
+        if (Array.isArray(key.parts)) return { ...key, parts: key.parts.filter(p => p && typeof p.view === 'string') };
+        return { parts: key.view ? [{ view: key.view, column: key.column ?? '', ...(key.fns?.length ? { fns: key.fns } : {}) }] : [] };
+    };
+    const first = query.sources[0]?.id;
+    const joins = new Map<string, QueryJoin>();
+    for (const j of Array.isArray(query.joins) ? query.joins : []) {
+        if (!j || !ids.has(j.view) || j.view === first || joins.has(j.view)) continue;
+        const on = (Array.isArray(j.on) ? j.on : []).map(p => ({ left: side(p?.left), right: side(p?.right) }))
+            // (a pair to a view no longer there: gone, the join asks for its columns again)
+            .filter(p => p.left.parts.length > 0 && p.left.parts.every(c => ids.has(c.view)) && p.left.parts.every(c => c.view !== j.view))
+            .map(p => ({ ...p, right: { ...p.right, parts: p.right.parts.length ? p.right.parts.map(c => ({ ...c, view: j.view })) : [{ view: j.view, column: '' }] } }));
+        joins.set(j.view, { view: j.view, kind: j.kind || 'left', on });
+    }
+    query.joins = query.sources.slice(1).map(s => joins.get(s.id) ?? { view: s.id, kind: 'left', on: [] });
+    if (query.select) query.select = query.select.filter(c => c && (!c.view || ids.has(c.view)));
+    compareLeads(query);
+    return JSON.stringify([query.sources, query.joins, query.select]) !== before;
+}
+
+/**
  * A compare's views lead (James, 2026-11-22): the engine works the compare out first and joins every other view to it,
  * so the Baseline is the first view and the compare's other views follow it. A view that came before them (added
  * first, the runs after it) moves after them, joined to the compare by its own columns; pairs it had turn round with it.
@@ -462,6 +507,48 @@ export async function createQuery(state: QueryState): Promise<SavedQuery> {
     const query: SavedQuery = { id: newId(ID_PREFIX), name, sources: [], joins: [], letters: 'names', reached: 1, createdAt: now, updatedAt: now };
     await saveQuery(state, query);
     return query;
+}
+
+/** A query copied out for support (Hub: Copy the query): what it is made of, no rows, no result data, nothing secret. */
+export interface QueryCopy { kind: 'dbmn.query'; version: 1; copiedAt: string; query: Partial<SavedQuery> }
+
+/**
+ * A query as text to paste into an email or a file: its views (which endpoint, View and run each reads, by name and id),
+ * joins, columns, calculated columns, search and sort. Never rows (a file view's rows stay on this computer), never
+ * counts, and nothing from an environment: a query holds no tokens or credentials.
+ */
+export function queryForSupport(query: SavedQuery): QueryCopy {
+    const keep = <T extends object>(o: T, keys: (keyof T)[]): Partial<T> => Object.fromEntries(keys.filter(k => o[k] !== undefined).map(k => [k, o[k]])) as Partial<T>;
+    const sources = query.sources.map(s => keep(s, ['id', 'name', 'alias', 'endpointId', 'endpointName', 'request', 'system', 'view', 'executionId', 'isBatch', 'environment', 'executedAt', 'file', 'off', 'runOf', 'run']) as QuerySource);
+    return {
+        kind: 'dbmn.query', version: 1, copiedAt: new Date().toISOString(),
+        query: { ...keep(query, ['name', 'joins', 'select', 'distinct', 'calc', 'sql', 'search', 'sort', 'totals', 'widths', 'letters', 'clashes', 'blanks', 'createdAt', 'updatedAt']), sources }
+    };
+}
+
+/**
+ * A copied query made a saved one of this app's (Hub: Import a query): a new id and a free name; its views keep what
+ * they read, and a run this computer doesn't have says so on its view (the query still opens, to look at and edit).
+ * A problem is said in words for the user, and nothing is saved.
+ */
+export async function importQueryCopy(state: QueryState, text: string): Promise<{ query?: SavedQuery; problem?: string }> {
+    let copy: Partial<QueryCopy> | undefined;
+    try { copy = JSON.parse(String(text ?? '').trim()) as Partial<QueryCopy>; } catch { copy = undefined; }
+    const q = copy?.query;
+    if (!copy || copy.kind !== 'dbmn.query' || !q || !Array.isArray(q.sources) || !Array.isArray(q.joins)) {
+        return { problem: 'That is not a copied query. Copy it again with Copy the query, and paste all of it.' };
+    }
+    if ((copy.version ?? 1) > 1) return { problem: 'This query was copied from a newer DBMN. Update DBMN, then import it.' };
+    const now = new Date().toISOString();
+    const query = {
+        ...(JSON.parse(JSON.stringify(q)) as SavedQuery),
+        id: newId(ID_PREFIX),
+        name: freeReportName(state, String(q.name || 'Imported query').slice(0, REPORT_NAME_MAX)),
+        createdAt: q.createdAt || now, updatedAt: now, reached: 4
+    } as SavedQuery;
+    repairQuery(query);
+    await saveQuery(state, query);
+    return { query };
 }
 
 export async function duplicateQuery(state: QueryState, id: string): Promise<SavedQuery | undefined> {

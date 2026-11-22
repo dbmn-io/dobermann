@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Flexion Tech Pty Ltd
 /**
  * An old saved compare as a query (query-from-compare.ts, 2026-11-22): its runs, its key, its compared and shown
  * columns, its sort; Relaxed said once; and the query it makes runs as a compare on the engine.

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 Flexion Tech Pty Ltd
 /**
  * The Console's database button (2026-11-22, James: "New Query", "New Compare", "Add to Compare"): this result is
  * saved on a query to add (SavedQuery.adding) and the query opened; Add to Compare's list is the saved compares.

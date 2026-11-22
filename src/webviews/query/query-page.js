@@ -266,6 +266,13 @@
             if (!emptyNote.hidden && emptyNote.textContent !== EMPTY_REPORT) emptyNote.textContent = EMPTY_REPORT;
         }
         $('queryBackBtn').disabled = ui.step === 1 || !!ui.busy;
+        // Reset joins: on the Join step, once any join has a column picked
+        const reset = $('queryResetJoinsBtn');
+        if (reset) {
+            const anyPicked = !!ui.state && (ui.state.joins || []).some(j => (j.on || []).some(p => (p.left && p.left.column) || (p.right && p.right.column)));
+            reset.hidden = !(ui.step === 2 && anyPicked);
+            reset.disabled = !!ui.busy;
+        }
     }
     /** A line per step: its views, its joins, its columns, its rows. */
     function stepSummaries() {
@@ -2407,6 +2414,11 @@
         'query:addFile': () => addsEl('queryAddFile').click(),
         'query:back': () => goTo(ui.step - 1),
         'query:next': () => goTo(ui.step + 1),
+        // Every join back to "Pick a column" (the views, columns and filters stay), after a confirm
+        'query:resetJoins': () => {
+            window.DbmnModal.confirm({ title: 'Reset every join?', body: 'Every join goes back to "Pick a column". The views and the report\'s columns stay.', confirmLabel: 'Reset joins', confirmVariant: 'danger' })
+                .then(yes => { if (!yes) return; setBusy('Joining…'); post({ type: 'query.resetJoins' }); });
+        },
         'query:copySql': () => {
             const sql = (ui.state && (ui.state.ownSql || ui.state.sql)) || '';
             if (window.DbmnClipboard) window.DbmnClipboard.writeText(sql).then(() => window.DbmnToast && window.DbmnToast.success('SQL copied'));

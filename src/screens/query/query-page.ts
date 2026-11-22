@@ -21,7 +21,7 @@ export function buildQueryPage(asset: AssetUrl, config: { queryId: string; name:
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Query: ${attr(config.name)}</title>
-    ${sharedStyleLinks(asset, ['atomic', 'core', 'buttons', 'modals', 'tables', 'tabs', 'toast', 'console', 'data-transformer', 'compare', 'column-drag', 'column-head', 'dbmn-lanes', 'query', 'query-columns', 'dbmn-footer', 'dbmn-table', 'dbmn-name', 'dbmn-functions'])}
+    ${sharedStyleLinks(asset, ['atomic', 'core', 'buttons', 'modals', 'tables', 'tabs', 'toast', 'console', 'search', 'data-transformer', 'compare', 'column-drag', 'column-head', 'dbmn-lanes', 'query', 'query-columns', 'dbmn-footer', 'dbmn-table', 'dbmn-name', 'dbmn-functions'])}
 </head>
 <body class="editor-slide-in">
     <script src="${asset('shared/button-contrast.js')}"></script>
@@ -148,6 +148,8 @@ export function buildQueryPage(asset: AssetUrl, config: { queryId: string; name:
             <dbmn-actions>
                 <button type="button" id="queryBackBtn" class="btn btn-secondary" data-click="query:back" disabled>Back</button>
                 <button type="button" id="queryNextBtn" class="btn btn-primary" data-click="query:next" disabled>Next</button>
+                <!-- The Join step, once a join has a column: every join back to "Pick a column", after a confirm (a stuck query's way out) -->
+                <button type="button" id="queryResetJoinsBtn" class="btn btn-secondary" data-click="query:resetJoins" hidden>Reset joins</button>
             </dbmn-actions>
             <dbmn-steps id="queryStepper" label="Query steps"></dbmn-steps>
         </dbmn-footer>

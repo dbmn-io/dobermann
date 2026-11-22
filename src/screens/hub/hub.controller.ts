@@ -8,7 +8,7 @@
  */
 import { freeReportName, REPORT_NAME_MAX, reportNameProblem } from '../../services/compare/report-name';
 import { duplicateCompare, getCompare, removeCompare, saveCompare, savedCompares, type SavedCompare } from '../../services/compare/compare-store';
-import { createQuery, duplicateQuery, getQuery, isQueryId, listQueries, removeQuery, saveQuery, type SavedQuery } from '../../services/query/query-store';
+import { createQuery, duplicateQuery, getQuery, importQueryCopy, isQueryId, queryForSupport, listQueries, removeQuery, saveQuery, type SavedQuery } from '../../services/query/query-store';
 import { queryFromCompare } from '../../services/query/query-from-compare';
 import { isDraft } from '../../services/compare/compare-store';
 import { validateShortIdentifier } from '../../data-loading/system-schema';
@@ -256,6 +256,22 @@ export class HubController {
                 const query = await createQuery(state);
                 await this.broadcastState();
                 await this.openCompareTab(query.id);
+                break;
+            }
+            // A query copied out for support, and one pasted back in (query-store queryForSupport / importQueryCopy)
+            case 'copyQuery': {
+                const state = this.ports.compares?.state();
+                const query = state && str('compareId') ? getQuery(state, str('compareId')!) : undefined;
+                if (query) this.session.post({ type: 'queryCopy', name: query.name, text: JSON.stringify(queryForSupport(query), null, 2) });
+                break;
+            }
+            case 'importQuery': {
+                const state = this.ports.compares?.state();
+                if (!state) break;
+                const made = await importQueryCopy(state, String(msg.text ?? ''));
+                if (!made.query) { this.ports.toast.warn(made.problem ?? 'The query could not be imported.'); break; }
+                await this.broadcastState();
+                await this.openCompareTab(made.query.id);
                 break;
             }
             case 'duplicateCompare':

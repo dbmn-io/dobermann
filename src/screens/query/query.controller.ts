@@ -29,7 +29,7 @@ import { allColumns, columnSql, compareKeyColumnSql, compareKeySql, defaultColum
 import { FORMULA_FUNCTIONS, formulaSql, fullRef, fullText, parseFormula, shortRef, shortText } from '../../services/query/formula';
 import type { FormulaNode } from '../../services/query/formula';
 import { reportNameProblem } from '../../services/compare/report-name';
-import { cleanViewName, compareLeads, getQuery, guessViewName, viewNameFromPath, VIEW_NAME_MAX, MAX_QUERY_VIEWS, moveView, moveViewFirst, changesCompareBaseline, nameViews, newSourceId, nextRunName, QuerySource, renameView, runName, saveQuery, SavedQuery, untickBlanks, untickClashes } from '../../services/query/query-store';
+import { cleanViewName, getQuery, rebaseCompare, repairQuery, guessViewName, viewNameFromPath, VIEW_NAME_MAX, MAX_QUERY_VIEWS, moveView, moveViewFirst, changesCompareBaseline, nameViews, newSourceId, nextRunName, QuerySource, renameView, runName, saveQuery, SavedQuery, untickBlanks, untickClashes } from '../../services/query/query-store';
 import { columnTypes, spread, TYPE_SAMPLE, type ColumnType } from '../../services/query/column-types';
 import { CALC_VIEW, QUERY_JOIN_KINDS } from '../../services/query/query-types';
 import { comparableRuns, type RequestTemplates, type RunHeaderValue } from '../../services/compare/compare-runs';
@@ -375,6 +375,9 @@ export class QueryController {
                 case 'query.fileData': return await this.fileAgain(message as unknown as FileMessage & { id: string });
                 case 'query.removeView': return await this.change(q => {
                     const id = String(message.id);
+                    // The compare's Baseline taken out: the next of its views is the Baseline first, so the compare keeps its key
+                    const inCompare = queryCompare(q.joins, q.sources[0]?.id);
+                    if (inCompare && inCompare.baseline === id && inCompare.views.length > 1) rebaseCompare(q, inCompare.views[1]);
                     // A view's runs stay: the first of them is the view's first run now
                     const runs = q.sources.filter(s => s.runOf === id);
                     if (runs.length) {
@@ -474,6 +477,14 @@ export class QueryController {
                     if (!QUERY_JOIN_KINDS.includes(kind)) return;
                     q.joins.forEach(j => { if (j.kind === 'compare') j.kind = kind; });
                     alignCompareJoins(q.joins, runsOf(q));
+                });
+                // Reset joins (the Join step's footer): every join back to "Pick a column", each keeping its kind; a compare stays a
+                // compare on the same Baseline, its key to pick again. The views, the report's columns, the filters stay
+                case 'query.resetJoins': return await this.change(q => {
+                    const baseline = queryCompare(q.joins, q.sources[0]?.id)?.baseline;
+                    q.joins.forEach(j => {
+                        j.on = j.kind === 'compare' && baseline ? [{ left: { parts: [{ view: baseline, column: '' }] }, right: { parts: [{ view: j.view, column: '' }] } }] : [];
+                    });
                 });
                 case 'query.deleteJoin': return await this.change(q => {
                     const gone = new Set((Array.isArray(message.views) ? message.views : [message.view]).map(String));
@@ -603,9 +614,10 @@ export class QueryController {
         const query = getQuery(this.ports.state, this.config.queryId);
         if (!query) throw new Error('This query is no longer saved.');
         this.query = query;
-        // (a query saved with its compare after another view: the compare comes first, as the engine needs it)
+        // Made whole as it opens (repairQuery: a join for every view, none to a view no longer there, the compare first),
+        // so no saved shape leaves it stuck
         const named = nameViews(query);
-        if (compareLeads(query) || named) await saveQuery(this.ports.state, query);
+        if (repairQuery(query) || named) await saveQuery(this.ports.state, query);
         this.post({ type: 'query.init', name: query.name, empty: query.sources.length === 0, reached: query.reached ?? 4, start: this.config.start === 'results' ? 'results' : 'edit', prefs: this.preferences(), ...(query.specialOff ? { specialOff: true } : {}) });
         // The views show at once, by what is saved; their rows are read behind them
         this.postState({ reading: true });
@@ -1302,8 +1314,9 @@ export class QueryController {
         const query = this.query;
         if (!query) return;
         await apply(query);
-        // A compare's views lead: a compare made after another view comes first, that view joined to it
-        compareLeads(query);
+        // Whole after every change, as on opening (repairQuery): a compare made after another view comes first, that
+        // view joined to it; the first view's join, if a move or a removal left one, goes
+        repairQuery(query);
         query.updatedAt = new Date().toISOString();
         await saveQuery(this.ports.state, query);
         this.ports.host.compared?.();
