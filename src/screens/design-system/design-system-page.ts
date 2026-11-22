@@ -256,7 +256,7 @@ line.addEventListener('dbmn-progress-stop', () =&gt; post({ type: 'query.stopCou
 
     <section class="ds-section" id="names">
         <h2>Names <span class="ds-chip is-component">Component</span></h2>
-        <p>A report's name is in its screen's top row (first in Query, straight after the slots in Compare), quiet, where it costs no height. A click makes it a box: Enter keeps the new name, Esc puts the old one back. A name not given yet reads in italics, so it can be named from the first step. Everywhere else a thing is renamed by right-click → Rename in its Hub list, which opens one dialog with the same rules: one line, single spaces, a length each kind allows, and a name another of its kind has is refused.</p>
+        <p>A report's name is in its screen's top row (first in Query), quiet, where it costs no height. A click makes it a box: Enter keeps the new name, Esc puts the old one back. A name not given yet reads in italics, so it can be named from the first step. Everywhere else a thing is renamed by right-click → Rename in its Hub list, which opens one dialog with the same rules: one line, single spaces, a length each kind allows, and a name another of its kind has is refused.</p>
         <div class="ds-demo ds-row">
             <dbmn-name id="dsName" label="Query name" max="30" value="New query" unnamed></dbmn-name>
             <span class="form-hint" id="dsNameNote" role="status"></span>
@@ -344,7 +344,7 @@ DbmnContextMenu.show(button, [{ summary: { title: 'BL · inventory', lines: [['V
 DbmnContextMenu.show(button, [{ id: 'left', label: 'Left join', detail: 'All of Stock; Counts where it matches', glyph: RelationGlyph.join('left'), checked: true }], id =&gt; …);</code></pre>
 
         <h3>Functions on a column</h3>
-        <p>One dialog wherever a column is changed on its way in: Query's Join and Columns, Compare's Map, Run Batch's Map. Tick any; they apply in the order ticked, each written around the column's name with its values typed in place. Beside them: what they make, and a few values before and after. With a column to compare against (Compare's BL), its values on the same rows too, and how many agree. Try it: tick Trim spaces, then Drop leading zeros.</p>
+        <p>One dialog wherever a column is changed on its way in: Query's Join and Columns, Run Batch's Map. Tick any; they apply in the order ticked, each written around the column's name with its values typed in place. Beside them: what they make, and a few values before and after. With a column to compare against (a compare's BL), its values on the same rows too, and how many agree. Try it: tick Trim spaces, then Drop leading zeros.</p>
         <div class="ds-demo ds-row">
             <button type="button" class="btn btn-secondary" data-click="ds:functions">Functions on C1.sku</button>
             <span class="form-hint" id="dsFunctionsSaid"></span>
@@ -477,7 +477,7 @@ orders.layout = { recordsWide: ['lines'] };  // these columns' records full widt
 
     <section class="ds-section" id="mapping">
         <h2>Lining columns up <span class="ds-chip is-component">Component</span></h2>
-        <p>Which column in each source is which, a line at a time: Compare's Map, Run Batch's Map, and later Query's Join. Each source has a column across the top; each line a box under every source with its column, an example, the functions on it (ƒ opens <a href="#dialogs">Functions on a column</a>) and how many of its values agree with the first source's. On the left, what the line is for: the screen's choices. The key's lines sit under "Match on" with how many rows each source matches. Columns no line uses wait under each source: a click starts a line. Try it: make a line part of the key, pick another column, take a line out.</p>
+        <p>Which column in each source is which, a line at a time: Run Batch's Map, and later Query's Join. Each source has a column across the top; each line a box under every source with its column, an example, the functions on it (ƒ opens <a href="#dialogs">Functions on a column</a>) and how many of its values agree with the first source's. On the left, what the line is for: the screen's choices. The key's lines sit under "Match on" with how many rows each source matches. Columns no line uses wait under each source: a click starts a line. Try it: make a line part of the key, pick another column, take a line out.</p>
         <div class="ds-demo">
             <dbmn-map id="dsMap" label="Map the results' columns"></dbmn-map>
         </div>
