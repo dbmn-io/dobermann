@@ -322,7 +322,7 @@
             const filtered = ctx.hasStatus() && anyFilter();
             clear.disabled = !filtered;
             clear.setAttribute('aria-pressed', String(filtered));
-            clear.title = filtered ? 'Filter: filters are on. Click to clear them all' : 'Filter: no filters on. Filter a column from its heading';
+            clear.title = filtered ? 'Clear all filters' : 'No filters on';
             box.hidden = !ctx.hasStatus();
             if (box.hidden) return;
             [['queryViewSide', ui.resultsView !== 'compact'], ['queryViewCompact', ui.resultsView === 'compact'],

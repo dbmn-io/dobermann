@@ -67,11 +67,11 @@ export function buildQueryPage(asset: AssetUrl, config: { queryId: string; name:
                             <button type="button" class="toggle-btn" id="queryColsChanged" aria-pressed="false" title="Hide the compared columns no row differs in">Only diffs</button>
                         </div>
                     </span>
-                    <button type="button" class="dbmn-toggle" id="queryTotals" aria-pressed="false" data-icon="square-sigma" title="Totals: a total under each column of numbers, for the rows shown" aria-label="Totals"></button>
+                    <button type="button" class="dbmn-toggle" id="queryTotals" aria-pressed="false" data-icon="square-sigma" title="Totals" aria-label="Totals"></button>
                     <!-- As Word's Show/Hide ¶: spaces, tabs, line breaks and blanks marked in every cell, or in none -->
-                    <button type="button" class="dbmn-toggle" id="querySpecial" aria-pressed="false" data-icon="pilcrow" title="Hidden characters: show spaces, tabs, line breaks and blank text in every cell" aria-label="Hidden characters"></button>
+                    <button type="button" class="dbmn-toggle" id="querySpecial" aria-pressed="false" data-icon="pilcrow" title="Show hidden characters" aria-label="Show hidden characters"></button>
                     <!-- Lit while any filter is on; a click clears them all. Dimmed (disabled) with none on -->
-                    <button type="button" class="dbmn-toggle" id="queryClearFilters" aria-pressed="false" data-icon="funnel" title="Filter: no filters on. Filter a column from its heading" aria-label="Clear all filters" disabled></button>
+                    <button type="button" class="dbmn-toggle" id="queryClearFilters" aria-pressed="false" data-icon="funnel" title="No filters on" aria-label="Clear all filters" disabled></button>
                     <!-- Offered only when rows repeat: it says how many -->
                     <label class="query-row font-size-12 hidden" id="queryDistinctLabel" title="SELECT DISTINCT: rows alike in every column shown fold into one"><input type="checkbox" id="queryDistinct"> <span id="queryDistinctText">Distinct</span></label>
                 </div>

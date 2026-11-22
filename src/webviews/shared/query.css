@@ -143,9 +143,11 @@
 /* Results' own tools wrap onto a second line rather than run past the page's edge (Chain, Totals, Export
    stay reachable at a laptop's width); the search box gives way first, down to a usable width */
 /* Results' tools on ONE line, across the whole width with room between each (James, 2026-11-22) */
-/* What the report shows on the left, evenly spaced; Search, Chain and Export on the right; the gap between them grows */
+/* Three groups (James, 2026-11-22): what the report shows hard left, evenly spaced; Search in the middle, centred in the
+   room between; Chain and Export (what goes to other things) hard right */
 #queryResultsControls { flex: 1 1 100%; min-width: 0; flex-wrap: nowrap; gap: 16px; justify-content: flex-start; }
-#queryResultsControls > .search-container { flex: 0 1 360px; min-width: 140px; margin-left: auto; }
+#queryResultsControls > .search-container { flex: 1 1 0; min-width: 140px; display: flex; justify-content: center; margin: 0; }
+#queryResultsControls > .search-container .search-input-wrapper { width: 100%; max-width: 440px; }
 #queryResultsControls > :not(.search-container) { flex: none; }
 .query-view-tools { display: inline-flex; align-items: center; gap: 16px; flex-wrap: nowrap; }
 /* Every control in the row one height, the toggles' (dbmn-toggle, 34px): "the same height as any other button" (James, 2026-11-22) */
