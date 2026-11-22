@@ -5,7 +5,6 @@
  * as its ports, the same ones the Console uses. (Old Compare's screen ran here too until 2026-11-23;
  * a saved compare now opens as the query made from it.)
  */
-import { HubPreferencesService } from '../../services/hub-preferences/hub-preferences.service';
 import * as vscode from 'vscode';
 import { WebviewBase } from '../shared/webview-base';
 import { WebviewConfig, WebviewMessage } from '../shared/types';
@@ -20,11 +19,7 @@ import { QueryController } from '../../screens/query/query.controller';
 import { buildQueryPage } from '../../screens/query/query-page';
 import { LookupTablesStore } from '../../services/lookup-tables/lookup-tables';
 import { createVsCodeQueryFiles, vsCodeLookupFolder } from '../../platform/vscode/vscode-execution-storage';
-import initSqlJs from 'sql.js';
-import * as path from 'path';
 
-/** SQLite for queries, started once and shared by every Query tab. */
-let sqlEngine: ReturnType<typeof initSqlJs> | undefined;
 
 export interface CompareWebviewConfig {
     /** The saved query. */
@@ -78,8 +73,7 @@ export class CompareWebview extends WebviewBase {
                 compared: () => config.onCompared?.()
             }
         };
-        const wasm = path.join(context.extensionPath, 'dist', 'sql-wasm.wasm');
-        this.controller = new QueryController(this.session, { ...ports, sql: () => (sqlEngine ??= initSqlJs({ locateFile: () => wasm })), systemName: async id => (await container.resolve<{ getSystem(id: string): Promise<{ name: string } | undefined> }>(ServiceTokens.SystemManager).getSystem(id))?.name, openRunBatch: async (endpoint, chain) => { await vscode.commands.executeCommand('dbmn.runBatch', { endpoint, chain }); }, queryFiles: createVsCodeQueryFiles(), lookups: new LookupTablesStore(vsCodeLookupFolder()), openLookup: async id => { await vscode.commands.executeCommand('dbmn.openLookupTable', id); }, newLookup: async () => { const made = await new LookupTablesStore(vsCodeLookupFolder()).create('Lookup table'); await vscode.commands.executeCommand('dbmn.openLookupTable', made.id); }, newCompareEngine: () => new HubPreferencesService(context.globalState).get().newCompareEngine !== false }, { queryId: config.compareId, start: config.start });
+        this.controller = new QueryController(this.session, { ...ports, systemName: async id => (await container.resolve<{ getSystem(id: string): Promise<{ name: string } | undefined> }>(ServiceTokens.SystemManager).getSystem(id))?.name, openRunBatch: async (endpoint, chain) => { await vscode.commands.executeCommand('dbmn.runBatch', { endpoint, chain }); }, queryFiles: createVsCodeQueryFiles(), lookups: new LookupTablesStore(vsCodeLookupFolder()), openLookup: async id => { await vscode.commands.executeCommand('dbmn.openLookupTable', id); }, newLookup: async () => { const made = await new LookupTablesStore(vsCodeLookupFolder()).create('Lookup table'); await vscode.commands.executeCommand('dbmn.openLookupTable', made.id); } }, { queryId: config.compareId, start: config.start });
     }
 
     getWebviewType(): string {

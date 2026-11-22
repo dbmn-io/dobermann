@@ -1809,26 +1809,12 @@
         });
     }
 
-    /**
-     * "New compare engine (testing)": the engine is on in every build (James, 2026-11-22); this switch,
-     * a development build's only, turns it off to compare with the old one until that is removed.
-     */
-    function wireNewCompareEngine() {
-        const row = document.getElementById('newCompareEngineRow');
-        const toggle = document.getElementById('newCompareEngine');
-        if (!row || !toggle) return;
-        row.hidden = !document.querySelector('.hub-header .hub-dev-backend');
-        try { toggle.checked = (vscode.getState() || {}).newCompareEngine !== false; } catch { toggle.checked = true; }
-        toggle.addEventListener('change', () => persistState({ newCompareEngine: toggle.checked }));
-    }
-
     function init() {
         // Hydrate all [data-icon] placeholders before anything else paints.
         if (window.Icons) window.Icons.injectIcons();
 
         wireNav();
         wireDesignSystem();
-        wireNewCompareEngine();
         wireRailMore();
         wireEnvSelector();
         wireSettings();

@@ -55,7 +55,8 @@ async function opened(engineOn: boolean) {
     return { send, state, toasts, seen, saved: () => (store.get('queries') as SavedQuery[])[0], dispose: () => controller.dispose() };
 }
 
-for (const engineOn of [true, false]) {
+// (one engine since 2026-11-23: the old SQLite path is gone)
+for (const engineOn of [true]) {
     describe(`Query: a compare survives its views' menu (${engineOn ? 'new' : 'old'} engine)`, function () {
         this.timeout(20000);
 

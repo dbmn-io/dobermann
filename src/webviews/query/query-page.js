@@ -1877,15 +1877,6 @@
             why.textContent = s.error;
             lines.unshift(why);
         }
-        // "New compare engine (testing)" on, and this query more than a compare of runs: it says it runs on SQLite, and why
-        if (s.engineNote) {
-            const note = document.createElement('dbmn-status');
-            note.className = 'query-engine-note';
-            note.setAttribute('inline', '');
-            note.setAttribute('tone', 'warn');
-            note.textContent = s.engineNote;
-            lines.unshift(note);
-        }
         // The views in a compare join as one: one band, first; the joins that bring views in to show below it
         if (s.joins.some(j => j.kind === 'compare')) lines.push(compareBand());
         // A join a view at a time, as SQL is written: every join made, and the first still to make; the views after it wait
@@ -2609,7 +2600,6 @@
             case 'query.arranged':
                 if (!ui.state) break;
                 ui.state.columns = m.columns;
-                ui.state.sql = m.sql;
                 ui.state.allSelected = false;
                 renderColumns();
                 break;

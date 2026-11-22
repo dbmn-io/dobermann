@@ -277,8 +277,6 @@
 .query-calc-said.is-ok { color: var(--vscode-testing-iconPassed, var(--vscode-charts-green)); }
 .query-calc-said.is-bad { color: var(--vscode-errorForeground); }
 .query-calc-said.is-idle { color: var(--vscode-descriptionForeground); }
-.query-calc-sqlfold summary { cursor: pointer; font-size: 12px; color: var(--vscode-descriptionForeground); }
-.query-calc-sql { margin: 6px 0 0; font: 12px/1.5 var(--vscode-editor-font-family, monospace); color: var(--vscode-descriptionForeground); white-space: pre-wrap; word-break: break-word; }
 .query-calc-list { border: 1px solid var(--vscode-panel-border); border-radius: 4px; max-height: 440px; overflow: auto; padding: 3px; }
 .query-calc-group { font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--vscode-descriptionForeground); padding: 8px 6px 2px; }
 .query-calc-fn, .query-calc-col { display: flex; flex-direction: column; gap: 1px; width: 100%; text-align: left; background: none; border: 0; color: var(--vscode-foreground); padding: 4px 6px; border-radius: 3px; cursor: pointer; font-size: 12px; }
@@ -387,7 +385,6 @@ dbmn-progress[inline].query-read-progress .dbmn-progress-count { margin-left: 0;
 @media (prefers-reduced-motion: reduce) { .query-counting-stage::after { animation: none; border-style: dashed; } }
 .query-counting-time { color: var(--vscode-descriptionForeground); font-size: 11px; }
 /* "New compare engine (testing)": the Join step's line when a query runs on SQLite instead */
-.query-engine-note { display: block; margin: 0 0 8px; }
 /* Results working: the table's "No rows." from before is not its answer yet */
 dbmn-table.is-reading .dbmn-table-none { visibility: hidden; }
 

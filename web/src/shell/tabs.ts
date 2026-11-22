@@ -31,7 +31,6 @@ import { LogsController } from '../../../src/screens/logs/logs.controller';
 import { appLog } from './app-log';
 import { runHistory } from '../../../src/screens/logs/run-history';
 import { LogReader } from '../../../src/services/logging/log-reader';
-import { HubPreferencesService } from '../../../src/services/hub-preferences/hub-preferences.service';
 import { remoteEngineHost, type EngineHost } from '../../../src/services/engine/engine-host';
 
 /** Query's new engine in a worker of its own (engine-worker.ts): a long run never holds the page. */
@@ -48,11 +47,7 @@ function engineInWorker(): EngineHost {
         }
     });
 }
-import initSqlJs from 'sql.js';
-import sqlWasmUrl from 'sql.js/dist/sql-wasm.wasm?url';
 
-/** SQLite for queries, started once and shared by every Query tab. */
-let sqlEngine: ReturnType<typeof initSqlJs> | undefined;
 import { buildRunBatchPage } from '../../../src/screens/run-batch/run-batch-page';
 import { FormatConverterService } from '../../../src/services/format-converter/format-converter.service';
 import { DataTypeDetectionService } from '../../../src/services/data-type-detection/data-type-detection.service';
@@ -192,7 +187,7 @@ export function webTabs(deps: WebTabDeps): HubTabFactory {
             };
             // A query (an old saved compare opens as the query made from it): its ports and SQLite, from the app's own wasm file
             {
-                const query = new QueryController(session, { ...ports, sql: () => (sqlEngine ??= initSqlJs({ locateFile: () => sqlWasmUrl })), systemName: async id => (await deps.systems.getSystem(id))?.name, openRunBatch: (endpoint, chain) => deps.openBatch(endpoint.id, chain), queryFiles, lookups: new LookupTablesStore(lookupFolder), openLookup: async id => { deps.openLookup(id); }, newLookup: async () => { const made = await new LookupTablesStore(lookupFolder).create('Lookup table'); await deps.openLookup(made.id); }, newCompareEngine: () => new HubPreferencesService(deps.state.globalState).get().newCompareEngine !== false, engineHost: engineInWorker }, { queryId: compareId, start });
+                const query = new QueryController(session, { ...ports, systemName: async id => (await deps.systems.getSystem(id))?.name, openRunBatch: (endpoint, chain) => deps.openBatch(endpoint.id, chain), queryFiles, lookups: new LookupTablesStore(lookupFolder), openLookup: async id => { deps.openLookup(id); }, newLookup: async () => { const made = await new LookupTablesStore(lookupFolder).create('Lookup table'); await deps.openLookup(made.id); }, engineHost: engineInWorker }, { queryId: compareId, start });
                 const queryScreen = { handle: (m: Record<string, unknown>) => query.handleMessage(m as never), dispose: () => query.dispose() };
                 return { ...tab(buildQueryPage(asset, { queryId: compareId, name: endpointName }), session, queryScreen), name: `Query: ${endpointName}` };
             }

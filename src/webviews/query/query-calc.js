@@ -109,11 +109,8 @@
         const uses = el('div', 'query-calc-uses');
         const preview = el('table', 'data-table query-calc-prev');
         const said = el('div', 'query-calc-said');
-        const sqlBox = el('pre', 'query-calc-sql');
-        const sqlFold = el('details', 'query-calc-sqlfold');
-        sqlFold.append(el('summary', '', 'The SQL it runs as'), sqlBox);
         left.append(field('Name', name), field('Calculation', wrap), hint, quick,
-            field('Columns it uses', uses), field('On the first records', preview), said, sqlFold);
+            field('Columns it uses', uses), field('On the first records', preview), said);
 
         // Quick starts, from the columns there are
         const numeric = columns.filter(c => /^-?\d+(\.\d+)?$/.test(c.sample));
@@ -268,7 +265,6 @@
                 ok = false;
                 uses.replaceChildren(el('span', 'form-hint', 'Each column it uses, in its view’s colour, with the whole path that is saved.'));
                 preview.replaceChildren();
-                sqlBox.textContent = '';
                 said.className = 'query-calc-said is-idle';
                 said.textContent = 'Type a calculation, pick a quick start, or click a function or column on the right.';
                 setAdd();
@@ -291,12 +287,10 @@
                 const head = el('tr');
                 head.append(el('th', '', m.label || 'Row'), ...(m.compare ? [el('th', '', `${name.value || 'Result'} 1`), el('th', '', `${name.value || 'Result'} 2`)] : [el('th', '', name.value || 'Result')]));
                 preview.replaceChildren(head, ...(m.rows || []).map(r => { const tr = el('tr'); r.forEach(v => tr.appendChild(el('td', 'font-mono', v === null || v === undefined ? '(blank)' : String(v)))); return tr; }));
-                sqlBox.textContent = m.sql || '';
                 said.className = 'query-calc-said is-ok';
                 said.textContent = m.compare ? '✓ A compared column: its sides side by side, the differences marked' : '✓ Works on every record shown';
             } else {
                 preview.replaceChildren();
-                sqlBox.textContent = '';
                 said.className = 'query-calc-said' + (refTyping ? ' is-idle' : ' is-bad');
                 said.textContent = refTyping ? 'Pick a column from the list, or keep typing its name.' : `✗ ${m.error}`;
                 // Two columns of that name: the list to pick from, as the error says
