@@ -1810,8 +1810,8 @@
     }
 
     /**
-     * "New compare engine (testing)": a development build's only, off to begin with. Kept with the
-     * Hub's preferences (globalState), where Query's host reads it when it runs a compare.
+     * "New compare engine (testing)": the engine is on in every build (James, 2026-11-22); this switch,
+     * a development build's only, turns it off to compare with the old one until that is removed.
      */
     function wireNewCompareEngine() {
         const row = document.getElementById('newCompareEngineRow');
