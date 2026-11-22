@@ -287,7 +287,10 @@ export class SqlJsExecutionStorage implements IExecutionStorage {
             // Take anything the file gained since we read it, or we would erase it.
             this.mergeFromDiskIfChanged();
 
-            fs.writeFileSync(tmpPath, this.db.export());
+            const bytes = this.db.export();
+            // (export closes and reopens the database, so SQLite's change count starts again from 0: changeStamp counts saves too)
+            this.exports++;
+            fs.writeFileSync(tmpPath, bytes);
             fs.renameSync(tmpPath, this.dbPath);
             this.rememberFileState();
         } catch (error) {
@@ -301,17 +304,21 @@ export class SqlJsExecutionStorage implements IExecutionStorage {
     /**
      * A stamp that changes whenever any row of the history does: SQLite's own count of rows written
      * on this database (every insert, update and delete, the merges from another writer's file
-     * too), with which database object it is (a reload starts a new count). The run list's cache
-     * (DatabaseAdapter.runList) is read again only when it changes. Undefined while closed.
+     * too), with which database object it is (a reload starts a new count) and how many times it
+     * has been saved (sql.js's export closes and reopens it, and the count starts again from 0: without
+     * this, a stamp from before a save could come round again with other runs in it; found by the
+     * tester 2026-11-23). The run list's cache (DatabaseAdapter.runList) is read again only when it
+     * changes. Undefined while closed.
      */
     changeStamp(): string | undefined {
         if (!this.db) return undefined;
         if (this.db !== this.stampedDb) { this.stampedDb = this.db; this.stampSerial++; }
         const changes = this.db.exec('SELECT total_changes()')[0]?.values[0]?.[0];
-        return `${this.stampSerial}:${String(changes)}`;
+        return `${this.stampSerial}:${this.exports}:${String(changes)}`;
     }
     private stampedDb: unknown;
     private stampSerial = 0;
+    private exports = 0;
 
     /**
      * #344: fold in what another writer saved, now rather than at our next save, and say whether

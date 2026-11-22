@@ -95,6 +95,18 @@ describe('The run list: one per app, read again only when the history changes', 
         expect(await a.names(), 'the shared list as it was').to.deep.equal(['Load']);
     });
 
+    it('a save in between (sql.js export reopens the database and SQLite\'s change count starts again): runs after it still show', async () => {
+        // (found 2026-11-23 by the tester's query-runs-fresh: History said "1 transaction" with two runs done)
+        const a = await app();
+        await a.storage.createExecution(run('First'));
+        await a.storage.createExecution(run('Second'));
+        expect(await a.names()).to.deep.equal(['First', 'Second']);
+        (a.storage as unknown as { flushDatabase(): void }).flushDatabase();   // the debounced save, here and now
+        await a.storage.createExecution(run('Third'));
+        await a.storage.createExecution(run('Fourth'));                        // as many changes as before the save
+        expect(await a.names(), 'the two runs after the save').to.deep.equal(['First', 'Fourth', 'Second', 'Third']);
+    });
+
     it('a read that fails is not kept: the next one reads again', async () => {
         const a = await app();
         a.reads.restore();
