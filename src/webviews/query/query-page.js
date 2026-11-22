@@ -545,7 +545,12 @@
         end.dataset.end = '';
         // + Add a view and + Add a file: the next slot, after the last view, on every step (James, 2026-11-22)
         end.dataset.adds = 'slots';
-        $('queryViews').replaceChildren($('queryHeadLead'), ...lanes, end);
+        // The name's gutter stays put: moving it out and back takes the focus from a name being
+        // typed, and each view's rows coming in redraws the slots ("Should never lose focus")
+        const box = $('queryViews'), lead = $('queryHeadLead');
+        [...box.children].forEach(c => { if (c !== lead) c.remove(); });
+        if (lead && box.firstElementChild !== lead) box.prepend(lead);
+        box.append(...lanes, end);
         placeAdds();
         ['queryTop', 'queryViewRows', 'queryJoins', 'queryColumns'].forEach(id => applyLanes($(id)));
         // The slot row and the step's lines under it scroll sideways as one (the step's bar moves both)
