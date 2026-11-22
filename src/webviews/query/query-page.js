@@ -1301,7 +1301,7 @@
             // Reset joins under it, for every join (James, 2026-11-23: "Just in the menu", not the footer)
             const anyPicked = (ui.state.joins || []).some(j => (j.on || []).some(p => (p.left && p.left.column) || (p.right && p.right.column)));
             items.push({ separator: true }, { id: 'delete', label: 'Delete join', icon: 'trash-2' },
-                { id: 'reset', label: 'Reset joins', icon: 'undo-2', disabled: !anyPicked, detail: anyPicked ? 'Every join back to "Pick a column"' : 'No join has a column picked yet' });
+                { id: 'reset', label: 'Reset joins', icon: 'many-to-one-sync', disabled: !anyPicked, detail: anyPicked ? 'Every join back to "Pick a column"' : 'No join has a column picked yet' });
             window.DbmnContextMenu.show(b, items, id => {
                 b.setAttribute('aria-expanded', 'false');
                 if (id === 'reset') { resetJoins(); return; }
