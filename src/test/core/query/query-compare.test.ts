@@ -9,11 +9,11 @@
 import * as assert from 'assert';
 import initSqlJs from 'sql.js';
 import type { SqlJsStatic } from 'sql.js';
-import { QuerySession } from '../../../services/query/query-engine';
+import { QuerySession } from '../reference/query-engine';
 import { alignCompareJoins, groupCompare, isCompare, queryCompare, runJoin } from '../../../services/query/query-compare';
 import { nextRunName, runName, viewNameFromPath } from '../../../services/query/query-store';
 import type { QuerySource } from '../../../services/query/query-store';
-import { compareKeySql, defaultColumns, formulaColumns, lookupsUsed, resultColumns, writeSql } from '../../../services/query/query-sql';
+import { compareKeySql, defaultColumns, formulaColumns, lookupsUsed, resultColumns, writeSql } from '../reference/query-sql';
 import { columnCellDiffs, passes, rowStatus, statusCounts } from '../../../services/query/query-status';
 import { resolvePath, shortRef } from '../../../services/query/formula';
 import type { QueryJoin, QueryKey, QuerySpec } from '../../../services/query/query-types';

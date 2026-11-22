@@ -10,7 +10,7 @@
 import { freeReportName, REPORT_NAME_MAX } from '../compare/report-name';
 import type { IKeyValueStore } from '../../platform/interfaces/key-value-store.interface';
 import type { ColumnRef, QueryCalc, QueryJoin, QueryKey } from './query-types';
-import { isReservedWord } from './query-sql';
+import { isReservedWord } from './query-columns';
 import { readFolderQueries, removeFolderQuery, writeFolderQuery } from './query-folder';
 
 export const QUERIES_KEY = 'queries';

@@ -22,9 +22,8 @@ import { ResponseDataExtractor } from '../../services/console/response-data-extr
 import { ConsoleViewsStore } from '../../services/console/console-views-store';
 import { buildCompareSide, CompareView } from '../../services/compare/compare-side';
 import { isComparableRun } from '../../services/compare/compare-store';
-import type { QueryRowData } from '../../services/query/query-engine';
-import type { TooManyRows } from '../../services/query/query-engine';
-import { allColumns, compareKeySql, defaultColumns, formulaColumns, joinKeyColumns, lookupsUsed, resultColumns as resultColumnRefs, tableNames } from '../../services/query/query-sql';
+import { allColumns, compareKeyViews, defaultColumns, formulaColumns, joinKeyColumns, lookupsUsed, resultColumns as resultColumnRefs, tableNames } from '../../services/query/query-columns';
+import type { QueryRowData, TooManyRows } from '../../services/query/query-types';
 import { FORMULA_FUNCTIONS, fullRef, fullText, parseFormula, shortRef, shortText } from '../../services/query/formula';
 import type { FormulaNode } from '../../services/query/formula';
 import { reportNameProblem } from '../../services/compare/report-name';
@@ -2350,7 +2349,7 @@ export class QueryController {
         const { spec } = this.spec();
         if (!spec.views.length) return null;
         const label = (viewId: string): string => runName(query, viewId) || spec.views.find(v => v.id === viewId)?.name || viewId;
-        const status = rowStatus(resultColumnRefs(spec), [], compareKeySql(spec).map(k => label(k.view)), [], label, [], compareSides(spec, label));
+        const status = rowStatus(resultColumnRefs(spec), [], compareKeyViews(spec).map(label), [], label, [], compareSides(spec, label));
         return status ? status.places : null;
     }
 

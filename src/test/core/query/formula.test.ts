@@ -9,8 +9,8 @@
 import * as assert from 'assert';
 import initSqlJs from 'sql.js';
 import type { SqlJsStatic } from 'sql.js';
-import { QuerySession, QueryRowData } from '../../../services/query/query-engine';
-import { formulaColumns, writeSql } from '../../../services/query/query-sql';
+import { QuerySession, QueryRowData } from '../reference/query-engine';
+import { formulaColumns, writeSql } from '../reference/query-sql';
 import { FormulaColumn, FormulaError, fullRef, fullText, parseFormula, resolvePath, shortRef, shortText } from '../../../services/query/formula';
 import type { QueryKey, QuerySpec } from '../../../services/query/query-types';
 import { SQL_WASM_PATH } from '../fixtures/temp-storage';

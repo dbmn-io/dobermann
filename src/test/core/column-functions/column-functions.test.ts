@@ -9,8 +9,9 @@
 import * as assert from 'assert';
 import initSqlJs from 'sql.js';
 import type { Database, SqlJsStatic } from 'sql.js';
-import { applyColumnFns, columnFnSql, ColumnFn } from '../../../services/column-functions/column-functions';
-import { toSql, valueSql } from '../../../services/query/query-engine';
+import { applyColumnFns, ColumnFn } from '../../../services/column-functions/column-functions';
+import { columnFnSql } from '../reference/query-sql';
+import { toSql, valueSql } from '../reference/query-engine';
 import { SQL_WASM_PATH } from '../fixtures/temp-storage';
 
 /** Values from results and files: text of every shape, numbers, yes/no, blanks. */

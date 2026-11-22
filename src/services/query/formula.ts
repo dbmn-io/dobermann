@@ -20,7 +20,6 @@
  * COMPARE(a, b, ...) is the one function that is not a value: it makes a compared column (its
  * sides side by side, the differences marked), and goes only around the whole formula.
  */
-import { quoteText } from './query-sql';
 
 /** A column a formula can name: `key` is the caller's own (the view and column), `path` its parts. */
 export interface FormulaColumn {
@@ -340,46 +339,3 @@ export function parseFormula(src: string, columns: FormulaColumn[]): ParsedFormu
     return { tree, columns: used };
 }
 
-// ---- Writing SQL ----
-
-/** Whole numbers as written; anything else as SQLite reads a decimal. */
-function numberSql(v: number): string {
-    return Number.isFinite(v) ? String(v) : 'NULL';
-}
-
-/** A value's SQL; `column(key)` writes a column's own SQL. */
-export function formulaSql(node: FormulaNode, column: (key: string) => string): string {
-    const go = (n: FormulaNode): string => formulaSql(n, column);
-    switch (node.k) {
-        case 'num': return numberSql(node.v);
-        case 'str': return quoteText(node.v);
-        case 'ref': return column(node.key);
-        case 'neg': return `-(${go(node.a)})`;
-        case 'bin':
-            // Dividing keeps the decimals (7 / 2 is 3.5) and dividing by 0 is blank
-            if (node.op === '/') return `(${go(node.a)} * 1.0 / NULLIF(${go(node.b)}, 0))`;
-            return `(${go(node.a)} ${node.op} ${go(node.b)})`;
-        case 'fn': {
-            const a = node.args.map(go);
-            switch (node.name) {
-                case 'IF': return `CASE WHEN ${a[0]} THEN ${a[1]} ELSE ${a[2] ?? 'NULL'} END`;
-                case 'IFBLANK': return `COALESCE(NULLIF(${a[0]}, ''), ${a[1]})`;
-                case 'AND': return `(${a.join(' AND ')})`;
-                case 'OR': return `(${a.join(' OR ')})`;
-                case 'NOT': return `(NOT ${a[0]})`;
-                case 'ROUND': return `ROUND(${a[0]}, ${a[1] ?? '0'})`;
-                // SQLite has no FLOOR or CEIL of its own: the whole number, one less (or more) when it was cut the other way
-                case 'FLOOR': return `(CAST(${a[0]} AS INTEGER) - (${a[0]} < CAST(${a[0]} AS INTEGER)))`;
-                case 'CEIL': return `(CAST(${a[0]} AS INTEGER) + (${a[0]} > CAST(${a[0]} AS INTEGER)))`;
-                case 'CONCAT': return `(${a.map(x => `COALESCE(${x}, '')`).join(' || ')})`;
-                case 'LEFT': return `SUBSTR(${a[0]}, 1, ${a[1]})`;
-                case 'RIGHT': return `CASE WHEN ${a[1]} > 0 THEN SUBSTR(${a[0]}, -(${a[1]})) ELSE '' END`;
-                // A number as it is; text that is a plain number (" 0042 ", "1.5", "-3e2") as that number; anything else blank
-                case 'NUMBER': return `CASE WHEN typeof(${a[0]}) IN ('integer', 'real') THEN ${a[0]} WHEN TRIM(${a[0]}) GLOB '*[0-9]*' AND TRIM(${a[0]}) NOT GLOB '*[^0-9.eE+-]*' THEN CAST(TRIM(${a[0]}) AS NUMERIC) END`;
-                case 'TEXT': return `CAST(${a[0]} AS TEXT)`;
-                case 'COMPARE': throw new Error('Formula: COMPARE has no single value; write each side');
-                default: return `${node.name}(${a.join(', ')})`;
-            }
-        }
-    }
-}

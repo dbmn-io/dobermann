@@ -15,7 +15,7 @@
  */
 import * as fs from 'fs';
 import * as path from 'path';
-import type { QueryRowData } from './query-engine';
+import type { QueryRowData } from './query-types';
 import type { QueryFileRows } from './query-file';
 import { QUERY_FILE, queryFolderOf } from './query-folder';
 

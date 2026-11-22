@@ -150,3 +150,13 @@ export interface QueryRows {
     columns: string[];
     rows: unknown[][];
 }
+
+/** A row as a view's rows are read: a value by column name. */
+export type QueryRowData = Record<string, unknown>;
+
+/** Join number `join` would make `rows` rows: more than `limit`. */
+export interface TooManyRows {
+    join: number;
+    rows: number;
+    limit: number;
+}

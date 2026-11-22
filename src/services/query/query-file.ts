@@ -10,7 +10,7 @@
  */
 import * as XLSX from 'xlsx';
 import { parseCSVContent } from '../../utils/csv-mismatch';
-import type { QueryRowData } from './query-engine';
+import type { QueryRowData } from './query-types';
 
 export interface QueryFileRows {
     columns: string[];

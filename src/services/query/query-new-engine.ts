@@ -21,7 +21,7 @@ import { ROW_LIMIT } from '../engine/engine-types';
 import { FUNCTIONS } from '../engine/engine-types';
 import type { FormulaNode } from './formula';
 import { isCompare, queryCompare } from './query-compare';
-import { formulaColumns, resultColumns } from './query-sql';
+import { formulaColumns, resultColumns } from './query-columns';
 import { comparedGroups, type RelationKind, type RowStatus, type StatusCounts, type StatusFilter } from './query-status';
 import { parseFormula } from './formula';
 import { CALC_VIEW, type ColumnRef, type QueryJoinStats, type QueryKey, type QuerySpec } from './query-types';

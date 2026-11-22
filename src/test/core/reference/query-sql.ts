@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Flexion Tech Pty Ltd
 /**
+ * The engine's tests' reference (since 2026-11-23, when Query stopped running SQL): the SQL a
+ * query's steps write, run in SQLite by query-engine.ts here, to check the engine against.
  * Writes a Query's SQL: SELECT the columns, FROM the first view, one LEFT JOIN or JOIN per other
  * view with its pairs in ON ... AND. The joins live in FROM and the writer never adds a WHERE of
  * its own; a WHERE comes only from outside (a saved search), passed in `where`.
@@ -10,20 +12,17 @@
  * with its quotes doubled, and a count is always a whole number, so nothing typed into a
  * function can become SQL.
  */
-import { CALC_VIEW } from './query-types';
-import type { ColumnRef, QueryCalc, QueryFn, QueryJoin, QueryJoinKind, QueryKey, QuerySpec, QueryView } from './query-types';
-import { columnFnSql, lookupsIn } from '../column-functions/column-functions';
-import { formulaSql, parseFormula } from './formula';
-import { compareLeftKeys } from './query-compare';
-import type { FormulaColumn } from './formula';
+import { CALC_VIEW } from '../../../services/query/query-types';
+import type { ColumnRef, QueryCalc, QueryFn, QueryJoin, QueryJoinKind, QueryKey, QuerySpec, QueryView } from '../../../services/query/query-types';
+import { COLUMN_KEY, RESERVED, defaultColumns, formulaColumns, tableNames } from '../../../services/query/query-columns';
+import { parseFormula, type FormulaNode } from '../../../services/query/formula';
+import { compareLeftKeys } from '../../../services/query/query-compare';
+import type { ColumnFn } from '../../../services/column-functions/column-functions';
+// (the column helpers the app keeps, for tests that read both from here)
+export { allColumns, defaultColumns, formulaColumns, isReservedWord, joinKeyColumns, lookupsUsed, resultColumns, tableNames } from '../../../services/query/query-columns';
 
 const PLAIN = /^[A-Za-z_][A-Za-z0-9_]*$/;
-/** Words SQLite won't take as a bare name. */
-const RESERVED = new Set(('abort action add after all alter always analyze and as asc attach autoincrement before begin between by cascade case cast check collate column commit conflict constraint create cross current current_date current_time current_timestamp database default deferrable deferred delete desc detach distinct do drop each else end escape except exclude exclusive exists explain fail filter first following for foreign from full generated glob group groups having if ignore immediate in index indexed initially inner insert instead intersect into is isnull join key last left like limit match materialized natural no not nothing notnull null nulls of offset on or order others outer over partition plan pragma preceding primary query raise range recursive references regexp reindex release rename replace restrict returning right rollback row rows savepoint select set table temp temporary then ties to transaction trigger unbounded union unique update using vacuum values view virtual when where window with without').split(' '));
 
-export function isReservedWord(name: string): boolean {
-    return RESERVED.has(name.toLowerCase());
-}
 
 export function quoteName(name: string): string {
     return PLAIN.test(name) && !RESERVED.has(name.toLowerCase()) ? name : `"${name.replace(/"/g, '""')}"`;
@@ -38,24 +37,6 @@ function wholeNumber(n: number): number {
     return Number.isFinite(whole) && whole > 0 ? whole : 1;
 }
 
-/**
- * Each view's table name: its name in lower case with anything that isn't a letter, digit or _
- * turned to _, and a number added when two views would share one (items, items_2).
- */
-export function tableNames(views: QueryView[]): Map<string, string> {
-    const names = new Map<string, string>();
-    const taken = new Set<string>();
-    for (const view of views) {
-        let base = view.name.trim().toLowerCase().replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, '');
-        if (!base) base = 'view';
-        if (/^[0-9]/.test(base)) base = `t_${base}`;
-        let name = base;
-        for (let n = 2; taken.has(name); n++) name = `${base}_${n}`;
-        taken.add(name);
-        names.set(view.id, name);
-    }
-    return names;
-}
 
 /**
  * What the SQL calls each view: its name as it is written when that is the table's own name but
@@ -131,67 +112,10 @@ export function fromSql(spec: QuerySpec, upTo?: number): string {
     return lines.join('\n');
 }
 
-/** Every column of every view, in the views' order, then the calculated ones. */
-export function allColumns(spec: QuerySpec): ColumnRef[] {
-    return [
-        ...spec.views.flatMap(v => v.columns.map(column => ({ view: v.id, column }))),
-        ...(spec.calc ?? []).map(c => ({ view: CALC_VIEW, column: c.name }))
-    ];
-}
 
-/**
- * The joining view's column in each pair of one column each side, with the column it is matched
- * to. The two are the same thing in every row the join matches (as they are, or once a function
- * has tidied one), so the joining view's is not shown: it would say the same thing twice. Not
- * for a RIGHT or outer join: the joining view's rows that match nothing have their key only there.
- */
-export function joinKeyColumns(spec: QuerySpec): { key: ColumnRef; same: ColumnRef }[] {
-    const out: { key: ColumnRef; same: ColumnRef }[] = [];
-    for (const join of spec.joins) {
-        if (join.kind === 'right' || join.kind === 'outer' || join.kind === 'compare') continue;
-        for (const pair of join.on) {
-            const single = pair.left.parts.length === 1 && pair.right.parts.length === 1;
-            if (single) out.push({ key: { view: pair.right.parts[0].view, column: pair.right.parts[0].column }, same: { view: pair.left.parts[0].view, column: pair.left.parts[0].column } });
-        }
-    }
-    return out;
-}
 
-/**
- * The columns shown when none are picked: in a compare, its key (what is compared is picked);
- * else every column, but for a joining view's key (the view it joins has it already), a column whose name an earlier view has shown (two columns of one
- * name are picked by hand) and a column with no value in any row. The calculated ones come last.
- */
-export function defaultColumns(spec: QuerySpec): ColumnRef[] {
-    // A compare starts with its key only: what is compared is picked (Columns), nothing comes up on its own
-    const compare = spec.joins.find(j => j.kind === 'compare');
-    if (compare) {
-        const key = compare.on.flatMap(p => p.left.parts).filter(p => spec.views.some(v => v.id === p.view && v.columns.includes(p.column))).map(p => ({ view: p.view, column: p.column }));
-        if (key.length) return [...key, ...(spec.calc ?? []).map(c => ({ view: CALC_VIEW, column: c.name }))];
-    }
-    const keys = new Set(joinKeyColumns(spec).map(k => `${k.key.view}\n${k.key.column}`));
-    const seen = new Set<string>();
-    const out: ColumnRef[] = [];
-    for (const view of spec.views) {
-        for (const column of view.columns) {
-            if (keys.has(`${view.id}\n${column}`) || seen.has(column) || view.empty?.includes(column)) continue;
-            out.push({ view: view.id, column });
-        }
-        view.columns.forEach(column => seen.add(column));
-    }
-    return [...out, ...(spec.calc ?? []).map(c => ({ view: CALC_VIEW, column: c.name }))];
-}
 
-const COLUMN_KEY = '\n';
 
-/** The columns a formula can name: each view's, as `@view.column` (a column "address.city" two levels deep). */
-export function formulaColumns(spec: QuerySpec): FormulaColumn[] {
-    // A run is a level of the path: @Stock.C1.quantityOnHand
-    return spec.views.flatMap(v => v.columns.map(column => ({
-        key: `${v.id}${COLUMN_KEY}${column}`,
-        path: [...(v.run ? [v.runOfName ?? v.name, v.run] : [v.name]), ...column.split('.')]
-    })));
-}
 
 /**
  * A calculated column's SQL: its formula's (formula.ts), or its SQL as it was typed. A COMPARE
@@ -233,30 +157,7 @@ export function compareKeyColumnSql(ref: ColumnRef, spec: QuerySpec, names: Map<
     return `COALESCE(${[columnSql(ref, names), ...others.map(k => keySql(k, names))].join(', ')})`;
 }
 
-/** The lookup tables a query's functions read (Translate values), in its joins and its columns. */
-export function lookupsUsed(spec: QuerySpec): string[] {
-    const keys = spec.joins.flatMap(j => j.on.flatMap(p => [p.left, p.right]));
-    const fns = [...keys.flatMap(k => [...(k.fns ?? []), ...k.parts.flatMap(p => p.fns ?? [])]), ...spec.select.flatMap(c => c.fns ?? [])];
-    return [...new Set(lookupsIn(fns))];
-}
 
-/**
- * Results' columns, one per column of the SQL: the report's columns (or the default ones), a
- * COMPARE calculation as a column per side, `name 1`, `name 2`..., grouped under its name.
- */
-export function resultColumns(spec: QuerySpec): ColumnRef[] {
-    const base = spec.select.length ? spec.select : defaultColumns(spec);
-    return base.flatMap(c => {
-        if (c.view !== CALC_VIEW) return [c];
-        const calc = spec.calc?.find(x => x.name === c.column);
-        if (!calc?.formula) return [c];
-        try {
-            const parsed = parseFormula(calc.formula, formulaColumns(spec));
-            if (parsed.compare) return parsed.compare.map((_, i) => ({ view: CALC_VIEW, column: `${calc.name} ${i + 1}`, group: calc.name }));
-        } catch { /* a formula that no longer reads: the column says so when the SQL is written */ }
-        return [c];
-    });
-}
 
 /**
  * What a row's status needs that Results may not show: each view of the compare's key in the row
@@ -302,4 +203,78 @@ export function writeSql(spec: QuerySpec, options: WriteSqlOptions = {}): string
     if (options.where?.trim()) lines.push(`WHERE ${options.where.trim()}`);
     if (options.limit !== undefined) lines.push(`LIMIT ${wholeNumber(options.limit)}${options.offset ? ` OFFSET ${wholeNumber(options.offset)}` : ''}`);
     return lines.join('\n');
+}
+
+// ---- The column functions and formulas as SQL (from column-functions.ts and formula.ts) ----
+
+
+/** The functions as SQL around `sql` (a column, already quoted), the first innermost. */
+export function columnFnSql(sql: string, fns: ColumnFn[] | undefined): string {
+    let out = sql;
+    for (const f of fns ?? []) {
+        switch (f.fn) {
+            case 'trim': out = `TRIM(${out})`; break;
+            case 'upper': out = `UPPER(${out})`; break;
+            case 'lower': out = `LOWER(${out})`; break;
+            case 'text': out = `CAST(${out} AS TEXT)`; break;
+            case 'number': out = `CAST(${out} AS NUMERIC)`; break;
+            case 'ltrimZeros': out = `LTRIM(${out}, '0')`; break;
+            case 'first': out = `SUBSTR(${out}, 1, ${wholeNumber(f.n)})`; break;
+            case 'last': out = `SUBSTR(${out}, -${wholeNumber(f.n)})`; break;
+            case 'replace': out = `REPLACE(${out}, ${quoteText(f.from)}, ${quoteText(f.to)})`; break;
+            case 'translate': {
+                const col = (id: string): string => `"${String(id).replace(/"/g, '""')}"`;
+                out = `COALESCE((SELECT ${col(f.to)} FROM ${lookupTableSql(f.table)} WHERE ${col(f.from)} = CAST(${out} AS TEXT) LIMIT 1), ${out})`;
+                break;
+            }
+        }
+    }
+    return out;
+}
+
+/** A lookup table's name where a query runs: loaded under it before the query reads it (query-engine.ts loadLookup). */
+export function lookupTableSql(id: string): string {
+    return `"__lookup_${String(id).replace(/[^A-Za-z0-9_]/g, '_')}"`;
+}
+
+/** Whole numbers as written; anything else as SQLite reads a decimal. */
+function numberSql(v: number): string {
+    return Number.isFinite(v) ? String(v) : 'NULL';
+}
+
+/** A value's SQL; `column(key)` writes a column's own SQL. */
+export function formulaSql(node: FormulaNode, column: (key: string) => string): string {
+    const go = (n: FormulaNode): string => formulaSql(n, column);
+    switch (node.k) {
+        case 'num': return numberSql(node.v);
+        case 'str': return quoteText(node.v);
+        case 'ref': return column(node.key);
+        case 'neg': return `-(${go(node.a)})`;
+        case 'bin':
+            // Dividing keeps the decimals (7 / 2 is 3.5) and dividing by 0 is blank
+            if (node.op === '/') return `(${go(node.a)} * 1.0 / NULLIF(${go(node.b)}, 0))`;
+            return `(${go(node.a)} ${node.op} ${go(node.b)})`;
+        case 'fn': {
+            const a = node.args.map(go);
+            switch (node.name) {
+                case 'IF': return `CASE WHEN ${a[0]} THEN ${a[1]} ELSE ${a[2] ?? 'NULL'} END`;
+                case 'IFBLANK': return `COALESCE(NULLIF(${a[0]}, ''), ${a[1]})`;
+                case 'AND': return `(${a.join(' AND ')})`;
+                case 'OR': return `(${a.join(' OR ')})`;
+                case 'NOT': return `(NOT ${a[0]})`;
+                case 'ROUND': return `ROUND(${a[0]}, ${a[1] ?? '0'})`;
+                // SQLite has no FLOOR or CEIL of its own: the whole number, one less (or more) when it was cut the other way
+                case 'FLOOR': return `(CAST(${a[0]} AS INTEGER) - (${a[0]} < CAST(${a[0]} AS INTEGER)))`;
+                case 'CEIL': return `(CAST(${a[0]} AS INTEGER) + (${a[0]} > CAST(${a[0]} AS INTEGER)))`;
+                case 'CONCAT': return `(${a.map(x => `COALESCE(${x}, '')`).join(' || ')})`;
+                case 'LEFT': return `SUBSTR(${a[0]}, 1, ${a[1]})`;
+                case 'RIGHT': return `CASE WHEN ${a[1]} > 0 THEN SUBSTR(${a[0]}, -(${a[1]})) ELSE '' END`;
+                // A number as it is; text that is a plain number (" 0042 ", "1.5", "-3e2") as that number; anything else blank
+                case 'NUMBER': return `CASE WHEN typeof(${a[0]}) IN ('integer', 'real') THEN ${a[0]} WHEN TRIM(${a[0]}) GLOB '*[0-9]*' AND TRIM(${a[0]}) NOT GLOB '*[^0-9.eE+-]*' THEN CAST(TRIM(${a[0]}) AS NUMERIC) END`;
+                case 'TEXT': return `CAST(${a[0]} AS TEXT)`;
+                case 'COMPARE': throw new Error('Formula: COMPARE has no single value; write each side');
+                default: return `${node.name}(${a.join(', ')})`;
+            }
+        }
+    }
 }

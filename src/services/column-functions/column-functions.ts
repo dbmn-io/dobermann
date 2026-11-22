@@ -4,7 +4,8 @@
  * Functions on a column: the one definition Query, Compare and Run Batch share, so "Upper case"
  * means the same wherever it is ticked.
  *
- * Each function is a standard SQLite function. Query runs them as SQL (`columnFnSql`); Compare and
+ * Each function was a standard SQLite function (the SQL is the engine's tests' reference now:
+ * src/test/core/reference/query-sql.ts columnFnSql); Compare and
  * Run Batch, which hold their values in memory, run them here (`applyColumnFns`), giving exactly
  * what SQLite gives for the same value (column-functions.test.ts checks every function against
  * SQLite itself). The list the dialog shows (`COLUMN_FUNCTIONS`) is written as the SQL it makes,
@@ -67,38 +68,6 @@ export function wholeNumber(n: number): number {
     return Number.isFinite(whole) && whole > 0 ? whole : 1;
 }
 
-export function quoteText(text: string): string {
-    return `'${String(text).replace(/'/g, "''")}'`;
-}
-
-/** The functions as SQL around `sql` (a column, already quoted), the first innermost. */
-export function columnFnSql(sql: string, fns: ColumnFn[] | undefined): string {
-    let out = sql;
-    for (const f of fns ?? []) {
-        switch (f.fn) {
-            case 'trim': out = `TRIM(${out})`; break;
-            case 'upper': out = `UPPER(${out})`; break;
-            case 'lower': out = `LOWER(${out})`; break;
-            case 'text': out = `CAST(${out} AS TEXT)`; break;
-            case 'number': out = `CAST(${out} AS NUMERIC)`; break;
-            case 'ltrimZeros': out = `LTRIM(${out}, '0')`; break;
-            case 'first': out = `SUBSTR(${out}, 1, ${wholeNumber(f.n)})`; break;
-            case 'last': out = `SUBSTR(${out}, -${wholeNumber(f.n)})`; break;
-            case 'replace': out = `REPLACE(${out}, ${quoteText(f.from)}, ${quoteText(f.to)})`; break;
-            case 'translate': {
-                const col = (id: string): string => `"${String(id).replace(/"/g, '""')}"`;
-                out = `COALESCE((SELECT ${col(f.to)} FROM ${lookupTableSql(f.table)} WHERE ${col(f.from)} = CAST(${out} AS TEXT) LIMIT 1), ${out})`;
-                break;
-            }
-        }
-    }
-    return out;
-}
-
-/** A lookup table's name where a query runs: loaded under it before the query reads it (query-engine.ts loadLookup). */
-export function lookupTableSql(id: string): string {
-    return `"__lookup_${String(id).replace(/[^A-Za-z0-9_]/g, '_')}"`;
-}
 
 /** The lookup tables functions read. */
 export function lookupsIn(fns: ColumnFn[] | undefined): string[] {

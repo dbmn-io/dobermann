@@ -7,8 +7,8 @@
 import * as assert from 'assert';
 import initSqlJs from 'sql.js';
 import type { SqlJsStatic } from 'sql.js';
-import { QuerySession, QueryRowData } from '../../../services/query/query-engine';
-import { defaultColumns, joinKeyColumns, quoteName, tableNames, writeSql } from '../../../services/query/query-sql';
+import { QuerySession, QueryRowData } from '../reference/query-engine';
+import { defaultColumns, joinKeyColumns, quoteName, tableNames, writeSql } from '../reference/query-sql';
 import { readFileRows } from '../../../services/query/query-file';
 import * as XLSX from 'xlsx';
 import { cleanViewName, guessViewName, moveView, moveViewFirst, QuerySource, renameView, SavedQuery, viewNameProblem } from '../../../services/query/query-store';

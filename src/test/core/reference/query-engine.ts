@@ -14,12 +14,12 @@
  * way), so this file has no host in it.
  */
 import type { Database, SqlJsStatic, SqlValue } from 'sql.js';
-import { fromSql, keySql, leftKeySql, quoteName, refNames, tableNames, tableSql, writeSql, WriteSqlOptions } from './query-sql';
-import { keepsUnmatched } from './query-types';
-import { lookupTableSql } from '../column-functions/column-functions';
-import type { QueryJoinStats, QueryKey, QueryRelationship, QueryRows, QueryValue, QuerySpec } from './query-types';
+import { fromSql, keySql, leftKeySql, lookupTableSql, quoteName, refNames, tableSql, writeSql, WriteSqlOptions } from './query-sql';
+import { tableNames } from '../../../services/query/query-columns';
+import { keepsUnmatched } from '../../../services/query/query-types';
+import type { QueryJoinStats, QueryKey, QueryRelationship, QueryRows, QueryValue, QuerySpec, QueryRowData, TooManyRows } from '../../../services/query/query-types';
 
-export type QueryRowData = Record<string, unknown>;
+export type { QueryRowData, TooManyRows };
 
 /**
  * A value as Query's tables hold it: numbers as numbers, text as text, yes/no as the text "true"
@@ -54,12 +54,6 @@ export function valueSql(param: string): string {
  */
 export const MAX_QUERY_ROWS = 2_000_000;
 
-/** Join number `join` would make `rows` rows: more than `limit`. */
-export interface TooManyRows {
-    join: number;
-    rows: number;
-    limit: number;
-}
 
 export class QuerySession {
     private readonly db: Database;

@@ -13,7 +13,7 @@ import { sharedScript } from '../../../utils/shared-script';
 import { QueryEngine } from '../../../services/engine/engine';
 import { remoteEngineHost, serveEngine, type EnginePort } from '../../../services/engine/engine-host';
 import { loadView, readPage, runPaged } from '../../../services/query/query-new-engine';
-import { resultColumns } from '../../../services/query/query-sql';
+import { resultColumns } from '../reference/query-sql';
 import type { QuerySpec } from '../../../services/query/query-types';
 import { QUERY_ROW_TESTS, searchColumns } from '../../../screens/query/query-search';
 

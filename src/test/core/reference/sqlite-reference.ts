@@ -10,7 +10,7 @@
  */
 import type { Database, SqlJsStatic } from 'sql.js';
 import type { Table, Value } from './generator';
-import { valueSql } from '../../../services/query/query-engine';
+import { valueSql } from './query-engine';
 
 export type JoinKind = 'inner' | 'left' | 'right' | 'outer';
 /** A function on a key column before it is matched (the Functions dialog's, by name). */
