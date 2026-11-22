@@ -77,7 +77,11 @@ export function buildQueryPage(asset: AssetUrl, config: { queryId: string; name:
                 <!-- Clear filters over Totals, one above the other, as the toggles are (James, 2026-11-22: "saving a little space") -->
                 <span class="query-tool-stack">
                     <button type="button" class="query-clear-btn" id="queryClearFilters" title="No filters on" aria-label="Clear all filters" disabled><span class="query-clear-icon" data-icon="funnel"></span>Clear</button>
-                    <label class="query-row font-size-12" title="A total under each column of numbers, for the rows shown"><input type="checkbox" id="queryTotals"> Totals</label>
+                    <span class="query-tool-pair">
+                        <label class="query-row font-size-12" title="A total under each column of numbers, for the rows shown"><input type="checkbox" id="queryTotals"> Totals</label>
+                        <!-- Word's Show/Hide ¶: spaces, tabs, line breaks and blanks marked in every cell, or in none (James, 2026-11-22) -->
+                        <label class="query-row font-size-12" title="Show spaces, tabs, line breaks and blank text in every cell, as Word's ¶ does"><input type="checkbox" id="querySpecial"> Special characters</label>
+                    </span>
                 </span>
                 <!-- The SQL box is not offered (James, 2026-11-22): the button stays, hidden, for a query saved with SQL of its own, whose box still opens by itself so it can be put back -->
                 <button type="button" class="compare-tool-btn icon" id="querySqlBtn" data-click="query:toggleSql" aria-expanded="false" title="The SQL: read it, or write your own" aria-label="The SQL" data-icon="braces" hidden></button>

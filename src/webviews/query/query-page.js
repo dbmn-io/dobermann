@@ -1975,7 +1975,7 @@
 
     /** The table's columns: each in its view's colour, the same name in two views saying whose it is. */
     const compareResults = window.QueryCompareResults.create({
-        el, ui, post, view, views, colour, count, day, hasStatus: () => hasStatus(), withSummary: (v, items) => withSummary(v, items),
+        el, ui, post, view, views, colour, count, day, hasStatus: () => hasStatus(), withSummary: (v, items) => withSummary(v, items), specialOn: () => specialOn(),
         reload: () => loadRows(),
         redraw: () => { grid.key = ''; drawTable(); loadRows(true); },
         renderSlots: () => renderTop()
@@ -2174,6 +2174,13 @@
             const was = columnsKey();
             ui.counts = m.counts;
             ui.countsAll = m.countsAll;
+            // A DIFF only in spaces, hidden characters or blank against null looks like no difference: the special
+            // characters come on by themselves, once, and say why (unless the user has them off on this report)
+            if (m.quiet && !specialOn() && !ui.specialOffHere && !ui.specialAuto) {
+                ui.specialAuto = true;
+                applySpecial();
+                if (window.DbmnToast) window.DbmnToast.info(`Special characters shown: ${count(m.quiet)} ${m.quiet === 1 ? 'difference is' : 'differences are'} only in spaces or blanks.`);
+            }
             compareResults.renderTools();
             // (the folded steps say the compare's DIFF and Missing: drawn again with them)
             renderBar();
@@ -2289,6 +2296,17 @@
         updatePeek();
     }
 
+    /** Special characters shown: the user's choice, or turned on by itself for this report (a DIFF only in spaces). */
+    function specialOn() { return !!(ui.special || ui.specialAuto); }
+    /** Drawn everywhere at once (the whole table, Compact's cells, the record window), or nowhere. */
+    function applySpecial() {
+        const on = specialOn();
+        const box = $('querySpecial');
+        if (box) box.checked = on;
+        if (table && table.specialCharacters !== on) table.specialCharacters = on;
+        if (hasStatus() && ui.resultsView === 'compact' && ui.state) { grid.key = ''; drawTable(); loadRows(true); }
+    }
+
     /** Distinct's line and the not-a-number line, from a state (or the whole compare's figures, once Results has them). */
     function renderFigures(m) {
         // Distinct is there only when rows repeat (or it is on): it says how many it folds
@@ -2402,6 +2420,15 @@
         post({ type: 'query.totals', on: ui.totals });
         loadRows();
     });
+    // Special characters: on or off is the user's choice for every query; off while they had come on by themselves
+    // is this report's (they stay off here, the user's choice unchanged)
+    $('querySpecial').addEventListener('change', () => {
+        const on = $('querySpecial').checked;
+        if (!on && ui.specialAuto && !ui.special) { ui.specialOffHere = true; post({ type: 'query.specialOff' }); }
+        else { ui.special = on; post({ type: 'query.preference', key: 'specialCharacters', value: on }); }
+        ui.specialAuto = false;
+        applySpecial();
+    });
     $('queryResultsSql').addEventListener('input', () => { sqlTyped = true; });
     $('queryDistinct').addEventListener('change', () => { setBusy('Updating…'); post({ type: 'query.distinct', on: $('queryDistinct').checked }); });
     let searchTimer = 0;
@@ -2468,6 +2495,10 @@
                 showName(m.name);
                 // Side by side or Compact, as the user left it in any query (#18)
                 if (m.prefs && m.prefs.resultsView === 'compact') ui.resultsView = 'compact';
+                // Special characters: the user's own choice, and whether this report has them off (after turning on by itself)
+                ui.special = !!(m.prefs && m.prefs.specialCharacters);
+                ui.specialOffHere = !!m.specialOff;
+                applySpecial();
                 // Always Views first, where each view's rows are seen coming in (James, 2026-11-22: reopened on Results,
                 // the loading couldn't be seen); a tab already open still goes where it's asked (query.goTo)
                 ui.start = 'edit';

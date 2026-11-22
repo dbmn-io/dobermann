@@ -88,6 +88,8 @@ export interface SavedQuery {
     updatedAt: string;
     /** Rows the query made when it last ran (the Hub list's line). */
     rows?: number;
+    /** Special characters switched off on this report after Results turned them on by itself (a DIFF only in spaces or blanks). */
+    specialOff?: boolean;
     /** A compare's DIFF and Missing rows when Results last counted them all (the Hub list's line, #11). */
     found?: { diff: number; missing: number };
     /** 'unticked': columns picked before a shared name was left unticked have had theirs unticked, once (untickClashes). */

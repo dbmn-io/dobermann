@@ -426,3 +426,6 @@ dbmn-table.is-reading .dbmn-table-none { visibility: hidden; }
 .compare-record-head-line { display: block; font-weight: normal; font-size: 0.85em; color: var(--vscode-descriptionForeground); white-space: nowrap; }
 .compare-json .compare-json-line { white-space: pre; padding-top: 0; padding-bottom: 0; }
 .compare-json .compare-json-record td { padding-top: 8px; }
+
+/* Totals and Special characters side by side, under Clear */
+.query-tool-pair { display: inline-flex; align-items: center; gap: 10px; }

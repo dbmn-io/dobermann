@@ -42,6 +42,9 @@
             return `dbmn-run-${Math.max(0, (Number(place) || 1) - 1) % 4}`;
         }
         const tag = p => el('span', `compare-tag ${tone(p)}`, p);
+        // Text as it is, or with its spaces, tabs, breaks and hidden characters marked when special characters are on
+        // (the design system's marks: DbmnTable.showSpecial; drawing only)
+        const shownText = (t, breaks) => (ctx.specialOn && ctx.specialOn() && window.DbmnTable && window.DbmnTable.showSpecial ? window.DbmnTable.showSpecial(t, { breaks: !!breaks }) : document.createTextNode(t));
 
         /* ---------- Filters ---------- */
 
@@ -284,7 +287,7 @@
                 if (found) found.who.push(p); else list.push({ t, who: [p] });
             });
             if (!list.length) return;
-            if (list.length === 1) { td.textContent = list[0].t; return; }
+            if (list.length === 1) { td.replaceChildren(shownText(list[0].t)); return; }
             const pair = cells.length === 2;
             // Plain: with two, the Baseline's; with more, the value most results hold, when the Baseline has the record and
             // one value is held by more than any other; else none is plain, every value a pill (old Compare's rule, 2026-11-22)
@@ -299,10 +302,12 @@
             }
             if (plain) list.splice(list.indexOf(plain), 1), list.unshift(plain);
             list.forEach((item, i) => {
-                if (i === 0 && plain) { td.appendChild(el('span', 'compare-compact-plain', item.t)); return; }
+                if (i === 0 && plain) { const span = el('span', 'compare-compact-plain'); span.appendChild(shownText(item.t)); td.appendChild(span); return; }
                 const box = el('span', `compare-pill ${tone(item.who[0])}${pair ? ' is-bare' : ''}`);
                 if (!pair) { const who = el('span', 'compare-pill-who'); item.who.forEach(p => who.appendChild(tag(p))); box.appendChild(who); }
-                box.appendChild(el('span', '', item.t));
+                const value = el('span', '');
+                value.appendChild(shownText(item.t));
+                box.appendChild(value);
                 td.appendChild(box);
             });
         }
@@ -362,7 +367,7 @@
             const valueNode = v => {
                 if (v === null || v === undefined) return el('span', 'compare-record-none', 'null');
                 const t = text(v);
-                return t === '' ? el('span', 'compare-record-none', 'blank') : document.createTextNode(t);
+                return t === '' ? el('span', 'compare-record-none', 'blank') : shownText(t, true);
             };
             // Each place's heading (#19): its run, its environment, its header values, when it ran (a file: its name)
             const head = (p, i) => {
@@ -455,7 +460,7 @@
                                 if (here) {
                                     const v = f.values[i][k];
                                     td.append(document.createTextNode(`${pad}${JSON.stringify(line.key)}: `));
-                                    td.appendChild(v === null || v === undefined ? el('span', 'compare-record-none', 'null') : document.createTextNode(JSON.stringify(v)));
+                                    td.appendChild(v === null || v === undefined ? el('span', 'compare-record-none', 'null') : shownText(JSON.stringify(v)));
                                     td.appendChild(document.createTextNode(comma(at, i, k)));
                                     if (tinted(f, i, k)) td.classList.add('compare-differs', ...tone(m.places[i]).split(' ').filter(Boolean));
                                 }

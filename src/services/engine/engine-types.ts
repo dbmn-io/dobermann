@@ -223,6 +223,8 @@ export interface CompareStats {
     }[];
     rows: number;
     status: { same: number; diff: number; missing: number; notInBaseline: number; noKey: number };
+    /** Cells that differ only in spaces, invisible characters or blank against null (they look alike unmarked). */
+    quiet?: number;
     /**
      * A sample compare's (the step's `sample`): the Baseline's records in it, how many of them have their
      * key in every other input, and in each input (the Baseline's own count first); its whole rows.

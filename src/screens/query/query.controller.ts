@@ -345,6 +345,8 @@ export class QueryController {
                     await this.ports.state.update(QUERY_PREFERENCES, { ...this.preferences(), [key]: message.value });
                     return;
                 }
+                // Special characters switched off on this report while Results had turned them on by itself: they stay off here
+                case 'query.specialOff': return await this.change(q => { q.specialOff = true; }, false);
                 case 'query.start': {
                     this.post({ type: 'query.goTo', start: message.start === 'results' ? 'results' : 'edit' });
                     // (opened again from the Console's Add to Compare: its result is added now)
@@ -602,7 +604,7 @@ export class QueryController {
         if (!query) throw new Error('This query is no longer saved.');
         this.query = query;
         if (nameViews(query)) await saveQuery(this.ports.state, query);
-        this.post({ type: 'query.init', name: query.name, empty: query.sources.length === 0, reached: query.reached ?? 4, start: this.config.start === 'results' ? 'results' : 'edit', prefs: this.preferences() });
+        this.post({ type: 'query.init', name: query.name, empty: query.sources.length === 0, reached: query.reached ?? 4, start: this.config.start === 'results' ? 'results' : 'edit', prefs: this.preferences(), ...(query.specialOff ? { specialOff: true } : {}) });
         // The views show at once, by what is saved; their rows are read behind them
         this.postState({ reading: true });
         const t = Date.now();
@@ -2385,7 +2387,9 @@ export class QueryController {
                 const every = search ? await counted('') : found;
                 // (what the whole compare found, for the Hub list's line: kept when it changes)
                 if (every && !status.filter?.hidden?.length) await this.rememberFound(every);
-                return found && every ? { counts: found, countsAll: every } : undefined;
+                // (differences only in spaces or blanks, across the whole compare: Results shows the special characters then)
+                const made = await Promise.resolve(host.stats(paged.id, 'compare')).catch(() => undefined) as CompareStats | undefined;
+                return found && every ? { counts: found, countsAll: every, ...(made?.quiet ? { quiet: made.quiet } : {}) } : undefined;
             } : undefined;
             return {
                 columns: paged.layout.columns, key: engineKey(spec), total, shown: paged.total,
@@ -2788,7 +2792,7 @@ interface FileMessage {
 
 /** Where the user's Results choices are kept, and which they are: Side by side or Compact (#18). */
 const QUERY_PREFERENCES = 'queryPreferences';
-const QUERY_PREFERENCE_KEYS = ['resultsView'];
+const QUERY_PREFERENCE_KEYS = ['resultsView', 'specialCharacters'];
 
 interface RowsRequest {
     seq: number;
@@ -2869,7 +2873,7 @@ interface ShownRows {
     total: number;
     shown: number;
     page(offset: number, limit: number): Promise<{ rows: unknown[][]; status?: RowStatus[]; index?: number[] }>;
-    counts?: () => Promise<{ counts: ReturnType<typeof statusCounts>; countsAll: ReturnType<typeof statusCounts> } | undefined>;
+    counts?: () => Promise<{ counts: ReturnType<typeof statusCounts>; countsAll: ReturnType<typeof statusCounts>; quiet?: number } | undefined>;
     each(each: (rows: unknown[][], offset: number) => void | Promise<void>): Promise<void>;
     totals(): Promise<{ totals: (number | null)[]; places: number[] }>;
     /** Where the engine can make it (the web app's worker): the export's workbook, made from the rows where they are. */

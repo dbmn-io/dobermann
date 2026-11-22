@@ -138,6 +138,9 @@ export async function runCompare(inputs: CompareInput[], columns: number, tick: 
     const noKey = new Uint8Array(length);
     for (const r of blankRows) noKey[r] = 1;
     const counts = { same: 0, diff: 0, missing: 0, notInBaseline: 0, noKey: 0 };
+    // Differences only in spaces, invisible characters or blank against null: they look alike without the
+    // special characters shown (Results then shows them, 2026-11-22). Checked only where a cell already differs.
+    let quiet = 0;
     for (let row = 0; row < length; row++) {
         if (++done % every === 0) await tick(done, work);
         const b = rowAt[0][row];
@@ -152,7 +155,8 @@ export async function runCompare(inputs: CompareInput[], columns: number, tick: 
                 const value = inputs[p].values[c];
                 if (inputs[p].skipped || r < 0 || !value) continue;
                 if (first === undefined) { first = value(r); continue; }
-                if (!alike(first, value(r))) { differs[c][row] = 1; diffBy[p][row] = 1; changed = true; }
+                const v = value(r);
+                if (!alike(first, v)) { differs[c][row] = 1; diffBy[p][row] = 1; changed = true; if (looksAlike(first, v)) quiet++; }
             }
         }
         // The Baseline the odd one out (two or more others, all alike, all unlike it): it is the Baseline that
@@ -199,5 +203,20 @@ export async function runCompare(inputs: CompareInput[], columns: number, tick: 
     });
     const extra = new Uint8Array(length);
     for (const r of extraRows) extra[r] = 1;
-    return { rowAt, status, relation, differs, diffBy, repeatedBy, extra, stats: { perInput, rows: length, status: counts } };
+    return { rowAt, status, relation, differs, diffBy, repeatedBy, extra, stats: { perInput, rows: length, status: counts, quiet } };
+}
+
+/** Spaces of every kind and invisible characters (zero-width, BOM, controls): what a difference can hide in. */
+const UNSEEN = /[\s\u00a0\u1680\u180e\u2000-\u200f\u2028-\u202f\u205f\u2060\u3000\ufeff\u0000-\u001f\u007f]/g;
+
+const HAS_UNSEEN = /[\s\u00a0\u1680\u180e\u2000-\u200f\u2028-\u202f\u205f\u2060\u3000\ufeff\u0000-\u001f\u007f]/;
+
+/** Two values that read the same once blank is null and the unseen characters are taken out. */
+function looksAlike(a: V, b: V): boolean {
+    const blank = (x: V) => x === null || x === undefined || x === '';
+    // (the usual difference, two values with nothing unseen in them, decided without making new text)
+    if (blank(a) !== blank(b) && (blank(a) ? !HAS_UNSEEN.test(String(b)) : !HAS_UNSEEN.test(String(a)))) return false;
+    if (!blank(a) && !blank(b) && !HAS_UNSEEN.test(String(a)) && !HAS_UNSEEN.test(String(b))) return false;
+    const seen = (x: V): string => (blank(x) ? '' : String(x)).replace(UNSEEN, '');
+    return seen(a) === seen(b);
 }

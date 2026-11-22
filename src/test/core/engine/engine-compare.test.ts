@@ -200,6 +200,18 @@ describe('The engine, compare: James\'s rule for repeats and blanks, the old Com
         assert.ok('result' in out);
         const status = Object.fromEntries(e.read(out.result, 0, 99).rows.map(r => [r[0], r[4]]));
         assert.deepStrictEqual(status, { trailing: 'diff', leading: 'diff', 'spaces only': 'diff', inner: 'diff', tab: 'diff', 'the same': 'same' });
+        // Every one of them looks alike unmarked: counted, so Results shows the special characters
+        assert.strictEqual((e.stats(out.result, 'step 1') as CompareStats).quiet, 5);
+    });
+
+    it('the differences that look alike unmarked are counted (quiet): spaces, hidden characters, blank against null; a real one is not', async () => {
+        const e = new QueryEngine();
+        const pairs: [string, string | null, string | null][] = [['nbsp', 'a b', 'a\u00a0b'], ['zero width', 'ab', 'a\u200bb'], ['blank', '', null], ['real', 'abc', 'abd'], ['real and space', 'abc', 'abd ']];
+        e.load('BL', { columns: ['k', 'v'], rows: pairs.map(([k, a]) => [k, a]) });
+        e.load('C1', { columns: ['k', 'v'], rows: pairs.map(([k, , b]) => [k, b]) });
+        const out = await e.run({ steps: [{ compare: ['BL', 'C1'], on: [[col('k', 'BL')], [col('k', 'C1')]], columns: [{ name: 'v', values: [col('v', 'BL'), col('v', 'C1')] }] }] });
+        assert.ok('result' in out);
+        assert.strictEqual((e.stats(out.result, 'step 1') as CompareStats).quiet, 3);
     });
 
     it('numbers and text alike when their characters are (James, 2026-11-21): in the key and in compared values', async () => {
