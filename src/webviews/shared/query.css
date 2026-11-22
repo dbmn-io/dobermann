@@ -53,6 +53,8 @@
 .query-sign svg { width: 13px; height: 13px; vertical-align: -2px; margin-right: 4px; }
 .query-row input[type="number"] { width: 64px; }
 .query-warn { color: var(--vscode-editorWarning-foreground); }
+/* What stops a query running, above the Join step's lines (query-page.js renderJoins) */
+.query-error-note { display: block; margin: 0 0 8px; }
 .query-page .compare-match-empty { margin: 8px 0; }
 
 /* Join scrolls as one */

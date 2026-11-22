@@ -1076,7 +1076,7 @@
                 if (column && of && !of.reading && !of.error && !of.columns.some(c => c.name === column)) gone.push(`${column} is no longer in ${of.name}.`);
             }));
             const of = view(join.view);
-            said = gone.length ? `${gone.join(' ')} Pick another column.` : of && of.off ? 'Hidden: left out of the report.' : join.on.some(p => p.left.column && p.right.column) ? 'Joins to a view that is left out.' : 'Pick the columns this view joins on. Until then it is left out of the report.';
+            said = gone.length ? `${gone.join(' ')} Pick another column.` : ui.state && ui.state.error ? 'Not counted: the query can\'t run (above).' : of && of.off ? 'Hidden: left out of the report.' : join.on.some(p => p.left.column && p.right.column) ? 'Joins to a view that is left out.' : 'Pick the columns this view joins on. Until then it is left out of the report.';
         } else if (stats.typeMismatch) said = 'One side is numbers and the other text, so they never match. Try ƒ: As text.';
         if (!said) return null;
         const line = el('span', 'query-row form-hint query-counts');
@@ -1868,6 +1868,16 @@
         const first = s.views[0];
         const lines = [line('query-total-line', totals, [first.error ? errorLine(first) : null], [el('span', 'query-lead-text', 'Rows')])];
         if (s.views.length < 2) lines.push(el('p', 'compare-match-empty', 'Add another view to join.'));
+        // What stops the query running (a lookup table deleted, say): said once, in full, above the joins; never a
+        // join's guess that its view is left out (its counts are missing for this reason, not that one)
+        if (s.error) {
+            const why = document.createElement('dbmn-status');
+            why.className = 'query-error-note';
+            why.setAttribute('inline', '');
+            why.setAttribute('tone', 'warn');
+            why.textContent = s.error;
+            lines.unshift(why);
+        }
         // "New compare engine (testing)" on, and this query more than a compare of runs: it says it runs on SQLite, and why
         if (s.engineNote) {
             const note = document.createElement('dbmn-status');

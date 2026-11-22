@@ -20,11 +20,13 @@ test.describe('Hub', () => {
 
     test('Reporting lists lookup tables beside the reports (the Hub\'s state carries them; the page kept only reports until 2026-11-23)', async ({ dbmn, page }) => {
         await dbmn.openHub();
+        await page.locator('.hub-nav-item[data-section="compare"]').click();
+        // The host's whole state (opening a list may send it again), with one lookup table
+        const seeded = await page.evaluate(() => (window as unknown as { __HUB_INITIAL_STATE__?: Record<string, unknown> }).__HUB_INITIAL_STATE__ ?? {});
         await dbmn.push({
-            type: 'hubState', endpoints: [], systems: [], environments: [], transactions: [], compares: [], queries: [],
+            ...seeded, type: 'hubState', compares: [], queries: [],
             lookupTables: [{ id: 'lkp-units', name: 'Units', columns: [{ id: 'c1', name: 'code', key: true }, { id: 'c2', name: 'value' }], rows: 2, updatedAt: '2026-11-23T00:00:00Z' }]
         });
-        await page.locator('.hub-nav-item[data-section="compare"]').click();
         await expect(page.locator('#compareEmpty')).toBeHidden();
         await expect(page.locator('#compareSummary')).toHaveText('1 report');
         await expect(page.locator('#compareList')).toContainText('Units');

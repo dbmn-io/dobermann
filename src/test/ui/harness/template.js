@@ -94,6 +94,8 @@
             CATALOGUE_JS_URI: asset(base, 'hub/catalogue.js'),
             HUB_TAG_MANAGER_JS_URI: asset(base, 'hub/hub-tag-manager.js'),
             TRANSACTIONS_JS_URI: asset(base, 'hub/transactions.js'),
+            // Reporting's list (it never drew in UI tests without it)
+            COMPARE_LIST_JS_URI: asset(base, 'hub/compare-list.js'),
             HUB_HOME_JS_URI: asset(base, 'hub/hub-home.js'),
             // The real host prints package.json's version; a fixed one keeps
             // screenshots stable across releases.
