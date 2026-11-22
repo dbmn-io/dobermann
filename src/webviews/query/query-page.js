@@ -770,12 +770,12 @@
      * results it hasn't already, read through its View.
      */
     async function addView(of) {
-        // Every result in History is read the first time Add a view opens, not as the query opens (it can take a while)
-        if (!ui.sourcesAll) {
-            setBusy('Reading your results…');
-            await new Promise(resolve => { ui.onAllSources = resolve; post({ type: 'query.sources' }); });
-            setBusy('');
-        }
+        // Every result in History, asked for each time Add a view opens (not as the query opens: it can take a while),
+        // so a run made or deleted since, with this query open, is in it or gone (the host's run list is shared and kept
+        // until the history changes, so asking again is cheap)
+        setBusy('Reading your results…');
+        await new Promise(resolve => { ui.onAllSources = resolve; post({ type: 'query.sources' }); });
+        setBusy('');
         const runOf = of && of.id ? of : null;
         const used = new Set(views().map(v => v.executionId).filter(Boolean));
         const list = ui.sources.filter(r => !runOf || (r.endpointId === runOf.endpointId && !used.has(r.id)));
