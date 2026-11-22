@@ -55,6 +55,8 @@ export interface CompareMade {
     diffBy: Uint8Array[];
     /** By input: 1 where it holds the row's key on more than one record (`repeated:<input>`). */
     repeatedBy: Uint8Array[];
+    /** 1 on a key's second and later rows (`duplicate`): the rows its repeats add (James, 2026-11-22: Duplicate, a status). */
+    extra: Uint8Array;
     differs: Uint8Array[];
     stats: CompareStats;
 }
@@ -101,6 +103,8 @@ export async function runCompare(inputs: CompareInput[], columns: number, tick: 
     // (rows whose key is blank: one record each, never repeated)
     const blankRows: number[] = [];
     const repeatedRow: number[] = [];
+    // (a repeated key's rows after its first)
+    const extraRows: number[] = [];
     // (for each repeated row, the inputs that hold its key more than once)
     const repeatedIn: number[][] = [];
     let length = 0;
@@ -117,6 +121,7 @@ export async function runCompare(inputs: CompareInput[], columns: number, tick: 
         for (let i = 0; i < n; i++) {
             for (let p = 0; p < places; p++) rowsOf[p].push(each[p].length ? each[p][Math.min(i, each[p].length - 1)] : -1);
             repeatedIn.push(holders);
+            if (i > 0) extraRows.push(length);
             repeatedRow.push(length++);
         }
     }
@@ -175,5 +180,7 @@ export async function runCompare(inputs: CompareInput[], columns: number, tick: 
         }
         return { name: x.name, rows: x.rowCount, againstBaseline: ab, againstAll: aa, noKey };
     });
-    return { rowAt, status, relation, differs, diffBy, repeatedBy, stats: { perInput, rows: length, status: counts } };
+    const extra = new Uint8Array(length);
+    for (const r of extraRows) extra[r] = 1;
+    return { rowAt, status, relation, differs, diffBy, repeatedBy, extra, stats: { perInput, rows: length, status: counts } };
 }

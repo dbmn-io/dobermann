@@ -56,6 +56,87 @@ function compareKeysByView(spec: QuerySpec): { view: string; keys: QueryKey[] }[
     ];
 }
 
+/** One run's (or view's) figures against the Baseline, as the Join step shows them run by run. */
+export interface JoinCount {
+    /** Its records that find one of the Baseline's. */
+    matched: number;
+    /** Its records the Baseline hasn't (a blank key not counted: noKey). */
+    onlyHere: number;
+    /** The Baseline's records it hasn't (the Baseline's blank keys not counted). */
+    onlyBaseline: number;
+    /** Keys it holds more than once: the Baseline's record with one is compared with every one (a row each in Results). */
+    repeatedKeys: number;
+    /** Its records with one of those keys (each key's first record and its duplicates). */
+    repeatedRecords: number;
+    /** Keys the Baseline holds more than once. */
+    baselineRepeatedKeys: number;
+    /** Its records with a blank key. */
+    noKey: number;
+}
+
+/**
+ * The Join step's counts, run by run: for each view in the compare after the Baseline, a compare of the
+ * Baseline and it alone (its figures don't wait for the others), then the whole compare once for
+ * Results' rows. Empty when it isn't a compare with every key picked.
+ */
+export function joinCountPlan(spec: QuerySpec): { baseline: string; pairs: { view: string; query: Query }[]; whole: Query; key: string } | undefined {
+    const byView = compareKeysByView(spec);
+    if (byView.length < 2 || byView.some(v => !v.keys.length || v.keys.some(k => !k.parts.length || k.parts.some(p => !p.column)))) return undefined;
+    const exprs = (v: { keys: QueryKey[] }): Expr[] => v.keys.flatMap(k => k.parts.map(p => (k.fns ?? []).reduce<Expr>((x, f) => fnExpr(x, f), refExpr(p))));
+    const base = byView[0];
+    return {
+        baseline: base.view,
+        pairs: byView.slice(1).map(v => ({ view: v.view, query: { steps: [{ as: 'compare', compare: [base.view, v.view], on: [exprs(base), exprs(v)], columns: [] }], result: 'compare' } })),
+        whole: { steps: [{ as: 'compare', compare: byView.map(v => v.view), on: byView.map(exprs), columns: [] }], result: 'compare' },
+        key: JSON.stringify(byView)
+    };
+}
+
+/** The Status column a repeated key's records come with (the Join dialog's first column). */
+export const JOIN_STATUS = 'Status';
+
+/** Which of a Join count's records: matched, only in the run, only in the Baseline, a key it repeats, a blank key. */
+export type JoinCountKind = 'matched' | 'onlyHere' | 'onlyBaseline' | 'repeat' | 'noKey';
+
+/**
+ * The records behind one of the Join step's counts, from that pair's compare kept in the engine (`kept`,
+ * the Baseline and `other`): the shown view's columns (the Baseline's for onlyBaseline, else the other's),
+ * named as they are. A repeated key's records come sorted by the key, so each key's records sit together.
+ */
+export function joinCountRowsQuery(kept: string, baseline: string, other: string, kind: JoinCountKind, columns: string[], keyColumns: string[]): Query {
+    const own = (name: string): Expr => ({ column: name, of: 'compare' });
+    const is = (name: string, value: Value): Expr => ({ fn: '=', args: [own(name), { value }] });
+    const blank = is('status', 'noKey');
+    const where: Expr = kind === 'matched' ? and([is(`missing:${baseline}`, 0), is(`missing:${other}`, 0), not(blank)])
+        : kind === 'onlyHere' ? and([is(`missing:${baseline}`, 1), is(`missing:${other}`, 0), not(blank)])
+            : kind === 'onlyBaseline' ? and([is(`missing:${other}`, 1), is(`missing:${baseline}`, 0), not(blank)])
+                : kind === 'repeat' ? and([is(`repeated:${other}`, 1), is(`missing:${other}`, 0)])
+                    : and([blank, is(`missing:${other}`, 0)]);
+    const shown = kind === 'onlyBaseline' ? baseline : other;
+    const steps: Query['steps'] = [
+        { as: 'compare', from: kept },
+        { as: 'kept', filter: 'compare', where },
+        // (a repeated key's records: a Status first, Duplicate on each key's later records, as the Join dialog shows them)
+        { as: 'rows', select: 'kept', columns: [...(kind === 'repeat' ? [{ name: JOIN_STATUS, value: { fn: 'IF', args: [is('duplicate', 1), { value: 'Duplicate' }, { value: '' }] } as Expr }] : []), ...columns.map(c => ({ name: c, value: { column: c, of: shown } }))] }
+    ];
+    if (kind === 'repeat' && keyColumns.length) steps.push({ as: 'sorted', sort: 'rows', by: keyColumns.map(c => ({ value: { column: c }, descending: false, order: 'shown' as const })) });
+    return { steps, result: kind === 'repeat' && keyColumns.length ? 'sorted' : 'rows' };
+}
+
+/** A pair's figures from its compare's statistics (the Baseline first, the other second). */
+export function joinCountOf(stats: CompareStats): JoinCount {
+    const [base, other] = stats.perInput;
+    return {
+        matched: other?.againstBaseline.matched ?? 0,
+        onlyHere: Math.max(0, (other?.againstBaseline.only ?? 0) - (other?.noKey ?? 0)),
+        onlyBaseline: Math.max(0, (base?.againstAll.onlyHere ?? 0) - (base?.noKey ?? 0)),
+        repeatedKeys: other?.againstAll.repeatedKeys ?? 0,
+        repeatedRecords: other?.againstAll.repeatedRecords ?? 0,
+        baselineRepeatedKeys: base?.againstAll.repeatedKeys ?? 0,
+        noKey: other?.noKey ?? 0
+    };
+}
+
 function compareKeys(spec: QuerySpec): QueryKey[] {
     return compareKeysByView(spec).flatMap(v => v.keys);
 }
@@ -714,6 +795,15 @@ export function loadLookupTable(engine: QueryEngine, table: { id: string; column
     engine.load(lookupTableName(table.id), { columns, rows: table.rows.map(r => columns.map(c => (r[c] === undefined ? null : String(r[c])))) });
 }
 
+/**
+ * Each compare view's whole key, a part per column of every pair (as the compare matches them, and in the order the
+ * layout's keyParts read them): the record window finds a view's records by all of them (a key of sku AND location
+ * found nothing by its first alone, 2026-11-22).
+ */
+export function compareKeyPartExprs(spec: QuerySpec): { view: string; exprs: Expr[] }[] {
+    return compareKeysByView(spec).filter(v => v.keys.length).map(v => ({ view: v.view, exprs: v.keys.flatMap(k => k.parts.map(p => (k.fns ?? []).reduce<Expr>((x, f) => fnExpr(x, f), refExpr(p)))) }));
+}
+
 /** Each compare view's key (its first pair's, as compareKeySql), as an Expr over that view alone. */
 export function compareKeyExprs(spec: QuerySpec): { view: string; expr: Expr }[] {
     return compareKeysByView(spec).filter(v => v.keys[0]).map(v => ({ view: v.view, expr: keyExpr(v.keys[0]) }));
@@ -764,8 +854,11 @@ export function fnSampleQueries(view: string, column: string, fns: ColumnFn[], r
 }
 
 /** The record window's records of one view: the rows whose key is the row's (up to five). */
-export function recordQuery(view: string, key: Expr, value: Value): Query {
-    return { steps: [{ from: view }, { filter: 'step 1', where: { fn: '=', args: [key, { value }] } }] };
+export function recordQuery(view: string, key: Expr | Expr[], value: Value | Value[]): Query {
+    const keys = Array.isArray(key) ? key : [key];
+    const values = Array.isArray(value) ? value : [value];
+    const each: Expr[] = keys.map((k, i) => ({ fn: '=', args: [k, { value: values[i] }] }));
+    return { steps: [{ from: view }, { filter: 'step 1', where: each.length === 1 ? each[0] : { fn: 'AND', args: each } }] };
 }
 
 /* ---------- Results by pages: its rows stay in the engine, read a window at a time ---------- */
@@ -837,11 +930,12 @@ export async function readStatusPage(engineIn: QueryEngine | EngineHost, paged: 
 }
 
 /** One row of a paged result by its place: Results' row and its key in each compare view (the record window). */
-export async function readPagedRow(engineIn: QueryEngine | EngineHost, paged: PagedResult, index: number): Promise<{ row: unknown[]; keys: unknown[] } | undefined> {
+export async function readPagedRow(engineIn: QueryEngine | EngineHost, paged: PagedResult, index: number): Promise<{ row: unknown[]; keys: unknown[]; parts: Value[][] } | undefined> {
     const window = await hostOf(engineIn).readRows(paged.id, [index]);
     if (!window.rows.length) return undefined;
     const { rows, keyValues } = resultRows(window.rows, paged.layout);
-    return { row: rows[0], keys: keyValues[0] };
+    // (each place's key, part by part: every column of a key of several)
+    return { row: rows[0], keys: keyValues[0], parts: paged.layout.keyParts.map(k => k.at.map(i => window.rows[0][i])) };
 }
 
 /** A query's rows kept in the engine for Results to page through. */

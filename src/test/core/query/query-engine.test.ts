@@ -492,6 +492,13 @@ describe('Query', () => {
             assert.deepStrictEqual(query.sources.map(s => s.id), ['prod', 'loc', 'stock', 'asn']);
         });
 
+        it('a view moved between others (not first) keeps its join, as everyone else does: only the order changes (James, 2026-11-22)', () => {
+            const query = saved();
+            moveView(query, 'asn', 1);
+            assert.deepStrictEqual(query.sources.map(s => s.id), ['stock', 'asn', 'prod', 'loc']);
+            assert.deepStrictEqual(query.joins, saved().joins);
+        });
+
         it('the first view, or one that is not there, changes nothing', () => {
             const query = saved();
             moveViewFirst(query, 'stock');

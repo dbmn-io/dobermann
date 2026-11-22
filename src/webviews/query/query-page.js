@@ -72,13 +72,15 @@
         seq: 0,
         loading: false,
         sqlOpen: false,
-        statsOpen: {}       // a join's stats shown, by its view
+        statsOpen: {},      // a join's stats shown, by its view
+        joinCounts: null    // the Join step's counts, run by run (the host's query.joinCounts)
     };
 
     // The footer's steps (shared/dbmn-footer.js): shown what stands, they say which step was asked for
     const bar = $('queryStepper');
     bar.steps = STEPS;
-    bar.addEventListener('dbmn-step', event => goTo(event.detail.step));
+    // (a step clicked while the page works waits: the other steps are drawn waiting too)
+    bar.addEventListener('dbmn-step', event => { if (!ui.busy) goTo(event.detail.step); });
 
     function post(message) { vscode.postMessage(message); }
     function el(tagName, className, content) {
@@ -202,6 +204,8 @@
         const states = STEPS.map((_, i) => {
             const n = i + 1;
             if (n === ui.step) return ui.busy ? { status: 'current', summary: ui.busy, checking: true } : { status: 'current', summary: '' };
+            // While it works (reading the views, joining): the other steps wait, and look it (James, 2026-11-22)
+            if (ui.busy) return { status: n < ui.step ? 'done' : 'pending', summary: '', title: 'Wait until this step is done' };
             if (n < ui.step) return { status: 'done', summary: '' };
             const blocked = waitsFor(n);
             if (!blocked) return { status: 'available', summary: '', title: `Go to ${STEPS[i].label}` };
@@ -297,15 +301,41 @@
      * data brought up to date (the newest result read, or its file picked again), opened in the
      * Console, or removed.
      */
+    /**
+     * A view's summary, as its slot's menu shows it first: where it comes from, how old, how many rows. Given to
+     * the menu once the menu takes a summary (DbmnContextMenu.takesSummary); till then the menu is the actions.
+     */
+    function slotSummary(v) {
+        const lines = [];
+        if (v.file) lines.push(['File', v.sheet ? `${v.file}, ${v.sheet}` : v.file]);
+        else {
+            lines.push(['Request', [v.system, v.request || v.endpointName].filter(Boolean).join(' · ')]);
+            lines.push(['View', v.view || 'Top-level fields']);
+            lines.push(['Result', v.environment || '']);
+            (((ui.sources || []).find(r => r.id === v.executionId) || {}).header || []).forEach(h => lines.push([h.name, String(h.value)]));
+        }
+        const level = ageLevel(v.executedAt);
+        lines.push(level ? { 0: v.file ? 'Read' : 'Ran', 1: `${day(v.executedAt)} · ${age(v.executedAt)}`, tone: 'warn' } : [v.file ? 'Read' : 'Ran', `${day(v.executedAt)} · ${age(v.executedAt)}`]);
+        if (!v.reading) lines.push(['Rows', count(v.rows)]);
+        return { title: v.run ? `${v.run} · ${(view(v.runOf) || v).name}` : v.name, lines: lines.map(l => (Array.isArray(l) ? l : Object.assign([l[0], l[1]], { tone: l.tone }))) };
+    }
+    function withSummary(v, items) {
+        if (!window.DbmnContextMenu || !window.DbmnContextMenu.takesSummary) return items;
+        return [{ summary: slotSummary(v) }, ...(items.length ? [{ separator: true }] : []), ...items];
+    }
+
     function slotMenu(event, v) {
         if (!window.DbmnContextMenu) return;
         const place = viewAt(v.id);
         const first = place === 0;
+        // A compare's Baseline stays first: no move takes it from first place or puts another there (until a
+        // compare-aware re-baseline is built; the host refuses it too)
+        const compared = !!(ui.state && ui.state.compare);
         const items = [
-            { id: 'first', label: first ? 'First: every row is kept' : 'Move to first', icon: 'chevrons-left', disabled: first },
+            ...(compared ? [] : [{ id: 'first', label: first ? 'First: every row is kept' : 'Move to first', icon: 'chevrons-left', disabled: first }]),
             // (what a drag of the slot does, for the keyboard)
-            { id: 'left', label: 'Move left', icon: 'chevron-left', disabled: first },
-            { id: 'right', label: 'Move right', icon: 'chevron-right', disabled: place === views().length - 1 },
+            { id: 'left', label: 'Move left', icon: 'chevron-left', disabled: first || (compared && place === 1) },
+            { id: 'right', label: 'Move right', icon: 'chevron-right', disabled: place === views().length - 1 || (compared && first) },
             { id: 'rename', label: 'Rename', icon: 'pencil' },
             // Out of the report without losing it or its joins
             { id: 'toggle', label: v.off ? 'Show in the query' : 'Hide from the query', icon: v.off ? 'eye' : 'eye-off' },
@@ -319,7 +349,7 @@
             { separator: true },
             { id: 'remove', label: 'Remove from the query', icon: 'x', danger: true }
         ];
-        window.DbmnContextMenu.show(event, items, id => {
+        window.DbmnContextMenu.show(event, withSummary(v, items), id => {
             if (id === 'first') { setBusy('Joining…'); post({ type: 'query.moveFirst', id: v.id }); }
             else if (id === 'left' || id === 'right') { setBusy('Joining…'); post({ type: 'query.moveView', id: v.id, to: place + (id === 'left' ? -1 : 1) }); }
             else if (id === 'rename') renameView(v);
@@ -351,7 +381,12 @@
      * views. A slot is a button: Move to first, Rename, Remove. */
     function renderTop() {
         // A run's slot under its view's heading (grouped), or a view's own slot: one button each
-        const slotBox = (v, grouped) => {
+        // What a result says of itself: its environment and its header values (ORG and the like, from Add a view's list)
+        const factsOf = v => [{ name: 'Environment', value: v.environment || '' }, ...(((ui.sources || []).find(r => r.id === v.executionId) || {}).header || []).map(h => ({ name: h.name, value: String(h.value) }))].filter(f => f.value);
+        // A view's runs: what every one of them says alike goes up to the view's heading; only what differs stays on a run's slot
+        // (James, 2026-11-22: the same environment once, above; the time, or an ORG that differs, below)
+        const sharedOf = group => (group.length < 2 ? [] : factsOf(group[0]).filter(f => group.every(v => factsOf(v).some(x => x.name === f.name && x.value === f.value))));
+        const slotBox = (v, grouped, shared) => {
             // Sitting out: hidden by the user, or (past the first) not joined yet
             // (not joined yet greys only from Join on: on Views nothing is joined yet, and a view is picked here in its colours)
             const out = !!v.off || (ui.step >= 2 && !!v.waiting && !v.reading && !v.error);
@@ -362,7 +397,17 @@
             box.dataset.view = v.id;
             // On Results, in a compare: a result's menu (Hide, Make Baseline, Open in the Console)
             const onResults = !edit && ui.step === 4 && hasStatus();
-            const inner = el(edit || onResults ? 'button' : 'div', 'compare-result-btn');
+            // A slot is a button on every step: its summary first, then what can be done with it (James, 2026-11-22)
+            const inner = el('button', 'compare-result-btn');
+            if (!edit && !onResults) {
+                inner.type = 'button';
+                inner.setAttribute('aria-haspopup', 'menu');
+                inner.addEventListener('click', event => {
+                    if (!window.DbmnContextMenu) return;
+                    const items = v.file ? [] : [{ id: 'console', label: 'Open in the Console', icon: 'external-link' }];
+                    window.DbmnContextMenu.show(event, withSummary(v, items), id => { if (id === 'console') post({ type: 'query.openConsole', id: v.id }); });
+                });
+            }
             if (onResults) {
                 inner.type = 'button';
                 inner.setAttribute('aria-haspopup', 'menu');
@@ -382,14 +427,19 @@
                 name.appendChild(el('span', 'query-slot-text', v.name));
                 if (v.run) name.appendChild(el('span', 'query-run-chip', v.run));
             }
-            const where = v.file ? `File · ${v.file}` : grouped ? v.environment : [v.request || v.endpointName, v.environment].filter(Boolean).join(' · ');
+            const own = grouped ? factsOf(v).filter(f => !(shared || []).some(x => x.name === f.name)).map(f => f.value) : [];
+            const where = v.file ? `File · ${v.file}` : grouped ? own.join(' · ') : [v.request || v.endpointName, v.environment].filter(Boolean).join(' · ');
             const what = el('span', 'query-slot-what', [where, day(v.executedAt)].filter(Boolean).join(' · '));
             // Data a week old, or a month: said on the slot, on every step
             const old = ageIcon(v);
             if (old) name.prepend(old);
             inner.append(name, what);
             // Where it comes from and how old it is: on the slot, quietly; whole on Views, and on hover here
-            inner.title = v.file ? `${v.name}: file ${v.file} · read ${day(v.executedAt)}, ${age(v.executedAt)} · ${count(v.rows)} rows` : `${v.name}: ${v.endpointName} · ${v.view || 'Root'} · ${v.environment} · ${day(v.executedAt)}, ${age(v.executedAt)} · ${count(v.rows)} rows`;
+            // (the whole of it is the click's summary, not the hover: James, 2026-11-22. Until the menu can show a
+            // summary, DbmnContextMenu.takesSummary, the hover still says it, so it is never nowhere)
+            inner.title = window.DbmnContextMenu && window.DbmnContextMenu.takesSummary
+                ? `${v.run || v.name}: click for its details`
+                : (() => { const sum = slotSummary(v); return [sum.title, ...sum.lines.map(l => `${l[0]}: ${l[1]}`)].join('\n'); })();
             if (old) inner.title += `\n${old.title}`;
             if (out) inner.title += v.off ? '\nHidden: left out of the report. Its menu shows it again.' : '\nNot joined yet: left out of the report until its columns are picked on Join.';
             if (v.off) { const eye = el('i', 'query-sign'); eye.dataset.icon = 'eye-off'; name.prepend(eye); }
@@ -412,7 +462,7 @@
             lane.dataset.view = group[0].id;
             if (group.length > 1) {
                 const head = el('div', 'dbmn-lane-head query-slot-head');
-                const what = [group[0].request || group[0].endpointName, group[0].view].filter(Boolean).join(' · ');
+                const what = [group[0].request || group[0].endpointName, group[0].view, ...sharedOf(group).map(f => f.value)].filter(Boolean).join(' · ');
                 head.append(el('span', 'query-slot-head-name', group[0].name), el('span', 'query-slot-what', what));
                 head.title = `${group[0].name}: ${what}`;
                 lane.appendChild(head);
@@ -421,14 +471,17 @@
                 const cell = el('div', `dbmn-lane-run dbmn-run-${ri}`);
                 cell.dataset.run = String(ri);
                 cell.dataset.view = v.id;
-                cell.appendChild(slotBox(v, group.length > 1));
+                cell.appendChild(slotBox(v, group.length > 1, sharedOf(group)));
                 lane.appendChild(cell);
             });
             return lane;
         });
         const end = el('div', 'dbmn-lanes-end');
         end.dataset.end = '';
+        // + Add a view and + Add a file: the next slot, after the last view, on every step (James, 2026-11-22)
+        end.dataset.adds = 'slots';
         $('queryViews').replaceChildren($('queryHeadLead'), ...lanes, end);
+        placeAdds();
         ['queryTop', 'queryViewRows', 'queryJoins', 'queryColumns'].forEach(id => applyLanes($(id)));
         // The slot row and the step's lines under it scroll sideways as one (the step's bar moves both)
         const stepBox = { 1: 'queryViewRows', 2: 'queryJoins', 3: 'queryColumns' }[ui.step] || '';
@@ -438,7 +491,7 @@
             ui.lanesPaired = stepBox;
         }
         injectIcons($('queryViews'));
-        // A view is added on Views and Join (the query's name is typed on any step)
+        // A view is added on Views and Join only (James, 2026-11-22): there, the next slot after the last view
         ADDS.classList.toggle('hidden', ui.step > 2);
     }
 
@@ -526,6 +579,7 @@
                 const cell = at(v.id, `query-view-cell${className ? ' ' + className : ''}`);
                 const value = text(v);
                 if (value instanceof Element && value.tagName === 'DBMN-PROGRESS') cell.classList.add('is-reading');
+                if (value instanceof Element && value.classList.contains('query-read-done')) cell.classList.add('is-read-done');
                 // One line, shortened with "…" (the whole of it on hover): never into the next lane
                 if (value instanceof Node) cell.appendChild(value); else cell.appendChild(el('span', 'query-view-text', value));
                 cell.title = cell.textContent;
@@ -534,11 +588,12 @@
             // A line that says the same for every run of a view (its request, its View) says it once, across the view's lane
             laneGroups().forEach(group => {
                 if (group.length < 2) return;
-                const said = group.map(v => text(v));
+                // (A row per: a run still being read says nothing yet, and doesn't split the line: its runs share one View)
+                const said = group.map(v => text(v)).filter(x => !(row === 'rowPer' && x === ''));
                 if (said.some(x => x instanceof Node) || said.some(x => x !== said[0])) return;
                 const cell = at(group[0].id, `query-view-cell${className ? ' ' + className : ''}`);
-                cell.appendChild(el('span', 'query-view-text', said[0]));
-                cell.title = said[0];
+                cell.appendChild(el('span', 'query-view-text', said[0] ?? ''));
+                cell.title = said[0] ?? '';
                 cells['lane:' + group[0].id] = cell;
             });
             const made = line('query-view-line', cells, [], [el('span', 'query-lead-text', label)]);
@@ -557,7 +612,7 @@
         const rows = v => {
             if (v.error) return el('span', 'query-warn', v.error);
             // Still being read: the footer's progress bar, the whole cell, where its count will be
-            return v.reading ? readProgress(v) : rowsButton(v);
+            return v.reading ? readProgress(v) : readDone(v, rowsButton(v));
         };
         box.replaceChildren(
             said('request', 'Request', v => v.file ? `File · ${v.file}` : [v.system, v.request || v.endpointName].filter(Boolean).join(' · ')),
@@ -566,8 +621,7 @@
             said('updated', 'Last updated', v => day(v.executedAt)),
             said('age', 'Age', aged),
             said('rowPer', 'A row per', v => v.reading ? '' : v.file ? 'line' : v.rowBasis === 'root' ? 'response' : v.rowBasis),
-            said('rows', 'Rows', rows, 'query-view-rows'),
-            addsLine('views'));
+            said('rows', 'Rows', rows, 'query-view-rows'));
         applyLanes(box);
         injectIcons(box);
         placeAdds();
@@ -587,38 +641,30 @@
      * empty bar, the one read next saying so ("next"). One at a time, in order.
      */
     function fillRead(bar, read) {
-        const v = views().find(x => x.id === bar.dataset.readView);
-        const label = v ? (v.run || v.name) : '';
+        // One line, one word, one bar per view (James, 2026-11-22: "just say loading", no sweep then a second fill)
+        bar.removeAttribute('busy');
+        bar.removeAttribute('count');
         if (!read) {
-            const waiting = views().filter(x => x.reading && !ui.reads[x.id]);
             bar.setAttribute('phase', 'Waiting');
             bar.setAttribute('value', '0');
-            bar.removeAttribute('busy');
-            if (waiting[0] && waiting[0].id === bar.dataset.readView) bar.setAttribute('count', 'next'); else bar.removeAttribute('count');
             return;
         }
-        bar.setAttribute('phase', label ? `Reading ${label}` : 'Reading');
-        if (read.total) {
-            bar.setAttribute('count', `${count(read.rows)} rows`);
-            bar.setAttribute('value', String(Math.round(100 * read.done / read.total)));
-            bar.removeAttribute('busy');
-        } else {
-            bar.removeAttribute('count');
-            bar.removeAttribute('value');
-            bar.setAttribute('busy', '');
-        }
+        bar.setAttribute('phase', 'Loading');
+        // (the bar glides to each new figure itself: dbmn-progress)
+        bar.setAttribute('value', String(read.total ? Math.round(100 * read.done / read.total) : 0));
+    }
+    /** When each view's rows came in: for a moment after, its count fades in where its bar was. */
+    const justRead = {};
+    const justNow = id => !!justRead[id] && Date.now() - justRead[id] < 1400;
+    function readDone(v, node) {
+        if (justNow(v.id)) node.classList.add('query-read-done');
+        return node;
     }
 
-    /** The line + Add a view and + Add a file sit on, under the rows (Views and Join): one place each step keeps for them. */
-    function addsLine(step) {
-        const holder = el('div', 'query-adds-holder');
-        holder.dataset.adds = step;
-        return line('query-adds-line', { __span: holder }, [], []);
-    }
-    /** + Add a view / + Add a file into the line of the step on show. */
+    /** + Add a view / + Add a file: the slots row's next slot (or, with no views yet, under the empty step's words). */
     function placeAdds() {
         // (no views yet: under the empty step's words, as the lines are hidden)
-        const want = ui.step === 1 ? (views().length ? 'views' : 'empty') : ui.step === 2 ? 'join' : '';
+        const want = views().length ? 'slots' : ui.step === 1 ? 'empty' : '';
         const holder = want && document.querySelector(`[data-adds="${want}"]`);
         if (holder && ADDS.parentElement !== holder) holder.appendChild(ADDS);
     }
@@ -662,6 +708,12 @@
      * results it hasn't already, read through its View.
      */
     async function addView(of) {
+        // Every result in History is read the first time Add a view opens, not as the query opens (it can take a while)
+        if (!ui.sourcesAll) {
+            setBusy('Reading your results…');
+            await new Promise(resolve => { ui.onAllSources = resolve; post({ type: 'query.sources' }); });
+            setBusy('');
+        }
         const runOf = of && of.id ? of : null;
         const used = new Set(views().map(v => v.executionId).filter(Boolean));
         const list = ui.sources.filter(r => !runOf || (r.endpointId === runOf.endpointId && !used.has(r.id)));
@@ -787,7 +839,8 @@
      * same search as everywhere (words in what is shown, @column, @@word…), every row reached by
      * scrolling: the host searches and sorts, and sends the page in view (query.viewRows).
      */
-    async function previewView(v) {
+    /** A view's rows, or (`count`) the records behind one of the Join step's counts, in the shared table. */
+    async function previewView(v, count) {
         const body = el('div', 'query-add-form query-rows-dialog');
         const tableEl = document.createElement('dbmn-table');
         tableEl.id = 'queryViewTable';
@@ -799,7 +852,13 @@
         says.id = 'queryViewShown';
         says.hidden = true;
         body.append(tableEl, says);
-        tableEl.columns = (v.columns || []).map(c => ({ id: c.name, name: c.name }));
+        // A Join count's duplicates: a Status column first, Duplicate on each key's later records (the host sorts them by
+        // the key); the key's columns marked (James, 2026-11-22: a status, no table mode)
+        const keyCols = (count && count.keys) || [];
+        tableEl.columns = [
+            ...(count && count.duplicates ? [{ id: 'Status', name: 'Status', sortable: false, render: () => '', cell: (td, value) => { td.replaceChildren(); if (value === 'Duplicate') { const pill = el('span', 'status-pill-generic compare-duplicate', 'Duplicate'); td.appendChild(pill); } } }] : []),
+            ...(v.columns || []).map(c => ({ id: c.name, name: c.name, ...(count && count.duplicates && keyCols.includes(c.name) ? { key: true } : {}) }))
+        ];
         // Pages asked for and not yet in, by their number
         const waiting = new Map();
         let asked = 0;
@@ -815,12 +874,12 @@
             page: (offset, limit, { search, sort }) => new Promise(resolve => {
                 const seq = ++asked;
                 waiting.set(seq, resolve);
-                post({ type: 'query.viewRows', id: v.id, offset, limit, search, sort, seq });
+                post({ type: 'query.viewRows', id: v.id, offset, limit, search, sort, seq, ...(count ? { count: { kind: count.kind, of: count.of } } : {}) });
             })
         };
         setTimeout(() => { const box = tableEl.querySelector('input'); if (box) box.focus(); }, 0);
         await window.DbmnModal.show({
-            title: `${v.name} · ${v.file ? (v.sheet ? `${v.file}, ${v.sheet}` : v.file) : (v.request || v.endpointName)}`, body, size: 'lg', maximisable: true,
+            title: count ? count.title : `${v.name} · ${v.file ? (v.sheet ? `${v.file}, ${v.sheet}` : v.file) : (v.request || v.endpointName)}`, body, size: 'lg', maximisable: true,
             actions: [{ id: 'close', label: 'Close', variant: 'secondary' }]
         });
         ui.viewRows = null;
@@ -1193,8 +1252,10 @@
         band.setAttribute('aria-label', `Join ${v.name}`);
         if (!join.on.length) join.on.push({ left: { view: earlier[0].id, column: '' }, right: { column: '' } });
         const stats = v.error ? null : join.stats;
-        join.on.forEach((pair, p) => {
-            if (viewAt(pair.left.view) < 0) pair.left.view = earlier[0].id;
+        // The key's lines grouped by the view they join to, in the views' order (never mixed: James, 2026-11-22)
+        join.on.forEach(pair => { if (viewAt(pair.left.view) < 0) pair.left.view = earlier[0].id; });
+        const shown = join.on.map((pair, p) => ({ pair, p })).sort((a, b) => (viewAt(a.pair.left.view) - viewAt(b.pair.left.view)) || (a.p - b.p));
+        shown.forEach(({ pair, p }, row) => {
             const cells = {};
             // A box under every earlier view, until one is picked from: that view is what this one joins to
             earlier.forEach(e => {
@@ -1209,7 +1270,7 @@
             cells[v.id] = right;
             const lead = [];
             const says = [];
-            if (p === 0) {
+            if (row === 0) {
                 lead.push(kindButton(join, v));
                 const and = el('button', 'compare-tool-btn text-link font-mono font-size-12', '+ AND');
                 and.dataset.and = '';
@@ -1230,6 +1291,14 @@
                 says.push(drop);
             }
             const made = line('query-pair', cells, says, lead);
+            // The link between the two columns, across the lanes, once both are picked: how the sides meet on the
+            // join's first pair (one dot or two each end), a plain line on the others. Drawn once on the page
+            // (drawLinks), from where the cells are (it went missing when Join moved onto the lanes grid)
+            if (pair.left.column && pair.right.column) {
+                made.dataset.linkFrom = pair.left.view;
+                made.dataset.linkTo = v.id;
+                made.dataset.relation = stats ? stats.relationship : 'none';
+            }
             band.appendChild(made);
         });
 
@@ -1308,7 +1377,8 @@
             const last = viewAt(v.id);
             band.querySelectorAll('.dbmn-lane-run[data-view]').forEach(cell => {
                 const later = view(cell.dataset.view);
-                if (!later || viewAt(later.id) <= last || !cell.classList.contains('query-at')) return;
+                // (a view this join takes a column from is part of it, wherever it sits)
+                if (!later || viewAt(later.id) <= last || !cell.classList.contains('query-at') || join.on.some(p => p.left.view === later.id)) return;
                 cell.classList.add('query-lane-off');
                 cell.title = `${later.name} joins further down: a view joins to the views before it. Drag ${later.name}'s slot to the left of ${v.name} to join it here.`;
             });
@@ -1318,6 +1388,8 @@
 
         const leftId = join.on[0].left.view;
         KINDS.forEach(([kind, label, warn]) => {
+            // (no match, either side: one row at the bottom, below)
+            if (kind === 'onlyBase' || kind === 'onlyOther') return;
             const [rows, records] = kindCounts(stats, kind);
             if (!rows && !records) return;
             const cells = {};
@@ -1341,6 +1413,33 @@
             row.title = kindTitle(kind, join, rows, records);
             band.appendChild(row);
         });
+        // No match: ONE row at the bottom however many views the join takes, a plain dot; each side's count under its
+        // view, "kept" (or "left out") beside it as a small label (James, 2026-11-22)
+        const [noLeft] = kindCounts(stats, 'onlyBase');
+        const [, noRight] = kindCounts(stats, 'onlyOther');
+        if (noLeft || noRight) {
+            const cells = {};
+            const side = (id, n, kind, sideName, kept) => {
+                if (!n) return;
+                const cell = counted(id, n, false);
+                const show = el('button', 'query-count-btn', cell.textContent);
+                show.type = 'button';
+                show.dataset.side = sideName;
+                show.title = 'Show the values behind this count';
+                show.addEventListener('click', () => showValues(join, kind, sideName));
+                cell.replaceChildren(el('span', 'query-nomatch-kept', kept ? 'kept' : 'left out'), show);
+                cell.classList.add('query-nomatch-cell');
+                cell.title = kindTitle(kind, join, kind === 'onlyBase' ? n : 0, kind === 'onlyOther' ? n : 0);
+                cells[id] = cell;
+            };
+            side(leftId, noLeft, 'onlyBase', 'left', keeps(join.kind).left);
+            side(v.id, noRight, 'onlyOther', 'right', keeps(join.kind).right);
+            const dot = el('span', 'query-nomatch-glyph');
+            dot.appendChild(window.RelationGlyph.svg('onlyBase'));
+            const row = line('query-kind-line', cells, [], [dot, el('span', 'query-kind query-lead-text', 'No match')]);
+            row.dataset.kind = 'noMatch';
+            band.appendChild(row);
+        }
         return shut();
     }
 
@@ -1389,9 +1488,12 @@
             const cells = {};
             views().forEach(v => {
                 if (v.id === baseline.id) {
+                    // One picker and one value for the Baseline's lane: its runs share its key (James, 2026-11-22)
                     const cell = at(v.id, 'query-compare-key');
                     cell.append(sidePicker(first, p, 'left', v), el('span', 'query-compare-value font-mono', sampleOf(v.id, pair.left.column)));
-                    cells[v.id] = cell;
+                    const runsOfBase = views().filter(x => x.runOf === baseline.id);
+                    if (runsOfBase.length && runsOfBase.every(x => members.includes(x.id))) cells['lane:' + baseline.id] = cell;
+                    else cells[v.id] = cell;
                     return;
                 }
                 const join = joinOf(v.id);
@@ -1475,179 +1577,144 @@
         // The summary: one bar across the lanes, as the mock has it. Closed: each later view's records that
         // meet the Baseline's one to one ("C1 1,198 · C2 1,199 one to one"), the repeats said once at its end,
         // the rows the compare leaves after it. While the counts are worked out it says so (is-pending)
-        const last = joins[joins.length - 1];
         const nameOf = v => v.run || v.name;
-        const statsOf = v => (v.id === baseline.id ? first.stats : (joinOf(v.id) || {}).stats);
-        // Each view's figures, from the engine's join statistics as they are: the Baseline's against the first
-        // view joined to it, each other's against the Baseline (records, keys it repeats, records without a match)
-        const summaryOf = v => {
-            const st = statsOf(v);
-            if (!st) return {};
-            // (on the new engine a blank key is No key, as Results says: not counted as Only in)
-            const noKey = ui.state.onEngine ? (v.id === baseline.id ? st.leftBlank : st.rightBlank) || 0 : 0;
-            return v.id === baseline.id
-                ? { records: v.rows, repeatedKeys: (st.keys.manyToOne || 0) + (st.keys.manyToMany || 0), repeatedRecords: (st.rows.manyToOne || 0) + (st.rows.manyToMany || 0), onlyHere: st.leftRows - st.leftMatched - noKey, noKey }
-                : { records: st.rightRows, repeatedKeys: (st.keys.oneToMany || 0) + (st.keys.manyToMany || 0), repeatedRecords: (st.records.oneToMany || 0) + (st.records.manyToMany || 0), onlyHere: st.rightRows - st.rightMatched - noKey, noKey };
-        };
-        const summary = views().reduce((m, v) => { m[v.id] = summaryOf(v); return m; }, {});
         const inCompare = views().filter(v => members.includes(v.id));
-        const others = inCompare.filter(v => v.id !== baseline.id);
         const keyed = first.on.length > 0 && first.on.every(p => p.left.column);
-        const pending = keyed && (!!ui.counting || !last || !last.stats);
-        const repeatedIn = new Map();
-        inCompare.forEach(v => { const n = (summary[v.id] || {}).repeatedKeys || 0; if (n) repeatedIn.set(n, [...(repeatedIn.get(n) || []), nameOf(v)]); });
-        const repeatWords = [...repeatedIn].map(([n, where]) => `${count(n)} ${n === 1 ? 'value repeats' : 'values repeat'} in ${where.join(', ')}`).join(' · ');
-        // A sample's figures (the Baseline's first records and their keys in the others) until Results has worked out the whole
-        const sample = ui.state.sample || null;
-        const firstN = sample ? (sample.rows < sample.of ? `the first ${count(sample.rows)} records` : `the ${count(sample.rows)} records`) : '';
-        const sampleTitle = sample ? `Of ${firstN} of ${nameOf(baseline)}, and their keys in the other views. The full counts come with Results.` : '';
-        const asSample = node => { if (sample && node) { node.classList.add('is-sample'); node.title = sampleTitle; } return node; };
-        // (each other view's count of the sample's keys it has: the engine's, the Baseline first)
-        const sampleFound = v => (sample ? sample.byInput[inCompare.indexOf(v)] || 0 : 0);
-        const bar = el('div', 'query-after query-compare-said');
-        // A view of the compare still arriving: said in words (no compare of what has landed so far: its figures would change as the rest came in)
-        const arriving = inCompare.filter(v => v.reading);
-        if (arriving.length) {
-            const names = arriving.map(nameOf);
-            const it = arriving.length === 1 ? 'it' : 'them';
-            const far = (ui.busy || '').replace(/^Reading [^:]*: ?/, '');
-            const line = document.createElement('dbmn-status');
-            line.setAttribute('inline', '');
-            line.textContent = `Still reading ${names.join(', ')}${far && /^Reading /.test(ui.busy || '') ? `: ${far}` : ''}. The first ${count(SAMPLE_ROWS)} records of ${nameOf(baseline)} will be checked against ${it} when ${arriving.length === 1 ? 'it\'s' : 'they\'re'} in.`;
-            bar.classList.add('is-pending');
-            bar.appendChild(line);
-        } else if (pending) {
-            bar.classList.add('is-pending');
-            bar.appendChild(countingSays(inCompare.reduce((n, v) => n + (v.rows || 0), 0)));
-        } else if (keyed && sample) {
-            // A sample: how many of the Baseline's first records each other view has
-            // (the sentence says it is of a sample: only its figures are marked, the design system's sample figure)
-            const stat = el('span', 'query-made query-compare-sample', `In ${firstN} of ${nameOf(baseline)}: `);
-            others.forEach((v, i) => { stat.append(`${i ? ' · ' : ''}${nameOf(v)} `, asSample(el('span', 'dbmn-lanes-figure', count(sampleFound(v))))); });
-            stat.append(' found');
-            bar.appendChild(stat);
-        } else if (keyed) {
-            // Each later view's records that find one of the Baseline's (one to one or repeated: the chevron splits them)
-            const found = others.filter(statsOf).map(v => `${nameOf(v)} ${count(statsOf(v).rightMatched || 0)} of ${count(statsOf(v).rightRows || 0)}`);
-            const stat = el('span', 'query-made query-compare-stat', found.length ? `${found.join(' · ')} match ${nameOf(baseline)}` : '');
-            stat.title = `How many of each one's records find a record of ${nameOf(baseline)}'s (the Baseline). Open the chevron for one to one, repeated and only in`;
-            bar.appendChild(stat);
-            if (repeatWords) {
-                const w = el('span', 'query-warn query-compare-repeat', repeatWords);
-                const i = el('i', 'query-sign');
-                i.dataset.icon = 'triangle-alert';
-                w.prepend(i);
-                w.title = 'Open the chevron: what a repeated key does, and what to do about it';
-                bar.appendChild(w);
-            }
+        if (!keyed || inCompare.length < 2) return band;
+        // Every record counted, run by run (the host's query.joinCounts): each run's or view's figures against
+        // the Baseline under it, its bar where they will show while it counts, the ones to come waiting
+        const jc = ui.joinCounts && ui.joinCounts.baseline === baseline.id ? ui.joinCounts : null;
+        // No counts from the host, and why: said in one line where they would be, not bars that wait for nothing
+        if (!jc && ui.joinCountsWhy) {
+            const why = document.createElement('dbmn-status');
+            why.setAttribute('inline', '');
+            why.textContent = ui.joinCountsWhy;
+            band.appendChild(line('query-compare-verdict', { __span: why }, [], []));
+            return band;
         }
-        // The rows it leaves, at the end of the line: every record of every view in it, once
-        const total = last && last.stats && !pending ? asSample(el('span', `query-made query-compare-rows${sample ? ' dbmn-lanes-figure' : ''}`, `${count(last.stats.rowsAfter)} rows`)) : null;
-        // Its chevron opens how the records meet, a line per kind (closed to begin with), as a join's does
-        const open = !!ui.statsOpen.__compare;
-        const ready = keyed;
-        const more = el('button', 'compare-tool-btn icon');
-        more.type = 'button';
-        more.dataset.stats = '';
-        more.dataset.icon = open ? 'chevron-down' : 'chevron-right';
-        more.disabled = !ready;
-        more.setAttribute('aria-expanded', String(open && ready));
-        more.setAttribute('aria-label', 'How the records meet in the compare');
-        more.title = open ? 'Hide how the records meet' : 'Show how the records meet';
-        more.addEventListener('click', () => { ui.statsOpen.__compare = !open; renderJoins(); });
-        const made = line('query-made-line', { __span: bar }, [total], [el('span', 'query-lead-text', 'Rows after compare'), more]);
-        made.dataset.kind = 'made';
-        made.classList.toggle('is-openable', ready);
-        if (ready) bar.addEventListener('click', () => { ui.statsOpen.__compare = !open; renderJoins(); });
-        band.appendChild(made);
-        if (open && ready && pending) {
-            // Open while counting: the three lines, each count still being worked out
-            [['oneToOne', 'One to one'], ['manyToMany', 'Repeated'], ['onlyOther', 'Only in']].forEach(([kind, label]) => {
-                const cells = {};
-                inCompare.forEach(v => { const c = at(v.id, 'query-count compare-match-count is-pending'); c.textContent = '…'; cells[v.id] = c; });
-                const row = line('query-kind-line', cells, [], [window.RelationGlyph.svg(kind), el('span', 'query-kind query-lead-text', label)]);
-                row.dataset.kind = kind;
-                band.appendChild(row);
-            });
-        } else if (open && ready) {
-            // Open: three lines, always, a count under each view (a nought quiet), as the mock has them. Under
-            // the Baseline: its records, its own repeats, its records no other view has; under each other
-            // view: against the Baseline (one to one, repeated), and its records no other view has
-            const kindLine = (kind, label, says, of) => {
-                const cells = {};
-                inCompare.forEach(v => {
-                    const n = of(v);
-                    if (n === null || n === undefined) return;
-                    const cell = counted(v.id, n, kind === 'manyToMany');
-                    asSample(cell);
-                    if (!n) cell.classList.add('is-zero');
-                    // Under the Baseline, One to one is its record count, said quietly ("1,204 records")
-                    if (kind === 'oneToOne' && v.id === baseline.id) { cell.textContent = `${count(n)} records`; cell.classList.add('is-zero'); }
-                    else if (n) {
-                        // A count is a button: it opens the values it counts (the Baseline's against the first view
-                        // joined to it, each other view's against the Baseline), as a join's counts do
-                        const isBase = v.id === baseline.id;
-                        const join = isBase ? first : joinOf(v.id);
-                        const st = join && join.stats;
-                        const which = kind === 'oneToOne' ? 'oneToOne'
-                            : kind === 'manyToMany' ? (isBase ? (st && st.keys.manyToOne ? 'manyToOne' : 'manyToMany') : (st && st.keys.oneToMany ? 'oneToMany' : 'manyToMany'))
-                                : isBase ? 'onlyBase' : 'onlyOther';
-                        // (on the new engine the values behind a count are not read yet: a count, not a dead button)
-                        if (join && st && !ui.state.onEngine) {
-                            const show = el('button', 'query-count-btn', cell.textContent);
-                            show.type = 'button';
-                            show.dataset.side = isBase ? 'left' : 'right';
-                            show.title = 'Show the values behind this count';
-                            show.addEventListener('click', event => { event.stopPropagation(); showValues(join, which, isBase ? 'left' : 'right'); });
-                            cell.replaceChildren(show);
-                        }
-                    }
-                    cells[v.id] = cell;
-                });
-                const tag = el('span', `query-kind query-lead-text${kind === 'manyToMany' ? ' query-warn' : ''}`, label);
-                tag.title = says;
-                const row = line('query-kind-line', cells, [], [window.RelationGlyph.svg(kind), tag]);
-                row.dataset.kind = kind;
-                band.appendChild(row);
-            };
-            kindLine('oneToOne', 'One to one', `Records that meet ${nameOf(baseline)}'s one to one; under ${nameOf(baseline)}, its records`, v => {
-                if (v.id === baseline.id) return (summary[v.id] || {}).records ?? v.rows ?? null;
-                const st = statsOf(v); return st ? st.records.oneToOne : null;
-            });
-            kindLine('manyToMany', 'Repeated', `In a view more than once: ${nameOf(baseline)}'s record is compared with each`, v => {
-                if (v.id === baseline.id) return (summary[v.id] || {}).repeatedRecords ?? null;
-                const st = statsOf(v); return st ? (st.records.oneToMany || 0) + (st.records.manyToMany || 0) : null;
-            });
-            kindLine('onlyOther', 'Only in', `Records with no match in ${nameOf(baseline)} (under ${nameOf(baseline)}: no match in the view joined to it first): each shows as Missing`, v => (summary[v.id] || {}).onlyHere ?? null);
-            // A blank key matches nothing: Results counts its records as No key (only said when there are any)
-            const noKeys = inCompare.reduce((n, v) => n + ((summary[v.id] || {}).noKey || 0), 0);
-            if (noKeys) kindLine('noKey', 'No key', 'Records whose key is blank: they match nothing, and Results shows each as No key', v => (summary[v.id] || {}).noKey ?? null);
-            // Then one sentence: what it all means, and what to do (dbmn-status's tones)
-            const only = inCompare.reduce((n, v) => n + ((summary[v.id] || {}).onlyHere || 0), 0);
-            let words = [only ? `${count(only)} ${only === 1 ? 'record is' : 'records are'} in one view only: each shows as Missing in the others.` : noKeys ? 'Every record with a key is in the Baseline.' : '✓ Every view finds the Baseline\'s record.'];
-            if (noKeys) words.push(`${count(noKeys)} ${noKeys === 1 ? 'record has' : 'records have'} no key: ${noKeys === 1 ? 'it matches' : 'they match'} nothing and ${noKeys === 1 ? 'shows' : 'show'} as No key.`);
-            if (repeatWords) words.push(`${repeatWords}: a record on more than one row is compared with every row that has the same key, so Results shows extra rows and DIFFs that aren't real. Add a column to the key (+ AND) so each record has one row.`);
-            let low = false;
-            if (sample) {
-                // Of a sample only, and said so: what was found in every view, repeats seen there, a key that looks wrong
-                const runs = others.every(v => v.run) ? 'run' : 'view';
-                const thin = others.filter(v => sampleFound(v) < sample.rows / 2);
-                low = thin.length > 0;
-                words = [`In ${firstN} of ${nameOf(baseline)}: ${count(sample.inEvery)} found in every ${runs}${repeatWords ? '' : `, none repeated in ${firstN}`}.`];
-                thin.forEach(v => words.push(`Only ${count(sampleFound(v))} of ${firstN.replace('records', 'keys')} of ${nameOf(baseline)} ${sampleFound(v) === 1 ? 'is' : 'are'} in ${nameOf(v)}: check the key.`));
-                if (repeatWords) words.push(`${repeatWords} in ${firstN}: a record on more than one row is compared with every row that has the same key. Add a column to the key (+ AND) so each record has one row.`);
-                if (!low && !repeatWords && sample.inEvery === sample.rows) words.push('Looks like a safe compare.');
-                words.push('The full counts come with Results.');
+        const others = inCompare.filter(v => v.id !== baseline.id);
+        const countOf = v => (jc && jc.views[v.id]) || { state: 'waiting' };
+        const done = others.map(countOf).filter(c => c.count);
+        // The lines: matched, only here, only in the Baseline, then a repeated key or a blank one only when there are any
+        const repeats = done.some(c => c.count.repeatedKeys || c.count.baselineRepeatedKeys);
+        const blanks = done.some(c => c.count.noKey);
+        const KINDS = [
+            { kind: 'oneToOne', rows: 'matched', title: v => `${nameOf(v)} matched with ${nameOf(baseline)}`, of: c => c.matched, says: v => `Matched: ${nameOf(v)}'s records that ${nameOf(baseline)} has too` },
+            { kind: 'onlyOther', rows: 'onlyHere', title: v => `Only in ${nameOf(v)}`, of: c => c.onlyHere, says: v => `Only in ${nameOf(v)}: not in ${nameOf(baseline)}. Each shows as Missing in ${nameOf(baseline)}` },
+            { kind: 'onlyBase', rows: 'onlyBaseline', title: v => `Only in ${nameOf(baseline)}, not in ${nameOf(v)}`, of: c => c.onlyBaseline, says: v => `Only in ${nameOf(baseline)}: ${nameOf(baseline)}'s records ${nameOf(v)} hasn't. Each shows as Missing in ${nameOf(v)}` },
+            // (a key's records after its first: what the dialog tags Duplicate, so the figure is the rows it tags)
+            ...(repeats ? [{ kind: 'repeat', rows: 'repeat', title: v => `Duplicated in ${nameOf(v)}`, of: c => Math.max(0, (c.repeatedRecords || 0) - (c.repeatedKeys || 0)), says: v => `A key ${nameOf(v)} has more than once: ${nameOf(baseline)}'s record shows once for each in Results` }] : []),
+            ...(blanks ? [{ kind: 'noKey', rows: 'noKey', title: v => `${nameOf(v)}: no key`, of: c => c.noKey, says: v => `${nameOf(v)}'s records with a blank key: they match nothing, and show as No key` }] : [])
+        ];
+        // (the repeat line's picture: one to many, many to one, or many to many when both sides repeat)
+        const glyphOf = k => {
+            if (k.kind !== 'repeat') return k.kind === 'noKey' ? 'onlyOther' : k.kind;
+            const other = done.some(c => c.count.repeatedKeys), base = done.some(c => c.count.baselineRepeatedKeys);
+            return other && base ? 'manyToMany' : base ? 'manyToOne' : 'oneToMany';
+        };
+        const gutter = el('div', 'query-counts-gutter');
+        KINDS.forEach(k => {
+            const g = el('span', 'query-counts-glyph');
+            g.appendChild(window.RelationGlyph.svg(glyphOf(k)));
+            g.title = k.kind === 'oneToOne' ? 'Matched with the Baseline' : k.kind === 'onlyOther' ? 'Only in this run or view' : k.kind === 'onlyBase' ? 'Only in the Baseline: missing here'
+                : k.kind === 'repeat' ? (glyphOf(k) === 'manyToMany' ? 'Many to many: a key repeats on both sides' : glyphOf(k) === 'manyToOne' ? 'Many to one: the Baseline has a key more than once' : 'One to many: a key repeats here') : 'No key';
+            gutter.appendChild(g);
+        });
+        const cells = {};
+        inCompare.forEach(v => {
+            const cell = at(v.id, 'query-counts-cell');
+            cell.style.setProperty('--count-lines', String(KINDS.length));
+            if (v.id === baseline.id) {
+                KINDS.forEach(() => cell.appendChild(el('span', 'query-counts-n is-quiet', '–')));
+            } else {
+                const c = countOf(v);
+                if (c.state === 'counting' || (c.state === 'waiting' && !c.count)) {
+                    // One bar in its cells while it counts (the design system's, as the reading bars); the ones to come wait
+                    cell.classList.add('is-counting');
+                    cell.appendChild(countProgress(v, c));
+                } else if (c.state === 'failed') {
+                    cell.appendChild(el('span', 'query-warn', 'Could not count'));
+                } else {
+                    if (c.stale || c.state !== 'done') cell.classList.add('is-stale');
+                    if (justCounted(v.id)) cell.classList.add('is-read-done');
+                    KINDS.forEach(k => {
+                        const n = k.of(c.count) || 0;
+                        const span = el('span', `query-counts-n${n ? '' : ' is-quiet'}${k.kind === 'repeat' && n ? ' query-warn' : ''}`);
+                        // Every count opens its records, in the rows dialog's table (search and count at its top)
+                        if (n && c.state === 'done' && !c.stale) {
+                            const open = el('button', 'query-count-btn', count(n));
+                            open.type = 'button';
+                            open.title = `${k.says(v)}. Click to see them`;
+                            // (the run's own key columns: a duplicates table puts them first, in the key's order)
+                            const keys = first.on.map((p, i) => (v.id === baseline.id ? p.left.column : ((joinOf(v.id) || { on: [] }).on[i] || { right: {} }).right.column)).filter(Boolean);
+                            open.addEventListener('click', () => previewView(k.rows === 'onlyBaseline' ? baseline : v, { kind: k.rows, of: v.id, title: k.title(v), duplicates: k.rows === 'repeat', keys }));
+                            span.appendChild(open);
+                        } else { span.textContent = count(n); span.title = k.says(v); }
+                        cell.appendChild(span);
+                    });
+                }
             }
-            const verdict = document.createElement('dbmn-status');
-            verdict.className = 'query-compare-verdict-text';
-            verdict.setAttribute('inline', '');
-            verdict.setAttribute('tone', repeatWords || low ? 'warn' : only && !sample ? 'warn' : 'ok');
-            verdict.textContent = words.join(' ');
-            const vline = line('query-compare-verdict', { __span: verdict }, [], []);
-            band.appendChild(vline);
+            cells[v.id] = cell;
+        });
+        band.appendChild(line('query-counts-line', cells, [], [gutter]));
+        // A repeated key: what it does to Results, in one line
+        const rep = others.filter(v => countOf(v).count && countOf(v).count.repeatedKeys);
+        if (rep.length) {
+            // Said once, plainly: how many key values repeat and over how many records, by the runs alike; and what it means
+            const keyName = first.on.map(p => p.left.column).filter(Boolean).join(' + ');
+            const byN = new Map();
+            rep.forEach(v => { const c = countOf(v).count; const at = `${c.repeatedKeys}\u0000${c.repeatedRecords}`; byN.set(at, [...(byN.get(at) || []), nameOf(v)]); });
+            const list = names => (names.length < 2 ? names[0] : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`);
+            const words = [...byN].map(([at, names]) => {
+                const [keys, records] = at.split('\u0000').map(Number);
+                return `${count(keys)} ${keyName} ${keys === 1 ? 'value repeats' : 'values repeat'} in ${list(names)}, across ${count(records)} records.`;
+            });
+            const warn = document.createElement('dbmn-status');
+            warn.setAttribute('inline', '');
+            warn.setAttribute('tone', 'warn');
+            warn.textContent = `${words.join(' ')} Records with the same key are paired in the order they come, so they may not be the same record. Add a column to the key (+ AND) so each key finds one record.`;
+            band.appendChild(line('query-compare-verdict', { __span: warn }, [], []));
         }
+        // Results' rows, once every run is counted
+        const r = jc && jc.results;
+        const said = el('span', `query-made query-counts-results${r && r.stale ? ' is-stale' : ''}`);
+        if (r && (r.state === 'done' || r.stale)) {
+            said.append(el('b', '', count(r.rows)), ' rows · ', el('b', '', count(r.inEvery)), ` in every ${others.every(v => v.run) ? 'run' : 'view'}`);
+        } else said.textContent = 'Counting…';
+        band.appendChild(line('query-made-line', { __span: said }, [], [el('span', 'query-lead-text', 'Results')]));
         return band;
+    }
+
+    /** A run's or view's bar in its count cells: "Counting" filling as the host says, or "Waiting" empty. */
+    function countProgress(v, c) {
+        const bar = document.createElement('dbmn-progress');
+        bar.setAttribute('inline', '');
+        bar.className = 'query-read-progress';
+        bar.dataset.countView = v.id;
+        fillCount(bar, c);
+        return bar;
+    }
+    function fillCount(bar, c) {
+        bar.removeAttribute('busy');
+        bar.removeAttribute('count');
+        bar.setAttribute('phase', c.state === 'counting' ? 'Counting' : 'Waiting');
+        bar.setAttribute('value', String(c.state === 'counting' && c.total ? Math.round(100 * c.done / c.total) : 0));
+    }
+    /** When each run's counts came in: for a moment after, its cell fades from a full bar into them. */
+    const countedAt = {};
+    const justCounted = id => !!countedAt[id] && Date.now() - countedAt[id] < 1400;
+    /** The host's counts: a bar moved in place, or the Join step drawn again when a run starts or finishes. */
+    function joinCountsIn(counts) {
+        const before = ui.joinCounts;
+        const shape = c => (c ? Object.entries(c.views).map(([id, x]) => `${id}:${x.state}:${x.stale ? 1 : 0}`).join('|') + `|${c.results ? c.results.state + (c.results.stale ? 's' : '') : ''}` : '');
+        if (counts && before) Object.entries(counts.views).forEach(([id, x]) => { if (x.state === 'done' && (!before.views[id] || before.views[id].state !== 'done')) countedAt[id] = Date.now(); });
+        ui.joinCounts = counts;
+        // (drawn whichever step is on show: the Join step is ready when it's opened)
+        if (counts && before && shape(counts) === shape(before)) {
+            document.querySelectorAll('dbmn-progress[data-count-view]').forEach(bar => { const x = counts.views[bar.dataset.countView]; if (x) fillCount(bar, x); });
+            return;
+        }
+        renderJoins();
     }
 
     /**
@@ -1713,13 +1780,13 @@
         const totals = {};
         s.views.forEach(v => {
             const cell = at(v.id, 'query-count');
-            if (!v.error && !v.reading) cell.appendChild(rowsButton(v));
+            if (!v.error && !v.reading) { cell.appendChild(readDone(v, rowsButton(v))); if (justNow(v.id)) cell.classList.add('is-read-done'); }
             else if (v.reading) { cell.classList.add('is-reading'); cell.appendChild(readProgress(v)); }
             cell.title = v.file ? `${v.name}: a row per line of ${v.file}` : `${v.name}: a row per ${v.rowBasis === 'root' ? 'response' : v.rowBasis}`;
             totals[v.id] = cell;
         });
         const first = s.views[0];
-        const lines = [line('query-total-line', totals, [first.error ? errorLine(first) : null], [el('span', 'query-lead-text', 'Rows')]), addsLine('join')];
+        const lines = [line('query-total-line', totals, [first.error ? errorLine(first) : null], [el('span', 'query-lead-text', 'Rows')])];
         if (s.views.length < 2) lines.push(el('p', 'compare-match-empty', 'Add another view to join.'));
         // "New compare engine (testing)" on, and this query more than a compare of runs: it says it runs on SQLite, and why
         if (s.engineNote) {
@@ -1739,14 +1806,83 @@
             if (!join || join.kind === 'compare') return;
             const made = join.on.length > 0 && join.on.every(p => p.left.column && p.right.column);
             if (!made) { if (open) return; open = true; }
-            lines.push(joinBand(v, join, s.views.slice(0, i + 1)));
+            // (its columns from any other view: a view moved keeps its join, to a view on its right too)
+            lines.push(joinBand(v, join, s.views.filter(x => x.id !== v.id)));
         });
         box.replaceChildren(...lines);
         applyLanes(box);
         injectIcons(box);
         placeAdds();
         renderSql();
+        requestAnimationFrame(() => drawLinks(box));
     }
+
+    /**
+     * Each join pair's link, from the end of its left column's cell to the start of its right one however far apart:
+     * a dot each end for one, two for many (the join's first pair: its relationship), lines between, each end in its
+     * view's colour. Drawn from where the cells are now, and again when the step changes size.
+     */
+    function drawLinks(box) {
+        const NS = 'http://www.w3.org/2000/svg';
+        // Option A (James, 2026-11-22): per pair of views a join joins, its relationship once, where the two views meet
+        // (one dot = one, two = many), centred on that pair's key lines; lines only from dot to dot, nothing else drawn.
+        // A view joined to two views: two drawings. (The join's figures are for the whole join: with two views joined
+        // to, each drawing is plain dots, its relationship not known apart)
+        box.querySelectorAll('.query-join').forEach(band => {
+            band.querySelectorAll(':scope > svg.query-link').forEach(n => n.remove());
+            const rows = Array.from(band.querySelectorAll('.query-pair[data-link-from]'));
+            if (!rows.length || !band.offsetParent) return;
+            const r = band.getBoundingClientRect();
+            const groups = new Map();
+            rows.forEach(row => {
+                const from = row.querySelector(`.query-at[data-view="${CSS.escape(row.dataset.linkFrom)}"]`);
+                const to = row.querySelector(`.query-at[data-view="${CSS.escape(row.dataset.linkTo)}"]`);
+                if (!from || !to) return;
+                const a = from.getBoundingClientRect(), b = to.getBoundingClientRect();
+                const k = `${row.dataset.linkFrom}\u0000${row.dataset.linkTo}`;
+                if (!groups.has(k)) groups.set(k, { from: row.dataset.linkFrom, to: row.dataset.linkTo, a, b, ys: [], relation: row.dataset.relation });
+                groups.get(k).ys.push((a.top + a.bottom) / 2 - r.top);
+            });
+            if (!groups.size) return;
+            const svg = document.createElementNS(NS, 'svg');
+            svg.setAttribute('class', 'query-link');
+            const put = (tag, attrs, className) => {
+                const node = document.createElementNS(NS, tag);
+                Object.keys(attrs).forEach(k => node.setAttribute(k, attrs[k]));
+                if (className) node.setAttribute('class', className);
+                svg.appendChild(node);
+            };
+            const alone = groups.size === 1;
+            const names = [];
+            groups.forEach(g => {
+                const relationship = alone ? g.relation : 'none';
+                const name = (KINDS.find(k => k[0] === relationship) || [])[1];
+                if (name) names.push(name);
+                // (drawn from whichever view is on the left: the view joined to can be on either side)
+                const back = g.a.left > g.b.left;
+                const lo = back ? g.b : g.a, hi = back ? g.a : g.b;
+                const x1 = lo.right - r.left - 9, x2 = hi.left - r.left + 9;
+                const mid = (Math.min(...g.ys) + Math.max(...g.ys)) / 2;
+                const manyFrom = relationship === 'manyToOne' || relationship === 'manyToMany', manyTo = relationship === 'oneToMany' || relationship === 'manyToMany';
+                const many = { left: back ? manyTo : manyFrom, right: back ? manyFrom : manyTo };
+                const ys = side => (many[side] ? [mid - 6, mid + 6] : [mid]);
+                const leftView = back ? g.to : g.from, rightView = back ? g.from : g.to;
+                ys('left').forEach(y1 => ys('right').forEach(y2 => put('line', { x1, y1, x2, y2 }, 'is-dashed')));
+                ys('left').forEach(cy => put('circle', { cx: x1, cy, r: 4 }, colour(leftView)));
+                ys('right').forEach(cy => put('circle', { cx: x2, cy, r: 4 }, colour(rightView)));
+            });
+            if (names.length) {
+                svg.setAttribute('role', 'img');
+                svg.setAttribute('aria-label', names.join(', '));
+                const said = document.createElementNS(NS, 'title');
+                said.textContent = names.join(', ');
+                svg.insertBefore(said, svg.firstChild);
+            } else svg.setAttribute('aria-hidden', 'true');
+            band.appendChild(svg);
+        });
+    }
+    // (the links follow the cells when the window, and so the lanes, change size)
+    if (window.ResizeObserver) new ResizeObserver(() => { const box = $('queryJoins'); if (box) drawLinks(box); }).observe($('queryJoins'));
 
     /** Results' columns: the steps', or what the user's own SQL makes. */
     function resultCols() { return (ui.state && ui.state.resultColumns) || []; }
@@ -1799,7 +1935,7 @@
 
     /** The table's columns: each in its view's colour, the same name in two views saying whose it is. */
     const compareResults = window.QueryCompareResults.create({
-        el, ui, post, view, views, colour, count, hasStatus: () => hasStatus(),
+        el, ui, post, view, views, colour, count, hasStatus: () => hasStatus(), withSummary: (v, items) => withSummary(v, items),
         reload: () => loadRows(),
         redraw: () => { grid.key = ''; drawTable(); loadRows(true); },
         renderSlots: () => renderTop()
@@ -1859,7 +1995,10 @@
                 : c.group ? c.group
                     : names.indexOf(c.column) !== names.lastIndexOf(c.column) && v ? (name ? `${c.column} (${name})` : `${v.table}.${c.column}`) : c.column;
             // (the host says what kind of values a column holds: a column of numbers sorts 0 to 1, not A to Z)
-            return { id: colId(c), name: text, className: `compare-sub ${colour(c.view)}`, numbers: c.type === 'number' };
+            // (a compare's key: the table's key mark on its heading, as it was before)
+            const first = (ui.state.joins || []).find(j => j.kind === 'compare');
+            const isKey = !c.group && !!first && first.on.some(p => p.left && p.left.view === c.view && p.left.column === c.column);
+            return { id: colId(c), name: text, className: `compare-sub ${colour(c.view)}`, numbers: c.type === 'number', ...(isKey ? { key: true } : {}) };
         }));
     }
     function sortOf() {
@@ -1907,9 +2046,12 @@
      */
     function reading(say) {
         // (the design system's working line, dbmn-progress inline: its stage, how far, the seconds it has taken, Stop)
+        // It shows only once the work has taken a moment: a quick filter or sort never flashes it (James, 2026-11-22)
         const line = $('queryReading');
         const on = !!say;
-        line.classList.toggle('hidden', !on);
+        // (a stage said meanwhile doesn't put it off: the moment counts from when the work began)
+        if (on && line.classList.contains('hidden') && !readingShow) readingShow = setTimeout(() => { readingShow = undefined; line.classList.remove('hidden'); }, READING_AFTER_MS);
+        if (!on) { clearTimeout(readingShow); readingShow = undefined; line.classList.add('hidden'); }
         table.classList.toggle('is-reading', on);
         if (!on) { line.removeAttribute('since'); line.removeAttribute('note'); line.removeAttribute('tone'); return; }
         const it = typeof say === 'string' ? { phase: say } : say;
@@ -1918,6 +2060,9 @@
         if (typeof it.value === 'number') { line.setAttribute('value', String(it.value)); line.removeAttribute('busy'); } else { line.removeAttribute('value'); line.setAttribute('busy', ''); }
     }
 
+    /** How long Results works before its working line shows. */
+    const READING_AFTER_MS = 600;
+    let readingShow;
     /** The records of the Baseline Join and Columns check (the host's SAMPLE_ROWS). */
     const SAMPLE_ROWS = 1000;
 
@@ -2114,6 +2259,8 @@
         // A pair still being picked (one column, or none) is the page's own: it stays through a refresh
         const drafts = {};
         if (ui.state) ui.state.joins.forEach(j => { drafts[j.view] = j.on.filter(p => !(p.left.column && p.right.column) && (p.left.column || p.right.column || p.picked)); });
+        // A view whose rows have just come in: its cell finishes its bar and fades into the count (justRead)
+        if (ui.state) ui.state.views.forEach(v => { if (v.reading && m.views.some(x => x.id === v.id && !x.reading)) justRead[v.id] = Date.now(); });
         ui.state = m;
         showName(m.name);
         showKind(m.compare);
@@ -2222,8 +2369,9 @@
     function renderReads() {
         if ($('querySearch').value) window.SearchMatcher.renderHighlight($('querySearchMirror'), $('querySearch').value, searchHeadings());
         const says = ui.step === 4 && window.SearchMatcher.describeSearch ? window.SearchMatcher.describeSearch($('querySearch').value, searchHeadings(), searchType) : '';
-        $('queryReads').textContent = says;
-        $('queryReads').classList.toggle('hidden', !says);
+        // (how the search is read: on the box's hover, not a line under it; James, 2026-11-22)
+        $('queryReads').classList.add('hidden');
+        $('querySearch').title = says ? `Reading this as: ${says.replace(/^Reading this as:\s*/i, '')}` : 'Search rows, or @column=value';
     }
     // `@` lists the columns, each with its kind, then the operators and values that fit it
     window.SearchMatcher.attachColumnSuggest({ input: $('querySearch'), headings: searchHeadings, types: searchType });
@@ -2263,7 +2411,9 @@
         switch (m.type) {
             case 'query.init':
                 showName(m.name);
-                ui.start = m.empty ? 'edit' : m.start;
+                // Always Views first, where each view's rows are seen coming in (James, 2026-11-22: reopened on Results,
+                // the loading couldn't be seen); a tab already open still goes where it's asked (query.goTo)
+                ui.start = 'edit';
                 // Run shows Results and nothing else while the query is read; Edit shows Views
                 ui.step = ui.start === 'results' ? 4 : 1;
                 // A query still being built opens its steps one at a time, from the furthest it reached
@@ -2276,7 +2426,13 @@
                 if (!ui.settled) ui.start = m.start;
                 else goTo(m.start === 'results' && joinsReady() ? 4 : m.start === 'results' ? ui.step : 1);
                 break;
-            case 'query.sourceList': ui.sources = m.results || []; ui.sourceViews = m.views || {}; break;
+            // (its header values say which of a view's runs differ, on the slots: drawn again with them)
+            case 'query.sourceList':
+                // (this query's own results as it opens; every result once Add a view asks: `all`)
+                if (m.all || !ui.sourcesAll) { ui.sources = m.results || []; ui.sourceViews = Object.assign({}, ui.sourceViews, m.views || {}); }
+                if (m.all) { ui.sourcesAll = true; if (ui.onAllSources) { const done = ui.onAllSources; ui.onAllSources = null; done(); } }
+                if (ui.state) renderTop();
+                break;
             case 'query.progress':
                 // (a view's own figures: its Rows cell's bar, where it is on show)
                 if (m.view) {
@@ -2297,6 +2453,7 @@
                 break;
             }
             // The host's counting: its stage as it starts one, or stopped (since: null)
+            case 'query.joinCounts': ui.joinCountsWhy = m.counts ? '' : (m.why || ''); joinCountsIn(m.counts); break;
             case 'query.counting':
                 ui.counting = m.since ? { since: m.since, stage: m.stage } : { stopped: true, stage: m.stage };
                 // (Results waiting on the step's count: it says so too)

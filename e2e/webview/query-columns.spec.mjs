@@ -115,25 +115,34 @@ ${SCRIPTS.map(rel => `<script>${read(rel)}</script>`).join('\n')}</head><body>
 const selects = p => p.evaluate(() => window.posted.filter(m => m.type === 'query.setSelect').map(m => m.select));
 const rowNamed = (p, text) => p.locator('#queryColumns .dbmn-lanes-row', { has: p.locator('.dbmn-lanes-gutter', { hasText: text }) }).first();
 
-test('the report: its heading, the Key first (its value in every view of the compare, blank where a view only shows), and "Nothing here yet"', async ({ page: p }) => {
+test('the report: no heading, the Key first (its value in every view of the compare, blank where a view only shows), and "Nothing to compare yet"', async ({ page: p }) => {
     await p.setViewportSize({ width: 1500, height: 950 });
     await p.setContent(page());
     const rows = p.locator('#queryColumns .dbmn-lanes-row');
-    await expect(rows.nth(0)).toContainText('In the report');
-    await expect(rows.nth(0)).toContainText('In Results’ order');
-    const key = rows.nth(1);
+    // (no "In the report" over it, James 2026-11-22: it is plain what the report's columns are)
+    await expect(p.locator('#queryColumns')).not.toContainText('In the report');
+    const key = rows.nth(0);
     await expect(key.locator('.query-rep-what')).toHaveText('Key');
     await expect(key.locator('.dbmn-lanes-gutter')).toContainText('sku');
     expect(await key.locator('.dbmn-cell-value').allTextContents()).toEqual(['WOOF-033', 'WOOF-033', 'WOOF-033', '0WOOF-033']);
     await expect(key.locator('[data-view="p1"]')).toHaveClass(/is-blank/);
-    await expect(rows.nth(2)).toContainText('Nothing here yet. Click a cell below to show it, or the Compare icon beside a row’s name to compare the row.');
+    // (a few words; the how-to on hover)
+    await expect(rows.nth(1).locator('.query-rep-none')).toHaveText('Nothing to compare yet');
+    await expect(rows.nth(1).locator('.query-rep-none')).toHaveAttribute('title', 'Click a cell below to show it, or the Compare icon beside a row’s name to compare the row.');
 });
 
-test('not used: "Not used" in the gutter of the first row; never a key column; a cell per view, blank where a view has none', async ({ page: p }) => {
+test('not used: + fx on a bold line, "Not used" just under it at the left; never a key column; a cell per view, blank where a view has none', async ({ page: p }) => {
     await p.setContent(page());
     const free = p.locator('#queryColumns .query-free-row');
-    await expect(free.first().locator('.query-free-title')).toHaveText('Not used');
-    expect(await p.locator('#queryColumns .query-free-row .query-free-title').count()).toBe(1);
+    // (James, 2026-11-22: + fx close to the line, "Not used" very close under it)
+    const rows = p.locator('#queryColumns > .dbmn-lanes-row');
+    const lines = await rows.evaluateAll(rs => rs.map(r => r.dataset.line));
+    expect(lines.indexOf('unused-line')).toBe(lines.indexOf('rep-rule') + 1);
+    await expect(p.locator('#queryColumns .query-rep-rule #queryCalcBtn')).toHaveText('+ fx');
+    await expect(p.locator('#queryColumns .query-unused-line .query-unused-title')).toHaveText('Not used');
+    const [rule, title] = await Promise.all([p.locator('#queryColumns .query-rep-rule .dbmn-lanes-rule').boundingBox(), p.locator('#queryColumns .query-unused-title').boundingBox()]);
+    expect(title.y - rule.y).toBeLessThan(30);
+    expect(await p.locator('#queryColumns .query-unused-title').count()).toBe(1);
     const names = await free.locator('.query-rep-label').allTextContents();
     for (const key of ['sku', 'itemCode', 'SKU', 'id', 'supplierId']) expect(names).not.toContain(key);
     expect(names).toContain('gtin');
@@ -227,7 +236,7 @@ test('one view, no join, no key: every column taken out leaves the step empty, s
     expect(await p.evaluate(() => window.columnsStep.isEmpty())).toBe(false);
     await p.locator('#queryColumns .query-rep-row').first().locator('.dbmn-cell').first().click({ button: 'right' });
     await p.locator('.dbmn-context-menu').getByText('Take it out of the report').click();
-    await expect(p.locator('#queryColumns')).toContainText('Nothing here yet. Click a cell below to show it.');
+    await expect(p.locator('#queryColumns .query-rep-none')).toHaveText('Nothing here yet');
     expect(await selects(p)).toEqual([]);
     expect(await p.evaluate(() => window.columnsStep.isEmpty())).toBe(true);
     // Both columns are free below; putting one back sends it alone

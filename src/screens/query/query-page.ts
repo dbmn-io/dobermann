@@ -69,14 +69,18 @@ export function buildQueryPage(asset: AssetUrl, config: { queryId: string; name:
                     </div>
                     <div class="toggle-group compare-view-toggle" role="group" aria-label="Columns shown">
                         <button type="button" class="toggle-btn active" id="queryColsAll" aria-pressed="true" title="Every column">All columns</button>
-                        <button type="button" class="toggle-btn" id="queryColsChanged" aria-pressed="false" title="Hide the compared columns no row differs in">Diffs</button>
+                        <button type="button" class="toggle-btn" id="queryColsChanged" aria-pressed="false" title="Hide the compared columns no row differs in">Only diffs</button>
                     </div>
-                    <button type="button" class="compare-tool-btn icon" id="queryClearFilters" title="No filters on" aria-label="Clear all filters" data-icon="funnel" disabled></button>
                 </span>
                 <div id="queryStatusMenu" class="export-dropdown compare-status-menu" role="dialog" aria-label="Filter Status"></div>
                 <div id="queryRelationMenu" class="export-dropdown compare-status-menu" role="dialog" aria-label="Filter relationship"></div>
-                <label class="query-row font-size-12" title="A total under each column of numbers, for the rows shown"><input type="checkbox" id="queryTotals"> Totals</label>
-                <button type="button" class="compare-tool-btn icon" id="querySqlBtn" data-click="query:toggleSql" aria-expanded="false" title="The SQL: read it, or write your own" aria-label="The SQL" data-icon="braces"></button>
+                <!-- Clear filters over Totals, one above the other, as the toggles are (James, 2026-11-22: "saving a little space") -->
+                <span class="query-tool-stack">
+                    <button type="button" class="query-clear-btn" id="queryClearFilters" title="No filters on" aria-label="Clear all filters" disabled><span class="query-clear-icon" data-icon="funnel"></span>Clear</button>
+                    <label class="query-row font-size-12" title="A total under each column of numbers, for the rows shown"><input type="checkbox" id="queryTotals"> Totals</label>
+                </span>
+                <!-- The SQL box is not offered (James, 2026-11-22): the button stays, hidden, for a query saved with SQL of its own, whose box still opens by itself so it can be put back -->
+                <button type="button" class="compare-tool-btn icon" id="querySqlBtn" data-click="query:toggleSql" aria-expanded="false" title="The SQL: read it, or write your own" aria-label="The SQL" data-icon="braces" hidden></button>
                 <button type="button" id="queryChainBtn" class="export-button" data-click="query:chain" title="Send these rows to another API as its Run Batch input">Chain <span class="inline-icon" data-icon="chevron-right"></span></button>
                 <button type="button" class="compare-tool-btn icon" id="queryExportBtn" data-click="query:export" title="Export to Excel" aria-label="Export to Excel" data-icon="download"></button>
             </div>
@@ -126,8 +130,11 @@ export function buildQueryPage(asset: AssetUrl, config: { queryId: string; name:
             <!-- New engine: a column where text read as a number wasn't one (left blank) says how many rows -->
             <dbmn-status id="queryNotNumbers" class="query-engine-note hidden" inline tone="warn"></dbmn-status>
             <!-- Results working (a compare worked out, a sort, a search): what, and how far, until its first rows are in -->
-            <dbmn-progress id="queryReading" class="query-engine-note hidden" inline stop></dbmn-progress>
-            <dbmn-table id="queryTable" class="query-results" label="Results" removable></dbmn-table>
+            <!-- (the working line lies over the table's top while it works: the table never jumps for it) -->
+            <div class="query-results-wrap">
+                <dbmn-progress id="queryReading" class="query-engine-note hidden" inline stop></dbmn-progress>
+                <dbmn-table id="queryTable" class="query-results" label="Results" removable></dbmn-table>
+            </div>
         </div>
 
         <!-- The design system's footer (shared/dbmn-footer.js): what you can do on the left, how far

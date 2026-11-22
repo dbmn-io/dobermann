@@ -520,7 +520,7 @@ export class QueryEngine implements Engine {
             skipped: i > 0 && skipped.has(names[i])
         })), columns.length, (done, total) => slice(`Comparing ${names.length} inputs`, done, total), SLICE);
         keep(sampled ? { ...made.stats, sample: sampled.facts } : made.stats);
-        const { rowAt, status, relation, differs, diffBy, repeatedBy } = made;
+        const { rowAt, status, relation, differs, diffBy, repeatedBy, extra: extraRow } = made;
         const length = made.stats.rows;
         const inputCols = rels.map(r => r.cols.length);
         const starts: number[] = [];
@@ -543,7 +543,7 @@ export class QueryEngine implements Engine {
                 const d = extra - 2 - places;
                 if (d < columns.length) return differs[d][row];
                 const p = d - columns.length;
-                return p < places ? diffBy[p][row] : repeatedBy[p - places][row];
+                return p < places ? diffBy[p][row] : p < 2 * places ? repeatedBy[p - places][row] : extraRow[row];
             }
         };
     }
@@ -895,7 +895,7 @@ function compareCols(names: string[], cols: Col[][], columns: { name: string }[]
         owners: [...c.owners, names[p]],
         ...((seen.get(c.name) ?? 0) > 1 ? { shown: `${names[p]}.${c.name}` } : c.shown ? { shown: c.shown } : {})
     })));
-    const added = ['status', 'relation', ...names.map(n => `missing:${n}`), ...columns.map(c => `differs:${c.name}`), ...names.map(n => `diff:${n}`), ...names.map(n => `repeated:${n}`)];
+    const added = ['status', 'relation', ...names.map(n => `missing:${n}`), ...columns.map(c => `differs:${c.name}`), ...names.map(n => `diff:${n}`), ...names.map(n => `repeated:${n}`), 'duplicate'];
     // (the compare's own columns are named by its step: { column: 'status', of: <its as> } when an input has a "status" too)
     return [...own, ...added.map(name => ({ name, owners: [step] }))];
 }

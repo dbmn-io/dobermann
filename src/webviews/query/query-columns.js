@@ -224,6 +224,25 @@
             });
             return cell;
         }
+        /** A compared row whose cells are columns of different names (BL's isSeed against C2's status). */
+        function mixedRow(row, list) {
+            if (!row.entries || row.entries.length < 2) return false;
+            const first = list[row.entries[0]].column;
+            return row.entries.some(i => list[i].column !== first);
+        }
+        /** Another of the cell's view's columns in its place (not the key's, nor one the row has already). */
+        function changeColumn(anchor, entry, index, row, list) {
+            const v = view(entry.view);
+            if (!v || !window.DbmnContextMenu) return;
+            const key = keyOf();
+            const inRow = new Set(row.entries.map(i => id(list[i])));
+            const columns = v.columns.filter(c => !key.refs.has(`${v.id}\u0000${c.name}`) && (c.name === entry.column || !inRow.has(`${v.id}\u0000${c.name}`)));
+            window.DbmnContextMenu.show(anchor, [{ id: '\u0000head', label: whose(v), disabled: true }].concat(columns.map(c => ({ id: c.name, label: c.name, detail: sample(v.id, c.name) || ' ', checked: c.name === entry.column }))), column => {
+                if (!column || column.charAt(0) === '\u0000' || column === entry.column) return;
+                lastAdded = `${v.id}\u0000${column}`;
+                send(list.map((e, i) => (i === index ? Object.assign({}, e, { column, fns: [] }) : e)));
+            });
+        }
         /** A cell of a report row: its value after its functions and amber where it differs from the
          * first cell in slot order (both the host's, columnCells), ƒ, and a right-click menu. */
         function reportCell(entry, index, row, list) {
@@ -235,13 +254,25 @@
             const v = view(entry.view);
             const who = v ? (runOf(v) ? `${runOf(v)} · ${v.name}` : v.name) : '';
             cell.title = `${who} · ${entry.column}${value !== '' ? `: ${value}` : ''}${(entry.fns || []).length ? ` · ${(entry.fns || []).length} function${entry.fns.length === 1 ? '' : 's'}` : ''}. Right-click for its functions, or to take it out`;
+            // Columns of different names compared under one (James, 2026-11-22): each cell says its column, in grey over
+            // its value, and a click on it changes the column; the row is taller for it
+            if (mixedRow(row, list)) {
+                const named = el('button', 'query-rep-colname', entry.column);
+                named.type = 'button';
+                named.title = `${who}'s ${entry.column}: click to compare another of its columns here`;
+                named.addEventListener('click', e => { e.stopPropagation(); changeColumn(named, entry, index, row, list); });
+                cell.classList.add('has-colname');
+                cell.append(named);
+            }
             cell.append(el('span', 'dbmn-cell-value', value === '' ? ' ' : value), fxButton(entry, list));
             cell.addEventListener('contextmenu', e => {
                 e.preventDefault();
                 window.DbmnContextMenu.show(e, [
                     { id: 'fx', label: 'Functions…', icon: 'variable' },
+                    ...(row.entries.length > 1 ? [{ id: 'column', label: 'Change the column…', icon: 'compare-columns' }] : []),
                     { id: 'remove', label: row.entries.length > 1 ? 'Remove from this column' : 'Take it out of the report', icon: 'x' }
                 ], choice => {
+                    if (choice === 'column') changeColumn(cell, entry, index, row, list);
                     if (choice === 'fx') functions(entry, list);
                     if (choice === 'remove') {
                         const out = list.filter((_, i) => i !== index);
@@ -258,22 +289,31 @@
             return made;
         }
 
-        /** Rows that moved slide from where they were; what just came up is lit (nothing moves for a user who asks for less motion). */
+        /**
+         * Rows that moved slide from where they were; what just came up is lit (nothing moves for a user who asks for less
+         * motion). A column brought up from "Not used" (compared or shown) slides up from its own row there, lifted over the
+         * others as it goes: it is the same row, moving (James, 2026-11-22).
+         */
         function slide(box, before) {
             const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
             box.querySelectorAll('[data-rep-key]').forEach(row => {
-                const was = before.get(row.dataset.repKey);
-                if (lastAdded && row.dataset.repKey.split('\u0001').includes(lastAdded)) row.classList.add('is-new');
+                let was = before.get(row.dataset.repKey);
+                const isNew = !!lastAdded && row.dataset.repKey.split('\u0001').includes(lastAdded);
+                if (isNew) row.classList.add('is-new');
+                // (new up here: where it was below the line, by its column's name)
+                const rising = was === undefined && isNew;
+                if (rising) was = before.get(`free\u0000${lastAdded.split('\u0000')[1]}`);
                 if (was === undefined || reduce) return;
                 const delta = was - row.getBoundingClientRect().top;
                 if (Math.abs(delta) < 1) return;
                 row.style.transform = `translateY(${delta}px)`;
                 row.style.transition = 'none';
-                requestAnimationFrame(() => {
-                    row.style.transition = 'transform 160ms ease-out';
+                if (rising) row.classList.add('is-rising');
+                requestAnimationFrame(() => requestAnimationFrame(() => {
+                    row.style.transition = `transform ${rising ? 520 : 320}ms cubic-bezier(0.2, 0.8, 0.2, 1)`;
                     row.style.transform = '';
-                });
-                row.addEventListener('transitionend', () => { row.style.transition = ''; }, { once: true });
+                }));
+                row.addEventListener('transitionend', () => { row.style.transition = ''; row.classList.remove('is-rising'); }, { once: true });
             });
         }
 
@@ -298,13 +338,23 @@
             const compare = s.compare;
             const lines = [];
 
-            // In the report, in Results' order
-            const head = el('div', 'query-rep-heading');
-            head.append(el('span', 'query-rep-title', 'In the report'),
-                el('span', 'query-rep-hint', compare
-                    ? 'In Results’ order. A + in an empty place adds a column to it: one cell is shown, two or more are compared'
-                    : 'In Results’ order. A + in an empty place adds a column to it: one cell is shown, two or more side by side'));
-            lines.push(line('query-rep-head', { __span: head }, [], []));
+            // (no heading over the report's columns: it is plain what they are; James, 2026-11-22)
+            // A calculated column whose columns are gone (its View changed): left out of Results, said here, with Change and Delete
+            (s.brokenCalcs || []).forEach(b => {
+                const said = document.createElement('dbmn-status');
+                said.setAttribute('inline', '');
+                said.setAttribute('tone', 'warn');
+                said.className = 'query-calc-broken';
+                said.append(`${b.name} is left out of Results: ${b.error.replace(/^There is no column /, 'there is no column ')}. `);
+                const change = el('button', 'text-link query-calc-broken-act', 'Change it');
+                change.type = 'button';
+                change.addEventListener('click', () => ctx.openCalc((s.calc || []).find(c => c.name === b.name) || null));
+                const drop = el('button', 'text-link query-calc-broken-act', 'Delete it');
+                drop.type = 'button';
+                drop.addEventListener('click', () => { ctx.setBusy('Updating…'); ctx.post({ type: 'query.removeCalc', name: b.name }); });
+                said.append(change, ' · ', drop);
+                lines.push(line('query-rep-broken', { __span: said }, [], []));
+            });
 
             // The key first: its value in every run and view it joins
             if (key.byView.size) {
@@ -372,56 +422,49 @@
                     if (row.kind === 'calc') { ctx.setBusy('Updating…'); ctx.post({ type: 'query.removeCalc', name: row.name }); return; }
                     send(flatten(rows.filter(x => x !== row), list));
                 });
-                const made = asCells(line('query-rep-row' + (row.kind === 'calc' ? ' is-calc' : row.entries.length > 1 ? ' is-compared' : ''), cells, [out], lead));
+                const made = asCells(line('query-rep-row' + (row.kind === 'calc' ? ' is-calc' : row.entries.length > 1 ? ' is-compared' : '') + (mixedRow(row, list) ? ' is-mixed' : ''), cells, [out], lead));
                 made.dataset.repKey = row.key;
-                // Drag: to another place, or onto another row to compare them as one column
+                // Drag: to another place, a line where it will land (above or below the row under the pointer; the last place
+                // too). Only the line: no dropping onto a row (James, 2026-11-22: "unpredictable")
                 made.draggable = true;
                 made.addEventListener('dragstart', e => { if (e.target.closest('input, button, select')) { e.preventDefault(); return; } dragFrom = r; made.classList.add('is-dragging'); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', row.name); });
-                made.addEventListener('dragend', () => { dragFrom = -1; made.classList.remove('is-dragging'); box.querySelectorAll('.is-drop-on, .is-drop-before').forEach(x => x.classList.remove('is-drop-on', 'is-drop-before')); });
+                made.addEventListener('dragend', () => { dragFrom = -1; made.classList.remove('is-dragging'); box.querySelectorAll('.is-drop-before, .is-drop-after').forEach(x => x.classList.remove('is-drop-before', 'is-drop-after')); });
                 made.addEventListener('dragover', e => {
-                    if (dragFrom < 0 || dragFrom === r) return;
+                    if (dragFrom < 0 || dragFrom === r || row.kind === 'key') return;
                     e.preventDefault();
                     const rect = made.getBoundingClientRect();
-                    const onto = e.clientY > rect.top + rect.height * 0.3 && e.clientY < rect.bottom - rect.height * 0.3;
-                    made.classList.toggle('is-drop-on', onto);
-                    made.classList.toggle('is-drop-before', !onto);
+                    const after = e.clientY > rect.top + rect.height / 2;
+                    made.classList.toggle('is-drop-after', after);
+                    made.classList.toggle('is-drop-before', !after);
                 });
-                made.addEventListener('dragleave', () => made.classList.remove('is-drop-on', 'is-drop-before'));
+                made.addEventListener('dragleave', () => made.classList.remove('is-drop-before', 'is-drop-after'));
                 made.addEventListener('drop', e => {
                     e.preventDefault();
                     const from = rows[dragFrom];
-                    const onto = made.classList.contains('is-drop-on');
-                    made.classList.remove('is-drop-on', 'is-drop-before');
+                    const after = made.classList.contains('is-drop-after');
+                    made.classList.remove('is-drop-before', 'is-drop-after');
                     if (!from || from === row || from.kind === 'key') return;
-                    const viewsOf = x => x.entries.map(i => list[i].view);
-                    const clash = viewsOf(from).some(v => viewsOf(row).includes(v));
                     const next = rows.filter(x => x !== from);
-                    if (onto && from.kind !== 'calc' && row.kind !== 'calc' && !clash) {
-                        // One column now: the row dropped on keeps its name and place, and is lit
-                        row.entries = row.entries.concat(from.entries);
-                        row.name = row.name.replace(/ \([^)]*\)$/, '');
-                        row.group = row.name;
-                        lastAdded = id(list[from.entries[0]]);
-                    } else next.splice(next.indexOf(row), 0, from);
+                    next.splice(next.indexOf(row) + (after ? 1 : 0), 0, from);
                     send(flatten(next, list));
                 });
                 lines.push(made);
             });
             if (!shown.length) {
-                const none = el('div', 'query-rep-none');
-                none.append(el('b', '', 'Nothing here yet.'), el('span', '', compare
-                    ? ' Click a cell below to show it, or the Compare icon beside a row’s name to compare the row.'
-                    : ' Click a cell below to show it.'));
+                const none = el('div', 'query-rep-none', compare ? 'Nothing to compare yet' : 'Nothing here yet');
+                none.title = compare ? 'Click a cell below to show it, or the Compare icon beside a row’s name to compare the row.' : 'Click a cell below to show it.';
                 lines.push(line('query-rep-empty', { __span: none }, [], []));
             }
 
-            // The line: + Calculated sits on it
-            const calcBtn = el('button', 'btn btn-secondary query-calc-add', '+ Calculated');
+            // + fx (a calculated column) on a bold line right across; "Not used" just under it, at the left (James, 2026-11-22)
+            const calcBtn = el('button', 'query-calc-add', '+ fx');
             calcBtn.type = 'button';
             calcBtn.id = 'queryCalcBtn';
-            calcBtn.title = 'A column worked out from others: IF, ROUND, CONCAT… over @columns';
+            calcBtn.title = 'Add a calculated column: IF, ROUND, CONCAT… over @columns';
+            calcBtn.setAttribute('aria-label', 'Add a calculated column');
             calcBtn.addEventListener('click', () => ctx.openCalc(null));
-            lines.push(line('query-rep-rule', { __span: el('div', 'dbmn-lanes-rule') }, [], [calcBtn]));
+            lines.push(line('query-rep-rule query-rep-rule-full', { __span: el('div', 'dbmn-lanes-rule') }, [], [calcBtn]));
+            lines.push(line('query-unused-line', { __span: el('span') }, [], [el('span', 'query-unused-title', 'Not used')]));
 
             // Below: every column not used (never a key's), a row per name across the views, like a spreadsheet
             const names = [];
@@ -456,7 +499,6 @@
                     cells[v.id] = b;
                 });
                 const lead = [];
-                if (firstFree) lead.push(el('span', 'query-free-title', 'Not used'));
                 const label = el('span', 'query-rep-label', name);
                 label.title = name;
                 lead.push(label);
@@ -483,7 +525,6 @@
                 firstFree = false;
             });
             if (firstFree) lines.push(line('query-free-none', { __span: el('span', 'form-hint', 'Every column is in the report.') }, [], []));
-            lines.push(el('p', 'form-hint query-cols-note', 'Each value is from one row of the report: the first where every view matched.'));
             box.replaceChildren(...lines);
             ctx.injectIcons(box);
             slide(box, before);

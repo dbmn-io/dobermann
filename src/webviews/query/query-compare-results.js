@@ -204,6 +204,8 @@
                 g.append(noKeyPill(), tag(st.noKey));
                 box.appendChild(g);
             }
+            // (no Duplicate in Results: two records with one key are plain to see, sorted by it; duplicates are
+            // shown on the Join step, to help build the join. James, 2026-11-22)
             if (!st.diff.length && !st.missing.length && !st.noKey) box.appendChild(el('span', 'status-pill-generic compare-same', 'Same'));
             return box;
         }
@@ -383,7 +385,8 @@
             bar.appendChild(toggle);
             wrap.append(bar, box);
             show(ui.recordView || 'table');
-            const key = (m.fields[0] && m.fields[0].values.map(v => v[0]).find(v => v !== undefined && v !== null)) || 'Record';
+            // (the whole key from the host, every part of it; else the first field's value, as before)
+            const key = m.keyText || (m.fields[0] && m.fields[0].values.map(v => v[0]).find(v => v !== undefined && v !== null)) || 'Record';
             const said = m.status ? (m.status.diff.length ? `DIFF ${m.status.diff.join(' ')}` : m.status.missing.length ? `Missing ${m.status.missing.join(' ')}` : m.status.noKey ? `No key ${m.status.noKey}` : 'Same') : '';
             window.DbmnModal.show({ title: `${key}${said ? `: ${said}` : ''}`, body: wrap, size: 'large', maximisable: true, actions: [{ id: 'close', label: 'Close', variant: 'secondary' }] });
         }
@@ -401,8 +404,10 @@
             }
             if (v.runOf) items.push({ id: 'baseline', label: `Make ${place} the Baseline`, icon: 'scale' });
             if (!v.file) items.push({ id: 'console', label: 'Open in the Console', icon: 'external-link' });
-            if (!items.length) return;
-            window.DbmnContextMenu.show(event, items, id => {
+            // (its summary first, as every slot's menu: the page's withSummary)
+            const shown = ctx.withSummary ? ctx.withSummary(v, items) : items;
+            if (!shown.length) return;
+            window.DbmnContextMenu.show(event, shown, id => {
                 if (id === 'toggle') setFilter({ hidden: hidden ? ui.filter.hidden.filter(p => p !== place) : ui.filter.hidden.concat(place) });
                 else if (id === 'baseline') { ctx.post({ type: 'query.makeBaseline', id: v.id }); }
                 else if (id === 'console') ctx.post({ type: 'query.openConsole', id: v.id });

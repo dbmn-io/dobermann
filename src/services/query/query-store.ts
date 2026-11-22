@@ -258,15 +258,43 @@ export function untickBlanks(query: SavedQuery, empty: (viewId: string) => strin
 
 /** Make a view the first: the one FROM reads, whose rows a LEFT JOIN keeps. */
 export function moveViewFirst(query: SavedQuery, id: string): void {
-    moveView(query, id, 0);
+    if (changesCompareBaseline(query, id, 0)) return;
+    reanchorView(query, id, 0);
 }
 
 /**
- * Move a view to another place (0 is first: the one FROM reads). The others keep their order
- * round it. Each pair of columns stays, with whichever of its views is now further right: so a
- * view whose pairs all moved on has none, and waits for its columns to be picked.
+ * Would this move change which view is first while the query holds a compare? The Baseline is the compare's first view,
+ * and turning the joins round for a new one breaks the compare (its other views still point at the old Baseline):
+ * refused until a compare-aware re-baseline is built (2026-11-22).
+ */
+export function changesCompareBaseline(query: SavedQuery, id: string, to: number): boolean {
+    if (!query.joins.some(j => j.kind === 'compare')) return false;
+    const at = query.sources.findIndex(s => s.id === id);
+    const place = Math.max(0, Math.min(query.sources.length - 1, Math.floor(to)));
+    return at >= 0 && Number.isFinite(to) && place !== at && (at === 0 || place === 0);
+}
+
+/**
+ * Move a view to another place. Its join goes with it, as it is, and so do everyone else's (James, 2026-11-22: "moving
+ * a view should move its joins"): only the order on screen changes, and the query joins each view once the views it
+ * joins to are in, wherever they sit (the controller's spec). A move to or from the first place changes which view
+ * FROM reads, so there the pairs are turned round as reanchorView does.
  */
 export function moveView(query: SavedQuery, id: string, to: number): void {
+    const at = query.sources.findIndex(s => s.id === id);
+    const place = Math.max(0, Math.min(query.sources.length - 1, Math.floor(to)));
+    if (at < 0 || !Number.isFinite(to) || place === at) return;
+    if (changesCompareBaseline(query, id, to)) return;
+    if (at === 0 || place === 0) { reanchorView(query, id, to); return; }
+    query.sources.splice(place, 0, ...query.sources.splice(at, 1));
+}
+
+/**
+ * Move a view to another place and make every join fit the new order (each pair with whichever of its views is now
+ * further right; a view whose pairs all moved on has none, and waits for its columns to be picked). What making a
+ * view the first does: FROM reads it.
+ */
+export function reanchorView(query: SavedQuery, id: string, to: number): void {
     const at = query.sources.findIndex(s => s.id === id);
     const place0 = Math.max(0, Math.min(query.sources.length - 1, Math.floor(to)));
     if (at < 0 || !Number.isFinite(to) || place0 === at) return;

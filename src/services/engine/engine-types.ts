@@ -119,7 +119,8 @@ export type Step =
      * ("oneToOne", "oneToMany", "onlyBase", "onlyOther"), a `missing:<input>` per input and a
      * `differs:<column>` per compared column, then a `diff:<input>` per input (one of its values
      * differs from its column's first) and a `repeated:<input>` per input (it holds the row's key on
-     * more than one record), each 1 (yes) or 0. A compared column's `values[i]` may be null: input
+     * more than one record), each 1 (yes) or 0; last `duplicate`, 1 on a key's second and later rows (the rows
+     * its repeats add). A compared column's `values[i]` may be null: input
      * i has no cell in it, and is not measured there. A value differs from the
      * first present, compared input's (the Baseline's unless it lacks the record) when they aren't alike (sameValue; two blanks alike).
      */

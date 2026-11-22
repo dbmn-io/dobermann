@@ -109,15 +109,15 @@ describe('The engine, compare: James\'s rule for repeats and blanks, the old Com
         assert.ok('result' in out);
         const got = e.read(out.result, 0, 99);
         assert.deepStrictEqual(got.columns, ['BL.k', 'BL.v', 'C1.k', 'C1.v', 'C2.k', 'C2.v', 'status', 'relation', 'missing:BL', 'missing:C1', 'missing:C2', 'differs:v',
-            'diff:BL', 'diff:C1', 'diff:C2', 'repeated:BL', 'repeated:C1', 'repeated:C2']);
+            'diff:BL', 'diff:C1', 'diff:C2', 'repeated:BL', 'repeated:C1', 'repeated:C2', 'duplicate']);
         const tail = got.rows.map(r => r.slice(6));
         assert.deepStrictEqual(tail, [
-            ['same', 'oneToOne', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            ['diff', 'oneToMany', 0, 0, 0, 1, 0, 1, 0, 0, 1, 0],     // b: C1 holds it twice, its first record differs
-            ['same', 'oneToMany', 0, 0, 0, 0, 0, 0, 0, 0, 1, 0],     // b again: C1's second record, the same as BL's
-            ['missing', 'onlyBase', 0, 1, 1, 0, 0, 0, 0, 0, 0, 0],
-            ['diff', 'onlyBase', 0, 1, 0, 1, 0, 0, 1, 0, 0, 0],      // d: C2 differs
-            ['notInBaseline', 'onlyOther', 1, 0, 1, 0, 0, 0, 0, 0, 0, 0]
+            ['same', 'oneToOne', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            ['diff', 'oneToMany', 0, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0],     // b: C1 holds it twice, its first record differs
+            ['same', 'oneToMany', 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1],     // b again: C1's second record, the same as BL's (a duplicate row)
+            ['missing', 'onlyBase', 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+            ['diff', 'onlyBase', 0, 1, 0, 1, 0, 0, 1, 0, 0, 0, 0],      // d: C2 differs
+            ['notInBaseline', 'onlyOther', 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0]
         ]);
         // C2 left out: d is no longer different, c and d not missing from it
         const hidden = await e.run(query(['C2']));
@@ -158,18 +158,29 @@ describe('The engine, compare: James\'s rule for repeats and blanks, the old Com
         e.load('C1', { columns: ['k', 'v'], rows: [['a', 1], [null, 9], ['b', 5], ['b', 6]] });
         const out = await e.run({ steps: [{ compare: ['BL', 'C1'], on: [[col('k', 'BL')], [col('k', 'C1')]], columns: [{ name: 'v', values: [col('v', 'BL'), col('v', 'C1')] }] }] });
         assert.ok('result' in out);
-        // (then diff:BL, diff:C1, repeated:BL, repeated:C1)
+        // (then diff:BL, diff:C1, repeated:BL, repeated:C1, and duplicate: 1 on a key's second and later rows)
         assert.deepStrictEqual(e.read(out.result, 0, 99).rows, [
-            ['a', 1, 'a', 1, 'same', 'oneToMany', 0, 0, 0, 0, 0, 1, 0],
-            ['a', 2, 'a', 1, 'diff', 'oneToMany', 0, 0, 1, 0, 1, 1, 0],
-            ['a', 3, 'a', 1, 'diff', 'oneToMany', 0, 0, 1, 0, 1, 1, 0],
-            [null, 9, null, null, 'noKey', 'onlyBase', 0, 1, 0, 0, 0, 0, 0],
-            ['b', 5, 'b', 5, 'same', 'oneToMany', 0, 0, 0, 0, 0, 0, 1],
-            ['b', 5, 'b', 6, 'diff', 'oneToMany', 0, 0, 1, 0, 1, 0, 1],
-            [null, null, null, 9, 'noKey', 'onlyOther', 1, 0, 0, 0, 0, 0, 0]
+            ['a', 1, 'a', 1, 'same', 'oneToMany', 0, 0, 0, 0, 0, 1, 0, 0],
+            ['a', 2, 'a', 1, 'diff', 'oneToMany', 0, 0, 1, 0, 1, 1, 0, 1],
+            ['a', 3, 'a', 1, 'diff', 'oneToMany', 0, 0, 1, 0, 1, 1, 0, 1],
+            [null, 9, null, null, 'noKey', 'onlyBase', 0, 1, 0, 0, 0, 0, 0, 0],
+            ['b', 5, 'b', 5, 'same', 'oneToMany', 0, 0, 0, 0, 0, 0, 1, 0],
+            ['b', 5, 'b', 6, 'diff', 'oneToMany', 0, 0, 1, 0, 1, 0, 1, 1],
+            [null, null, null, 9, 'noKey', 'onlyOther', 1, 0, 0, 0, 0, 0, 0, 0]
         ]);
         // (counted apart: James, 2026-11-21)
         assert.deepStrictEqual((e.stats(out.result, 'step 1') as CompareStats).status, { same: 2, diff: 3, missing: 0, notInBaseline: 0, noKey: 2 });
+    });
+
+    it('a space is a difference (James, 2026-11-22: "Any string with a space at the end should show up as a diff"): trailing, leading, spaces only', async () => {
+        const e = new QueryEngine();
+        const cases: [string, string | null, string | null][] = [['trailing', 'abc', 'abc '], ['leading', 'abc', ' abc'], ['spaces only', '', '  '], ['inner', 'a b', 'a  b'], ['tab', 'abc', 'abc\t'], ['the same', 'abc', 'abc']];
+        e.load('BL', { columns: ['k', 'v'], rows: cases.map(([k, a]) => [k, a]) });
+        e.load('C1', { columns: ['k', 'v'], rows: cases.map(([k, , b]) => [k, b]) });
+        const out = await e.run({ steps: [{ compare: ['BL', 'C1'], on: [[col('k', 'BL')], [col('k', 'C1')]], columns: [{ name: 'v', values: [col('v', 'BL'), col('v', 'C1')] }] }] });
+        assert.ok('result' in out);
+        const status = Object.fromEntries(e.read(out.result, 0, 99).rows.map(r => [r[0], r[4]]));
+        assert.deepStrictEqual(status, { trailing: 'diff', leading: 'diff', 'spaces only': 'diff', inner: 'diff', tab: 'diff', 'the same': 'same' });
     });
 
     it('numbers and text alike when their characters are (James, 2026-11-21): in the key and in compared values', async () => {
