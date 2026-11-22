@@ -143,7 +143,7 @@ describe('Query: a compare on a key of two columns (new engine)', function () {
 
     async function twoKey() {
         const query = {
-            id: 'qry-two', name: 'Two keys', letters: 'names', reached: 4, createdAt: '2026-11-22T00:00:00Z', updatedAt: '2026-11-22T00:00:00Z',
+            id: 'qry-two', name: 'Two keys', letters: 'names', reached: 4, clashes: 'unticked', blanks: 'unticked', createdAt: '2026-11-22T00:00:00Z', updatedAt: '2026-11-22T00:00:00Z',
             sources: ['vBL', 'vC1'].map((id, i) => ({ id, name: ['Stock', 'Stock_C1'][i], endpointId: '', endpointName: 'stock.xlsx', view: '', executionId: '', isBatch: false, environment: '', executedAt: '2026-11-22T00:00:00Z', file: { name: 'stock.xlsx', sheet: id } })),
             joins: [{ view: 'vC1', kind: 'compare', on: ['sku', 'loc'].map(c => ({ left: { parts: [{ view: 'vBL', column: c }] }, right: { parts: [{ view: 'vC1', column: c }] } })) }],
             select: [{ view: 'vBL', column: 'qty', group: 'qty' }, { view: 'vC1', column: 'qty', group: 'qty' }]
@@ -188,6 +188,15 @@ describe('Query: a compare on a key of two columns (new engine)', function () {
         assert.deepStrictEqual(detail.fields.map(f => [f.name, (f as unknown as { compared: boolean }).compared]), [['sku', false], ['loc', false], ['qty', true]]);
         assert.deepStrictEqual((detail as unknown as { heads: { file: string; executedAt: string }[] }).heads.map(h => h.file), ['stock.xlsx', 'stock.xlsx']);
         assert.deepStrictEqual(detail.fields.map(f => (f as unknown as { absent: boolean[] }).absent), [[false, false], [false, false], [false, false]]);
+        // The export's summary of the compare (#13): key, compared, rows per view, the counts Results showed, the filters
+        const summary = (controller as unknown as { compareSummary(m: unknown): [string, string][] }).compareSummary({
+            seq: 0, offset: 0, limit: 0, counts: { all: 10, same: 9, diff: 1, missing: {}, relations: {}, columns: { qty: 1 } },
+            filter: { kinds: ['diff'], columns: [], relations: null, hidden: [] }, diffsOnly: true
+        });
+        assert.deepStrictEqual(summary.filter(([k]) => k), [
+            ['Key', 'sku + loc'], ['Compared', 'qty'], ['Rows Stock', '10 (Stock)'], ['Rows Stock_C1', '10 (Stock_C1)'],
+            ['Same', '9'], ['DIFF', '1'], ['Filters', 'Status: DIFF · Only diffs']
+        ]);
         controller.dispose();
     });
 });

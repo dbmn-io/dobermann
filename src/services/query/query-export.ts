@@ -2,8 +2,9 @@
 // Copyright (C) 2026 Flexion Tech Pty Ltd
 /**
  * Query's export as a workbook's bytes, made where the rows are (the engine's worker in the web app):
- * the same cells ConsoleExportService.exportArraysToExcel writes (every value as text, a blank empty;
- * widths, a filter on the headings, compressed), without the page holding a row.
+ * a number as a number, true/false as such, every other value as its text ("0093" stays text), a blank empty
+ * (2026-11-22, as old Compare's file: #14); widths, a filter on the headings, compressed; past Excel's rows a sheet,
+ * the rows run on into "Results 2", "Results 3"… (#28). Without the page holding a row.
  */
 import * as XLSX from 'xlsx';
 import type { QueryEngine } from '../engine/engine';
@@ -13,16 +14,31 @@ import type { RowStatus } from './query-status';
 
 export interface WorkbookSheet { sheetName: string; header: string[]; rows: unknown[][] }
 
-/** A value as Query's export writes it: blank as nothing, anything else as its text (an object as JSON). */
+/** A value as Query's export writes it: blank as nothing, a number or true/false as it is, anything else as its text (an object as JSON). */
 function cell(value: unknown): unknown {
     if (value === null || value === undefined) return null;
+    if (typeof value === 'number') return Number.isFinite(value) ? value : String(value);
+    if (typeof value === 'boolean') return value;
     return typeof value === 'object' ? JSON.stringify(value) : String(value);
+}
+
+/** Excel's rows a sheet, its heading row taken. */
+export const SHEET_ROWS = 1_048_575;
+
+/** A sheet's rows split where Excel stops: "Results", "Results 2"… each with the headings. */
+export function splitSheet(sheet: WorkbookSheet, most = SHEET_ROWS): WorkbookSheet[] {
+    if (sheet.rows.length <= most) return [sheet];
+    const out: WorkbookSheet[] = [];
+    for (let from = 0, n = 1; from < sheet.rows.length; from += most, n++) {
+        out.push({ sheetName: n === 1 ? sheet.sheetName : `${sheet.sheetName} ${n}`, header: sheet.header, rows: sheet.rows.slice(from, from + most) });
+    }
+    return out;
 }
 
 /** The workbook's bytes for these sheets. */
 export function queryWorkbook(sheets: WorkbookSheet[]): Uint8Array {
     const book = XLSX.utils.book_new();
-    for (const sheet of sheets) {
+    for (const sheet of sheets.flatMap(s => splitSheet(s))) {
         const ws = XLSX.utils.aoa_to_sheet([sheet.header, ...sheet.rows.map(row => row.map(cell))], { dense: true } as XLSX.AOA2SheetOpts);
         ws['!cols'] = sheet.header.map(name => ({ wch: Math.max(name.length, 15) }));
         if (sheet.rows.length && ws['!ref']) ws['!autofilter'] = { ref: ws['!ref'] };

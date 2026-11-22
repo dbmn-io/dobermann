@@ -14,7 +14,7 @@ import { COLUMN_FUNCTIONS, columnFnSql, type ColumnFn } from '../../../services/
 import { QueryEngine } from '../../../services/engine/engine';
 import { localEngineHost, remoteEngineHost, serveEngine, type EnginePort } from '../../../services/engine/engine-host';
 import * as XLSX from 'xlsx';
-import { resultWorkbook, statusWords } from '../../../services/query/query-export';
+import { queryWorkbook, resultWorkbook, splitSheet, statusWords } from '../../../services/query/query-export';
 import { QuerySession } from '../../../services/query/query-engine';
 import { buildQuery, resultsKey, runHeld, fromKeptCompare, countAlike, sampleQueries, pagedCounts, readStatusPage, eachPage, loadViewInto, pagedTotals, readPage, runOnEngine, runPaged, TooManyOnEngine, compareKeyExprs, compareQuery, fnExpr, fnSampleQueries, formulaExpr, labelExpr, loadLookupTable, loadView, queryWithColumns, recordQuery, resultRows, onSqliteLine, runCompareOnEngine, whyNotOnEngine } from '../../../services/query/query-new-engine';
 import { formulaSql, parseFormula, FORMULA_FUNCTIONS } from '../../../services/query/formula';
@@ -685,7 +685,7 @@ describe('Query compare on the new engine', () => {
         assert.strictEqual(fromKeptCompare(everyView, { ...run.compare!, step: '[]' }), everyView);
     });
 
-    it('the export made where the rows are (the worker\'s workbook call): the cells Results\' rows give, every value as text', async () => {
+    it('the export made where the rows are (the worker\'s workbook call): the cells Results\' rows give, a number as a number, text as text ("007" stays)', async () => {
         const handlers: [((m: unknown) => void)[], ((m: unknown) => void)[]] = [[], []];
         const port = (me: 0 | 1): EnginePort => ({ post: message => { const copy = structuredClone(message); setTimeout(() => handlers[1 - me].forEach(h => h(copy)), 0); }, listen: handler => { handlers[me].push(handler); } });
         const engine = new QueryEngine();
@@ -696,7 +696,7 @@ describe('Query compare on the new engine', () => {
         assert.ok('result' in out);
         const bytes = await host.workbook!(out.result, [0, 1], ['A', 'B'], [['Query', 'q']]);
         const book = XLSX.read(bytes, { type: 'array' });
-        assert.deepStrictEqual(XLSX.utils.sheet_to_json(book.Sheets.Results, { header: 1, raw: true, defval: null }), [['A', 'B'], ['x', '1'], ['007', '2.5']]);
+        assert.deepStrictEqual(XLSX.utils.sheet_to_json(book.Sheets.Results, { header: 1, raw: true, defval: null }), [['A', 'B'], ['x', 1], ['007', 2.5]]);
         assert.deepStrictEqual(book.SheetNames, ['Results', 'Query']);
         host.close();
     });
@@ -724,6 +724,16 @@ describe('Query compare on the new engine', () => {
         const head = XLSX.utils.sheet_to_json<unknown[]>(hiddenBook.Sheets.Results, { header: 1, raw: true, defval: null })[0];
         assert.strictEqual(head.length, keep.length + 2);
         assert.ok(keep.length < header.length);
+    });
+
+    it('past Excel\'s rows a sheet, the rows run on into "Results 2", "Results 3", each with the headings; true/false stays', () => {
+        const rows = Array.from({ length: 7 }, (_, i) => [i, i % 2 === 0]);
+        const parts = splitSheet({ sheetName: 'Results', header: ['n', 'even'], rows }, 3);
+        assert.deepStrictEqual(parts.map(p => [p.sheetName, p.rows.length]), [['Results', 3], ['Results 2', 3], ['Results 3', 1]]);
+        assert.deepStrictEqual(parts[1].header, ['n', 'even']);
+        assert.deepStrictEqual(splitSheet({ sheetName: 'Results', header: ['n'], rows: [[1]] }).map(p => p.sheetName), ['Results']);
+        const book = XLSX.read(queryWorkbook([{ sheetName: 'Results', header: ['n', 'even', 'code'], rows: [[1, true, '0093']] }]), { type: 'array' });
+        assert.deepStrictEqual(XLSX.utils.sheet_to_json(book.Sheets.Results, { header: 1, raw: true, defval: null }), [['n', 'even', 'code'], [1, true, '0093']]);
     });
 
     it('a compare held once (runHeld): a sort, a Status filter and the counts from it are the rows, status and counts a whole run gives', async () => {

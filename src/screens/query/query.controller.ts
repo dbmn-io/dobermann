@@ -2080,6 +2080,9 @@ export class QueryController {
             ['Rows', search ? `${found.shown} of ${found.total}` : String(found.total)],
             ...(search ? [['Search', search] as [string, string]] : []),
             ...query.sources.map(s => [`View ${s.name}`, [s.endpointName, s.system, s.request, s.view, s.environment, s.executedAt].filter(Boolean).join(' · ')] as [string, string]),
+            // A compare's own (#13, as old Compare's file): its key, what it compares, each view's rows, the Status counts
+            // Results showed and the filters on
+            ...this.compareSummary(message),
             // (the SQL, when it ran on SQLite)
             ...(found.key.startsWith('engine:') ? [] : found.key.split('\n').map((line, i) => [i ? '' : 'SQL', line] as [string, string]))
         ];
@@ -2100,6 +2103,37 @@ export class QueryController {
         await files.exported?.(path);
         this.ports.toast.info(`Saved ${path.split(/[\\/]/).pop()}`);
         this.post({ type: 'query.exported' });
+    }
+
+    /** The export's summary of a compare: key, compared columns, rows per view, Status counts, filters (nothing when not a compare). */
+    private compareSummary(message: RowsRequest): [string, string][] {
+        const query = this.query;
+        const { spec } = this.spec();
+        if (!query || !isCompare(spec.joins)) return [];
+        const name = new Map(query.sources.map(s => [s.id, s.name]));
+        const first = spec.joins.find(j => j.kind === 'compare');
+        const key = (first?.on ?? []).flatMap(p => p.left.parts.map(x => x.column)).join(' + ');
+        const groups = new Map<string, number>();
+        spec.select.forEach(c => { if (c.group) groups.set(c.group, (groups.get(c.group) ?? 0) + 1); });
+        const compared = [...groups].filter(([, n]) => n > 1).map(([g]) => g);
+        const label = this.placeLabel(spec);
+        const out: [string, string][] = [['', ''], ['Key', key || '(none)'], ['Compared', compared.join(', ') || '(none)']];
+        spec.views.forEach(v => out.push([`Rows ${label(v.id)}`, `${this.rowCount(v.id).toLocaleString('en-US')} (${name.get(v.id) ?? v.id})`]));
+        const c = message.counts;
+        if (c) {
+            out.push(['Same', String(c.same ?? 0)], ['DIFF', String(c.diff ?? 0)]);
+            Object.entries(c.missing ?? {}).forEach(([place, n]) => out.push([`Missing ${place}`, String(n)]));
+            if (c.noKey) out.push(['No key', String(c.noKey)]);
+        }
+        const f = message.filter;
+        const filters: string[] = [];
+        if (f?.kinds) filters.push(`Status: ${f.kinds.map(k => (k === 'diff' ? 'DIFF' : k === 'same' ? 'Same' : k === 'noKey' ? 'No key' : k.replace(/^missing:/, 'Missing '))).join(', ') || 'none'}`);
+        if (f?.columns?.length) filters.push(`Differs in: ${f.columns.join(', ')}`);
+        if (f?.relations) filters.push(`How keys meet: ${f.relations.join(', ') || 'none'}`);
+        if (f?.hidden?.length) filters.push(`Hidden: ${f.hidden.join(', ')}`);
+        if (message.diffsOnly) filters.push('Only diffs');
+        out.push(['Filters', filters.join(' · ') || 'none']);
+        return out;
     }
 
     /** Results is remembered as it was left: its search and its sort. */
@@ -2736,6 +2770,9 @@ interface RowsRequest {
     sort?: { column: number; dir: 'asc' | 'desc' } | null;
     /** Send the columns' totals with the first window. */
     totals?: boolean;
+    /** Export: the Status menu's counts as Results shows them, and whether Only diffs is on (the file's summary). */
+    counts?: StatusCounts | null;
+    diffsOnly?: boolean;
 }
 
 /** Results' headings: a column's name, with its view's letter when the name is in more than one view (sku (D)). */

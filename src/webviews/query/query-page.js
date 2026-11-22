@@ -2324,7 +2324,8 @@
         'query:export': () => {
             setBusy('Exporting…');
             // (what Results shows: its search and sort, and a compare's Status filters and hidden results)
-            post({ type: 'query.export', search: ui.search, sort: ui.sort, ...(hasStatus() ? { filter: ui.filter } : {}) });
+            // (and the Status menu's counts as shown, for the file's summary: #13)
+            post({ type: 'query.export', search: ui.search, sort: ui.sort, ...(hasStatus() ? { filter: ui.filter, counts: ui.counts || null, diffsOnly: !!ui.diffsOnly } : {}) });
         },
         'query:toggleSql': () => openSql(!ui.sqlOpen),
         'query:runSql': () => {
