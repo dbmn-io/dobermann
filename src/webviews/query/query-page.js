@@ -2193,12 +2193,12 @@
             const was = columnsKey();
             ui.counts = m.counts;
             ui.countsAll = m.countsAll;
-            // A DIFF only in spaces, hidden characters or blank against null looks like no difference: the special
+            // A DIFF only in spaces, hidden characters or blank against null looks like no difference: hidden
             // characters come on by themselves, once, and say why (unless the user has them off on this report)
             if (m.quiet && !specialOn() && !ui.specialOffHere && !ui.specialAuto) {
                 ui.specialAuto = true;
                 applySpecial();
-                if (window.DbmnToast) window.DbmnToast.info(`Special characters shown: ${count(m.quiet)} ${m.quiet === 1 ? 'difference is' : 'differences are'} only in spaces or blanks.`);
+                if (window.DbmnToast) window.DbmnToast.info(`Hidden characters shown: ${count(m.quiet)} ${m.quiet === 1 ? 'difference is' : 'differences are'} only in spaces or blanks.`);
             }
             compareResults.renderTools();
             // (the folded steps say the compare's DIFF and Missing: drawn again with them)
@@ -2315,13 +2315,13 @@
         updatePeek();
     }
 
-    /** Special characters shown: the user's choice, or turned on by itself for this report (a DIFF only in spaces). */
+    /** Hidden characters shown: the user's choice, or turned on by itself for this report (a DIFF only in spaces). */
     function specialOn() { return !!(ui.special || ui.specialAuto); }
     /** Drawn everywhere at once (the whole table, Compact's cells, the record window), or nowhere. */
     function applySpecial() {
         const on = specialOn();
         const box = $('querySpecial');
-        if (box) box.checked = on;
+        if (box) box.setAttribute('aria-pressed', String(on));
         if (table && table.specialCharacters !== on) table.specialCharacters = on;
         if (hasStatus() && ui.resultsView === 'compact' && ui.state) { grid.key = ''; drawTable(); loadRows(true); }
     }
@@ -2375,7 +2375,7 @@
             // (a column name that Results does not have shows in red, as in every table's search)
             window.SearchMatcher.renderHighlight($('querySearchMirror'), ui.search, searchHeadings());
             renderReads();
-            $('queryTotals').checked = ui.totals;
+            $('queryTotals').setAttribute('aria-pressed', String(ui.totals));
             if (m.ownSql || m.sqlError) openSql(true);
         }
         if (!m.reading && ui.sort && ui.sort.column >= m.resultColumns.length) ui.sort = null;
@@ -2434,15 +2434,16 @@
         addsEl('queryAddFile').value = '';
         if (file) sendFile(file, { type: 'query.addFile' });
     });
-    $('queryTotals').addEventListener('change', () => {
-        ui.totals = $('queryTotals').checked;
+    $('queryTotals').addEventListener('click', () => {
+        ui.totals = !ui.totals;
+        $('queryTotals').setAttribute('aria-pressed', String(ui.totals));
         post({ type: 'query.totals', on: ui.totals });
         loadRows();
     });
-    // Special characters: on or off is the user's choice for every query; off while they had come on by themselves
+    // Hidden characters: on or off is the user's choice for every query; off while they had come on by themselves
     // is this report's (they stay off here, the user's choice unchanged)
-    $('querySpecial').addEventListener('change', () => {
-        const on = $('querySpecial').checked;
+    $('querySpecial').addEventListener('click', () => {
+        const on = !specialOn();
         if (!on && ui.specialAuto && !ui.special) { ui.specialOffHere = true; post({ type: 'query.specialOff' }); }
         else { ui.special = on; post({ type: 'query.preference', key: 'specialCharacters', value: on }); }
         ui.specialAuto = false;
@@ -2514,7 +2515,7 @@
                 showName(m.name);
                 // Side by side or Compact, as the user left it in any query (#18)
                 if (m.prefs && m.prefs.resultsView === 'compact') ui.resultsView = 'compact';
-                // Special characters: the user's own choice, and whether this report has them off (after turning on by itself)
+                // Hidden characters: the user's own choice, and whether this report has them off (after turning on by itself)
                 ui.special = !!(m.prefs && m.prefs.specialCharacters);
                 ui.specialOffHere = !!m.specialOff;
                 applySpecial();

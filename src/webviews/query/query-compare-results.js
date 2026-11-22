@@ -42,7 +42,7 @@
             return `dbmn-run-${Math.max(0, (Number(place) || 1) - 1) % 4}`;
         }
         const tag = p => el('span', `compare-tag ${tone(p)}`, p);
-        // Text as it is, or with its spaces, tabs, breaks and hidden characters marked when special characters are on
+        // Text as it is, or with its spaces, tabs, breaks and hidden characters marked when hidden characters are on
         // (the design system's marks: DbmnTable.showSpecial; drawing only)
         const shownText = (t, breaks) => (ctx.specialOn && ctx.specialOn() && window.DbmnTable && window.DbmnTable.showSpecial ? window.DbmnTable.showSpecial(t, { breaks: !!breaks }) : document.createTextNode(t));
 
@@ -317,6 +317,12 @@
         function renderTools() {
             const box = $('queryStatusTools');
             if (!box) return;
+            // Filter: lit while any filter is on, a click clears them all; dimmed with none (a plain query has none)
+            const clear = $('queryClearFilters');
+            const filtered = ctx.hasStatus() && anyFilter();
+            clear.disabled = !filtered;
+            clear.setAttribute('aria-pressed', String(filtered));
+            clear.title = filtered ? 'Filter: filters are on. Click to clear them all' : 'Filter: no filters on. Filter a column from its heading';
             box.hidden = !ctx.hasStatus();
             if (box.hidden) return;
             [['queryViewSide', ui.resultsView !== 'compact'], ['queryViewCompact', ui.resultsView === 'compact'],
@@ -324,10 +330,6 @@
                 $(id).classList.toggle('active', on);
                 $(id).setAttribute('aria-pressed', String(on));
             });
-            const clear = $('queryClearFilters');
-            clear.disabled = !anyFilter();
-            clear.title = clear.disabled ? 'No filters on' : 'Clear all filters';
-            clear.classList.toggle('is-active', !clear.disabled);
         }
         [['queryViewSide', 'side'], ['queryViewCompact', 'compact']].forEach(([id, view]) => $(id).addEventListener('click', () => { if (ui.resultsView === view) return; ui.resultsView = view; ctx.post({ type: 'query.preference', key: 'resultsView', value: view }); renderTools(); ctx.redraw(); }));
         [['queryColsAll', false], ['queryColsChanged', true]].forEach(([id, on]) => $(id).addEventListener('click', () => { if (!!ui.diffsOnly === on) return; ui.diffsOnly = on; renderTools(); ctx.redraw(); }));

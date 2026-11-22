@@ -143,9 +143,16 @@
 /* Results' own tools wrap onto a second line rather than run past the page's edge (Chain, Totals, Export
    stay reachable at a laptop's width); the search box gives way first, down to a usable width */
 /* Results' tools on ONE line, across the whole width with room between each (James, 2026-11-22) */
-#queryResultsControls { flex: 1 1 100%; min-width: 0; flex-wrap: nowrap; gap: 16px; justify-content: space-between; }
-#queryResultsControls > .search-container { flex: 1 1 220px; min-width: 120px; max-width: 400px; }
+/* What the report shows on the left, evenly spaced; Search, Chain and Export on the right; the gap between them grows */
+#queryResultsControls { flex: 1 1 100%; min-width: 0; flex-wrap: nowrap; gap: 16px; justify-content: flex-start; }
+#queryResultsControls > .search-container { flex: 0 1 360px; min-width: 140px; margin-left: auto; }
 #queryResultsControls > :not(.search-container) { flex: none; }
+.query-view-tools { display: inline-flex; align-items: center; gap: 16px; flex-wrap: nowrap; }
+/* Every control in the row one height, the toggles' (dbmn-toggle, 34px): "the same height as any other button" (James, 2026-11-22) */
+#queryResultsControls { --query-tool-h: 34px; align-items: center; }
+#queryResultsControls .search-input { height: var(--query-tool-h); }
+#queryResultsControls #queryChainBtn { height: var(--query-tool-h); box-sizing: border-box; display: inline-flex; align-items: center; }
+#queryResultsControls #queryExportBtn { width: var(--query-tool-h); height: var(--query-tool-h); box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; }
 #queryResultsControls .query-status-tools { flex-wrap: nowrap; }
 /* Totals stay in sight under the rows */
 .query-page tfoot td { position: sticky; bottom: 0; background: var(--vscode-editor-background); border-top: 1px solid var(--vscode-panel-border); }
@@ -396,20 +403,6 @@ dbmn-table.is-reading .dbmn-table-none { visibility: hidden; }
 .query-results-wrap { position: relative; display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
 #queryReading { position: absolute; top: 0; left: 0; right: 0; z-index: 3; margin: 0; background: var(--vscode-editor-background); }
 
-/* Clear filters over Totals: a small two-row stack (Clear filters only in a compare, as the toggles) */
-/* Clear (filters) over Totals, their left edges lined up with the tick box: Clear grey while there is nothing to clear */
-.query-tool-stack { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 2px; line-height: 1; }
-.query-tool-stack .query-row { line-height: 18px; margin: 0; padding: 0; }
-.query-tool-stack .query-row { display: inline-flex; align-items: center; gap: 5px; }
-.query-tool-stack .query-row input { margin: 0; width: 14px; height: 14px; flex: none; }
-/* Clear: the filter icon (lined up over the tick box), then the word */
-.query-clear-btn { display: inline-flex; align-items: center; gap: 5px; background: none; border: 0; padding: 0; margin: 0; font: inherit; font-size: 12px; line-height: 18px; color: var(--vscode-foreground); cursor: pointer; }
-.query-clear-icon { display: inline-flex; width: 14px; justify-content: center; flex: none; }
-.query-clear-icon svg { width: 13px; height: 13px; }
-.query-clear-btn:hover:not(:disabled) { text-decoration: underline; }
-.query-clear-btn:disabled { color: var(--vscode-disabledForeground, var(--vscode-descriptionForeground)); opacity: 0.6; cursor: default; }
-#queryStatusTools[hidden] ~ .query-tool-stack #queryClearFilters { display: none; }
-
 /* (the toggle pairs: room between them as between every control) */
 #queryResultsControls .query-status-tools:not([hidden]) { display: contents; }
 
@@ -426,6 +419,3 @@ dbmn-table.is-reading .dbmn-table-none { visibility: hidden; }
 .compare-record-head-line { display: block; font-weight: normal; font-size: 0.85em; color: var(--vscode-descriptionForeground); white-space: nowrap; }
 .compare-json .compare-json-line { white-space: pre; padding-top: 0; padding-bottom: 0; }
 .compare-json .compare-json-record td { padding-top: 8px; }
-
-/* Totals and Special characters side by side, under Clear */
-.query-tool-pair { display: inline-flex; align-items: center; gap: 10px; }

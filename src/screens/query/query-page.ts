@@ -52,6 +52,31 @@ export function buildQueryPage(asset: AssetUrl, config: { queryId: string; name:
             </span>
             <!-- Results' tools join the views, as Compare's join its slots: find, Distinct, Totals, the SQL, Export. The count of rows is the footer's (its summary): one place -->
             <div id="queryResultsControls" class="compare-results-controls hidden">
+                <!-- What the report shows, on the left (James, 2026-11-22): a compare's two switches, then Totals, hidden
+                     characters and Filter as full-size icon toggles (the design system's dbmn-toggle: aria-pressed is the state),
+                     their words on hover; Distinct when rows repeat. Search, Chain and Export on the right, the gap between growing -->
+                <div class="query-view-tools" role="group" aria-label="What the report shows">
+                    <!-- A compare's Results, as Compare's (query-compare-results.js): the view and the columns shown -->
+                    <span id="queryStatusTools" class="query-status-tools compare-results-controls" hidden>
+                        <div class="toggle-group compare-view-toggle" role="group" aria-label="View">
+                            <button type="button" class="toggle-btn active" id="queryViewSide" aria-pressed="true" title="A column per result under each compared column">Side by side</button>
+                            <button type="button" class="toggle-btn" id="queryViewCompact" aria-pressed="false" title="One column each; values that differ in a pill">Compact</button>
+                        </div>
+                        <div class="toggle-group compare-view-toggle" role="group" aria-label="Columns shown">
+                            <button type="button" class="toggle-btn active" id="queryColsAll" aria-pressed="true" title="Every column">All columns</button>
+                            <button type="button" class="toggle-btn" id="queryColsChanged" aria-pressed="false" title="Hide the compared columns no row differs in">Only diffs</button>
+                        </div>
+                    </span>
+                    <button type="button" class="dbmn-toggle" id="queryTotals" aria-pressed="false" data-icon="square-sigma" title="Totals: a total under each column of numbers, for the rows shown" aria-label="Totals"></button>
+                    <!-- As Word's Show/Hide ¶: spaces, tabs, line breaks and blanks marked in every cell, or in none -->
+                    <button type="button" class="dbmn-toggle" id="querySpecial" aria-pressed="false" data-icon="pilcrow" title="Hidden characters: show spaces, tabs, line breaks and blank text in every cell" aria-label="Hidden characters"></button>
+                    <!-- Lit while any filter is on; a click clears them all. Dimmed (disabled) with none on -->
+                    <button type="button" class="dbmn-toggle" id="queryClearFilters" aria-pressed="false" data-icon="funnel" title="Filter: no filters on. Filter a column from its heading" aria-label="Clear all filters" disabled></button>
+                    <!-- Offered only when rows repeat: it says how many -->
+                    <label class="query-row font-size-12 hidden" id="queryDistinctLabel" title="SELECT DISTINCT: rows alike in every column shown fold into one"><input type="checkbox" id="queryDistinct"> <span id="queryDistinctText">Distinct</span></label>
+                </div>
+                <div id="queryStatusMenu" class="export-dropdown compare-status-menu" role="dialog" aria-label="Filter Status"></div>
+                <div id="queryRelationMenu" class="export-dropdown compare-status-menu" role="dialog" aria-label="Filter relationship"></div>
                 <div class="search-container">
                     <div class="search-input-wrapper">
                         <svg class="search-icon-inset" width="14" height="14" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg>
@@ -59,30 +84,6 @@ export function buildQueryPage(asset: AssetUrl, config: { queryId: string; name:
                         <input type="text" id="querySearch" class="search-input" placeholder="Search rows, or @column=value" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off" data-help="console#search">
                     </div>
                 </div>
-                <!-- Offered only when rows repeat: it says how many -->
-                <label class="query-row font-size-12 hidden" id="queryDistinctLabel" title="SELECT DISTINCT: rows alike in every column shown fold into one"><input type="checkbox" id="queryDistinct"> <span id="queryDistinctText">Distinct</span></label>
-                <!-- A compare's Results, as Compare's (query-compare-results.js): the view, the columns shown, clear filters -->
-                <span id="queryStatusTools" class="query-status-tools compare-results-controls" hidden>
-                    <div class="toggle-group compare-view-toggle" role="group" aria-label="View">
-                        <button type="button" class="toggle-btn active" id="queryViewSide" aria-pressed="true" title="A column per result under each compared column">Side by side</button>
-                        <button type="button" class="toggle-btn" id="queryViewCompact" aria-pressed="false" title="One column each; values that differ in a pill">Compact</button>
-                    </div>
-                    <div class="toggle-group compare-view-toggle" role="group" aria-label="Columns shown">
-                        <button type="button" class="toggle-btn active" id="queryColsAll" aria-pressed="true" title="Every column">All columns</button>
-                        <button type="button" class="toggle-btn" id="queryColsChanged" aria-pressed="false" title="Hide the compared columns no row differs in">Only diffs</button>
-                    </div>
-                </span>
-                <div id="queryStatusMenu" class="export-dropdown compare-status-menu" role="dialog" aria-label="Filter Status"></div>
-                <div id="queryRelationMenu" class="export-dropdown compare-status-menu" role="dialog" aria-label="Filter relationship"></div>
-                <!-- Clear filters over Totals, one above the other, as the toggles are (James, 2026-11-22: "saving a little space") -->
-                <span class="query-tool-stack">
-                    <button type="button" class="query-clear-btn" id="queryClearFilters" title="No filters on" aria-label="Clear all filters" disabled><span class="query-clear-icon" data-icon="funnel"></span>Clear</button>
-                    <span class="query-tool-pair">
-                        <label class="query-row font-size-12" title="A total under each column of numbers, for the rows shown"><input type="checkbox" id="queryTotals"> Totals</label>
-                        <!-- Word's Show/Hide ¶: spaces, tabs, line breaks and blanks marked in every cell, or in none (James, 2026-11-22) -->
-                        <label class="query-row font-size-12" title="Show spaces, tabs, line breaks and blank text in every cell, as Word's ¶ does"><input type="checkbox" id="querySpecial"> Special characters</label>
-                    </span>
-                </span>
                 <!-- The SQL box is not offered (James, 2026-11-22): the button stays, hidden, for a query saved with SQL of its own, whose box still opens by itself so it can be put back -->
                 <button type="button" class="compare-tool-btn icon" id="querySqlBtn" data-click="query:toggleSql" aria-expanded="false" title="The SQL: read it, or write your own" aria-label="The SQL" data-icon="braces" hidden></button>
                 <button type="button" id="queryChainBtn" class="export-button" data-click="query:chain" title="Send these rows to another API as its Run Batch input">Chain <span class="inline-icon" data-icon="chevron-right"></span></button>
