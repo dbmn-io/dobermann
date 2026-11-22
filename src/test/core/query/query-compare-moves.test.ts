@@ -285,3 +285,25 @@ describe('Query: a compare\'s views lead (compareLeads)', function () {
         assert.strictEqual(JSON.stringify(q), before);
     });
 });
+
+describe('Query: Results\' search names a run by its alias (@BL.qty, @C1.qty)', function () {
+    this.timeout(20000);
+    it('@C1.qty finds C1\'s value, @BL.qty BL\'s; the view\'s own name is not the run\'s', async () => {
+        const q = await opened(true);
+        q.saved().sources.forEach((s, i) => { s.executionId = `run-${i}`; if (i) { s.runOf = 'vBL'; s.run = `C${i}`; } });
+        // Results: the key, and qty compared across the four runs
+        await q.send({ type: 'query.setSelect', select: [{ view: 'vBL', column: 'sku' }, ...['vBL', 'vC1', 'vC2', 'vC3'].map(view => ({ view, column: 'qty', group: 'qty' }))] });
+        const shown = async (search: string, seq: number) => {
+            await q.send({ type: 'query.rows', seq, offset: 0, limit: 50, search });
+            const m = [...q.seen].reverse().find(x => x.type === 'query.rowsData' && x.seq === seq) as Msg & { shown: number };
+            return m.shown;
+        };
+        // C1's qty is 99 in one row (S3); BL's never is
+        assert.strictEqual(await shown('@C1.qty=99', 1), 1);
+        assert.strictEqual(await shown('@c1.qty=99', 2), 1);
+        assert.strictEqual(await shown('@BL.qty=99', 3), 0);
+        // @qty alone: wherever the column is (C1's 99 counts)
+        assert.strictEqual(await shown('@qty=99', 4), 1);
+        q.dispose();
+    });
+});

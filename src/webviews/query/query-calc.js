@@ -239,6 +239,7 @@
                     b.type = 'button';
                     b.setAttribute('role', 'option');
                     b.append(chip(c.short, c.view), el('span', 'query-calc-path', c.path.join(' › ')), el('span', 'query-calc-val font-mono', c.sample));
+                    b.title = `${c.path.join(' › ')}${c.sample ? `: ${c.sample}` : ''}`;
                     items.push({ node: b, go: () => insert(c.short, caret - refM[0].length) });
                 });
             } else if (fnM) {

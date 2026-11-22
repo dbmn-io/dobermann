@@ -17,10 +17,10 @@ interface SearchPlan {
 }
 const { parseSearchExpression, planSearch } = sharedScript<typeof searchMatcherScript & { planSearch(parsed: unknown, columns: unknown[]): SearchPlan }>(searchMatcherScript, 'SearchMatcher');
 
-/** A column as the search names it: by its name (@sku), and with its view's name (@stock.sku: that view's). */
+/** A column as the search names it: by its name (@sku), and with its view's alias (@BL.sku, @stock.sku: that view's). */
 export interface SearchColumn { id: string; name: string; type: string }
 
-/** Results' columns as the search reads them. `letters`: each view's name by its id. */
+/** Results' columns as the search reads them. `letters`: each view's alias by its id (BL, C1…, or its name). */
 export function searchColumns(columns: ColumnRef[], letters: Map<string, string>): SearchColumn[] {
     return columns.map((c, i) => {
         const letter = letters.get(c.view);

@@ -2464,17 +2464,24 @@
     let searchTimer = 0;
     window.SearchMatcher.followScroll($('querySearch'), $('querySearchMirror'));
     // The names a search can ask for: Results' columns (a name in several views also by letter: d.sku)
+    /**
+     * The names the search knows Results' columns by: each column's own name (@quantityOnHand: wherever it is), and,
+     * with more than one view in Results, each with its view's alias as the slots and headings show it (@BL.quantityOnHand,
+     * @C2.sku; a view not in a compare, its name), so @bl. lists BL's columns (James, 2026-11-22). The controller reads
+     * the same names (query.controller.ts searchArg).
+     */
+    const aliasOf = v => (v && (v.run || v.name)) || '';
     function searchHeadings() {
         const columns = resultCols();
         const names = columns.map(c => c.column);
-        const lettered = columns.filter(c => names.indexOf(c.column) !== names.lastIndexOf(c.column) && view(c.view))
-            .map(c => `${view(c.view).name}.${c.column}`);
-        return [...new Set(names), ...lettered];
+        const inViews = new Set(columns.map(c => c.view).filter(id => view(id)));
+        const aliased = inViews.size > 1 ? columns.filter(c => view(c.view)).map(c => `${aliasOf(view(c.view))}.${c.column}`) : [];
+        return [...new Set([...names, ...aliased])];
     }
     /** What kind of values the column a heading names holds (the host says: number, yes or no, date, text). */
     function searchType(heading) {
         const want = String(heading || '').toLowerCase();
-        const hit = resultCols().find(c => c.column.toLowerCase() === want || (view(c.view) && `${view(c.view).name}.${c.column}`.toLowerCase() === want));
+        const hit = resultCols().find(c => c.column.toLowerCase() === want || (view(c.view) && `${aliasOf(view(c.view))}.${c.column}`.toLowerCase() === want));
         return (hit && hit.type) || '';
     }
     /** The search in words, under Results' tools: "Reading this as: poDate (date) after 12 Nov 2026". */

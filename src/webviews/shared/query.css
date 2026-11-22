@@ -256,8 +256,12 @@
 .query-calc-tok-num { color: var(--vscode-charts-orange, #e8a33d); }
 .query-calc-tok-pair { background: color-mix(in srgb, var(--vscode-focusBorder) 45%, transparent); border-radius: 2px; }
 .query-calc-ac { position: absolute; left: 0; right: 0; top: 100%; z-index: 5; background: var(--vscode-editorWidget-background, var(--vscode-editor-background)); border: 1px solid var(--vscode-panel-border); border-radius: 4px; padding: 3px; max-height: 240px; overflow: auto; box-shadow: 0 8px 20px rgba(0, 0, 0, .35); }
-.query-calc-item { display: grid; grid-template-columns: minmax(0, auto) minmax(0, 1fr) auto; gap: 10px; align-items: baseline; width: 100%; background: none; border: 0; color: var(--vscode-foreground); text-align: left; padding: 4px 8px; border-radius: 3px; cursor: pointer; }
-.query-calc-item.is-sel, .query-calc-item:hover { background: var(--vscode-list-activeSelectionBackground, color-mix(in srgb, var(--vscode-focusBorder) 25%, transparent)); color: var(--vscode-list-activeSelectionForeground, var(--vscode-foreground)); }
+.query-calc-item { display: grid; grid-template-columns: minmax(0, auto) minmax(0, 1fr) fit-content(40%); gap: 10px; align-items: baseline; width: 100%; background: none; border: 0; color: var(--vscode-foreground); text-align: left; padding: 4px 8px; border-radius: 3px; cursor: pointer; }
+/* The keyboard's row in the selection colour; the row under the mouse only in the hover colour (never two rows alike) */
+.query-calc-item:hover { background: var(--vscode-list-hoverBackground, color-mix(in srgb, var(--vscode-foreground) 8%, transparent)); }
+.query-calc-item.is-sel { background: var(--vscode-list-activeSelectionBackground, color-mix(in srgb, var(--vscode-focusBorder) 25%, transparent)); color: var(--vscode-list-activeSelectionForeground, var(--vscode-foreground)); }
+/* A long path or sample is cut short with "…", never drawn over the next (its whole text on hover) */
+.query-calc-item > * { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .query-calc-item code, .query-calc-fn code, .query-calc-hint code { color: var(--vscode-textLink-foreground); font-family: var(--vscode-editor-font-family, monospace); }
 .query-calc-path, .query-calc-val { color: var(--vscode-descriptionForeground); font-size: 11.5px; }
 .query-calc-hint { min-height: 18px; font-size: 12px; color: var(--vscode-descriptionForeground); }

@@ -2784,9 +2784,10 @@ export class QueryController {
         return out;
     }
 
-    /** What the search reads: the text, and Results' columns by the names it knows them by. */
+    /** What the search reads: the text, and Results' columns by the names it knows them by (a view by its alias: BL, C1…, or its name). */
     private searchArg(columns: ColumnRef[], search: string): SearchArg {
-        return { search, cols: searchColumns(columns, new Map(this.query?.sources.map(s => [s.id, s.name]) ?? [])) };
+        const query = this.query;
+        return { search, cols: searchColumns(columns, new Map(query?.sources.map(s => [s.id, runName(query, s.id) || s.name]) ?? [])) };
     }
 }
 
