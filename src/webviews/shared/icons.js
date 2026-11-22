@@ -122,6 +122,10 @@
         // Results' toggles: Totals (Lucide square-sigma); hidden characters, Word's show/hide mark (pilcrow)
         'square-sigma':    wrap('<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M16 8.9V7H8l4 5-4 5h8v-1.9"/>'),
         'pilcrow':         wrap('<path d="M13 4v16"/><path d="M17 4v16"/><path d="M19 4H9.5a4.5 4.5 0 0 0 0 9H13"/>'),
+        // Reset joins (Query's join-type menu): our own, drawn to Lucide's rules. Many to one (two
+        // records joined to one) behind, Lucide wifi-sync's two arrows in front at the lower right;
+        // the join that runs under the arrows is cut back around them
+        'many-to-one-sync': wrap('<circle cx="4" cy="3.5" r="2"/><circle cx="4" cy="15.5" r="2"/><circle cx="19" cy="9.5" r="2"/><path d="m5.9 4.3 11.2 4.4"/><path d="m5.9 14.7 4.3-1.7"/><path d="M14.474 13.079v3L15.625 14.875a3.75 3.75 0 0 1 6 1.125"/><path d="M14.474 16.079h3"/><path d="M18.974 19.079h3L20.823 20.283a3.75 3.75 0 0 1-6-1.125"/><path d="M21.974 22.079v-3"/>'),
         'clock-arrow-up':  wrap('<path d="M13.228 21.925A10 10 0 1 1 21.994 12.338"/><path d="M12 6v6l1.562.781"/><path d="m14 18 4-4 4 4"/><path d="M18 22v-8"/>'),
         'clock-arrow-down': wrap('<path d="M12.338 21.994A10 10 0 1 1 21.925 13.227"/><path d="M12 6v6l2 1"/><path d="m14 18 4 4 4-4"/><path d="M18 14v8"/>'),
         'arrow-down-a-z':  wrap('<path d="m3 16 4 4 4-4"/><path d="M7 20V4"/><path d="M20 8h-5"/><path d="M15 10V6.5a2.5 2.5 0 0 1 5 0V10"/><path d="M15 14h5l-5 6h5"/>'),
