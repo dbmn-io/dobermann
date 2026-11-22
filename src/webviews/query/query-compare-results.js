@@ -317,9 +317,9 @@
         function renderTools() {
             const box = $('queryStatusTools');
             if (!box) return;
-            // Filter: lit while any filter is on, a click clears them all; dimmed with none (a plain query has none)
+            // Filter: lit while anything narrows the rows (a filter, or text in the search), a click clears it all; dimmed with none
             const clear = $('queryClearFilters');
-            const filtered = ctx.hasStatus() && anyFilter();
+            const filtered = (ctx.hasStatus() && anyFilter()) || !!String(ui.search || '').trim();
             clear.disabled = !filtered;
             clear.setAttribute('aria-pressed', String(filtered));
             clear.title = filtered ? 'Clear all filters' : 'No filters on';
@@ -333,7 +333,11 @@
         }
         [['queryViewSide', 'side'], ['queryViewCompact', 'compact']].forEach(([id, view]) => $(id).addEventListener('click', () => { if (ui.resultsView === view) return; ui.resultsView = view; ctx.post({ type: 'query.preference', key: 'resultsView', value: view }); renderTools(); ctx.redraw(); }));
         [['queryColsAll', false], ['queryColsChanged', true]].forEach(([id, on]) => $(id).addEventListener('click', () => { if (!!ui.diffsOnly === on) return; ui.diffsOnly = on; renderTools(); ctx.redraw(); }));
-        $('queryClearFilters').addEventListener('click', () => setFilter({ kinds: null, columns: [], relations: null }));
+        $('queryClearFilters').addEventListener('click', () => {
+            ctx.clearSearch();
+            if (ctx.hasStatus()) setFilter({ kinds: null, columns: [], relations: null });
+            else { renderTools(); ctx.reload(); }
+        });
 
         /* ---------- The record ---------- */
 

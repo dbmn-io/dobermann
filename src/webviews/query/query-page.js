@@ -1996,6 +1996,14 @@
     const compareResults = window.QueryCompareResults.create({
         el, ui, post, view, views, colour, count, day, hasStatus: () => hasStatus(), withSummary: (v, items) => withSummary(v, items), specialOn: () => specialOn(),
         reload: () => loadRows(),
+        // Clear all filters empties the search too: back to every record (James, 2026-11-22)
+        clearSearch: () => {
+            clearTimeout(searchTimer);
+            $('querySearch').value = '';
+            ui.search = '';
+            window.SearchMatcher.renderHighlight($('querySearchMirror'), '', searchHeadings());
+            renderReads();
+        },
         redraw: () => { grid.key = ''; drawTable(); loadRows(true); },
         renderSlots: () => renderTop()
     });
@@ -2376,6 +2384,8 @@
             window.SearchMatcher.renderHighlight($('querySearchMirror'), ui.search, searchHeadings());
             renderReads();
             $('queryTotals').setAttribute('aria-pressed', String(ui.totals));
+            // (a search kept from last time lights Filter)
+            compareResults.renderTools();
             if (m.ownSql || m.sqlError) openSql(true);
         }
         if (!m.reading && ui.sort && ui.sort.column >= m.resultColumns.length) ui.sort = null;
@@ -2481,7 +2491,7 @@
         renderReads();
         window.SearchMatcher.renderHighlight($('querySearchMirror'), $('querySearch').value, searchHeadings());
         clearTimeout(searchTimer);
-        searchTimer = setTimeout(() => { ui.search = $('querySearch').value; loadRows(); }, 200);
+        searchTimer = setTimeout(() => { ui.search = $('querySearch').value; compareResults.renderTools(); loadRows(); }, 200);
     });
     // The query's name, at the top left (shared/dbmn-name.js): a click renames it. The controller checks
     // the name and answers with the one it kept (query.named), refused or not
