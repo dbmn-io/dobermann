@@ -7,6 +7,16 @@ import type { BatchMemberLogRow } from '../storage/execution-storage.interface';
 import { BatchResumptionData } from '../../storage/execution-metadata';
 
 // Table pagination options
+/**
+ * What getExecutionsByEndpoint returns. `runsOnly`: an endpoint's runs, single requests and batches,
+ * without each batch's requests: what a run picker lists. A big batch keeps a row per request
+ * (James's history: 153 runs over 96,098 batch requests), so reading them all to keep the runs took
+ * about 7 s in Add a view (2026-11-22); asked for in SQL, 73 ms.
+ */
+export interface ExecutionsByEndpointOptions {
+    runsOnly?: boolean;
+}
+
 export interface ExecutionTableOptions {
     page?: number;
     pageSize?: number;
@@ -221,9 +231,10 @@ export interface IExecutionMetadataService {
     /**
      * Get executions for a specific endpoint
      * @param endpointId - The endpoint ID
+     * @param options - `runsOnly`: its runs (singles and batches), never a batch's requests
      * @returns Promise resolving to array of execution metadata
      */
-    getExecutionsByEndpoint(endpointId: string): Promise<ExecutionMetadata[]>;
+    getExecutionsByEndpoint(endpointId: string, options?: ExecutionsByEndpointOptions): Promise<ExecutionMetadata[]>;
 
     /**
      * Get unified execution history combining both batches and individual executions

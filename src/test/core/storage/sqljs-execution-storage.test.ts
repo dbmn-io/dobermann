@@ -81,6 +81,24 @@ describe('SqlJsExecutionStorage', () => {
         });
     });
 
+    describe('getExecutionsByEndpoint runsOnly (Add a view, 2026-11-22)', () => {
+        it('lists the endpoint\'s runs without each batch\'s requests; without it, every row as before', async () => {
+            await storage.initialize();
+            const base = {
+                environment: 'test-env', environmentId: 'env-123', organization: 'test-org',
+                endpointId: 'endpoint-1', endpointName: 'Batch Endpoint', endpointMethod: 'POST', endpointPath: '/api/batch',
+                createdAt: new Date()
+            };
+            const single = await storage.createExecution({ ...base, executionType: 'individual', rows: '1', status: 'completed' } as Omit<ExecutionMetadata, 'id'>);
+            const batchId = await storage.createExecution({ ...base, executionType: 'batch', rows: '3', status: 'completed' } as Omit<ExecutionMetadata, 'id'>);
+            for (let i = 0; i < 3; i++) await storage.createExecution({ ...base, executionType: 'batch_member', batchId, rows: '1', status: 'completed' } as Omit<ExecutionMetadata, 'id'>);
+            await storage.createExecution({ ...base, endpointId: 'endpoint-2', executionType: 'individual', rows: '1', status: 'completed' } as Omit<ExecutionMetadata, 'id'>);
+            const runs = await storage.getExecutionsByEndpoint('endpoint-1', { runsOnly: true });
+            expect(runs.map(r => r.id).sort()).to.deep.equal([single, batchId].sort());
+            expect(await storage.getExecutionsByEndpoint('endpoint-1')).to.have.length(5);
+        });
+    });
+
     describe('countBatchMembersByStatus (Issue #312)', () => {
         it('counts a batch\'s members per status without loading them', async () => {
             await storage.initialize();

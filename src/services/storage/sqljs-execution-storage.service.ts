@@ -1696,12 +1696,13 @@ export class SqlJsExecutionStorage implements IExecutionStorage {
         return results;
     }
 
-    async getExecutionsByEndpoint(endpointId: string): Promise<ExecutionMetadata[]> {
+    async getExecutionsByEndpoint(endpointId: string, options?: { runsOnly?: boolean }): Promise<ExecutionMetadata[]> {
         if (!this.db) throw new Error('Database not initialized');
 
+        // runsOnly: never a batch's requests (a batch keeps a row per request: tens of thousands, read and parsed for nothing)
         const stmt = this.db.prepare(`
             SELECT * FROM executions
-            WHERE endpoint_id = $endpoint_id
+            WHERE endpoint_id = $endpoint_id${options?.runsOnly ? " AND execution_type IN ('individual', 'batch')" : ''}
             ORDER BY created_at DESC
         `);
 

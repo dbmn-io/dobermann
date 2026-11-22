@@ -30,7 +30,7 @@ export interface ExecutionMetadataServiceDependencies {
         deleteExecution: (id: string) => Promise<void>;
         deleteExecutions?: (ids: string[]) => Promise<number>;
         searchExecutionBodies?: (ids: string[], term: string) => Promise<string[]>;
-        getExecutionsByEndpoint?: (endpointId: string) => Promise<ExecutionMetadata[]>;
+        getExecutionsByEndpoint?: (endpointId: string, options?: { runsOnly?: boolean }) => Promise<ExecutionMetadata[]>;
         onExecutionChanged: any;
         storeBatchExecution?: (batchExecution: ExecutionMetadata) => Promise<{ success: boolean; errorMessage?: string }>;
         getBatchExecution?: (batchId: string) => Promise<ExecutionMetadata | null>;
@@ -487,14 +487,14 @@ export class ExecutionMetadataService implements IExecutionMetadataService {
         throw new Error('Batch creation not supported by current storage implementation');
     }
 
-    async getExecutionsByEndpoint(endpointId: string): Promise<ExecutionMetadata[]> {
+    async getExecutionsByEndpoint(endpointId: string, options?: { runsOnly?: boolean }): Promise<ExecutionMetadata[]> {
         if (this.dependencies.executionMetadataManager?.getExecutionsByEndpoint) {
-            return await this.dependencies.executionMetadataManager.getExecutionsByEndpoint(endpointId);
+            return await this.dependencies.executionMetadataManager.getExecutionsByEndpoint(endpointId, options);
         }
         
         // Fallback: get all executions and filter by endpoint
         const table = await this.getExecutionTable();
-        return table.executions.filter(exec => exec.endpointId === endpointId);
+        return table.executions.filter(exec => exec.endpointId === endpointId && (!options?.runsOnly || exec.executionType !== 'batch_member'));
     }
 
     async getUnifiedExecutionHistory(): Promise<Array<ExecutionMetadata & { isBatch?: boolean, batchId?: string }>> {

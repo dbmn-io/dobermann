@@ -28,19 +28,22 @@ describe('Compare runs: header values', () => {
 
     it('lists finished runs newest first, each with its header values, looking each environment up once', async () => {
         let lookups = 0;
+        let asked: unknown;
         const runs = await comparableRuns(
             {
-                getExecutionsByEndpoint: async () => [
+                getExecutionsByEndpoint: async (_id: string, options?: unknown) => { asked = options; return [
                     { id: 'a', executionType: 'individual', status: 'completed', environment: 'DEV', environmentId: 'e1', organization: '880', createdAt: new Date('2026-11-01') },
                     { id: 'b', executionType: 'batch', status: 'completed', environment: 'DEV', environmentId: 'e1', environmentVariables: { org: '840' }, createdAt: new Date('2026-11-02') },
                     { id: 'c', executionType: 'batch', status: 'running', environment: 'DEV', environmentId: 'e1', createdAt: new Date('2026-11-03') },
-                ] as never,
+                ] as never; },
             },
             { getEnvironment: async () => { lookups++; return environment; } },
             'ep1'
         );
         expect(runs.map(r => [r.id, r.header?.map(h => h.value)])).to.deep.equal([['b', ['840']], ['a', ['880']]]);
         expect(lookups).to.equal(1);
+        // Runs only: a batch's requests are never read (a big batch has tens of thousands)
+        expect(asked).to.deep.equal({ runsOnly: true });
     });
 
     it('reads a value off what was sent, as a person would from the first request', () => {

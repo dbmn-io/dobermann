@@ -151,7 +151,8 @@ export async function comparableRuns(
     /** The endpoint's templates now: an older single run's header values are read off its request with them. */
     endpoint?: RequestTemplates
 ): Promise<CompareRun[]> {
-    const all = (await metadata.getExecutionsByEndpoint(endpointId))
+    // (runs only: a batch's requests are never a result to pick, and a big batch has tens of thousands)
+    const all = (await metadata.getExecutionsByEndpoint(endpointId, { runsOnly: true }))
         .filter(isComparableRun)
         .sort((x, y) => iso(y.createdAt).localeCompare(iso(x.createdAt)));
     const byId = new Map<string, Promise<EnvironmentRecord | undefined>>();

@@ -205,8 +205,8 @@ export class DatabaseAdapter {
         return this.storage.getAllTransactions();
     }
 
-    async getExecutionsByEndpoint(endpointId: string): Promise<ExecutionMetadata[]> {
-        return this.storage.getExecutionsByEndpoint(endpointId);
+    async getExecutionsByEndpoint(endpointId: string, options?: { runsOnly?: boolean }): Promise<ExecutionMetadata[]> {
+        return this.storage.getExecutionsByEndpoint(endpointId, options);
     }
 
     async getBatches(): Promise<ExecutionMetadata[]> {

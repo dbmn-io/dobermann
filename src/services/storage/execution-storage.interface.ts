@@ -234,9 +234,10 @@ export interface IExecutionStorage {
     /**
      * Get executions by endpoint ID
      * @param endpointId - Endpoint ID
+     * @param options - `runsOnly`: its runs (singles and batches), never a batch's requests
      * @returns Array of executions for the endpoint
      */
-    getExecutionsByEndpoint(endpointId: string): Promise<ExecutionMetadata[]>;
+    getExecutionsByEndpoint(endpointId: string, options?: { runsOnly?: boolean }): Promise<ExecutionMetadata[]>;
 
     /**
      * Get all batches (alias for getBatchExecutions)
