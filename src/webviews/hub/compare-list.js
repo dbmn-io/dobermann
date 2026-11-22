@@ -367,8 +367,9 @@
             fields: [{ id: 'text', type: 'textarea', label: 'The query', value: text }],
             actions: [{ id: 'ok', label: 'Done', variant: 'primary' }]
         });
-        if (!navigator.clipboard || !navigator.clipboard.writeText) { byHand(); return; }
-        navigator.clipboard.writeText(text).then(() => say(`Copied ${name}: paste it into an email or a file. No rows or secrets are in it.`), byHand);
+        // (the shared helper: its own fallback where the clipboard is refused; false where nothing worked)
+        if (!window.DbmnClipboard) { byHand(); return; }
+        window.DbmnClipboard.writeText(text).then(ok => (ok ? say(`Copied ${name}: paste it into an email or a file. No rows or secrets are in it.`) : byHand()), byHand);
     }
     window.addEventListener('message', event => {
         const m = event.data;
