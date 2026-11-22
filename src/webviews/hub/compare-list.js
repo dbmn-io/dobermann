@@ -170,6 +170,12 @@
                 '</button>' +
             '</div>' +
             '<div class="hub-add-split-group">' +
+                '<button type="button" class="hub-add-split-primary" id="importQueryBtn" title="Paste a query copied with Copy the query (from support, or another computer)">' +
+                    '<span class="icon" data-icon="clipboard"></span>' +
+                    '<span>Import a query</span>' +
+                '</button>' +
+            '</div>' +
+            '<div class="hub-add-split-group">' +
                 '<button type="button" class="hub-add-split-primary" id="newLookupBtn" title="A table of codes and what they stand for, for a query to translate values with">' +
                     '<span class="icon" data-icon="plus"></span>' +
                     '<span>New lookup table</span>' +
@@ -177,6 +183,7 @@
             '</div>';
         addRow.querySelector('#newQueryBtn').addEventListener('click', () => host && host.postMessage({ type: 'newQuery' }));
         addRow.querySelector('#newLookupBtn').addEventListener('click', () => host && host.postMessage({ type: 'newLookup' }));
+        addRow.querySelector('#importQueryBtn').addEventListener('click', () => importQuery());
         list.hidden = all.length === 0;
         list.replaceChildren(addRow, ...shown.map(c => {
             const row = document.createElement('div');
@@ -236,6 +243,8 @@
                     { id: 'open', label: 'Open', icon: 'circle-play' }
                 ]).concat([
                     { id: 'rename', label: 'Rename', icon: 'pencil' },
+                    // (a query copied as text, to send to support or bring to another computer: no rows, nothing secret)
+                    ...(c.isQuery ? [{ id: 'copy', label: 'Copy the query', icon: 'clipboard' }] : []),
                     { id: 'duplicate', label: 'Duplicate', icon: 'copy' },
                     { separator: true },
                     { id: 'delete', label: 'Delete', icon: 'trash-2', danger: true }
@@ -243,6 +252,7 @@
                     if (action === 'open') open('results');
                     else if (action === 'edit') open('edit');
                     else if (action === 'rename') rename(c);
+                    else if (action === 'copy') host && host.postMessage({ type: 'copyQuery', compareId: c.id });
                     else if (action === 'duplicate') host && host.postMessage(c.isLookup ? { type: 'duplicateLookup', id: c.id } : { type: 'duplicateCompare', compareId: c.id });
                     else if (action === 'delete') void remove(c);
                 });
@@ -334,6 +344,36 @@
         const all = fields(lastState || {});
         return { headings: all.map(f => f.id), hidden: all.filter(f => f.hidden).map(f => f.id) };
     }
+
+    /** Import a query: paste what Copy the query copied; the host checks it, saves it as a new query and opens it. */
+    function importQuery() {
+        if (!window.DbmnModal || !host) return;
+        window.DbmnModal.show({
+            title: 'Import a query',
+            body: 'Paste a query copied with Copy the query. Its views read the same runs: a run this computer doesn\'t have says so on its view.',
+            fields: [{ id: 'text', type: 'textarea', label: 'The copied query', placeholder: '{ "kind": "dbmn.query", … }', required: true, autoFocus: true }],
+            actions: [{ id: 'cancel', label: 'Cancel', variant: 'secondary' }, { id: 'import', label: 'Import', variant: 'primary' }]
+        }).then(result => {
+            if (result.actionId !== 'import' || !result.fields || !String(result.fields.text || '').trim()) return;
+            host.postMessage({ type: 'importQuery', text: String(result.fields.text) });
+        });
+    }
+    /** The copied query, to the clipboard; where the clipboard is refused, shown to copy by hand. */
+    function copied(name, text) {
+        const say = msg => { if (window.DbmnToast) window.DbmnToast.info(msg); };
+        const byHand = () => window.DbmnModal && window.DbmnModal.show({
+            title: `Copy ${name}`,
+            body: 'Select all of it and copy it, then paste it into an email or a file.',
+            fields: [{ id: 'text', type: 'textarea', label: 'The query', value: text }],
+            actions: [{ id: 'ok', label: 'Done', variant: 'primary' }]
+        });
+        if (!navigator.clipboard || !navigator.clipboard.writeText) { byHand(); return; }
+        navigator.clipboard.writeText(text).then(() => say(`Copied ${name}: paste it into an email or a file. No rows or secrets are in it.`), byHand);
+    }
+    window.addEventListener('message', event => {
+        const m = event.data;
+        if (m && m.type === 'queryCopy' && typeof m.text === 'string') copied(String(m.name || 'the query'), m.text);
+    });
 
     function init(h) {
         host = h;
