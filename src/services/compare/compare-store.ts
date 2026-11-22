@@ -19,9 +19,11 @@
  * while signed in, else the app's own). It stores no rows: those stay in History.
  */
 import { freeReportName, REPORT_NAME_MAX } from './report-name';
-import type { CompareJoin } from './compare-engine';
 import type { RunHeaderValue } from './compare-runs';
 import type { IKeyValueStore } from '../../platform/interfaces/key-value-store.interface';
+
+/** How an old saved compare's sides met (kept to read compares saved by v0.4.0). */
+export type CompareJoin = 'full' | 'left' | 'right' | 'inner';
 
 export const COMPARES_KEY = 'compares';
 

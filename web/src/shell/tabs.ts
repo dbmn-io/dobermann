@@ -21,8 +21,6 @@ import { buildConsoleReportConfig } from '../../../src/screens/console/console-r
 import * as fs from 'fs';
 import { takeFile } from './node/fs';
 import { RunBatchController } from '../../../src/screens/run-batch/run-batch.controller';
-import { CompareController } from '../../../src/screens/compare/compare.controller';
-import { buildComparePage } from '../../../src/screens/compare/compare-page';
 import type { ComparePorts } from '../../../src/screens/compare/compare.ports';
 import { QueryController } from '../../../src/screens/query/query.controller';
 import { LookupTablesStore } from '../../../src/services/lookup-tables/lookup-tables';
@@ -33,7 +31,6 @@ import { LogsController } from '../../../src/screens/logs/logs.controller';
 import { appLog } from './app-log';
 import { runHistory } from '../../../src/screens/logs/run-history';
 import { LogReader } from '../../../src/services/logging/log-reader';
-import { isQueryId } from '../../../src/services/query/query-store';
 import { HubPreferencesService } from '../../../src/services/hub-preferences/hub-preferences.service';
 import { remoteEngineHost, type EngineHost } from '../../../src/services/engine/engine-host';
 
@@ -193,15 +190,12 @@ export function webTabs(deps: WebTabDeps): HubTabFactory {
                     compared: () => deps.refreshHub?.()
                 }
             };
-            if (isQueryId(compareId)) {
-                // A query: Compare's ports and SQLite, started from the app's own wasm file
+            // A query (an old saved compare opens as the query made from it): its ports and SQLite, from the app's own wasm file
+            {
                 const query = new QueryController(session, { ...ports, sql: () => (sqlEngine ??= initSqlJs({ locateFile: () => sqlWasmUrl })), systemName: async id => (await deps.systems.getSystem(id))?.name, openRunBatch: (endpoint, chain) => deps.openBatch(endpoint.id, chain), queryFiles, lookups: new LookupTablesStore(lookupFolder), openLookup: async id => { deps.openLookup(id); }, newLookup: async () => { const made = await new LookupTablesStore(lookupFolder).create('Lookup table'); await deps.openLookup(made.id); }, newCompareEngine: () => new HubPreferencesService(deps.state.globalState).get().newCompareEngine !== false, engineHost: engineInWorker }, { queryId: compareId, start });
                 const queryScreen = { handle: (m: Record<string, unknown>) => query.handleMessage(m as never), dispose: () => query.dispose() };
                 return { ...tab(buildQueryPage(asset, { queryId: compareId, name: endpointName }), session, queryScreen), name: `Query: ${endpointName}` };
             }
-            const controller = new CompareController(session, ports, { compareId, start });
-            const screen = { handle: (m: Record<string, unknown>) => controller.handleMessage(m as never), dispose: () => controller.dispose() };
-            return { ...tab(buildComparePage(asset, { compareId, endpointName }), session, screen), name: `Compare: ${endpointName}` };
         },
         // A lookup table: kept with the saved queries, in this browser's state
         lookup: lookupTab({ folder: lookupFolder, toast: deps.toast }),

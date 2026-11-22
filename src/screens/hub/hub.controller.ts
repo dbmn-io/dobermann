@@ -1322,29 +1322,10 @@ export class HubController {
             return;
         }
         // An old saved compare opens as the query made from it (a reopened tab too), on Views, as every query does
-        if (state && !isDraft(compare)) {
-            const made = await this.queryOfCompare(state, compare);
-            if (made) { await this.openCompareTab(made.id, start); return; }
-        }
-        const tabId = `compare:${compareId}`;
-        const endpoint = await this.ports.endpoints.getEndpoint(compare.sources[0].endpointId);
-        // Named when it first opens, after its endpoint: a smart default the user can change
-        if (state && !compare.name) {
-            compare.name = freeReportName(state, endpoint?.name || 'Compare', compare.id);
-            await saveCompare(state, compare);
-        }
-        // Its tab is its icon and its name
-        const name = compare.name || endpoint?.name || 'Compare';
-        if (this.tabs.has(tabId)) {
-            this.focus(tabId, compareId, name);
-            if (start === 'edit') await this.tabs.get(tabId)!.tab.handle({ type: 'compare.startEdit' });
-            return;
-        }
-        const factory = this.ports.tabs.compare;
-        if (!factory) return;
-        await this.mount(tabId, channel => factory({ compareId, endpointName: name, start }, channel),
-            { type: 'mountEmbeddedTab', tabType: 'compare', refId: compareId, name });
-        await this.broadcastState();
+        const made = state && !isDraft(compare) ? await this.queryOfCompare(state, compare) : undefined;
+        if (made) { await this.openCompareTab(made.id, start); return; }
+        // (one never finished, only its Baseline picked: there is nothing to make a query of)
+        this.ports.toast.warn('This compare was never finished, so it can\'t open. Start a new one from the Console.');
     }
 
     /** Every old saved compare (past Select) not yet a query, made one (queryFromCompare). Nothing is removed. */

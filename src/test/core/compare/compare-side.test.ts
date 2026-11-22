@@ -6,7 +6,6 @@
  */
 import { expect } from 'chai';
 import { buildCompareSide, CompareView } from '../../../services/compare/compare-side';
-import { compareRows } from '../../../services/compare/compare-engine';
 
 const response = (status: string, items: Array<Record<string, unknown>>) => ({
     httpStatus: status === 'completed' ? 200 : 500,
@@ -43,15 +42,5 @@ describe('Compare side', () => {
             'data.page': 1, 'data.items.id': 1, 'data.items.itemCode': 'ITM-1', 'data.items.height': 400,
         });
         expect(side.columns.map(c => c.name)).to.deep.equal(['page', 'id', 'itemCode', 'height']);
-    });
-
-    it('feeds the engine: Test against Production on itemCode', async () => {
-        const a = buildCompareSide(test, view);
-        const b = buildCompareSide(prod, view);
-        const result = await compareRows(a.rows, b.rows, {
-            keyColumns: ['data.items.itemCode'],
-            compareColumns: ['data.items.height'],
-        });
-        expect(result.counts).to.include({ same: 1, changed: 1, onlyA: 0, onlyB: 0 });
     });
 });

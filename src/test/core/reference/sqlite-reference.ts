@@ -6,7 +6,7 @@
  * engine's answer for the same tables and query must match these rows. Owned by the tester.
  *
  * SQLite is the reference for joins, functions and calculations only. A compare with keys that
- * repeat follows the old Compare's rule (compare-across.ts), not SQL: those tests live apart.
+ * repeat follows the old Compare's rule, not SQL: those tests live apart.
  */
 import type { Database, SqlJsStatic } from 'sql.js';
 import type { Table, Value } from './generator';

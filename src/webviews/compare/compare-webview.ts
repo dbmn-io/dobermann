@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Flexion Tech Pty Ltd
 /**
- * Compare in VS Code (#298): a Hub tab running the shared CompareController
- * (src/screens/compare), with VS Code's services as its ports, the same ones the Console uses.
+ * A query's tab in VS Code: the shared QueryController (src/screens/query), with VS Code's services
+ * as its ports, the same ones the Console uses. (Old Compare's screen ran here too until 2026-11-23;
+ * a saved compare now opens as the query made from it.)
  */
 import { HubPreferencesService } from '../../services/hub-preferences/hub-preferences.service';
 import * as vscode from 'vscode';
@@ -14,12 +15,9 @@ import type { APIEndpointManager } from '../../apiEndpointManager';
 import type { EnvironmentManager } from '../../environmentManager';
 import type { IExecutionMetadataService } from '../../services/execution/execution-metadata.interface';
 import type { StoreContext } from '../../platform/interfaces/store-context.interface';
-import { CompareController, CompareConfig, CompareMessage } from '../../screens/compare/compare.controller';
-import { buildComparePage } from '../../screens/compare/compare-page';
 import type { ComparePorts } from '../../screens/compare/compare.ports';
 import { QueryController } from '../../screens/query/query.controller';
 import { buildQueryPage } from '../../screens/query/query-page';
-import { isQueryId } from '../../services/query/query-store';
 import { LookupTablesStore } from '../../services/lookup-tables/lookup-tables';
 import { createVsCodeQueryFiles, vsCodeLookupFolder } from '../../platform/vscode/vscode-execution-storage';
 import initSqlJs from 'sql.js';
@@ -28,7 +26,10 @@ import * as path from 'path';
 /** SQLite for queries, started once and shared by every Query tab. */
 let sqlEngine: ReturnType<typeof initSqlJs> | undefined;
 
-export interface CompareWebviewConfig extends CompareConfig {
+export interface CompareWebviewConfig {
+    /** The saved query. */
+    compareId: string;
+    start?: 'results' | 'match' | 'edit';
     context: 'compare';
     endpointName: string;
     /** A compare has run (the Hub refreshes its Compare list). */
@@ -49,7 +50,7 @@ export function compareStateStore(container: IServiceContainer, context: vscode.
 
 export class CompareWebview extends WebviewBase {
     /** A compare's screen, or a query's (a report of the other kind, in the same kind of tab). */
-    private readonly controller: CompareController | QueryController;
+    private readonly controller: QueryController;
 
     constructor(context: vscode.ExtensionContext, serviceContainer: IServiceContainer, private readonly config: CompareWebviewConfig) {
         super(context);
@@ -78,9 +79,7 @@ export class CompareWebview extends WebviewBase {
             }
         };
         const wasm = path.join(context.extensionPath, 'dist', 'sql-wasm.wasm');
-        this.controller = isQueryId(config.compareId)
-            ? new QueryController(this.session, { ...ports, sql: () => (sqlEngine ??= initSqlJs({ locateFile: () => wasm })), systemName: async id => (await container.resolve<{ getSystem(id: string): Promise<{ name: string } | undefined> }>(ServiceTokens.SystemManager).getSystem(id))?.name, openRunBatch: async (endpoint, chain) => { await vscode.commands.executeCommand('dbmn.runBatch', { endpoint, chain }); }, queryFiles: createVsCodeQueryFiles(), lookups: new LookupTablesStore(vsCodeLookupFolder()), openLookup: async id => { await vscode.commands.executeCommand('dbmn.openLookupTable', id); }, newLookup: async () => { const made = await new LookupTablesStore(vsCodeLookupFolder()).create('Lookup table'); await vscode.commands.executeCommand('dbmn.openLookupTable', made.id); }, newCompareEngine: () => new HubPreferencesService(context.globalState).get().newCompareEngine !== false }, { queryId: config.compareId, start: config.start })
-            : new CompareController(this.session, ports, config);
+        this.controller = new QueryController(this.session, { ...ports, sql: () => (sqlEngine ??= initSqlJs({ locateFile: () => wasm })), systemName: async id => (await container.resolve<{ getSystem(id: string): Promise<{ name: string } | undefined> }>(ServiceTokens.SystemManager).getSystem(id))?.name, openRunBatch: async (endpoint, chain) => { await vscode.commands.executeCommand('dbmn.runBatch', { endpoint, chain }); }, queryFiles: createVsCodeQueryFiles(), lookups: new LookupTablesStore(vsCodeLookupFolder()), openLookup: async id => { await vscode.commands.executeCommand('dbmn.openLookupTable', id); }, newLookup: async () => { const made = await new LookupTablesStore(vsCodeLookupFolder()).create('Lookup table'); await vscode.commands.executeCommand('dbmn.openLookupTable', made.id); }, newCompareEngine: () => new HubPreferencesService(context.globalState).get().newCompareEngine !== false }, { queryId: config.compareId, start: config.start });
     }
 
     getWebviewType(): string {
@@ -88,7 +87,7 @@ export class CompareWebview extends WebviewBase {
     }
 
     protected getWebviewTitle(): string {
-        return `${isQueryId(this.config.compareId) ? 'Query' : 'Compare'}: ${this.config.endpointName}`;
+        return `Query: ${this.config.endpointName}`;
     }
 
     protected getViewColumn(): vscode.ViewColumn {
@@ -97,13 +96,11 @@ export class CompareWebview extends WebviewBase {
 
     async getHtmlContent(): Promise<string> {
         const asset = (rel: string) => this.getWebviewUri(rel).toString();
-        return isQueryId(this.config.compareId)
-            ? buildQueryPage(asset, { queryId: this.config.compareId, name: this.config.endpointName })
-            : buildComparePage(asset, this.config);
+        return buildQueryPage(asset, { queryId: this.config.compareId, name: this.config.endpointName });
     }
 
     async handleMessage(message: WebviewMessage): Promise<void> {
-        await this.controller.handleMessage(message as unknown as CompareMessage);
+        await this.controller.handleMessage(message as never);
     }
 
     dispose(): void {

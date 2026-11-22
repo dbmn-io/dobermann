@@ -2,9 +2,6 @@
   "//": "Issue #326: modules declared as core. They load no vscode (module-graph test) and import no vscode or read no global host services (eslint.config.core.js). Add to this list; removing an entry needs a reason in the commit.",
   "modules": [
     "services/execution/execution.service",
-    "services/compare/compare-engine",
-    "services/compare/compare-across",
-    "services/compare/compare-export",
     "services/compare/compare-side",
     "services/compare/compare-store",
     "services/compare/compare-runs",
@@ -99,8 +96,6 @@
     "screens/run-batch/run-batch.controller",
     "screens/run-batch/run-batch-page",
     "screens/compare/compare.ports",
-    "screens/compare/compare.controller",
-    "screens/compare/compare-page",
     "screens/console/console-report-config",
     "services/format-converter/format-converter.service",
     "services/run-content/run-content-store",

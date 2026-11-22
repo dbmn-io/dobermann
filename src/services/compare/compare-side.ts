@@ -9,7 +9,8 @@
  */
 import * as consoleTableBuilderScript from '../../webviews/shared/console-table-builder.js';
 import { sharedScript } from '../../utils/shared-script';
-import type { CompareRowData } from './compare-engine';
+/** A row of a side: a value by column id. */
+export type CompareRowData = Record<string, unknown>;
 
 const { createConsoleTableBuilder } = sharedScript<typeof consoleTableBuilderScript>(consoleTableBuilderScript, 'ConsoleTableBuilder');
 
