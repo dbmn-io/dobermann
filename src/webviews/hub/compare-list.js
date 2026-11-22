@@ -161,7 +161,8 @@
         if (summary) summary.textContent = all.length ? `${shown.length} report${shown.length === 1 ? '' : 's'}` : '';
         // The add row at the top of the list, the one Endpoints and Environments have
         const addRow = document.createElement('div');
-        addRow.className = 'hub-list-row hub-list-row-add hub-add-split';
+        // (three buttons: they wrap to a second line in a narrow drawer, never cut off)
+        addRow.className = 'hub-list-row hub-list-row-add hub-add-split hub-add-split-wrap';
         addRow.innerHTML =
             '<div class="hub-add-split-group">' +
                 '<button type="button" class="hub-add-split-primary" id="newQueryBtn" title="Join results from any endpoints into one table">' +
