@@ -340,6 +340,9 @@
 }
 
 .search-input {
+    /* (no margin: core.css gives every text box 5px above and below, which made the wrapper 10px
+       taller than the box, and the mirror's fill, the wrapper's size, a grey slab around its outline) */
+    margin: 0;
     width: 100%;
     box-sizing: border-box;
     /* Left padding leaves room for .search-icon-inset (#262). */

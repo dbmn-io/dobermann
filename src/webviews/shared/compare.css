@@ -979,8 +979,9 @@ button.compare-result-btn {
     font-size: 11px;
     font-weight: 700;
     text-align: center;
-    background: color-mix(in srgb, var(--compare-c) 26%, var(--vscode-editor-background));
-    box-shadow: inset 0 -2px 0 var(--compare-c);
+    /* (a column of no view, a calculated one, has no colour: the page's own, solid, so rows never show through it) */
+    background: color-mix(in srgb, var(--compare-c, var(--vscode-editor-background)) 26%, var(--vscode-editor-background));
+    box-shadow: inset 0 -2px 0 var(--compare-c, transparent);
 }
 
 /* The results' row is only each result's coloured line under the columns' names, always the same

@@ -360,6 +360,86 @@ test('a column\'s class is on its heading and cells, a number sits right, and th
     await expect(page.locator('#t tfoot tr')).toHaveCount(0);
 });
 
+test('totals put on after the columns were sized: a total its column cuts widens it, and every total says itself whole under the pointer', async ({ page }) => {
+    // (a narrow box: the columns are not stretched to fill it, so qty is as narrow as its values)
+    await page.setContent(tablePage().replace('width:900px', 'width:380px'));
+    await expect(page.locator('#t .dbmn-table-body tr').first().locator('td').first()).toHaveText('SO-10000');
+    const qtyHead = page.locator('#t th[data-col="qty"]');
+    const before = (await qtyHead.boundingBox()).width;
+    await page.evaluate(() => { document.getElementById('t').totals = { qty: 1234567890, order_no: 'Total' }; });
+    const total = page.locator('#t tfoot td').nth(2);
+    await expect(total).toHaveText('1,234,567,890');
+    await expect(total).toHaveAttribute('title', 'Total: 1,234,567,890');
+    await expect(page.locator('#t tfoot td').first()).toHaveAttribute('title', 'Total: Total');
+    // Whole, not "1,234,…": its column grew to it
+    expect(await total.evaluate(td => td.scrollWidth <= td.clientWidth + 1)).toBe(true);
+    expect((await qtyHead.boundingBox()).width).toBeGreaterThan(before);
+    // A width the user set stays as set: its total is cut, and the pointer still shows it whole
+    await page.evaluate(() => { const t = document.getElementById('t'); t.totals = null; t.layout = { widths: { qty: 50 } }; t.totals = { qty: 1234567890 }; });
+    await expect(total).toHaveAttribute('title', 'Total: 1,234,567,890');
+    expect(Math.round((await qtyHead.boundingBox()).width)).toBe(50);
+});
+
+test('a compared column\'s totals: under the pointer, every total of its group in one card, one under another, lined up, the ones not the same as the first marked', async ({ page }) => {
+    await page.setContent(groupedPage().replace("{ id: 'qty|1', name: 'C1', group: qty, numbers: true }", "{ id: 'qty|1', name: 'C1', group: qty, numbers: true }, { id: 'qty|2', name: 'C2', group: qty, numbers: true }"));
+    await page.evaluate(() => { document.getElementById('t').totals = { 'qty|0': 127450, 'qty|1': 127450, 'qty|2': 126881, sku: 'Total' }; });
+    const c1 = page.locator('#t tfoot td.has-group-total').nth(1);
+    await expect(page.locator('#t tfoot td.has-group-total')).toHaveCount(3);
+    // (no tooltip of its own: the card says it, and more)
+    expect(await c1.getAttribute('title')).toBeNull();
+    await expect(page.locator('#t tfoot td').first()).toHaveAttribute('title', 'Total: Total');
+    await c1.hover();
+    const card = page.locator('.dbmn-total-card');
+    await expect(card).toBeVisible();
+    await expect(card.locator('.dbmn-total-card-title')).toHaveText('qty: totals');
+    if (process.env.TOTAL_SHOT) await page.screenshot({ path: process.env.TOTAL_SHOT });
+    await expect(card.locator('.dbmn-total-card-name')).toHaveText(['BL', 'C1', 'C2']);
+    await expect(card.locator('.dbmn-total-card-value')).toHaveText(['127,450', '127,450', '126,881']);
+    // Lined up on the right, one under another
+    const rights = await card.locator('.dbmn-total-card-value').evaluateAll(vs => vs.map(v => Math.round(v.getBoundingClientRect().right)));
+    expect(new Set(rights).size).toBe(1);
+    // The one hovered in bold; the one not the same as BL's marked
+    await expect(card.locator('.dbmn-total-card-value').nth(1)).toHaveClass(/is-this/);
+    await expect(card.locator('.dbmn-total-card-value').nth(2)).toHaveClass(/is-different/);
+    await expect(card.locator('.dbmn-total-card-value').nth(1)).not.toHaveClass(/is-different/);
+    // Above the totals, in the window
+    const [cardBox, cellBox] = await Promise.all([card.boundingBox(), c1.boundingBox()]);
+    expect(cardBox.y + cardBox.height).toBeLessThanOrEqual(cellBox.y);
+    // Away from the totals, it goes
+    await page.locator('#t thead th').first().hover();
+    await expect(card).toHaveCount(0);
+    // A column on its own, or a group with only one total, keeps its plain tooltip
+    await page.evaluate(() => { document.getElementById('t').totals = { 'qty|0': 5, 'desc|0': 'x' }; });
+    await expect(page.locator('#t tfoot td.has-group-total')).toHaveCount(0);
+    await expect(page.locator('#t tfoot td').nth(2)).toHaveAttribute('title', 'Total: 5');
+});
+
+test('the search box\'s fill is exactly its outlined box: no grey band above or below it', async ({ page }) => {
+    await page.setContent(tablePage());
+    const [box, fill] = await Promise.all([page.locator('#t .search-input').boundingBox(), page.locator('#t .search-input-mirror').boundingBox()]);
+    expect(Math.abs(box.y - fill.y)).toBeLessThan(1);
+    expect(Math.abs(box.height - fill.height)).toBeLessThan(1);
+});
+
+test('a column heading in a view\'s colour (compare-sub) with no view (a calculated column) is solid: rows scrolled under it never show through', async ({ page }) => {
+    await page.setContent(tablePage().replace("{ id: 'notes', name: 'notes' }", "{ id: 'notes', name: 'notes', className: 'compare-sub' }"));
+    await page.addStyleTag({ content: read('shared/compare.css') });
+    // (drawn on a canvas: the colour it paints, and how opaque)
+    const paint = () => page.locator('#t th[data-col="notes"]').evaluate(th => {
+        const c = document.createElement('canvas').getContext('2d');
+        c.fillStyle = getComputedStyle(th).backgroundColor;
+        c.fillRect(0, 0, 1, 1);
+        return Array.from(c.getImageData(0, 0, 1, 1).data);
+    });
+    // The page's own colour, opaque: not transparent
+    expect(await paint()).toEqual([30, 30, 30, 255]);
+    // In a view's colour, its tint as before
+    await page.locator('#t th[data-col="notes"]').evaluate(th => th.style.setProperty('--compare-c', 'rgb(0, 120, 212)'));
+    const tinted = await paint();
+    expect(tinted[3]).toBe(255);
+    expect(tinted[2]).toBeGreaterThan(60);
+});
+
 test('rows the page holds: sized again when the first rows come, never squeezed by a long value, and `shown` is what the search shows', async ({ page }) => {
     await page.setContent(tablePage());
     const widths = () => page.locator('#t thead th').evaluateAll(ths => ths.map(th => Math.round(th.getBoundingClientRect().width)));

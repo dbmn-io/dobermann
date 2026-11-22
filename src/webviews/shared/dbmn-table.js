@@ -249,6 +249,7 @@
 
         disconnectedCallback() {
             if (this._seen) { this._seen.disconnect(); this._seen = null; }
+            this._totalCardClose();
         }
 
         set columns(list) {
@@ -988,10 +989,79 @@
             const tr = make('tr');
             this._columns.forEach(column => {
                 const value = this._totals[column.id];
-                const td = make('td', (column.numbers || typeof value === 'number' ? 'text-right' : '') + (column.wrap ? ' dbmn-cell-wrap' : '') + (column.className ? ` ${column.className}` : ''), value === undefined || value === null ? '' : typeof value === 'number' ? count(value) : String(value));
+                const text = value === undefined || value === null ? '' : typeof value === 'number' ? count(value) : String(value);
+                const td = make('td', (column.numbers || typeof value === 'number' ? 'text-right' : '') + (column.wrap ? ' dbmn-cell-wrap' : '') + (column.className ? ` ${column.className}` : ''), text);
+                // (its whole value under the pointer, however narrow its column; a group's total: every
+                // total of its group, one under another, in a card instead)
+                if (text && !this._groupTotals(column)) td.title = `Total: ${text}`;
+                else if (text) td.classList.add('has-group-total');
                 tr.append(td);
             });
             this._foot.replaceChildren(tr);
+            this._fitFeet();
+            if (!this._footHover) {
+                this._footHover = true;
+                this._foot.addEventListener('mouseover', event => {
+                    const td = event.target.closest('td.has-group-total');
+                    if (td) this._totalCard(td); else this._totalCardClose();
+                });
+                this._foot.addEventListener('mouseleave', () => this._totalCardClose());
+                this._scroll.addEventListener('scroll', () => this._totalCardClose(), { passive: true });
+            }
+        }
+        /** The totals of a column's group (BL, C1, C2…) when it has more than one: [{ column, text }], else null. */
+        _groupTotals(column) {
+            if (!column || !column.group || !this._totals) return null;
+            const all = this._columns.filter(c => c.group && c.group.id === column.group.id);
+            const got = all.map(c => ({ column: c, value: this._totals[c.id] })).filter(x => x.value !== undefined && x.value !== null && x.value !== '');
+            if (got.length < 2) return null;
+            return got.map(x => ({ column: x.column, text: typeof x.value === 'number' ? count(x.value) : String(x.value) }));
+        }
+        /**
+         * A compared column's totals side by side are hard to compare: under the pointer, all of them in
+         * one card, one under another, the numbers lined up on the right, each beside its result's name
+         * (in its colour); a total not the same as the first is marked.
+         */
+        _totalCard(td) {
+            const column = this._columns[td.cellIndex];
+            const totals = this._groupTotals(column);
+            if (!totals) { this._totalCardClose(); return; }
+            if (this._card && this._card._for === td) return;
+            this._totalCardClose();
+            const card = make('div', 'dbmn-total-card');
+            card.setAttribute('role', 'tooltip');
+            card._for = td;
+            card.append(make('div', 'dbmn-total-card-title', `${column.group.name || column.group.id}: totals`));
+            const list = make('div', 'dbmn-total-card-lines');
+            totals.forEach((t, i) => {
+                const name = make('span', `dbmn-total-card-name${t.column.className ? ` ${t.column.className}` : ''}`, t.column.name || t.column.id);
+                const value = make('span', 'dbmn-total-card-value' + (i > 0 && t.text !== totals[0].text ? ' is-different' : '') + (t.column === column ? ' is-this' : ''), t.text);
+                list.append(name, value);
+            });
+            card.append(list);
+            document.body.append(card);
+            // Above the total, its right edge at the cell's (the totals sit at the bottom of the box)
+            const at = td.getBoundingClientRect();
+            const box = card.getBoundingClientRect();
+            card.style.left = `${Math.max(4, Math.min(at.right - box.width, window.innerWidth - box.width - 4))}px`;
+            card.style.top = `${Math.max(4, at.top - box.height - 6)}px`;
+            this._card = card;
+        }
+        _totalCardClose() {
+            if (this._card) { this._card.remove(); this._card = null; }
+        }
+        /** A total cut by its column (Totals put on after the columns were sized): the column widens to show it, unless the user set its width. */
+        _fitFeet() {
+            const tr = this._foot.rows[0];
+            if (!tr || !this._sized || !window.ColumnHead) return;
+            let grew = false;
+            this._columns.forEach((column, i) => {
+                const td = tr.cells[i];
+                if (!td || !td.textContent || this._set[column.id] || !td.clientWidth || td.scrollWidth <= td.clientWidth + 1) return;
+                const need = Math.min(window.ColumnHead.MAX_FIT, window.ColumnHead.textWidth(td, td.textContent) + 20);
+                if (need > (this._widths[column.id] || 0)) { this._widths[column.id] = Math.round(need); grew = true; }
+            });
+            if (grew) this._colgroup();
         }
 
         _colgroup() {

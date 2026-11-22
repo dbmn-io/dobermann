@@ -200,3 +200,26 @@ dbmn-table[editable] .dbmn-table-body td.dbmn-cell-box { cursor: pointer; }
 .dbmn-pick-all { margin: 0; vertical-align: middle; cursor: pointer; accent-color: var(--dbmn-focusBorder); }
 dbmn-table[selectable] .dbmn-table-body tr { cursor: pointer; }
 .dbmn-table-body tr.is-picked td { background: color-mix(in srgb, var(--dbmn-focusBorder) 18%, transparent); }
+
+/* A compared column's totals, all in one card under the pointer: one under another, the numbers
+   lined up on the right so they compare at a glance; each result's name in its colour */
+.dbmn-table-foot td.has-group-total { cursor: help; }
+.dbmn-total-card {
+    position: fixed;
+    z-index: 10000;
+    min-width: 140px;
+    padding: 8px 10px;
+    background: var(--dbmn-editorWidget-background);
+    color: var(--dbmn-foreground);
+    border: 1px solid var(--dbmn-widget-border, rgba(128, 128, 128, 0.35));
+    border-radius: 6px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+    pointer-events: none;
+    font-size: 12px;
+}
+.dbmn-total-card-title { margin-bottom: 6px; color: var(--dbmn-descriptionForeground); }
+.dbmn-total-card-lines { display: grid; grid-template-columns: auto auto; gap: 3px 16px; align-items: baseline; }
+.dbmn-total-card-name { padding-left: 6px; border-left: 3px solid var(--compare-c, var(--lanes-c, transparent)); font-weight: 600; }
+.dbmn-total-card-value { text-align: right; font-variant-numeric: tabular-nums; font-family: var(--dbmn-editor-font-family, monospace); }
+.dbmn-total-card-value.is-this { font-weight: 700; }
+.dbmn-total-card-value.is-different { color: var(--dbmn-editorWarning-foreground); }
