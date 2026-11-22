@@ -201,12 +201,37 @@ export class DatabaseAdapter {
         return this.storage.getActiveQueue();
     }
 
+    /**
+     * Every run, newest first: each individual run and each batch, never a batch's requests (the
+     * Hub's History, Add a view, the Console's runs to compare). One list for the whole app, shared
+     * by them all (James, 2026-11-23: "yes. NOW."), read from the database again only when it has
+     * changed (changeStamp): a run started, finished, deleted, here or by another app on the same
+     * workspace folder (refreshFromDisk first: one look at the file, a merge only when it changed).
+     * Each caller gets its own array of the shared runs; nothing else is kept.
+     */
     async getAllTransactions(): Promise<ExecutionMetadata[]> {
-        return this.storage.getAllTransactions();
+        return (await this.runList()).slice();
     }
 
     async getExecutionsByEndpoint(endpointId: string, options?: { runsOnly?: boolean }): Promise<ExecutionMetadata[]> {
+        // (a run, not a batch's requests: from the shared list; with the requests, from the database)
+        if (options?.runsOnly) return (await this.runList()).filter(e => e.endpointId === endpointId);
         return this.storage.getExecutionsByEndpoint(endpointId, options);
+    }
+
+    private runs: { stamp: string; list: Promise<ExecutionMetadata[]> } | undefined;
+
+    private runList(): Promise<ExecutionMetadata[]> {
+        try { this.storage.refreshFromDisk(); } catch { /* the file can't be looked at now: what we hold */ }
+        const stamp = this.storage.changeStamp();
+        if (stamp === undefined) return this.storage.getAllTransactions();
+        if (this.runs?.stamp !== stamp) {
+            const list = this.storage.getAllTransactions();
+            this.runs = { stamp, list };
+            // (a read that fails is not kept: the next one tries again)
+            list.catch(() => { if (this.runs?.list === list) this.runs = undefined; });
+        }
+        return this.runs.list;
     }
 
     async getBatches(): Promise<ExecutionMetadata[]> {

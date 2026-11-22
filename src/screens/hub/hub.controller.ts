@@ -88,13 +88,6 @@ export class HubController {
     private broadcasts = 0;
     private subscribed = false;
     private transactionsTimer?: ReturnType<typeof setTimeout>;
-    /**
-     * History as last read, kept until it changes (a run, a delete, the page reloading). Reading
-     * it is the costly part of the Hub's state (measured 2026-11-16: ~70 ms for 3,000 runs,
-     * ~220 ms for 10,000), and most refreshes (an environment switch, an endpoint saved) don't
-     * change it.
-     */
-    private history?: Promise<unknown[]>;
     /** Section to show once the page is ready (deep links, e.g. startup recovery → History). */
     private pendingSection?: string;
     /** Standalone editors closed by a swap: their close events don't reach the page. */
@@ -111,7 +104,6 @@ export class HubController {
      * tabs from last time rather than reopening them by itself.
      */
     async onReady(): Promise<void> {
-        this.history = undefined;   // a page (re)opening reads the history afresh
         await this.broadcastState();
         this.subscribe();
         this.announceStartupRecovery();
@@ -475,14 +467,17 @@ export class HubController {
         };
     }
 
+    /**
+     * History's rows: the app's one list of runs (DatabaseAdapter.getAllTransactions), shared with Add
+     * a view and the Console and read again only when the history changes (it was the costly part of
+     * the Hub's state, measured 2026-11-16: ~70 ms for 3,000 runs, ~220 ms for 10,000). A refresh
+     * that changes nothing in it (an environment switch, an endpoint saved) costs a look at a number.
+     */
     private readHistory(): Promise<unknown[]> {
         const metadata = this.ports.executions?.metadata;
         if (!metadata) return Promise.resolve([]);
-        this.history ??= metadata.getAllTransactions().catch(() => {
-            this.history = undefined;   // not kept: the next refresh tries again
-            return [];
-        });
-        return this.history;
+        // (the app's one list of runs, kept by the storage until the history changes: no copy here)
+        return metadata.getAllTransactions().catch(() => []);
     }
 
     /**
@@ -533,7 +528,6 @@ export class HubController {
         // History and the header's "2 paused" waited for everything to stop. Found 2026-11-12.)
         // (No disposable; the listener just posts to a page that may be gone.)
         executions?.metadata.onExecutionChanged.event(() => {
-            this.history = undefined;
             if (this.transactionsTimer) return;
             this.transactionsTimer = setTimeout(() => {
                 this.transactionsTimer = undefined;
@@ -883,7 +877,6 @@ export class HubController {
         try {
             // The storage count includes batch members; the user ticked ids.length rows
             await executions.metadata.deleteExecutions(ids);
-            this.history = undefined;
             let closed = 0;
             for (const id of ids) {
                 if (this.tabs.has(`console:${id}`)) {

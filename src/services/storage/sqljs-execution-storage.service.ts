@@ -299,6 +299,21 @@ export class SqlJsExecutionStorage implements IExecutionStorage {
     }
 
     /**
+     * A stamp that changes whenever any row of the history does: SQLite's own count of rows written
+     * on this database (every insert, update and delete, the merges from another writer's file
+     * too), with which database object it is (a reload starts a new count). The run list's cache
+     * (DatabaseAdapter.runList) is read again only when it changes. Undefined while closed.
+     */
+    changeStamp(): string | undefined {
+        if (!this.db) return undefined;
+        if (this.db !== this.stampedDb) { this.stampedDb = this.db; this.stampSerial++; }
+        const changes = this.db.exec('SELECT total_changes()')[0]?.values[0]?.[0];
+        return `${this.stampSerial}:${String(changes)}`;
+    }
+    private stampedDb: unknown;
+    private stampSerial = 0;
+
+    /**
      * #344: fold in what another writer saved, now rather than at our next save, and say whether
      * there was anything. The web app calls it when the workspace folder's database changed
      * (VS Code ran something), so History shows it; and when a save of its own found the file

@@ -782,7 +782,9 @@ describe('HubController: a header pick is drawn at once (2026-11-13)', () => {
     // Measured 2026-11-16: reading the history takes ~70 ms for 3,000 runs and ~220 ms for 10,000
     // (sql.js, this laptop), and a switch read it twice: once for its own refresh and once for
     // the environments-changed event. A switch doesn't change the history.
-    it('switching environment doesn\'t read the history again; a run changing it, or a delete, does', async () => {
+    // The history is read once and kept by the app's one run list (DatabaseAdapter, run-list-cache.test.ts), not by
+    // the Hub: every refresh asks for it (cheap while nothing changed), so a run or a delete shows at the next one
+    it('History comes from the app\'s one run list on every refresh: a switch, a run changing, a delete', async () => {
         let reads = 0;
         let fire: () => void = () => undefined;
         const executions = {
@@ -805,15 +807,16 @@ describe('HubController: a header pick is drawn at once (2026-11-13)', () => {
         await h.controller.handle({ type: 'setActiveEnvironment', environmentId: second.id });
         await h.controller.handle({ type: 'setActiveEnvironment', environmentId: first.id });
         await tick();
-        expect(reads, 'two switches').to.equal(afterReady);
         expect(h.of('hubState').pop(), 'the page still gets its History').to.have.property('transactions');
 
+        const beforeRun = reads;
         fire();                                              // a run changed
         await new Promise(r => setTimeout(r, 300));
-        expect(reads, 'a run changed the history').to.equal(afterReady + 1);
+        expect(reads, 'a run changed the history: asked again').to.be.greaterThan(beforeRun);
 
+        const beforeDelete = reads;
         await h.controller.handle({ type: 'bulkDeleteTransactions', ids: ['tx-1'] });
-        expect(reads, 'deleted from History').to.equal(afterReady + 2);
+        expect(reads, 'deleted from History: asked again').to.be.greaterThan(beforeDelete);
     });
 
     it('the Hub\'s state reads the environments once, however many there are', async () => {

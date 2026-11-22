@@ -499,9 +499,12 @@ export class ExecutionMetadataService implements IExecutionMetadataService {
 
     async getUnifiedExecutionHistory(): Promise<Array<ExecutionMetadata & { isBatch?: boolean, batchId?: string }>> {
         try {
-            // Get both batches and individual executions using filtered methods
-            const batches = await this.getBatches(); // Already filtered for executionType: 'batch'
-            const individuals = await this.getIndividualExecutions(); // Already filtered for executionType: 'individual'
+            // The app's one list of runs (DatabaseAdapter.getAllTransactions, kept until the history changes), or the two reads
+            const shared = this.dependencies.executionMetadataManager?.getAllTransactions
+                ? await this.dependencies.executionMetadataManager.getAllTransactions()
+                : undefined;
+            const batches = shared ? shared.filter(e => e.executionType === 'batch') : await this.getBatches();
+            const individuals = shared ? shared.filter(e => e.executionType === 'individual') : await this.getIndividualExecutions();
             
             // Batches are already in ExecutionMetadata format, just mark them
             const batchItems = batches.map((batch: ExecutionMetadata) => ({
