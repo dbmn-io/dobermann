@@ -6,6 +6,7 @@
  * name, so no two reports share one, whatever their kind.
  */
 import type { IKeyValueStore } from '../../platform/interfaces/key-value-store.interface';
+import { readFolderQueries } from '../query/query-folder';
 
 export const REPORT_NAME_MAX = 30;
 
@@ -15,8 +16,10 @@ type ReportState = Pick<IKeyValueStore, 'get'>;
 /** The names taken (lower case) by every saved query and compare but `exceptId`. */
 function taken(state: ReportState, exceptId?: string): Set<string> {
     const names = new Set<string>();
+    // Queries in the workspace folder when there is one (query-folder), else in the state store
+    const lists: Record<string, Named[] | undefined> = { queries: readFolderQueries() ?? state.get<Named[]>('queries'), compares: state.get<Named[]>('compares') };
     for (const key of ['queries', 'compares']) {
-        const list = state.get<Named[]>(key);
+        const list = lists[key];
         if (!Array.isArray(list)) continue;
         for (const item of list) {
             if (item && item.id !== exceptId && typeof item.name === 'string' && item.name.trim()) names.add(item.name.trim().toLowerCase());

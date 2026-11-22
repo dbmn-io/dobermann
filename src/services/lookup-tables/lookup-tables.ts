@@ -8,9 +8,11 @@
  * (the query says so and does not run).
  *
  * A lookup table is a saved table of its own (a query only names it), kept as one JSON file per
- * table in DBMN's data folder, beside the run history and query files: `lookup-tables/<id>.json`
- * (James, 2026-11-21: "Each lookup table becomes one JSON"). An edit rewrites that table's file
- * only. Small: up to 1,000 rows ("it's just a translation table").
+ * table (James, 2026-11-21: "Each lookup table becomes one JSON") in the workspace folder itself,
+ * where every app on that folder sees it and a person can copy it: `Lookup Tables/<name>.json`
+ * (James, 2026-11-23: "Move the lookup tables to the root, not within .dbmn"). A table is known by
+ * the id inside its file, so the file's name is only for people; renaming the table renames it.
+ * An edit rewrites that table's file only. Small: up to 1,000 rows ("it's just a translation table").
  *
  * (Tables made before that were kept in the app's small state store, key `lookupTables`:
  * migrateFrom(state) moves them into files once. Tests may still give the store a state.)
@@ -21,6 +23,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import type { IKeyValueStore } from '../../platform/interfaces/key-value-store.interface';
+import { freeName as freeFileName, safeFileName } from '../query/query-folder';
 
 export const LOOKUP_TABLES_KEY = 'lookupTables';
 
@@ -74,16 +77,17 @@ export interface LookupTablesStoreOptions {
 }
 
 const ID_PREFIX = 'lkp-';
-const FOLDER = 'lookup-tables';
+/** In the workspace folder, beside the Queries folder. */
+export const LOOKUP_FOLDER = 'Lookup Tables';
 
-/** Where lookup tables are kept: DBMN's data folder (each host's own, as the query files'). */
+/** Where lookup tables are kept: the host's workspace folder (or, in the web app without one, this browser's). */
 export interface LookupFolder {
-    dataDir(): Promise<string>;
+    workspaceRoot(): Promise<string>;
     /** Make a folder's files readable first (the web app on a workspace folder reads them when asked). */
     preload?(folder: string): Promise<void>;
 }
 type Backing = Pick<IKeyValueStore, 'get' | 'update'> | LookupFolder;
-const isFolder = (b: Backing): b is LookupFolder => typeof (b as LookupFolder).dataDir === 'function';
+const isFolder = (b: Backing): b is LookupFolder => typeof (b as LookupFolder).workspaceRoot === 'function';
 /** Ids are DBMN's own (lkp-...); anything else never becomes a path. */
 const safe = (id: string): string => id.replace(/[^A-Za-z0-9_-]/g, '_');
 
@@ -149,9 +153,24 @@ export class LookupTablesStore implements LookupTablesReader {
     }
 
     private async folder(): Promise<string> {
-        const folder = path.join(await (this.backing as LookupFolder).dataDir(), FOLDER);
-        await (this.backing as LookupFolder).preload?.(folder);
+        const backing = this.backing as LookupFolder;
+        const folder = path.join(await backing.workspaceRoot(), LOOKUP_FOLDER);
+        await backing.preload?.(folder);
         return folder;
+    }
+
+    /** Each table in the folder, with its file's name. */
+    private entries(folder: string): Array<{ file: string; table: LookupTable }> {
+        if (!fs.existsSync(folder)) return [];
+        const found: Array<{ file: string; table: LookupTable }> = [];
+        for (const name of fs.readdirSync(folder).sort()) {
+            if (!name.endsWith('.json')) continue;
+            try {
+                const table = clean(JSON.parse(String(fs.readFileSync(path.join(folder, name), 'utf8'))));
+                if (table) found.push({ file: name, table });
+            } catch { /* a file that can't be read is left alone, not shown */ }
+        }
+        return found;
     }
 
     private async readAll(): Promise<LookupTable[]> {
@@ -159,31 +178,39 @@ export class LookupTablesStore implements LookupTablesReader {
             const kept = this.backing.get<unknown>(LOOKUP_TABLES_KEY);
             return Array.isArray(kept) ? kept.map(clean).filter((t): t is LookupTable => !!t) : [];
         }
-        const folder = await this.folder();
-        if (!fs.existsSync(folder)) return [];
-        const tables: LookupTable[] = [];
-        for (const name of fs.readdirSync(folder)) {
-            if (!name.endsWith('.json')) continue;
-            try {
-                const table = clean(JSON.parse(String(fs.readFileSync(path.join(folder, name), 'utf8'))));
-                if (table) tables.push(table);
-            } catch { /* a file that can't be read is left alone, not shown */ }
+        // The same table twice (a file copied in under another name): the newer edit counts
+        const byId = new Map<string, LookupTable>();
+        for (const { table } of this.entries(await this.folder())) {
+            const had = byId.get(table.id);
+            if (!had || had.updatedAt < table.updatedAt) byId.set(table.id, table);
         }
-        return tables;
+        return [...byId.values()];
     }
 
-    /** Keep one table: its own file (written beside, then put in place, so a failed write leaves the old one). */
+    /**
+     * One table's file, named after it (written beside, then put in place, so a failed write
+     * leaves the old one). A renamed table's old file goes.
+     */
+    private writeFile(folder: string, table: LookupTable): void {
+        fs.mkdirSync(folder, { recursive: true });
+        const all = this.entries(folder);
+        const mine = all.filter(e => e.table.id === table.id).map(e => e.file);
+        const others = all.filter(e => e.table.id !== table.id).map(e => e.file.replace(/\.json$/, ''));
+        const name = `${freeFileName(others, safeFileName(table.name, safe(table.id)))}.json`;
+        const file = path.join(folder, mine.find(f => f.toLowerCase() === name.toLowerCase()) ?? name);
+        fs.writeFileSync(`${file}.tmp`, JSON.stringify(table, null, 2));
+        fs.renameSync(`${file}.tmp`, file);
+        for (const old of mine) if (path.join(folder, old) !== file) fs.rmSync(path.join(folder, old), { force: true });
+    }
+
+    /** Keep one table: its own file. */
     private async writeOne(table: LookupTable): Promise<void> {
         if (!isFolder(this.backing)) {
             const all = (await this.readAll()).filter(t => t.id !== table.id);
             await this.backing.update(LOOKUP_TABLES_KEY, [...all, table]);
             return;
         }
-        const folder = await this.folder();
-        fs.mkdirSync(folder, { recursive: true });
-        const file = path.join(folder, `${safe(table.id)}.json`);
-        fs.writeFileSync(`${file}.tmp`, JSON.stringify(table));
-        fs.renameSync(`${file}.tmp`, file);
+        this.writeFile(await this.folder(), table);
     }
 
     private async removeOne(id: string): Promise<void> {
@@ -191,8 +218,8 @@ export class LookupTablesStore implements LookupTablesReader {
             await this.backing.update(LOOKUP_TABLES_KEY, (await this.readAll()).filter(t => t.id !== id));
             return;
         }
-        const file = path.join(await this.folder(), `${safe(id)}.json`);
-        if (fs.existsSync(file)) fs.unlinkSync(file);
+        const folder = await this.folder();
+        for (const { file, table } of this.entries(folder)) if (table.id === id) fs.rmSync(path.join(folder, file), { force: true });
     }
 
     /**

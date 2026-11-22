@@ -11,6 +11,7 @@ import { freeReportName, REPORT_NAME_MAX } from '../compare/report-name';
 import type { IKeyValueStore } from '../../platform/interfaces/key-value-store.interface';
 import type { ColumnRef, QueryCalc, QueryJoin, QueryKey } from './query-types';
 import { isReservedWord } from './query-sql';
+import { readFolderQueries, removeFolderQuery, writeFolderQuery } from './query-folder';
 
 export const QUERIES_KEY = 'queries';
 const ID_PREFIX = 'qry-';
@@ -469,21 +470,35 @@ export function isQueryId(id: string): boolean {
     return id.startsWith(ID_PREFIX);
 }
 
+const isSavedQuery = (q: unknown): q is SavedQuery =>
+    !!q && typeof (q as SavedQuery).id === 'string' && Array.isArray((q as SavedQuery).sources);
+
+/**
+ * The saved queries, newest first. With a workspace folder (query-folder), the ones in its
+ * Queries folder, which every app on that folder shares; without one, this app's state store.
+ */
 export function listQueries(state: QueryState): SavedQuery[] {
+    const inFolder = readFolderQueries();
+    if (inFolder) {
+        return (inFolder.filter(isSavedQuery) as SavedQuery[])
+            .sort((a, b) => String(b.updatedAt ?? '').localeCompare(String(a.updatedAt ?? '')));
+    }
     const list = state.get<SavedQuery[]>(QUERIES_KEY);
-    return Array.isArray(list) ? list.filter(q => q && typeof q.id === 'string' && Array.isArray(q.sources)) : [];
+    return Array.isArray(list) ? list.filter(isSavedQuery) : [];
 }
 
 export function getQuery(state: QueryState, id: string): SavedQuery | undefined {
     return listQueries(state).find(q => q.id === id);
 }
 
-/** Save a query, newest first. */
+/** Save a query, newest first: its own file in the workspace folder, or the state store without one. */
 export async function saveQuery(state: QueryState, query: SavedQuery): Promise<void> {
+    if (writeFolderQuery(query)) return;
     await state.update(QUERIES_KEY, [query, ...listQueries(state).filter(q => q.id !== query.id)]);
 }
 
 export async function removeQuery(state: QueryState, id: string): Promise<void> {
+    if (removeFolderQuery(id)) return;
     await state.update(QUERIES_KEY, listQueries(state).filter(q => q.id !== id));
 }
 

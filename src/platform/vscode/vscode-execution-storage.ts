@@ -9,26 +9,41 @@ import { DATA_DIR } from '../../services/workspace/workspace-layout';
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { SqlJsExecutionStorage } from '../../services/storage/sqljs-execution-storage.service';
-import { ensureDobermannWorkspaceFolder } from '../../utils/workspace-helper';
+import { ensureDobermannWorkspaceFolder, getDobermannWorkspaceFolder } from '../../utils/workspace-helper';
+import { useQueryFolder } from '../../services/query/query-folder';
 import { LoggerRegistry } from '../../utils/logger-registry';
 import { QueryFileStore } from '../../services/query/query-file-store';
 import type { LookupFolder } from '../../services/lookup-tables/lookup-tables';
 
-/** A query's file views keep their rows beside the history database, in the workspace's DBMN folder. */
+/**
+ * Saved queries are kept in the workspace folder's Queries folder (query-folder), where the web
+ * and desktop apps on the same folder see them too. Said once, before anything reads a query:
+ * the Hub and a query's tab both make their query files first.
+ */
+let queryFolderSet = false;
+function useVsCodeQueryFolder(): void {
+    if (queryFolderSet) return;
+    queryFolderSet = true;
+    useQueryFolder({ root: () => getDobermannWorkspaceFolder()?.fsPath });
+}
+
+/** A query's file views keep their rows in the query's own folder (query-file-store). */
 export function createVsCodeQueryFiles(): QueryFileStore {
+    useVsCodeQueryFolder();
     return new QueryFileStore({
         dataDir: async () => vscode.Uri.joinPath(await ensureDobermannWorkspaceFolder(), DATA_DIR).fsPath
     });
 }
 
 /**
- * Lookup tables, one JSON file each, beside the history database. One object for the whole
- * extension: every lookup store built on it hears the others' changes (the Hub saves, an open query reruns).
+ * Lookup tables, one JSON file each, in the workspace folder's Lookup Tables folder. One object for
+ * the whole extension: every lookup store built on it hears the others' changes (the Hub saves, an open query reruns).
  */
 let lookupFolder: LookupFolder | undefined;
 export function vsCodeLookupFolder(): LookupFolder {
+    useVsCodeQueryFolder();
     if (!lookupFolder) {
-        lookupFolder = { dataDir: async () => vscode.Uri.joinPath(await ensureDobermannWorkspaceFolder(), DATA_DIR).fsPath };
+        lookupFolder = { workspaceRoot: async () => (await ensureDobermannWorkspaceFolder()).fsPath };
     }
     return lookupFolder;
 }

@@ -109,24 +109,24 @@ describe('Lookup tables: one JSON file each (James, 2026-11-21)', () => {
     const path = require('path') as typeof import('path');
     const folderFor = () => {
         const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dbmn-lookups-'));
-        return { dir, folder: { dataDir: async () => dir } };
+        return { dir, folder: { workspaceRoot: async () => dir } };
     };
-    const files = (dir: string) => (fs.existsSync(path.join(dir, 'lookup-tables')) ? fs.readdirSync(path.join(dir, 'lookup-tables')).sort() : []);
+    const files = (dir: string) => (fs.existsSync(path.join(dir, 'Lookup Tables')) ? fs.readdirSync(path.join(dir, 'Lookup Tables')).sort() : []);
 
     it('each table its own file; an edit rewrites only that table\'s; delete takes its file away', async () => {
         const { dir, folder } = folderFor();
         const store = new LookupTablesStore(folder, { now: () => NOW });
         const units = await store.create('Units');
         const sites = await store.create('Sites');
-        expect2(files(dir), [`${units.id}.json`, `${sites.id}.json`].sort());
-        const sitesFile = path.join(dir, 'lookup-tables', `${sites.id}.json`);
+        expect2(files(dir), ['Sites.json', 'Units.json']);
+        const sitesFile = path.join(dir, 'Lookup Tables', 'Sites.json');
         const before = fs.readFileSync(sitesFile, 'utf8');
         await store.save({ ...units, rows: [{ c1: 'EA', c2: 'each' }] });
         assert.strictEqual(fs.readFileSync(sitesFile, 'utf8'), before, 'the other table is not rewritten');
         assert.deepStrictEqual((await new LookupTablesStore(folder).get(units.id))?.rows, [{ c1: 'EA', c2: 'each' }]);
         assert.deepStrictEqual((await store.list()).map(t => t.name), ['Sites', 'Units']);
         await store.remove(units.id);
-        expect2(files(dir), [`${sites.id}.json`]);
+        expect2(files(dir), ['Sites.json']);
         assert.strictEqual(await store.get(units.id), undefined);
         fs.rmSync(dir, { recursive: true, force: true });
     });
@@ -154,6 +154,17 @@ describe('Lookup tables: one JSON file each (James, 2026-11-21)', () => {
         assert.strictEqual(state.get(LOOKUP_TABLES_KEY), undefined);
         assert.deepStrictEqual((await store.get(a.id))?.rows, [{ c1: 'EA', c2: 'each' }]);
         assert.strictEqual(await store.migrateFrom(state), 0, 'once');
+        fs.rmSync(dir, { recursive: true, force: true });
+    });
+
+    it('a renamed table renames its file; the file is found by the id inside, whatever it is called', async () => {
+        const { dir, folder } = folderFor();
+        const store = new LookupTablesStore(folder, { now: () => NOW });
+        const units = await store.create('Units');
+        await store.save({ ...units, name: 'UOM / units' });
+        expect2(files(dir), ['UOM - units.json']);
+        fs.renameSync(path.join(dir, 'Lookup Tables', 'UOM - units.json'), path.join(dir, 'Lookup Tables', 'from a colleague.json'));
+        assert.strictEqual((await new LookupTablesStore(folder).get(units.id))?.name, 'UOM / units');
         fs.rmSync(dir, { recursive: true, force: true });
     });
 

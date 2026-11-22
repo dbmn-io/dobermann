@@ -9,6 +9,7 @@
 import { freeReportName, REPORT_NAME_MAX, reportNameProblem } from '../../services/compare/report-name';
 import { duplicateCompare, getCompare, removeCompare, saveCompare, savedCompares, type SavedCompare } from '../../services/compare/compare-store';
 import { createQuery, duplicateQuery, getQuery, importQueryCopy, isQueryId, queryForSupport, listQueries, removeQuery, saveQuery, type SavedQuery } from '../../services/query/query-store';
+import { loadQueryFolder } from '../../services/query/query-folder';
 import { queryFromCompare } from '../../services/query/query-from-compare';
 import { isDraft } from '../../services/compare/compare-store';
 import { validateShortIdentifier } from '../../data-loading/system-schema';
@@ -422,9 +423,13 @@ export class HubController {
 
     /** Everything the Hub renders. Embedded in the page at first paint, and posted on every change. */
     async initialState(): Promise<Record<string, unknown>> {
-        // Every old saved compare is a query now: made once, as the Hub lists them (the old one is kept, not listed)
+        // Saved queries are in the workspace folder (query-folder): read in first. Then every old
+        // saved compare is a query now: made once, as the Hub lists them (the old one is kept, not listed)
         const compareState = this.ports.compares?.state();
-        if (compareState) await this.convertCompares(compareState);
+        if (compareState) {
+            await loadQueryFolder().catch(error => console.warn('[Hub] could not read the Queries folder', error));
+            await this.convertCompares(compareState);
+        }
         const { endpoints: endpointStore, environments: environmentStore, systems: systemStore } = this.ports;
         const [endpoints, systems, environments, active, transactions] = await Promise.all([
             endpointStore.getAllEndpoints(),

@@ -10,6 +10,7 @@
 import { appLog } from './app-log';
 import { DATA_DIR, LEGACY_DATA_DIR } from '../../../src/services/workspace/workspace-layout';
 import { QueryFileStore } from '../../../src/services/query/query-file-store';
+import { useQueryFolder } from '../../../src/services/query/query-folder';
 import type { LookupFolder } from '../../../src/services/lookup-tables/lookup-tables';
 import { listRunFiles, readRunFile, RUN_ARCHIVE_NAME, runFileExists, writeRunFile } from '../../../src/services/run-content/run-content-store';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -65,18 +66,24 @@ const BROWSER_ROOT = '/dbmn';
 /** A stored path's folder: VS Code on Windows stores backslashes. */
 const parentOf = (p: string) => p.slice(0, Math.max(p.lastIndexOf('/'), p.lastIndexOf('\\')));
 
-/** A query's file views keep their rows beside the history database: in the browser, or the workspace folder. */
+/**
+ * Saved queries are kept in the workspace folder's Queries folder (query-folder), shared with VS
+ * Code and the desktop app on that folder; without a folder, in this browser's own files (/dbmn).
+ */
+useQueryFolder({ root: () => WORKSPACE_ROOT, preload: (paths, folders) => loadFromFolder(paths, folders) });
+
+/** A query's file views keep their rows in the query's own folder (query-file-store). */
 export const queryFiles = new QueryFileStore({
     dataDir: async () => `${WORKSPACE_ROOT}/${DATA_DIR}`,
     preload: folder => loadFromFolder([], [folder])
 });
 
 /**
- * Lookup tables, one JSON file each, beside the history database: in the browser, or the
- * workspace folder. One object for the whole app: every lookup store built on it hears the others.
+ * Lookup tables, one JSON file each, in the workspace folder's Lookup Tables folder (or this
+ * browser's). One object for the whole app: every lookup store built on it hears the others.
  */
 export const lookupFolder: LookupFolder = {
-    dataDir: async () => `${WORKSPACE_ROOT}/${DATA_DIR}`,
+    workspaceRoot: async () => WORKSPACE_ROOT,
     preload: folder => loadFromFolder([], [folder])
 };
 

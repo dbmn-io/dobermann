@@ -29,6 +29,7 @@ import { allColumns, columnSql, compareKeyColumnSql, compareKeySql, defaultColum
 import { FORMULA_FUNCTIONS, formulaSql, fullRef, fullText, parseFormula, shortRef, shortText } from '../../services/query/formula';
 import type { FormulaNode } from '../../services/query/formula';
 import { reportNameProblem } from '../../services/compare/report-name';
+import { loadQueryFolder } from '../../services/query/query-folder';
 import { cleanViewName, getQuery, rebaseCompare, repairQuery, guessViewName, viewNameFromPath, VIEW_NAME_MAX, MAX_QUERY_VIEWS, moveView, moveViewFirst, changesCompareBaseline, nameViews, newSourceId, nextRunName, QuerySource, renameView, runName, saveQuery, SavedQuery, untickBlanks, untickClashes } from '../../services/query/query-store';
 import { columnTypes, spread, TYPE_SAMPLE, type ColumnType } from '../../services/query/column-types';
 import { CALC_VIEW, QUERY_JOIN_KINDS } from '../../services/query/query-types';
@@ -611,6 +612,8 @@ export class QueryController {
     }
 
     private async open(): Promise<void> {
+        // The web app on a workspace folder: its queries read in first (query-folder; nothing elsewhere)
+        await loadQueryFolder().catch(() => undefined);
         const query = getQuery(this.ports.state, this.config.queryId);
         if (!query) throw new Error('This query is no longer saved.');
         this.query = query;
