@@ -795,10 +795,16 @@
         body.append(note);
         if (!list.length) note.textContent = runOf ? `No other result of ${runOf.name}'s endpoint. Run it again, and the result can be added here.` : 'No results yet. Run a request, and its result can be added here.';
         tableEl.columns = [
-            { id: 'method', name: 'Method' }, { id: 'path', name: 'Path' }, { id: 'endpoint', name: 'Endpoint' }, { id: 'system', name: 'System' }, { id: 'environment', name: 'Environment' },
+            { id: 'method', name: 'Method' }, { id: 'path', name: 'Path' }, { id: 'endpoint', name: 'Endpoint' }, { id: 'system', name: 'System' }, { id: 'environment', name: 'Environment', aliases: ['env'] },
             ...headerNames.map(n => ({ id: `h:${n}`, name: n })),
             // How many requests the run sent (a batch's size). Not the View's rows: those are only known once it is read
             { id: 'requests', name: 'Requests', numbers: true }, { id: 'complete', name: 'Complete' }, { id: 'runAt', name: 'Run at' }, { id: 'type', name: 'Type' }
+        ];
+        // One fact, one search name everywhere (as the Hub's History): @env, @ran (when it ran, so @ran>7d reads a date),
+        // @status, besides the headings' own names (2026-11-22)
+        tableEl.searchFields = [
+            { id: 'ran', name: 'ran', get: row => row._result.executedAt || '' },
+            { id: 'status', name: 'status', get: row => row._result.status || '' }
         ];
         tableEl.rows = list.map(r => Object.assign({
             _id: r.id, _result: r,
