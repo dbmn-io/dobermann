@@ -257,3 +257,31 @@ describe('Query: a compare on a key of two columns (new engine)', function () {
         void seen;
     });
 });
+
+describe('Query: a compare\'s views lead (compareLeads)', function () {
+    it('a view added before a compare moves after it, its pairs turned round to join the compare', async () => {
+        const { compareLeads } = await import('../../../services/query/query-store');
+        const src = (id: string, extra: Record<string, unknown> = {}) => ({ id, name: id, endpointId: 'e', endpointName: 'e', view: 'v', executionId: id, isBatch: true, environment: '', executedAt: '', ...extra });
+        const q = {
+            id: 'q', name: 'q', letters: 'names', createdAt: '', updatedAt: '',
+            sources: [src('vX'), src('vBL'), src('vC1', { runOf: 'vBL', run: 'C1' })],
+            joins: [
+                { view: 'vBL', kind: 'left' as const, on: [{ left: { parts: [{ view: 'vX', column: 'sku' }] }, right: { parts: [{ view: 'vBL', column: 'code' }] } }] },
+                { view: 'vC1', kind: 'compare' as const, on: [{ left: { parts: [{ view: 'vBL', column: 'sku' }] }, right: { parts: [{ view: 'vC1', column: 'sku' }] } }] }
+            ]
+        } as unknown as SavedQuery;
+        assert.strictEqual(compareLeads(q), true);
+        assert.deepStrictEqual(q.sources.map(s => s.id), ['vBL', 'vC1', 'vX']);
+        assert.deepStrictEqual(q.joins.map(j => [j.view, j.kind]), [['vC1', 'compare'], ['vX', 'left']]);
+        assert.deepStrictEqual(q.joins[1].on.map(p => [p.left.parts[0], p.right.parts[0]]), [[{ view: 'vBL', column: 'code' }, { view: 'vX', column: 'sku' }]]);
+        // Already first: nothing moves
+        assert.strictEqual(compareLeads(q), false);
+    });
+    it('a query with no compare, or its compare already first, is left as it is', async () => {
+        const { compareLeads } = await import('../../../services/query/query-store');
+        const q = savedCompare();
+        const before = JSON.stringify(q);
+        assert.strictEqual(compareLeads(q), false);
+        assert.strictEqual(JSON.stringify(q), before);
+    });
+});

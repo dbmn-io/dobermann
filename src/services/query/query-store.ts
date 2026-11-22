@@ -272,6 +272,31 @@ export function untickBlanks(query: SavedQuery, empty: (viewId: string) => strin
 }
 
 /** Make a view the first: the one FROM reads, whose rows a LEFT JOIN keeps. */
+/**
+ * A compare's views lead (James, 2026-11-22): the engine works the compare out first and joins every other view to it,
+ * so the Baseline is the first view and the compare's other views follow it. A view that came before them (added
+ * first, the runs after it) moves after them, joined to the compare by its own columns; pairs it had turn round with it.
+ * True when anything moved.
+ */
+export function compareLeads(query: SavedQuery): boolean {
+    const compares = query.joins.filter(j => j.kind === 'compare');
+    if (!compares.length) return false;
+    const has = (id: string | undefined): id is string => !!id && query.sources.some(s => s.id === id);
+    const baseline = compares[0].on[0]?.left.parts[0]?.view;
+    if (!has(baseline)) return false;
+    // (the compare's other views keep the order they have on screen)
+    const inCompare = new Set([baseline, ...compares.map(j => j.view).filter(has)]);
+    const members = [baseline, ...query.sources.map(s => s.id).filter(id => id !== baseline && inCompare.has(id))];
+    if (members.every((id, i) => query.sources[i]?.id === id)) return false;
+    // The Baseline made first: every join fits the new order (a pair to the view that was first now belongs to that view)
+    if (query.sources[0]?.id !== baseline) reanchorView(query, baseline, 0);
+    const byId = new Map(query.sources.map(s => [s.id, s]));
+    query.sources = [...members.map(id => byId.get(id)!), ...query.sources.filter(s => !members.includes(s.id))];
+    const joins = new Map(query.joins.map(j => [j.view, j]));
+    query.joins = query.sources.slice(1).map(s => joins.get(s.id) ?? { view: s.id, kind: 'left', on: [] });
+    return true;
+}
+
 export function moveViewFirst(query: SavedQuery, id: string): void {
     if (rebaseCompare(query, id)) return;
     if (changesCompareBaseline(query, id, 0)) return;

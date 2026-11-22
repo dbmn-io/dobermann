@@ -29,7 +29,7 @@ import { allColumns, columnSql, compareKeyColumnSql, compareKeySql, defaultColum
 import { FORMULA_FUNCTIONS, formulaSql, fullRef, fullText, parseFormula, shortRef, shortText } from '../../services/query/formula';
 import type { FormulaNode } from '../../services/query/formula';
 import { reportNameProblem } from '../../services/compare/report-name';
-import { cleanViewName, getQuery, guessViewName, viewNameFromPath, VIEW_NAME_MAX, MAX_QUERY_VIEWS, moveView, moveViewFirst, changesCompareBaseline, nameViews, newSourceId, nextRunName, QuerySource, renameView, runName, saveQuery, SavedQuery, untickBlanks, untickClashes } from '../../services/query/query-store';
+import { cleanViewName, compareLeads, getQuery, guessViewName, viewNameFromPath, VIEW_NAME_MAX, MAX_QUERY_VIEWS, moveView, moveViewFirst, changesCompareBaseline, nameViews, newSourceId, nextRunName, QuerySource, renameView, runName, saveQuery, SavedQuery, untickBlanks, untickClashes } from '../../services/query/query-store';
 import { columnTypes, spread, TYPE_SAMPLE, type ColumnType } from '../../services/query/column-types';
 import { CALC_VIEW, QUERY_JOIN_KINDS } from '../../services/query/query-types';
 import { comparableRuns, type RequestTemplates, type RunHeaderValue } from '../../services/compare/compare-runs';
@@ -603,7 +603,9 @@ export class QueryController {
         const query = getQuery(this.ports.state, this.config.queryId);
         if (!query) throw new Error('This query is no longer saved.');
         this.query = query;
-        if (nameViews(query)) await saveQuery(this.ports.state, query);
+        // (a query saved with its compare after another view: the compare comes first, as the engine needs it)
+        const named = nameViews(query);
+        if (compareLeads(query) || named) await saveQuery(this.ports.state, query);
         this.post({ type: 'query.init', name: query.name, empty: query.sources.length === 0, reached: query.reached ?? 4, start: this.config.start === 'results' ? 'results' : 'edit', prefs: this.preferences(), ...(query.specialOff ? { specialOff: true } : {}) });
         // The views show at once, by what is saved; their rows are read behind them
         this.postState({ reading: true });
@@ -1300,6 +1302,8 @@ export class QueryController {
         const query = this.query;
         if (!query) return;
         await apply(query);
+        // A compare's views lead: a compare made after another view comes first, that view joined to it
+        compareLeads(query);
         query.updatedAt = new Date().toISOString();
         await saveQuery(this.ports.state, query);
         this.ports.host.compared?.();
