@@ -1201,6 +1201,12 @@
             case 'envVariablesAdded':
                 handleEnvVariablesAdded(message);
                 break;
+            // The lookup tables (names and columns): the template editor's list / lookup types offer and check them
+            case 'lookupTables':
+                window.dbmnLookupTables = Array.isArray(message.tables) ? message.tables : [];
+                if (window.TemplateCompletions && window.TemplateCompletions.updateDecorations) window.TemplateCompletions.updateDecorations();
+                break;
+
             case 'environmentDataUpdated':
                 // Environment was updated (e.g., variables added), refresh our local copy
                 if (message.environment) {

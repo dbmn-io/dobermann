@@ -198,7 +198,8 @@ test('Translate values: a value not in From is said in amber with + Add; typing 
         const values = ['EA', 'SE', 'DZ', 'BX'];
         const answer = (from, to) => values.map(v => {
             const hits = window.lut.filter(r => r[from] === v);
-            return hits.length === 1 ? { before: v, after: hits[0][to] } : { before: v, after: v, ...(hits.length ? { twice: true } : { missing: true }) };
+            // (the host's answer: found more than once, the first row's, marked twice; not found, left as it was)
+            return hits.length === 1 ? { before: v, after: hits[0][to] } : hits.length ? { before: v, after: hits[0][to], twice: true } : { before: v, after: v, missing: true };
         });
         window.openIt({
             baseLabel: undefined,
@@ -216,8 +217,8 @@ test('Translate values: a value not in From is said in amber with + Add; typing 
     await translate.locator('select.dbmn-fx-lookup-col').first().selectOption('tms');
     await translate.locator('select.dbmn-fx-lookup-col').last().selectOption('wms');
     const cells = () => p.locator('.dbmn-fx-sample tbody tr td:nth-child(2)').allTextContents();
-    await expect.poll(cells).toEqual(['EA', 'ST', 'DZ · not in TMS + Add', 'BX · in TMS twice']);
-    // Found twice: said, never added to
+    await expect.poll(cells).toEqual(['EA', 'ST', 'DZ · not in TMS + Add', 'BX → BOX · in TMS twice, first row used']);
+    // Found twice: the first row's, said, never added to (the manager for James, 2026-11-23)
     await expect(p.locator('.dbmn-fx-sample tbody tr').nth(3).locator('.dbmn-fx-add')).toHaveCount(0);
     // + Add: a box for what DZ becomes; a refusal is said on its line
     await p.locator('.dbmn-fx-sample tbody tr').nth(2).locator('.dbmn-fx-add').click();
@@ -230,7 +231,7 @@ test('Translate values: a value not in From is said in amber with + Add; typing 
     // ...and added: the sample is asked again, and DZ reads translated
     await box.fill('DOZ');
     await p.getByRole('button', { name: 'Add to UOM' }).click();
-    await expect.poll(cells).toEqual(['EA', 'ST', 'DOZ', 'BX · in TMS twice']);
+    await expect.poll(cells).toEqual(['EA', 'ST', 'DOZ', 'BX → BOX · in TMS twice, first row used']);
     expect(await p.evaluate(() => window.added.at(-1))).toEqual({ table: 'uom', from: 'tms', to: 'wms', value: 'DZ', out: 'DOZ' });
 });
 

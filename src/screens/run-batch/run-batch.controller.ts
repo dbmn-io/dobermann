@@ -35,7 +35,7 @@ import { sharedScript } from '../../utils/shared-script';
 import { JsonGenerator } from '../../data-loading/json-generator';
 import { ArrayRepetitionHelper } from '../../services/transaction-preparation/helpers/array-repetition.helper';
 import { TemplateParser } from '../../data-loading/template-parser';
-import { refreshTemplateLookups, templateUsesLookups } from '../../data-loading/template-lookups';
+import { lookupTablesNamed, refreshTemplateLookups, templateUsesLookups } from '../../data-loading/template-lookups';
 const TemplateRename = sharedScript<typeof templateRenameScript>(templateRenameScript, 'TemplateRename');
 // GitHub Issue #226: Centralised column-mismatch detection (testable utility)
 import {
@@ -301,14 +301,14 @@ export class RunBatchController {
     }
 
     /**
-     * `lu` in the template (James, 2026-11-23): the lookup tables it names, read again and given to
+     * list / lookup types in the template (James, 2026-11-23): the lookup tables they name, read again and given to
      * the page, so Validate checks each row as the run will. Sent with the endpoint, and again when
      * the page asks (it reaches Validate), so an edit made in the meantime counts.
      */
     private async postTemplateLookups(): Promise<void> {
         const template = JSON.stringify(this.endpointConfig ?? {});
         if (!templateUsesLookups(template)) return;
-        const named = new Set(Array.from(template.matchAll(/\|\s*lu:([^:|}"]+)/gi), m => m[1].trim().toLowerCase()));
+        const named = lookupTablesNamed(template);
         const tables = (await refreshTemplateLookups()).filter(t => named.has(t.name.trim().toLowerCase()));
         this.session.post({ type: 'templateLookups', tables });
     }

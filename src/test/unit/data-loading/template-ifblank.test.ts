@@ -33,7 +33,7 @@ describe('Template ifblank: what a blank value becomes', () => {
         setTemplateLookupTables([{ id: 'u', name: 'UOM', updatedAt: '', columns: [{ id: 'w', name: 'WMS' }, { id: 't', name: 'TMS' }], rows: [{ w: 'EA', t: 'EA' }] }]);
         try {
             expect(run('', 'ifblank:ea|upper')).to.deep.equal({ success: true, value: 'EA' });
-            expect(run('', 'ifblank:EA|lu:uom:tms>wms')).to.deep.equal({ success: true, value: 'EA' });
+            expect(run('', 'ifblank:EA|lookup:uom:tms>wms')).to.deep.equal({ success: true, value: 'EA' });
         } finally { setTemplateLookupTables([]); }
     });
 

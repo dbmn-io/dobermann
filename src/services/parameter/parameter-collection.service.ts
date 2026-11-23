@@ -19,8 +19,24 @@ import { IExtensionDiagnosticLogger } from '../logging/extension-diagnostic-logg
 import { extractVariablesFromJsonTemplate } from '../../data-loading/json-template-parser';
 import { parseModifiers } from '../../data-loading/modifier-parser';
 import { applyModifiers } from '../../data-loading/modifier-executor';
-import { refreshTemplateLookups } from '../../data-loading/template-lookups';
+import { lookupValuesOf, refreshTemplateLookups } from '../../data-loading/template-lookups';
+import { parseLookupModifier } from '../../data-loading/modifier-parser';
+import type { LookupModifier } from '../../data-loading/modifier-types';
 import type { DataType } from '../../data-loading/types';
+
+/**
+ * A list or lookup variable's table spec. Two forms reach here: `{{uom:list|uom:wms}}` read by the
+ * text scan (type list, modifier `uom:wms`), and read from a JSON body (type string, modifier
+ * `list:uom:wms`).
+ */
+function lookupOf(variable: TemplateVariable): LookupModifier | undefined {
+    const type = (variable.typeHint || '').toLowerCase();
+    const first = (variable.formatModifier || '').split('|')[0].trim();
+    const token = type === 'list' || type === 'lookup' ? `${type}:${first}` : /^(list|lookup):/i.test(first) ? first : '';
+    if (!token) return undefined;
+    const mod = parseLookupModifier(token);
+    return typeof mod !== 'string' && mod.kind === 'lookup' ? mod : undefined;
+}
 
 type DbmnModalField = {
     id: string;
@@ -29,6 +45,8 @@ type DbmnModalField = {
     value?: string;
     placeholder?: string;
     options?: Array<{ value: string; label: string; description?: string }>;
+    /** Values a text field offers as it's typed in (a list or lookup type's valid values). */
+    suggestions?: string[];
     /** Declarative validation, evaluated client-side by DbmnModal on submit.
      *  Functions can't cross the postMessage boundary, so rules are pure data.
      *  See dbmn-modal.js `validateField`. */
@@ -220,7 +238,7 @@ export class ParameterCollectionService implements IParameterCollectionService {
         while ((match = variablePattern.exec(template)) !== null) {
             const fullVariable = match[1].trim();
             
-            // Extract variable name (everything before optional :type, or a pipe's modifiers: {{uom | lu:…}})
+            // Extract variable name (everything before optional :type, or a pipe's modifiers: {{note | ifblank:none}})
             const variableName = fullVariable.split(/[:|]/)[0].trim();
             
             // Skip auto-generated variables (check the full variable string)
@@ -313,7 +331,7 @@ export class ParameterCollectionService implements IParameterCollectionService {
             // preserve anything else as the batch-style formatModifier so the
             // Run API modal can derive validation from `|>0`, `|int`, `|3-50`, etc.
             const colonIdx = fullVariable.indexOf(':');
-            // A pipe before any colon: {{uom | lu:uom:tms>wms}}, a text value and its modifiers
+            // A pipe before any colon: {{note | ifblank:none}}, a text value and its modifiers
             const namePipeIdx = fullVariable.indexOf('|');
             const pipeFirst = namePipeIdx > 0 && (colonIdx === -1 || namePipeIdx < colonIdx);
             const variableName = pipeFirst ? fullVariable.substring(0, namePipeIdx).trim()
@@ -722,6 +740,8 @@ export class ParameterCollectionService implements IParameterCollectionService {
         }
         const bridge: ModalBridge = spec => host.showModal(spec as never) as Promise<DbmnModalResult>;
 
+        // (a list or lookup type offers its table's values: the tables read first)
+        if (variables.some(v => lookupOf(v))) await refreshTemplateLookups();
         const fields: DbmnModalField[] = variables.map(v => this.buildModalField(v));
 
         try {
@@ -746,7 +766,7 @@ export class ParameterCollectionService implements IParameterCollectionService {
                         // paintFieldErrors).
                         onSubmit: async (fields) => {
                             // (`lu`: the lookup tables read now, so the check sees them as they are)
-                            if (variables.some(v => /(^|\|)\s*lu:/i.test(v.formatModifier || ''))) await refreshTemplateLookups();
+                            if (variables.some(v => lookupOf(v))) await refreshTemplateLookups();
                             const fieldErrors = this.validateFieldsWithBatchPrep(variables, fields);
                             if (Object.keys(fieldErrors).length > 0) {
                                 const err = new Error('Some fields need attention') as Error & { fieldErrors?: Record<string, string> };
@@ -794,6 +814,13 @@ export class ParameterCollectionService implements IParameterCollectionService {
     private buildModalField(variable: TemplateVariable): DbmnModalField {
         const type = (variable.typeHint || '').toLowerCase();
         const label = variable.name;
+
+        // list / lookup (James, 2026-11-23: "we actually give an options list"): the table's valid values
+        const lookup = lookupOf(variable);
+        if (lookup) {
+            const values = lookupValuesOf(lookup);
+            return { id: variable.name, type: 'text', label, placeholder: values.length ? 'Pick, or type to filter' : undefined, suggestions: values };
+        }
 
         if (type === 'boolean') {
             return {
@@ -876,7 +903,11 @@ export class ParameterCollectionService implements IParameterCollectionService {
                     ? (type as DataType)
                     : 'string';
             const value = (fields[variable.name] ?? '').toString();
-            const modifierChain = this.stripDateFormatPrefix(variable.formatModifier, dataType);
+            // list / lookup: the first part is the table's spec, given to the chain as list:… / lookup:…
+            const listSpec = (type === 'list' || type === 'lookup') && variable.formatModifier
+                ? [`${type}:${variable.formatModifier.split('|')[0].trim()}`, ...variable.formatModifier.split('|').slice(1)].join('|')
+                : undefined;
+            const modifierChain = listSpec ?? this.stripDateFormatPrefix(variable.formatModifier, dataType);
             const parsed = modifierChain
                 ? parseModifiers(modifierChain, dataType)
                 : parseModifiers('', dataType);

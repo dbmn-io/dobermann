@@ -402,6 +402,19 @@ function parseTypeFormatModifier(suffix: string): {
     formatModifier?: string;
     parseError?: string;
 } {
+    // `list` and `lookup` (James, 2026-11-23): a value that must be in a lookup table, sent as text.
+    // {{uom:list|uom:wms}}, {{uom:list|uom}}, {{uom:lookup|uom:tms>wms}}: the table spec is the first
+    // part after the pipe, given on as list:… / lookup:… for the modifier chain (modifier-parser.ts)
+    const listType = /^\s*(list|lookup)\s*(?:\|(.*))?$/i.exec(suffix);
+    if (listType) {
+        const kind = listType[1].toLowerCase();
+        const parts = (listType[2] || '').split('|').map(p => p.trim()).filter(Boolean);
+        if (!parts.length) {
+            return { dataType: 'string', parseError: kind === 'list' ? 'list needs a table: {{name:list|table:column}}' : 'lookup needs a table and two columns: {{name:lookup|table:from>to}}' };
+        }
+        return { dataType: 'string', formatModifier: [`${kind}:${parts[0]}`, ...parts.slice(1)].join('|') };
+    }
+
     // Check for pipe (modifier separator)
     const pipeIndex = suffix.indexOf('|');
 

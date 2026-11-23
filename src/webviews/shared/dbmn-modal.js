@@ -35,7 +35,8 @@
  *   - Auto-focuses the first form field, or failing that the primary action.
  *
  * Field schema:
- *   { id, type, label?, value?, placeholder?, required?, autoFocus?, options? }
+ *   { id, type, label?, value?, placeholder?, required?, autoFocus?, options?, suggestions? }
+ *     suggestions: ['EA', …] (text only): offered as it's typed in, filtered by the typing
  *     type ∈ 'text' | 'email' | 'password' | 'number' | 'textarea' | 'select'
  *     options: [{ value, label, group? }] (select only; `group` puts it under that heading)
  *
@@ -149,6 +150,16 @@
         if (field.type === 'textarea' && field.value != null) input.value = field.value;
 
         wrap.appendChild(input);
+
+        // `suggestions`: values a text field offers as it's typed in, the typing filtering them (a
+        // lookup table's valid values); any text can still be typed
+        if (Array.isArray(field.suggestions) && field.suggestions.length && input.tagName === 'INPUT') {
+            const list = el('datalist');
+            list.id = 'dbmn-modal-field-' + field.id + '-options';
+            field.suggestions.slice(0, 2000).forEach((value) => { const o = el('option'); o.value = String(value); list.appendChild(o); });
+            input.setAttribute('list', list.id);
+            wrap.appendChild(list);
+        }
 
         // Inline validation error slot — hidden while empty via `.dbmn-modal-field-error:empty`.
         // Populated by validateField() when the field's declarative rules fail.

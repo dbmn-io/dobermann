@@ -16,6 +16,7 @@ import { promptNewSystemInModal } from '../new-system-prompt';
 import type { ScreenSession } from '../screen-session';
 import { buildTemplateWorkbook, endpointTemplateVariables } from './data-template';
 import { EndpointEditorPorts, TestPreviewSample } from './endpoint-editor.ports';
+import { refreshTemplateLookups } from '../../data-loading/template-lookups';
 
 export interface EndpointEditorConfig {
     /** The endpoint being edited; a `new-*` id (or none) for a draft. */
@@ -361,6 +362,17 @@ export class EndpointEditorController {
         this.session.post({ type: 'templateAnalysisResults', variables, arrays });
     }
 
+    /**
+     * The lookup tables' names and columns, for the template editor's list / lookup types: its
+     * predictive text offers them, and it marks a table or column that isn't there.
+     */
+    private async postLookupTables(): Promise<void> {
+        try {
+            const tables = await refreshTemplateLookups();
+            this.session.post({ type: 'lookupTables', tables: tables.map(t => ({ name: t.name, columns: t.columns.map(c => c.name) })) });
+        } catch { /* the editor works without them */ }
+    }
+
     private async currentEnvironment(): Promise<void> {
         const none = (name: string) => this.session.post({ type: 'currentEnvironmentData', environment: { id: null, name, baseUrl: null } });
         try {
@@ -377,6 +389,7 @@ export class EndpointEditorController {
                 if (typeof iss === 'string') baseUrl = iss.replace(/-auth$/, '');
             }
             const variables: Record<string, string> = { ...(active.variables || {}) };
+            void this.postLookupTables();
             this.session.post({
                 type: 'currentEnvironmentData',
                 environment: {

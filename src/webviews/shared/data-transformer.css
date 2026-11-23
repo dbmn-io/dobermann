@@ -751,6 +751,12 @@ body:has(#csvBatchContainer) .footer-content {
     border: 1px solid var(--vscode-inputValidation-warningBorder, #cca700) !important;
 }
 
+/* A note on a cell, not to fix (a lookup's value found more than once: the first row used): a dotted underline, the note on hover */
+.grid-cell-note {
+    text-decoration: underline dotted var(--vscode-descriptionForeground, #999);
+    text-underline-offset: 3px;
+}
+
 .grid-cell-error:focus {
     box-shadow: inset 0 0 0 1px var(--vscode-inputValidation-warningBorder, #cca700) !important;
 }

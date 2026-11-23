@@ -65,6 +65,8 @@
 .dbmn-fx-sample td.dbmn-fx-changed { color: var(--dbmn-textLink-foreground); }
 /* A value a lookup didn't find (or found twice): left as it was, said in amber; + Add on one not found */
 .dbmn-fx-sample td.dbmn-fx-missing { color: var(--dbmn-editorWarning-foreground); white-space: normal; }
+/* Found more than once: the first row's answer, said quietly (not a warning) */
+.dbmn-fx-sample td.dbmn-fx-twice { color: var(--dbmn-descriptionForeground); white-space: normal; }
 .dbmn-fx-sample .dbmn-fx-add { margin-left: 6px; padding: 0 8px; }
 .dbmn-fx-sample .dbmn-fx-add-box { width: 9em; padding: 2px 6px; }
 .dbmn-fx-sample .dbmn-fx-add-note { color: var(--dbmn-editorWarning-foreground); }

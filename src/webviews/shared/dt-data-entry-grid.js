@@ -50,7 +50,7 @@
             toLower: false,         // String: convert to lowercase
             dateMath: null,         // Date: date math expression (e.g., "+2d")
             ifBlank: null,          // ifblank:text - what a blank becomes (so a blank is fine)
-            lookups: [],            // lu:table:from>to or lu:table:column (any type)
+            lookups: [],            // the list / lookup types' table: { table, from, to? } (from '' = its one column)
             hints: []               // Human-readable hints for display
         };
 
@@ -59,6 +59,16 @@
         }
 
         const parts = modifierString.split('|').map(s => s.trim()).filter(s => s.length > 0);
+
+        // `list` and `lookup` types (James, 2026-11-23): the first part is the table and its columns
+        // ({{uom:list|uom:wms}}, {{uom:list|uom}}, {{uom:lookup|uom:tms>wms}}); the rest are modifiers
+        if ((dataType === 'list' || dataType === 'lookup') && parts.length) {
+            var spec = parts.shift().split(':');
+            var cols = spec.slice(1).join(':').split('>');
+            var lu = { table: (spec[0] || '').trim(), from: (cols[0] || '').trim(), to: dataType === 'lookup' && cols.length > 1 ? (cols[1] || '').trim() : undefined };
+            result.lookups.push(lu);
+            result.hints.push(lu.to !== undefined ? lu.from + ' → ' + lu.to + ' in ' + lu.table : 'one of ' + lu.table + (lu.from ? "'s " + lu.from : ''));
+        }
 
         for (const part of parts) {
             const partLower = part.toLowerCase();
@@ -80,15 +90,6 @@
                 continue;
             }
 
-            // `lu`: the value looked up in a lookup table (James, 2026-11-23), any type
-            if (partLower.indexOf('lu:') === 0) {
-                var luParts = part.split(':');
-                var luCols = luParts.slice(2).join(':').split('>');
-                var lookup = { table: (luParts[1] || '').trim(), from: (luCols[0] || '').trim(), to: luCols.length > 1 ? (luCols[1] || '').trim() : undefined };
-                result.lookups.push(lookup);
-                result.hints.push(lookup.to !== undefined ? lookup.from + ' → ' + lookup.to + ' in ' + lookup.table : 'in ' + lookup.table + "'s " + lookup.from);
-                continue;
-            }
 
             // String modifiers
             if (dataType === 'string') {
@@ -746,6 +747,13 @@
                         th.classList.add('grid-header-has-validation');
                         th.title = `${v.name}: ${mods.hints.join(', ')}`;
                     }
+                    // list / lookup: its valid values on the heading's hover (James, 2026-11-23: "a dotted
+                    // underline in the heading. And it would show a list of valid values")
+                    if (mods.lookups && mods.lookups.length) {
+                        const valid = validValues(mods.lookups[0]);
+                        th.classList.add('grid-header-has-validation');
+                        th.title = `${v.name}: one of ${valid.slice(0, 30).join(', ')}${valid.length > 30 ? `… and ${valid.length - 30} more` : ''}${valid.length ? '' : '(no values yet)'}\nClick a cell to pick one; typing filters them`;
+                    }
                     if (isOptionalVar(v)) {
                         const opt = document.createElement('span');
                         opt.className = 'grid-header-optional-indicator';
@@ -757,7 +765,10 @@
                 },
                 cell: (td, value, row) => markCell(td, col, row)
             };
-            if (isBooleanVar(v)) {
+            if (mods.lookups && mods.lookups.length) {
+                // The values it may take, offered in the cell's box and filtered as it's typed
+                column.editor = { options: () => validValues(mods.lookups[0]) };
+            } else if (isBooleanVar(v)) {
                 column.editor = { type: 'checkbox' };
                 column.render = (value, row) => checkboxFor(row, col);
             } else if (v.dataType === 'date') {
@@ -828,6 +839,12 @@
         if (error) {
             td.classList.add('grid-cell-error');
             td.title = `${v.name} ${error.error}`;
+        }
+        const notes = !error && csvState.gridCellNotes && csvState.gridCellNotes.get(place);
+        const note = notes && notes.find(n => n.col === col);
+        if (note) {
+            td.classList.add('grid-cell-note');
+            td.title = `${v.name}: ${note.note}`;
         }
         const blanks = csvState.gridBlankCells && csvState.gridBlankCells.get(place);
         if (blanks && blanks.some(b => b.col === col)) {
@@ -1787,35 +1804,48 @@
     var lookupTables = [];
     function setLookupTables(tables) {
         lookupTables = Array.isArray(tables) ? tables : [];
+        // (the headings' valid values, and the rows checked again against them)
+        const table = csvState && csvState.dataEntryGrid && csvState.dataEntryGrid.table;
+        if (table && table.redrawHeads) table.redrawHeads();
         if (csvState && csvState.gridDataModel && csvState.gridDataModel.length) refreshGridIssues({ keepRows: true });
     }
-    function lookupColumnOf(table, ref) {
-        var want = String(ref == null ? '' : ref);
-        return table.columns.filter(function (c) { return c.id === want; })[0] ||
-            table.columns.filter(function (c) { return String(c.name).toLowerCase() === want.toLowerCase(); })[0];
+    /** A list or lookup's valid values: its From column's (or its table's one column's), each once. */
+    function validValues(lu) {
+        const table = lookupTables.filter(function (t) { return String(t.name).trim().toLowerCase() === String(lu.table).trim().toLowerCase(); })[0];
+        if (!table) return [];
+        const from = lu.from ? window.LookupValue.lookupColumn(table, lu.from) : (table.columns.length === 1 ? table.columns[0] : null);
+        if (!from) return [];
+        const seen = new Set();
+        (table.rows || []).forEach(function (r) { const v = r[from.id] == null ? '' : String(r[from.id]); if (v) seen.add(v); });
+        return Array.from(seen);
     }
     function lookupInTables(lu, value) {
         var table = lookupTables.filter(function (t) { return String(t.name).trim().toLowerCase() === String(lu.table).trim().toLowerCase(); })[0];
         if (!table) return { error: "there's no lookup table called " + lu.table };
-        var from = lookupColumnOf(table, lu.from);
+        // (`list|uom`: a table of one column; with more, said, never guessed)
+        if (!lu.from && table.columns.length !== 1) return { error: table.name + ' has more than one column: say which, e.g. ' + lu.table + ':' + String((table.columns[0] || { name: 'column' }).name).toLowerCase() };
+        var rule = window.LookupValue;   // shared/lookup-value.js: the rule the run itself uses
+        var from = lu.from ? rule.lookupColumn(table, lu.from) : table.columns[0];
         if (!from) return { error: table.name + ' has no column called ' + lu.from };
-        var to = lu.to === undefined ? null : lookupColumnOf(table, lu.to);
+        var to = lu.to === undefined ? null : rule.lookupColumn(table, lu.to);
         if (lu.to !== undefined && !to) return { error: table.name + ' has no column called ' + lu.to };
         if (!value) return { error: 'needs a value from ' + table.name + "'s " + from.name + ' column' };
-        var hits = (table.rows || []).filter(function (r) { return (r[from.id] == null ? '' : String(r[from.id])) === value; });
-        if (!hits.length) return { error: value + " isn't in " + table.name + "'s " + from.name + ' column' };
-        if (hits.length > 1) return { error: value + ' is in ' + table.name + "'s " + from.name + ' column ' + hits.length + ' times' };
-        if (to) {
-            var out = hits[0][to.id] == null ? '' : String(hits[0][to.id]);
-            if (out === '') return { error: value + "'s " + to.name + ' in ' + table.name + ' is blank' };
-            return { value: out };
-        }
-        return { value: value };
+        var answer = rule.lookupValue(table, from.id, value, to ? to.id : undefined);
+        if (answer.kind === 'missing') return { error: value + " isn't in " + table.name + "'s " + from.name + ' column' };
+        if (!to) return { value: value };   // (list: in the list is in the list, however often)
+        if (answer.value === '') return { error: value + "'s " + to.name + ' in ' + table.name + ' is blank' };
+        // In the From column more than once: the first row's, said, not to fix (the manager for James, 2026-11-23:
+        // "if we're looking up, we pick the first one")
+        if (answer.rows > 1) return { value: answer.value, note: value + ' · in ' + from.name + ' ' + (answer.rows === 2 ? 'twice' : answer.rows + ' times') + ', first row used (' + answer.value + ')' };
+        return { value: answer.value };
     }
 
     function validateDataModelRow(rowData, rowIndex) {
         var rowErrors = [];
         if (!csvState.gridTemplateVariables) return rowErrors;
+        // Notes on cells (not to fix): a lookup's value found more than once, the first row used
+        if (!csvState.gridCellNotes) csvState.gridCellNotes = new Map();
+        csvState.gridCellNotes.delete(rowIndex);
 
         csvState.gridTemplateVariables.forEach(function (variable, colIndex) {
             if (!variable || !variable.modifiers) return;
@@ -1841,6 +1871,11 @@
                     if (luAnswer.error) {
                         rowErrors.push({ row: rowIndex, col: colIndex, variable: variable.name, value: value, error: luAnswer.error });
                         return;
+                    }
+                    if (luAnswer.note) {
+                        var notes = csvState.gridCellNotes.get(rowIndex) || [];
+                        notes.push({ col: colIndex, note: luAnswer.note });
+                        csvState.gridCellNotes.set(rowIndex, notes);
                     }
                     looked = luAnswer.value;
                 }

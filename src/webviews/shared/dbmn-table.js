@@ -71,6 +71,8 @@
  *                                        the browser's own box for it (value: the cell's value as that box
  *                                        takes it; null when it can't, and the box is plain text)
  *   { id, editor: { type: 'checkbox' } }  yes/no: Enter or a double-click turns it over
+ *   { id, editor: { options: () => ['EA', 'CS', …] } }  the box offers these as it's typed in, the
+ *                                        typing filtering them (a lookup table's valid values); any text still goes
  *   orders.onCellKey = (event, held) => true   the screen sees each key first (held: { index, id, row,
  *                                        editing?, value? }); true when it took it (Ctrl+D, Tab adding a row)
  *   orders.held; orders.select(index, id); orders.write([{ index | row, id, value }], kind); orders.edit()
@@ -183,6 +185,8 @@
     const ROW_PICK = '__pick';    // (`selectable`: the tick-box column the table draws itself)
     /** The table's own columns, not the screen's: never in `columns`, a layout or a new row. */
     const own = id => id === ROW_GUTTER || id === ROW_PICK;
+    /** Each open cell's list of values gets its own id. */
+    let cellOptionLists = 0;
     const KEEP_PAGES = 60;
     /** Typing is never held up: over this many rows a search waits for a pause in the typing, then runs a little at a time and stops at the next key. */
     const SEARCH_AT_ONCE = 3000;
@@ -2399,8 +2403,18 @@
                 }
             }
             if (editor.type === 'number') input.inputMode = 'decimal';
+            // The values it may take, offered as it's typed in (the browser's own list, filtered by the typing)
+            const options = typeof editor.options === 'function' ? editor.options(row) : null;
+            if (Array.isArray(options) && options.length) {
+                const list = make('datalist');
+                list.id = `dbmn-cell-options-${++cellOptionLists}`;
+                options.slice(0, 2000).forEach(value => { const o = make('option'); o.value = String(value); list.append(o); });
+                input.setAttribute('list', list.id);
+                this._cellOptions = list;
+            }
             input.setAttribute('aria-label', `${column.name || column.id}, row ${a.index + 1}`);
             this._openBox(td, input, textOf(old));
+            if (this._cellOptions) { input.after(this._cellOptions); this._cellOptions = null; }
             input.focus();
             const end = input.value.length;
             try {

@@ -85,11 +85,17 @@ export function parseModifiers(modifierString: string, dataType: DataType): Pars
             continue;
         }
 
-        // `lu:table:from>to` or `lu:table:column`: a lookup (any type: the value is looked up as text)
-        if (partLower.startsWith('lu:')) {
+        // `list:table[:column]` / `lookup:table:from>to`: the list and lookup types' spec, as the
+        // template readers give it (json-template-parser: {{uom:list|uom:wms}} → list:uom:wms)
+        if (partLower.startsWith('list:') || partLower.startsWith('lookup:')) {
             const lookup = parseLookupModifier(part);
             if (typeof lookup === 'string') result.errors.push(lookup);
             else result.modifiers.push(lookup);
+            continue;
+        }
+        // (`lu` was never released: said what it is now, never quietly ignored)
+        if (partLower.startsWith('lu:')) {
+            result.errors.push(LU_REPLACED);
             continue;
         }
 
@@ -109,16 +115,26 @@ export function parseModifiers(modifierString: string, dataType: DataType): Pars
     return result;
 }
 
-/** `lu:table:from>to` or `lu:table:column` as a lookup modifier, or what is wrong with it. */
+/** What `lu` is now (it was never in a release). */
+export const LU_REPLACED = 'lu is now a type: {{name:list|table:column}} checks a value is in a column, {{name:lookup|table:from>to}} sends another';
+
+/**
+ * `list:table[:column]` or `lookup:table:from>to` as a lookup modifier, or what is wrong with it.
+ * A list names the column the value must be in (a table of one column needs none); a lookup names
+ * the column it's found in and the one sent.
+ */
 export function parseLookupModifier(token: string): Modifier | string {
     const parts = token.split(':').map(p => p.trim());
+    const kind = parts[0].toLowerCase();
     const table = parts[1] || '';
     const columns = parts.slice(2).join(':');
     const [from, to, ...more] = columns.split('>').map(c => c.trim());
-    if (!table || !from || more.length || (to !== undefined && !to)) {
-        return `lu needs a table and a column: lu:table:column, or lu:table:from>to (got ${token})`;
+    if (kind === 'lookup') {
+        if (!table || !from || !to || more.length) return `lookup needs a table and two columns: {{name:lookup|table:from>to}}`;
+        return { kind: 'lookup', type: 'lookup', table, from, to };
     }
-    return to === undefined ? { kind: 'lookup', type: 'lookup', table, from } : { kind: 'lookup', type: 'lookup', table, from, to };
+    if (!table || to !== undefined || more.length) return `list needs a table, and the column if it has more than one: {{name:list|table:column}}`;
+    return { kind: 'lookup', type: 'lookup', table, from: from || '' };
 }
 
 /**
@@ -404,8 +420,8 @@ function isModifierToken(token: string, dataType: DataType): boolean {
     if (tokenLower === 'asstring') {
         return true;
     }
-    // A lookup, and what a blank becomes (all types)
-    if (tokenLower.startsWith('lu:') || tokenLower.startsWith('ifblank:')) {
+    // A list or lookup's spec, `lu` (to be said what it is now), and what a blank becomes (all types)
+    if (tokenLower.startsWith('list:') || tokenLower.startsWith('lookup:') || tokenLower.startsWith('lu:') || tokenLower.startsWith('ifblank:')) {
         return true;
     }
 
@@ -496,7 +512,7 @@ export function serializeModifiers(modifiers: ParsedModifiers): string {
 function serializeSingleModifier(modifier: Modifier): string {
     switch (modifier.kind) {
         case 'lookup':
-            return `lu:${modifier.table}:${modifier.from}${modifier.to !== undefined ? '>' + modifier.to : ''}`;
+            return modifier.to !== undefined ? `lookup:${modifier.table}:${modifier.from}>${modifier.to}` : `list:${modifier.table}${modifier.from ? ':' + modifier.from : ''}`;
         case 'string':
             switch (modifier.type) {
                 case 'trim':

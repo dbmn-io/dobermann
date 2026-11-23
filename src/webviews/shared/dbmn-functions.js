@@ -38,7 +38,7 @@
  *                                             // "option to ADD value for Group and DZ here too"): the screen adds
  *                                             // the row (From = value, To = out); then the sample is asked again.
  *                                             // A sample says which values weren't found: rows: [{ before, after,
- *                                             // missing?: true, twice?: true, looked? }], lookup: { table, from, to }
+ *                                             // missing?: true, twice?: true (after: the first row's), looked? }], lookup: { table, from, to }
  *                                             // (ids; `looked`: the value as it reached Translate, when functions
  *                                             // before it changed it: that is what is said and added)
  *       onOpenLookup: id => …                 // "Open" beside a lookup table: the dialog closes first
@@ -296,13 +296,22 @@
                 const tr = el('tr');
                 const before = show(r.before), after = show(r.after);
                 const changed = before !== after;
-                // A value the lookup didn't find (or found twice): left as it was, and said so; one not found can be added
-                if (names && (r.missing || r.twice)) {
-                    // (`looked`: the value as it reached Translate, after any function before it; what is added)
-                    const looked = r.looked === undefined ? before : show(r.looked);
-                    const said = el('td', 'font-mono dbmn-fx-missing', `${looked} · ${r.twice ? `in ${names.from} twice` : `not in ${names.from}`}`);
+                // (`looked`: the value as it reached Translate, after any function before it; what is added)
+                const looked = r.looked === undefined ? before : show(r.looked);
+                // Found more than once: the first row's answer, said (the manager for James, 2026-11-23: "if we're
+                // looking up, we pick the first one")
+                if (names && r.twice && !r.missing) {
+                    const said = el('td', 'font-mono dbmn-fx-twice', `${looked} → ${after} · in ${names.from} twice, first row used`);
+                    said.title = said.textContent;
                     tr.append(el('td', 'font-mono', before), said);
-                    if (r.missing && typeof o.onAddLookupRow === 'function') said.append(' ', addButton(said, looked, got.lookup, names));
+                    if (withBase) tr.append(el('td', 'font-mono', r.base === undefined ? '' : show(r.base)));
+                    return tr;
+                }
+                // A value the lookup didn't find: left as it was, and said so; it can be added
+                if (names && r.missing) {
+                    const said = el('td', 'font-mono dbmn-fx-missing', `${looked} · not in ${names.from}`);
+                    tr.append(el('td', 'font-mono', before), said);
+                    if (typeof o.onAddLookupRow === 'function') said.append(' ', addButton(said, looked, got.lookup, names));
                     if (withBase) tr.append(el('td', 'font-mono', r.base === undefined ? '' : show(r.base)));
                     return tr;
                 }

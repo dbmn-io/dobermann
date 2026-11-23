@@ -26,8 +26,9 @@
  *   {{Date:date|+2d}}              → Date + add 2 days (default format)
  *   {{Date:date:iso|+2d}}          → Date: ISO format + add 2 days
  *   {{A8:datetime|+7d}}            → A8 datetime + add 1 week
- *   {{uom | lu:uom:tms>wms}}       → uom looked up in lookup table uom: TMS in, WMS out (type string)
- *   {{uom | lu:uom:wms}}           → uom checked to be in table uom's WMS column
+ *   {{uom:list|uom:wms}}           → uom checked to be in lookup table uom's WMS column (sent as text)
+ *   {{uom:list|uom}}               → the same, for a lookup table of one column
+ *   {{uom:lookup|uom:tms>wms}}     → uom found in table uom's TMS column; that row's WMS is sent
  */
 
 import { DataType } from './types';
@@ -142,16 +143,19 @@ export type Modifier =
     | ({ kind: 'lookup' } & LookupModifier);
 
 /**
- * `lu`: a value looked up in a lookup table (James, 2026-11-23). `{{uom | lu:uom:tms>wms}}` finds the
- * value in table uom's TMS column and sends that row's WMS; `{{uom | lu:uom:wms}}` only checks it is
- * in WMS and sends it as it is. Not there, there twice, or blank (the value, or the To it finds): a
- * failure, in Validate and in the run. Table and columns by name, any case (lookup-tables.ts).
+ * A value that must be in a lookup table: the `list` and `lookup` template types (James, 2026-11-23,
+ * in place of the `lu` function). `{{uom:list|uom:wms}}` checks the value is in table uom's WMS
+ * column and sends it as it is; `{{uom:list|uom}}` the same, for a table of one column;
+ * `{{uom:lookup|uom:tms>wms}}` finds it in TMS and sends that row's WMS. Not there, there twice, or
+ * blank (the value, or the To it finds): a failure, in Validate and in the run. Table and columns by
+ * name, any case (lookup-tables.ts).
  */
 export interface LookupModifier {
     type: 'lookup';
     table: string;
+    /** '' with `list|table`: the table's one column (more than one: said, never guessed). */
     from: string;
-    /** Left out: only checked against `from`'s values. */
+    /** Left out: only checked against `from`'s values (list). */
     to?: string;
 }
 

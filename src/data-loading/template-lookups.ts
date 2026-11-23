@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Flexion Tech Pty Ltd
 /**
- * The lookup tables a request template's `lu` reads (James, 2026-11-23: `{{uom | lu:uom:tms>wms}}`).
+ * The lookup tables a request template's list and lookup types read (James, 2026-11-23:
+ * `{{uom:list|uom:wms}}`, `{{uom:lookup|uom:tms>wms}}`; they replaced the `lu` function).
  *
  * Each host says once where its tables are (`useTemplateLookups`: the same store the Hub and Query
  * read), and the tables are read again before a run fills its template or Validate checks it
@@ -10,7 +11,8 @@
  *
  * The rule for a value is lookup-tables.ts lookupValue, the one Query's Translate values follows:
  * exact text, any column to any other. What `lu` adds: a value that is blank, not in the table,
- * in it twice, or whose To is blank, fails, and says why in words.
+ * whose To is blank, fails, and says why in words; one in it more than once takes the first row's
+ * (the manager for James, 2026-11-23: "if we're looking up, we pick the first one").
  */
 import { lookupColumn, lookupValue, type LookupTable } from '../services/lookup-tables/lookup-tables';
 import type { LookupModifier, ModifierResult } from './modifier-types';
@@ -45,16 +47,34 @@ export function setTemplateLookupTables(list: LookupTable[]): void {
     tables = list;
 }
 
-/** Does a template use `lu` anywhere (so the tables are worth reading first)? */
+/** Does a template use a list or lookup type anywhere (so the tables are worth reading first)? */
 export function templateUsesLookups(text: string): boolean {
-    return /\|\s*lu:/i.test(String(text || ''));
+    return /:\s*(list|lookup)\s*\|/i.test(String(text || ''));
 }
 
-/** `value` through one `lu`: its result (the To's value, or the value itself), or why it fails. */
+/** The lookup tables a template's list and lookup types name, lower case. */
+export function lookupTablesNamed(text: string): Set<string> {
+    return new Set(Array.from(String(text || '').matchAll(/:\s*(?:list|lookup)\s*\|\s*([^:|}"\s>]+)/gi), m => m[1].trim().toLowerCase()));
+}
+
+/** A list or lookup's valid values: its From column's (or its table's one column's), each once. */
+export function lookupValuesOf(mod: LookupModifier, list: LookupTable[] = tables): string[] {
+    const table = list.find(t => t.name.trim().toLowerCase() === mod.table.trim().toLowerCase());
+    if (!table) return [];
+    const from = mod.from ? lookupColumn(table, mod.from) : (table.columns.length === 1 ? table.columns[0] : undefined);
+    if (!from) return [];
+    return [...new Set(table.rows.map(r => r[from.id] ?? '').filter(v => v !== ''))];
+}
+
+/** `value` through one list or lookup: its result (the To's value, or the value itself), or why it fails. */
 export function applyLookup(value: string, mod: LookupModifier, list: LookupTable[] = tables): ModifierResult {
     const table = list.find(t => t.name.trim().toLowerCase() === mod.table.trim().toLowerCase());
     if (!table) return { success: false, error: `there's no lookup table called ${mod.table}` };
-    const from = lookupColumn(table, mod.from);
+    // (`list|uom`: a table of one column needs no column named; with more, it's said, never guessed)
+    if (!mod.from && table.columns.length !== 1) {
+        return { success: false, error: `${table.name} has more than one column: say which, e.g. ${mod.table}:${(table.columns[0] || { name: 'column' }).name.toLowerCase()}` };
+    }
+    const from = mod.from ? lookupColumn(table, mod.from) : table.columns[0];
     if (!from) return { success: false, error: `${table.name} has no column called ${mod.from}` };
     const to = mod.to === undefined ? undefined : lookupColumn(table, mod.to);
     if (mod.to !== undefined && !to) return { success: false, error: `${table.name} has no column called ${mod.to}` };
@@ -62,7 +82,7 @@ export function applyLookup(value: string, mod: LookupModifier, list: LookupTabl
     if (value === '' || value === undefined || value === null) return { success: false, error: `needs a value from ${table.name}'s ${from.name} column` };
     const answer = lookupValue(table, from.id, value, to ? to.id : undefined);
     if (answer.kind === 'missing') return { success: false, error: `${value} isn't in ${table.name}'s ${from.name} column` };
-    // (in two rows or more: the first row's, as Translate values does; the first row wins, 2026-11-23)
+    // (in the From column more than once: the first row's, top to bottom; Validate notes it)
     if (to && answer.value === '') return { success: false, error: `${value}'s ${to.name} in ${table.name} is blank` };
     return { success: true, value: answer.value };
 }

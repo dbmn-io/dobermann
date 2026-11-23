@@ -1278,6 +1278,11 @@ export class TemplateParser {
             };
         }
         
+        // list and lookup: a value in a lookup table, sent as text (its spec is the modifier chain's)
+        if (/^\s*(list|lookup)\s*(\||$)/i.test(suffix)) {
+            return { name: prefix, dataType: 'string', hasExplicitType: true, isA8Variable: false };
+        }
+
         // Regular variable with explicit type
         return {
             name: prefix,
@@ -1509,8 +1514,8 @@ export class TemplateParser {
             // Extract modifiers from the format string
             const { formatOnly, modifiers } = extractModifiersFromFormat(formatModifier, dataType);
 
-            // A broken `lu` never falls back: a code sent untranslated is worse than a row that stops
-            const luError = modifiers.errors.find(e => e.startsWith('lu needs'));
+            // A broken list or lookup (or an old lu) never falls back: a code sent unchecked is worse than a row that stops
+            const luError = modifiers.errors.find(e => /^(list needs|lookup needs|lu is now)/.test(e));
             if (luError) return { success: false, error: luError };
 
             // If there are parse errors, log and fall back to simple conversion

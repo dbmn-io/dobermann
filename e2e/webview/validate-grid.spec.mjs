@@ -15,7 +15,7 @@ const read = rel => readFileSync(join(ROOT, 'src/webviews', rel), 'utf8');
 const STYLES = ['shared/atomic.css', 'shared/core.css', 'shared/tables.css', 'shared/console.css', 'shared/search.css', 'shared/modals.css', 'shared/column-head.css',
     'shared/column-drag.css', 'shared/dbmn-table.css', 'shared/data-transformer.css'];
 const SCRIPTS = ['shared/icons.js', 'shared/search-matcher.js', 'shared/value-formatter.js', 'shared/dbmn-modal.js', 'shared/dbmn-clipboard.js', 'shared/cell-detail.js',
-    'shared/virtual-window.js', 'shared/dbmn-context-menu.js', 'shared/column-drag.js', 'shared/column-head.js', 'shared/dbmn-table.js', 'shared/dt-data-entry-grid.js'];
+    'shared/virtual-window.js', 'shared/dbmn-context-menu.js', 'shared/column-drag.js', 'shared/column-head.js', 'shared/dbmn-table.js', 'shared/lookup-value.js', 'shared/dt-data-entry-grid.js'];
 
 // gtin: exactly 14 characters; uom: upper case; qty: a whole number, 0 or more; due: a date, optional; active: yes/no
 const BODY = JSON.stringify({ items: [{ gtin: '{{gtin:string|14}}', uom: '{{uom:string|upper}}', qty: '{{qty:number|int|>=0}}', due: '{{due:date|opt}}', active: '{{active:boolean}}' }] });
@@ -236,9 +236,10 @@ test('nested data entry: Tab on the last cell adds a row; the next Tab copies th
     await expect(page.locator('#progressiveCopyHint')).toHaveCount(0);
 });
 
-test('lu: a value not in the lookup table, or in it twice, is a row to fix, saying why; one in it passes; the tables come from the screen', async ({ page }) => {
-    // James, 2026-11-23: "{{uom | lu:uom:tms>wms}}… any failed lookup returns as a validate failure in step 3"
-    const LU = JSON.stringify({ items: [{ uom: '{{uom | lu:uom:tms>wms}}', check: '{{code | lu:uom:wms}}' }] });
+test('list and lookup types: a value not in the lookup table is a row to fix, saying why; one in it twice takes the first row, noted; the tables come from the screen', async ({ page }) => {
+    // The manager for James, 2026-11-23: "if we're looking up, we pick the first one": a note, not to fix
+    // James, 2026-11-23: "any failed lookup returns as a validate failure in step 3"; list and lookup are types
+    const LU = JSON.stringify({ items: [{ uom: '{{uom:lookup|uom:tms>wms}}', check: '{{code:list|uom:wms}}' }] });
     await page.setContent(gridPage(LU));
     // The screen gives the tables (Run Batch: templateLookups)
     await page.evaluate(() => DTDataEntryGrid.setLookupTables([{
@@ -250,17 +251,29 @@ test('lu: a value not in the lookup table, or in it twice, is a row to fix, sayi
         DTDataEntryGrid.populateGridFromMappedData({ headers: ['uom', 'code'], rows }, vars);
     }, [['SE', 'ST'], ['DZ', 'EA'], ['CA', 'EA'], ['EA', 'XX']]);
     await expect(page.locator('#csvNextBtn')).toHaveText('Next');
-    await expect(page.locator('.grid-hint')).toHaveText(/^Showing the 3 rows that need fixing, of 4\./);
-    await expect(body(page).locator('td.grid-row-num')).toHaveText(['2', '3', '4']);
+    await expect(page.locator('.grid-hint')).toHaveText(/^Showing the 2 rows that need fixing, of 4\./);
+    await expect(body(page).locator('td.grid-row-num')).toHaveText(['2', '4']);
     await expect(td(page, 0, 1)).toHaveAttribute('title', /uom DZ isn't in UOM's TMS column/);
-    await expect(td(page, 1, 1)).toHaveAttribute('title', /uom CA is in UOM's TMS column 2 times/);
-    await expect(td(page, 2, 2)).toHaveAttribute('title', /code XX isn't in UOM's WMS column/);
-    await expect(td(page, 2, 1)).not.toHaveClass(/grid-cell-error/);
+    await expect(td(page, 1, 2)).toHaveAttribute('title', /code XX isn't in UOM's WMS column/);
+    await expect(td(page, 1, 1)).not.toHaveClass(/grid-cell-error/);
+    // CA is in TMS twice: the first row's WMS (CS), said in a note on the cell, not a row to fix
+    expect(await page.evaluate(() => (window.state.gridCellNotes.get(2) || []).map(n => n.note))).toEqual(['CA · in TMS twice, first row used (CS)']);
+    // The heading: underlined, its valid values on hover
+    await expect(page.locator('#validateGrid thead th').nth(1)).toHaveClass(/grid-header-has-validation/);
+    await expect(page.locator('#validateGrid thead th').nth(1)).toHaveAttribute('title', /^uom: one of EA, SE, CA\n/);
+    // A cell opened to fix: its box offers the valid values (typing filters them); picking one fixes the row
+    await td(page, 0, 1).click();
+    const box = td(page, 0, 1).locator('input.dbmn-cell-input');
+    await expect(box).toBeFocused();
+    expect(await box.evaluate(el => Array.from(el.list ? el.list.options : []).map(o => o.value))).toEqual(['EA', 'SE', 'CA']);
+    await box.fill('SE');
+    await box.press('Enter');
+    await expect(page.locator('.grid-hint')).toHaveText(/^Showing the 1 row that needs fixing, of 4\./);
 });
 
 test('ifblank: a blank (or spaces only) is not a row to fix: it becomes the text; with notrim, spaces stay', async ({ page }) => {
     // James, 2026-11-23: "{{note | ifblank:none}}"
-    const IB = JSON.stringify({ items: [{ sku: '{{sku:string|3-10}}', note: '{{note | ifblank:none}}', uom: '{{uom | ifblank:EA | lu:uom:wms}}' }] });
+    const IB = JSON.stringify({ items: [{ sku: '{{sku:string|3-10}}', note: '{{note | ifblank:none}}', uom: '{{uom:list|uom:wms|ifblank:EA}}' }] });
     await page.setContent(gridPage(IB));
     await page.evaluate(() => DTDataEntryGrid.setLookupTables([{ id: 'lkp-uom', name: 'UOM', columns: [{ id: 'c1', name: 'WMS' }], rows: [{ c1: 'EA' }] }]));
     await page.evaluate(rows => {
@@ -272,3 +285,21 @@ test('ifblank: a blank (or spaces only) is not a row to fix: it becomes the text
     await expect(page.locator('.grid-hint')).toHaveText(/^Showing the 1 row that needs? fixing, of 3\./);
     await expect(td(page, 0, 3)).toHaveAttribute('title', /uom DZ isn't in UOM's WMS column/);
 });
+
+test('list of a one-column table needs no column named; once the table has two, Validate says which to name', async ({ page }) => {
+    // James, 2026-11-23: "if a lu table has only one column, could we use shorthand? {{uom:list|uom}}"
+    const SH = JSON.stringify({ items: [{ site: '{{site:list|sites}}' }] });
+    await page.setContent(gridPage(SH));
+    await page.evaluate(() => DTDataEntryGrid.setLookupTables([{ id: 's', name: 'Sites', columns: [{ id: 'c', name: 'site' }], rows: [{ c: 'DC01' }] }]));
+    await page.evaluate(rows => {
+        const vars = window.state.gridTemplateVariables.map(v => Object.assign({}, v, { mappedTo: v.name }));
+        DTDataEntryGrid.populateGridFromMappedData({ headers: ['site'], rows }, vars);
+    }, [['DC01'], ['DC09']]);
+    await expect(page.locator('#csvNextBtn')).toHaveText('Next');
+    await expect(td(page, 0, 1)).toHaveAttribute('title', /site DC09 isn't in Sites's site column/);
+    // The table gains a second column: the shorthand is said to need one named, never guessed
+    await page.evaluate(() => DTDataEntryGrid.setLookupTables([{ id: 's', name: 'Sites', columns: [{ id: 'c', name: 'site' }, { id: 'd', name: 'region' }], rows: [{ c: 'DC01', d: 'N' }] }]));
+    await expect(page.locator('.grid-hint')).toHaveText(/^Showing the 2 rows that need fixing, of 2\./);
+    await expect(td(page, 0, 1)).toHaveAttribute('title', /Sites has more than one column: say which, e\.g\. sites:site/);
+});
+

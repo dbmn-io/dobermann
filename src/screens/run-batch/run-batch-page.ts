@@ -18,6 +18,7 @@ export function buildRunBatchPage(asset: AssetUrl, batchConfig: { endpointId: st
 
         // Get data transformer module scripts (must load BEFORE orchestrator)
         const dtDataEntryGridUri = asset('shared/dt-data-entry-grid.js');
+        const lookupValueUri = asset('shared/lookup-value.js');   // the lookup rule, the run's own (Validate's list / lookup types)
         const dtTypeCoercionUri = asset('shared/dt-type-coercion.js');
         const dtDataIngestionUri = asset('shared/dt-data-ingestion.js');
         const dtDataPreviewUri = asset('shared/dt-data-preview.js');
@@ -361,6 +362,7 @@ export function buildRunBatchPage(asset: AssetUrl, batchConfig: { endpointId: st
     <script src="${asset('shared/column-drag.js')}"></script>
     <script src="${asset('shared/column-head.js')}"></script>
     <script src="${asset('shared/dbmn-table.js')}"></script>
+    <script src="${lookupValueUri}"></script>
     <script src="${dtDataEntryGridUri}"></script>
     <script src="${dtTypeCoercionUri}"></script>
     <script src="${dtDataIngestionUri}"></script>

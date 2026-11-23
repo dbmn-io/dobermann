@@ -26,7 +26,8 @@
     // =============================================================================
     // Template Variable Validation Constants
     // =============================================================================
-    const VALID_TYPES = ['string', 'number', 'boolean', 'date', 'datetime'];
+    // (list and lookup: a value in a lookup table; the table and its columns come after the pipe)
+    const VALID_TYPES = ['string', 'number', 'boolean', 'date', 'datetime', 'list', 'lookup'];
     // GitHub Issue #245: 'page' and 'size' drive pagination (also valid in the request body)
     const VALID_A8_VARS = ['sequence', 'date', 'datetime', 'page', 'size'];
     const VALID_SEQUENCE_MODIFIERS = ['local', 'global', 'parent'];
@@ -648,6 +649,18 @@
         }
 
         // User variables: {{VAR}} or {{VAR:type}} or {{VAR:type|modifier}} or {{VAR:type:format|modifier}}
+        // {{note | ifblank:none}}: a pipe before any colon, a text value and its modifiers
+        const namePipe = innerContent.indexOf('|');
+        const nameColon = innerContent.indexOf(':');
+        if (namePipe > 0 && (nameColon === -1 || namePipe < nameColon)) {
+            const mods = validateModifiers(innerContent.slice(namePipe + 1), 'string');
+            return mods.valid ? { valid: true } : { valid: false, error: mods.error, errorPart: 'format' };
+        }
+
+        // list / lookup (James, 2026-11-23): {{uom:list|uom:wms}}, {{uom:list|uom}}, {{uom:lookup|uom:tms>wms}}
+        const listType = /^[^:|]+:\s*(list|lookup)\s*(?:\|(.*))?$/i.exec(innerContent);
+        if (listType) return validateListType(listType[1].toLowerCase(), listType[2] || '');
+
         if (parts.length > 1) {
             // GitHub Issue #175: Check if type part contains pipe (type|modifier)
             const typeWithPotentialModifier = parts[1];
@@ -657,15 +670,18 @@
 
             if (pipeIndex !== -1) {
                 // Type with pipe: {{VAR:type|modifier}}
-                type = typeWithPotentialModifier.substring(0, pipeIndex).toLowerCase();
+                type = typeWithPotentialModifier.substring(0, pipeIndex).trim().toLowerCase();   // ({{note:string | …}}: spaces around the pipe)
                 modifierStr = typeWithPotentialModifier.substring(pipeIndex + 1);
 
                 // Append remaining parts (if any) to modifier string
                 if (parts.length > 2) {
-                    modifierStr += '|' + parts.slice(2).join('|');
+                    // ifblank:text keeps its colon: everything after the type's pipe, as written
+                    modifierStr = /(^|\|)\s*ifblank:/i.test(innerContent.slice(innerContent.indexOf('|') + 1))
+                        ? innerContent.slice(innerContent.indexOf('|') + 1)
+                        : modifierStr + '|' + parts.slice(2).join('|');
                 }
             } else {
-                type = typeWithPotentialModifier.toLowerCase();
+                type = typeWithPotentialModifier.trim().toLowerCase();
 
                 // For dates: parts[2] could be format, parts[3+] could be modifiers (with pipe)
                 // For string/number: parts[2+] is modifiers (backward compat with colon, or pipe)
@@ -697,6 +713,46 @@
         return { valid: true };
     }
 
+    /** The lookup tables the editor's host gave ({ name, columns: [names] }), by name any case. */
+    function lookupTableNamed(name) {
+        const want = String(name || '').trim().toLowerCase();
+        return (window.dbmnLookupTables || []).find(t => String(t.name).trim().toLowerCase() === want);
+    }
+    function lookupColumnNamed(table, name) {
+        const want = String(name || '').trim().toLowerCase();
+        return (table.columns || []).find(c => String(c).toLowerCase() === want);
+    }
+    /**
+     * A list or lookup type's table spec, then its modifiers. A table or column not there is a
+     * warning (the tables may change before a run; Validate checks again then).
+     */
+    function validateListType(type, rest) {
+        const parts = rest.split('|').map(p => p.trim()).filter(Boolean);
+        if (!parts.length) {
+            return { valid: false, error: type === 'list' ? 'list needs a table: {{name:list|table:column}}' : 'lookup needs a table and two columns: {{name:lookup|table:from>to}}', errorPart: 'type' };
+        }
+        const spec = parts.shift();
+        const tableName = spec.split(':')[0].trim();
+        const cols = spec.split(':').slice(1).join(':').split('>').map(c => c.trim());
+        if (type === 'lookup' && (cols.length !== 2 || !cols[0] || !cols[1])) {
+            return { valid: false, error: 'lookup needs a table and two columns: {{name:lookup|table:from>to}}', errorPart: 'format' };
+        }
+        if (type === 'list' && cols.length > 1) {
+            return { valid: false, error: 'list names one column: {{name:list|table:column}} (lookup sends another: table:from>to)', errorPart: 'format' };
+        }
+        const table = lookupTableNamed(tableName);
+        if (window.dbmnLookupTables && !table) return { valid: false, error: `No lookup table called ${tableName}`, errorPart: 'format', isWarning: true };
+        if (table) {
+            if (!cols[0] && (table.columns || []).length !== 1) {
+                return { valid: false, error: `${table.name} has more than one column: say which, e.g. ${tableName}:${String(table.columns[0] || 'column').toLowerCase()}`, errorPart: 'format', isWarning: true };
+            }
+            const missing = cols.filter(c => c && !lookupColumnNamed(table, c));
+            if (missing.length) return { valid: false, error: `${table.name} has no column called ${missing[0]}`, errorPart: 'format', isWarning: true };
+        }
+        const mods = validateModifiers(parts.join('|'), 'string');
+        return mods.valid ? { valid: true } : { valid: false, error: mods.error, errorPart: 'format' };
+    }
+
     /**
      * GitHub Issue #175: Validate modifiers for string/number/date types
      * @param {string} modifierStr - The modifier string (pipe-delimited)
@@ -704,6 +760,19 @@
      * @returns {{ valid: boolean, error?: string }}
      */
     function validateModifiers(modifierStr, dataType) {
+        if (!modifierStr) return { valid: true };
+        // ifblank:text (any type): what a blank becomes; an old lu: what it is now
+        const rest = [];
+        for (const raw of modifierStr.split('|').map(x => x.trim()).filter(Boolean)) {
+            const low = raw.toLowerCase();
+            if (low.indexOf('ifblank:') === 0) {
+                if (!raw.slice(8).trim()) return { valid: false, error: 'ifblank needs the text a blank becomes: ifblank:none' };
+                continue;
+            }
+            if (low.indexOf('lu:') === 0) return { valid: false, error: 'lu is now a type: {{name:list|table:column}} or {{name:lookup|table:from>to}}' };
+            rest.push(raw);
+        }
+        modifierStr = rest.join('|');
         if (!modifierStr) return { valid: true };
 
         // Split by pipe to get individual modifiers
@@ -1155,7 +1224,7 @@
         monaco._templateCompletionsRegistered = true;
 
         monaco.languages.registerCompletionItemProvider('jsonc', {
-                triggerCharacters: ['{', ':', '|'],
+                triggerCharacters: ['{', ':', '|', '>'],
                 provideCompletionItems: function(model, position, context) {
                     const triggerChar = context.triggerCharacter;
 
@@ -1192,6 +1261,18 @@
                     // ============================================================
                     // PIPE TRIGGER (|) = MODIFIERS ONLY
                     // ============================================================
+                    // list / lookup: the table after the first pipe, its columns after the table's colon,
+                    // the other column after '>', and the modifiers after a further pipe
+                    const listCtx = /^[^:|]+:\s*(list|lookup)\s*\|(.*)$/i.exec(afterBraces);
+                    if (listCtx) {
+                        const listSuggestions = getListSuggestions(listCtx[1].toLowerCase(), listCtx[2], range);
+                        if (listSuggestions) return { suggestions: listSuggestions };
+                    }
+                    // {{note | …}}: modifiers after a pipe straight after the name
+                    if (triggerChar === '|' && /^[^:|]+\|([^:]*\|)?$/.test(afterBraces)) {
+                        return { suggestions: getStringModifierSuggestions(range) };
+                    }
+
                     if (triggerChar === '|') {
                         if (afterBracesLower.includes(':string')) {
                             return { suggestions: getStringModifierSuggestions(range) };
@@ -1462,8 +1543,59 @@
     /**
      * Get type modifier suggestions
      */
+    /**
+     * After `:list|` / `:lookup|`: the lookup tables; after `table:` its columns; after `>` the other
+     * columns; after a further `|` the modifiers.
+     */
+    function getListSuggestions(type, typed, range) {
+        const tables = window.dbmnLookupTables || [];
+        const kind = monaco.languages.CompletionItemKind;
+        const segs = typed.split('|');
+        if (segs.length > 1) return getStringModifierSuggestions(range);
+        const spec = segs[0];
+        if (spec.indexOf(':') === -1) {
+            if (!tables.length) return [{ label: 'No lookup tables yet', kind: kind.Text, insertText: '', detail: 'Make one in the Hub: Reporting › + New lookup table', range: range }];
+            return tables.map(t => ({
+                label: t.name, kind: kind.Module, insertText: String(t.name).toLowerCase(),
+                detail: `Lookup table · ${t.columns.length} column${t.columns.length === 1 ? '' : 's'}`,
+                documentation: t.columns.join(', ') + (type === 'list' && t.columns.length === 1 ? '\nOne column: {{name:list|' + String(t.name).toLowerCase() + '}} needs none named' : ''),
+                range: range
+            }));
+        }
+        const table = lookupTableNamed(spec.split(':')[0]);
+        if (!table) return [];
+        const cols = spec.split(':').slice(1).join(':').split('>');
+        const used = cols.length > 1 ? cols[0].trim().toLowerCase() : '';
+        if (cols.length > 1 && type !== 'lookup') return [];
+        return table.columns.filter(c => String(c).toLowerCase() !== used).map(c => ({
+            label: String(c), kind: kind.Field, insertText: String(c).toLowerCase(),
+            detail: cols.length > 1 ? `${table.name}: the column sent` : type === 'lookup' ? `${table.name}: the column the value is in (then > the one sent)` : `${table.name}: the column the value must be in`,
+            range: range
+        }));
+    }
+
     function getTypeSuggestions(range) {
         return [
+            {
+                label: 'list',
+                kind: monaco.languages.CompletionItemKind.TypeParameter,
+                insertText: 'list|',
+                detail: 'One of a lookup table\'s values',
+                documentation: '{{uom:list|uom:wms}}: the value must be in table uom\'s WMS column, and is sent as it is. A table of one column needs none named: {{site:list|sites}}',
+                sortText: 'z1',
+                command: { id: 'editor.action.triggerSuggest', title: 'Tables' },
+                range: range
+            },
+            {
+                label: 'lookup',
+                kind: monaco.languages.CompletionItemKind.TypeParameter,
+                insertText: 'lookup|',
+                detail: 'Looked up in a lookup table',
+                documentation: '{{uom:lookup|uom:tms>wms}}: the value must be in table uom\'s TMS column; that row\'s WMS is sent',
+                sortText: 'z2',
+                command: { id: 'editor.action.triggerSuggest', title: 'Tables' },
+                range: range
+            },
             {
                 label: 'string',
                 kind: monaco.languages.CompletionItemKind.TypeParameter,
@@ -1568,6 +1700,14 @@
      */
     function getStringModifierSuggestions(range) {
         return [
+            {
+                label: 'ifblank:',
+                kind: monaco.languages.CompletionItemKind.Keyword,
+                insertText: 'ifblank:',
+                detail: 'What a blank becomes',
+                documentation: 'ifblank:none sends "none" for a blank value, or one of spaces only (notrim keeps spaces)',
+                range: range
+            },
             {
                 label: 'opt',
                 kind: monaco.languages.CompletionItemKind.Keyword,
@@ -1841,6 +1981,8 @@
         updateDecorations: updateTemplateVariableDecorations,
         validate: validateTemplateVariable,
         validateModifiers: validateModifiers,
+        // (list / lookup's predictive text: tables, then columns, then modifiers)
+        listSuggestions: getListSuggestions,
         VALID_TYPES: VALID_TYPES,
         VALID_A8_VARS: VALID_A8_VARS,
         VALID_SEQUENCE_MODIFIERS: VALID_SEQUENCE_MODIFIERS,

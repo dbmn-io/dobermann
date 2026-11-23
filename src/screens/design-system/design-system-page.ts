@@ -331,6 +331,7 @@ Icons.icon('check')                                   the SVG as text</code></pr
         </div>
         <pre class="ds-code"><code>const yes = await DbmnModal.confirm({ title: 'Delete the query?', body: '…', confirmLabel: 'Delete', confirmVariant: 'danger' });
 const { actionId, fields } = await DbmnModal.show({ title, fields: [{ id: 'name', type: 'text', label: 'Name' }], actions: [{ id: 'save', label: 'Save', variant: 'primary' }] });
+{ id: 'uom', type: 'text', label: 'uom', suggestions: ['EA', 'CS', …] }   a field that offers values, filtered as it's typed
 DbmnToast.success('Saved');   DbmnToast.warn('…');   DbmnToast.error('…', { persistent: true });
 DbmnContextMenu.show(event, [{ id: 'rename', label: 'Rename', icon: 'pencil' }], id =&gt; …);
 DbmnContextMenu.show(button, [{ summary: { title: 'BL · inventory', lines: [['View', 'LowStock'], read /* read.tone = 'warn' */] } }, { separator: true }, …actions], id =&gt; …);</code></pre>
@@ -461,6 +462,9 @@ DbmnTable.hasSpecial(text)                 // any to show ("" counts: it is "bla
         </div>
         <pre class="ds-code"><code>&lt;dbmn-table editable&gt;                    a cell at a time (rows the page holds)
 { id: 'sku', name: 'sku', editable: false }   a column only read
+{ id: 'uom', editor: { options: () =&gt; ['EA', 'CS', …] } }   the box offers these, filtered as it's typed
+                                           (a list / lookup template type's valid values; any text still goes)
+{ id: 'uom', unique: true }                 a value in two rows is amber (a lookup table's columns)
 table.addEventListener('dbmn-table-edit', e =&gt; …e.detail.kind ('edit' | 'paste' | 'undo' | 'redo'), e.detail.changes [{ row, id, value, old }]…);
                                            // change a value, or e.preventDefault() to refuse them</code></pre>
 
