@@ -48,7 +48,7 @@ import type { QueryFileStore } from '../../services/query/query-file-store';
 import { localEngineHost, type EngineHost } from '../../services/engine/engine-host';
 import { QueryEngine } from '../../services/engine/engine';
 import { QUERY_ROW_TESTS, searchColumns, searchTest, type SearchArg } from './query-search';
-import { compareKeyExprs, resultsKey, sampleQueries, pagedCounts, readPagedRow, readStatusPage, type PagedStatus, eachPage, runHeld, holdStatus, countAlike, fromKeptCompare, compareStepKey, buildQuery, SAMPLE_ROWS, type FullFigures, type SampleFacts, type StatusLayout, fnSampleQueries, formulaExpr, labelExpr, loadLookupInto, loadViewInto, pagedTotals, readPage, runPaged, spreadPage, type NotNumbers, type PagedResult, type ShownSort, queryWithColumns, recordQuery, compareKeyPartExprs, runOnEngine, TooManyOnEngine, joinCountPlan, joinCountOf, joinCountRowsQuery, JOIN_STATUS, type JoinCount, type JoinCountKind } from '../../services/query/query-new-engine';
+import { compareKeyExprs, resultsKey, sampleQueries, pagedCounts, readPagedRow, readStatusPage, type PagedStatus, eachPage, runHeld, holdStatus, countAlike, fromKeptCompare, compareStepKey, buildQuery, SAMPLE_ROWS, type FullFigures, type SampleFacts, type StatusLayout, fnSampleQueries, formulaExpr, labelExpr, loadLookupInto, loadViewInto, pagedTotals, readPage, runPaged, spreadPage, type NotNumbers, type PagedResult, type ShownSort, queryWithColumns, recordQuery, compareKeyPartExprs, runOnEngine, TooManyOnEngine, joinCountPlan, joinCountOf, joinKeysTwice, joinCountRowsQuery, JOIN_STATUS, type JoinCount, type JoinCountKind } from '../../services/query/query-new-engine';
 import type { CompareStats, Progress, Query as EngineQuery, TableWindow } from '../../services/engine/engine-types';
 
 
@@ -1539,6 +1539,9 @@ export class QueryController {
                     if ((!result && !kept) || version !== this.version || this.closed) return;
                     duplicates = this.engineDuplicates;
                     notNumbers = this.engineNotNumbers;
+                    // A join key's Translate meeting a value its lookup table holds twice: on the same line, by the key's name
+                    const keysTwice = this.engine ? await joinKeysTwice(this.engine, spec).catch(() => []) : [];
+                    if (keysTwice.length) notNumbers = [...notNumbers, ...keysTwice.map(k => ({ column: -1, rows: k.rows, kind: 'twice' as const, name: k.name }))];
                     sample = this.engineSampleFacts;
                     stats = spec.joins.map(j => this.engineStats?.get(j.view) ?? null);
                     // The Columns step's sample record and its cells, from the engine

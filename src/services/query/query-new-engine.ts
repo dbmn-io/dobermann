@@ -24,7 +24,7 @@ import { isCompare, queryCompare } from './query-compare';
 import { formulaColumns, resultColumns } from './query-columns';
 import { comparedGroups, type RelationKind, type RowStatus, type StatusCounts, type StatusFilter } from './query-status';
 import { parseFormula } from './formula';
-import { CALC_VIEW, type ColumnRef, type QueryJoinStats, type QueryKey, type QuerySpec } from './query-types';
+import { CALC_VIEW, type ColumnRef, type QueryFn, type QueryJoinStats, type QueryKey, type QuerySpec } from './query-types';
 
 /** Why a query runs on SQLite even with the setting on, in a few words; undefined when it runs on the engine. */
 export function whyNotOnEngine(spec: QuerySpec): string | undefined {
@@ -455,7 +455,7 @@ const now = (): number => (typeof performance !== 'undefined' ? performance.now(
  * Results' columns' counts from the engine's count pass: text that wasn't a number (left blank), and with `kind: 'twice'`
  * values a lookup table holds in two rows (left as they were, Translate values).
  */
-export type NotNumbers = { column: number; rows: number; kind?: 'twice' }[];
+export type NotNumbers = { column: number; rows: number; kind?: 'twice'; name?: string }[];
 
 /** The functions that read text as a number (engine-values.ts readNumberCounted). */
 const READS_NUMBERS = new Set<string>(['+', '-', '*', '/', 'NEG', 'ROUND', 'ABS', 'FLOOR', 'CEIL', 'NUMBER', 'NUMERIC']);
@@ -466,6 +466,41 @@ const readsNumbers = (e: Expr): boolean => 'fn' in e && (READS_NUMBERS.has(e.fn)
 function readsNumbersColumns(query: Query): string[] {
     const select = [...query.steps].reverse().find((s): s is Extract<Query['steps'][number], { select: string }> => 'select' in s && s.columns.some(c => c.name === 'c0'));
     return select ? select.columns.filter(c => /^c\d+$/.test(c.name) && readsNumbers(c.value)).map(c => c.name) : [];
+}
+
+/**
+ * A join key's Translate values meeting a value its lookup table holds in two rows (James, 2026-11-23, the mock's step 6:
+ * "yes ok"): the key is left as it was, so its row may not match. Counted per key column for the line above Results
+ * ("In the lookup table twice, so left as they were: N rows in <column>"), as Results' own columns are (NotNumbers,
+ * kind 'twice', by name). One small run over each side whose key translates (the lookup tables already loaded).
+ */
+export async function joinKeysTwice(engineIn: QueryEngine | EngineHost, spec: QuerySpec): Promise<{ view: string; name: string; rows: number }[]> {
+    const engine = hostOf(engineIn);
+    const out: { view: string; name: string; rows: number }[] = [];
+    const seen = new Set<string>();
+    const translates = (fns?: QueryFn[]) => (fns ?? []).some(f => f.fn === 'translate');
+    for (const join of spec.joins) {
+        for (const pair of join.on) {
+            for (const side of [pair.left, pair.right]) {
+                if (!translates(side.fns) && !side.parts.some(p => translates(p.fns))) continue;
+                const views = [...new Set(side.parts.map(p => p.view))];
+                if (views.length !== 1) continue;   // (a key made of two views' columns: not counted)
+                const view = views[0];
+                const name = side.parts.map(p => p.column).join(' + ');
+                if (seen.has(`${view}\n${name}`)) continue;
+                seen.add(`${view}\n${name}`);
+                const run = await engine.run({ steps: [{ as: 'rows', from: view }, { as: 'keys', select: 'rows', columns: [{ name: 'k', value: keyExpr(side) }] }], result: 'keys' }, { countNotNumbers: ['k'] });
+                if (!('result' in run)) continue;
+                try {
+                    const rows = run.notNumbers?.keys?.['twice:k'] ?? 0;
+                    if (rows) out.push({ view, name, rows });
+                } finally {
+                    await engine.release(run.result);
+                }
+            }
+        }
+    }
+    return out;
 }
 
 /** The run's counts for Results' columns, by column number. */
