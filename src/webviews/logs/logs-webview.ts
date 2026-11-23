@@ -33,6 +33,11 @@ export class LogsWebview extends WebviewBase {
                 }
             },
             prefs: context.globalState,
+            // A line's run, opened in the Console as History opens it
+            runs: metadata ? { get: async id => (await metadata.getExecution(id)) ?? undefined } : undefined,
+            openConsole: async (executionId, isBatch) => {
+                await vscode.commands.executeCommand('dbmn.viewTransactionReport', { id: executionId, executionId, isBatch });
+            },
             toast: {
                 info: m => this.toast?.info(m),
                 warn: m => this.toast?.warn(m),

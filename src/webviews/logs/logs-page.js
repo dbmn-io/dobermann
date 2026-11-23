@@ -46,6 +46,12 @@
     // A request's line clicked: the controller reads its run log
     log.addEventListener('dbmn-log-open', event => vscode.postMessage({ type: 'logs.open', open: event.detail.open, key: event.detail.key }));
 
+    // A line's run: open it in the Console, as History does
+    log.addEventListener('dbmn-log-run', event => {
+        const run = event.detail && event.detail.run;
+        if (run && run.id) vscode.postMessage({ type: 'logs.openRun', run: run.id });
+    });
+
     // Scrolled down to the oldest line here: the ones before it
     log.addEventListener('dbmn-log-end', () => { if (!ui.done) vscode.postMessage({ type: 'logs.older' }); });
 

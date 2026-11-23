@@ -30,6 +30,12 @@ export interface LogsPorts {
         warn(message: string): void;
         error(message: string): void;
     };
+    /** A run in the history by its id: is it a batch, or one of a batch's requests? (a line's Console link) */
+    runs?: {
+        get(id: string): Promise<{ executionType?: string; batchId?: string } | undefined>;
+    };
+    /** Open a run in the Console, as History does (the Hub's Console tab). */
+    openConsole?(executionId: string, isBatch: boolean): Promise<void>;
     /** Ms since 1970: tests set the clock. */
     now?(): number;
     /** Small settings kept for the user (the ★'s saved searches): the host's global state. */

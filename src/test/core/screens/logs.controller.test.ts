@@ -28,6 +28,7 @@ async function setUp(opts: { search?: string; runs?: RunRecord[]; prefs?: Map<st
     const posted: Message[] = [];
     const saved: Array<{ name: string; text: string }> = [];
     const toasts: string[] = [];
+    const opened: Array<{ id: string; batch: boolean }> = [];
     const runs = opts.runs ?? [];
     const session = new ScreenSession({ post: m => posted.push(m) }, { openExternal: () => undefined });
     const ports: LogsPorts = {
@@ -41,11 +42,13 @@ async function setUp(opts: { search?: string; runs?: RunRecord[]; prefs?: Map<st
         files: { save: async (name, text) => { saved.push({ name, text }); return true; } },
         toast: { info: m => toasts.push(`info ${m}`), warn: m => toasts.push(`warn ${m}`), error: m => toasts.push(`error ${m}`) },
         now: () => new Date(2026, 10, 19, 14, 5).getTime(),
+        runs: { get: async id => runs.find(r => r.id === id) },
+        openConsole: async (id, batch) => { opened.push({ id, batch }); },
         prefs: opts.prefs ? { get: key => opts.prefs!.get(key), update: (key, value) => { opts.prefs!.set(key, value); } } : undefined
     };
     const controller = new LogsController(session, ports, { search: opts.search });
     const write = async (message: string, time: number, over: Partial<LogLine> = {}) => { log.write({ level: 'info', source: 'sign-in', message, time, ...over }); await log.flush(); };
-    return { log, days, posted, saved, toasts, controller, write, runs };
+    return { log, days, posted, saved, toasts, controller, write, runs, opened };
 }
 const of = (posted: Message[], type: string) => posted.filter(m => m.type === type);
 const messages = (m: Message) => (m.lines as LogRow[]).map(l => l.message);
@@ -189,5 +192,30 @@ describe('Logs screen (controller)', () => {
         await controller.handleMessage({ type: 'logs.ready' });
         await controller.handleMessage({ type: 'logs.saveSearches', searches: [{ name: 'A', text: 'a' }] });
         expect(of(posted, 'logs.searches')).to.deep.equal([]);
+    });
+    describe('a line\'s run opens in the Console (James, 2026-11-23: "log link. think so. yes")', () => {
+        const batch: RunRecord = { id: 'batch_1', executionType: 'batch', endpointName: 'Create Item' };
+        const member: RunRecord = { id: 'exec_m1', executionType: 'batch_member', batchId: 'batch_1' };
+        const single: RunRecord = { id: 'exec_s1', executionType: 'single', endpointName: 'Carriers' };
+
+        it('a batch opens as a batch, a single run as one', async () => {
+            const { controller, opened } = await setUp({ runs: [batch, member, single] });
+            await controller.handleMessage({ type: 'logs.openRun', run: 'batch_1' });
+            await controller.handleMessage({ type: 'logs.openRun', run: 'exec_s1' });
+            expect(opened).to.deep.equal([{ id: 'batch_1', batch: true }, { id: 'exec_s1', batch: false }]);
+        });
+
+        it('a line tied to one of a batch\'s requests opens its batch', async () => {
+            const { controller, opened } = await setUp({ runs: [batch, member] });
+            await controller.handleMessage({ type: 'logs.openRun', run: 'exec_m1' });
+            expect(opened).to.deep.equal([{ id: 'batch_1', batch: true }]);
+        });
+
+        it('a run no longer in History says so, and opens nothing', async () => {
+            const { controller, opened, toasts } = await setUp({ runs: [] });
+            await controller.handleMessage({ type: 'logs.openRun', run: 'batch_gone' });
+            expect(opened).to.deep.equal([]);
+            expect(toasts).to.deep.equal(['info That run is no longer in History.']);
+        });
     });
 });

@@ -205,7 +205,10 @@ export function webTabs(deps: WebTabDeps): HubTabFactory {
                 redact: text => appLog.redactor.text(text),
                 files: { save: async (name, text) => { await download(name, new TextEncoder().encode(text)); return true; } },
                 prefs: deps.state.globalState,
-                toast: deps.toast
+                toast: deps.toast,
+                // A line's run, opened in the Console as History opens it
+                runs: { get: async id => (await deps.execution.metadata.getExecution(id)) ?? undefined },
+                openConsole: (id, isBatch) => deps.openConsole(id, isBatch)
             }, { search });
             const screen = { handle: (m: Record<string, unknown>) => controller.handleMessage(m as never), dispose: () => controller.dispose() };
             return { ...tab(buildLogsPage(asset), session, screen), search: text => controller.showSearch(text) };

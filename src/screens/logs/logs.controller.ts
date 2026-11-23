@@ -37,6 +37,7 @@ export type LogsMessage =
     | { type: 'logs.older' }
     | { type: 'logs.save'; text?: string }
     | { type: 'logs.open'; open: string; key?: string }
+    | { type: 'logs.openRun'; run: string }
     | { type: 'logs.saveSearches'; searches: unknown }
     | { type: string; [key: string]: unknown };
 
@@ -87,6 +88,7 @@ export class LogsController {
                 case 'logs.older': return await this.older();
                 case 'logs.save': return await this.save();
                 case 'logs.open': return await this.openRequest(String(message.open ?? ''), String(message.key ?? ''));
+                case 'logs.openRun': return await this.openRun(String(message.run ?? ''));
                 default: return;
             }
         } catch (error) {
@@ -166,6 +168,21 @@ export class LogsController {
         if (!executionId) return;
         const events = this.ports.requests ? await this.ports.requests.events(executionId) : [];
         this.post({ type: 'logs.opened', key, open: executionId, text: requestDetail(events, text => this.ports.redact(text)) });
+    }
+
+    /**
+     * A line's run, opened in the Console as History opens it (James, 2026-11-23: "log link. think
+     * so. yes"). A line tied to one of a batch's requests opens its batch.
+     */
+    private async openRun(runId: string): Promise<void> {
+        if (!runId || !this.ports.openConsole) return;
+        const run = await this.ports.runs?.get(runId);
+        if (!run) {
+            this.ports.toast.info('That run is no longer in History.');
+            return;
+        }
+        if (run.executionType === 'batch_member' && run.batchId) return this.ports.openConsole(run.batchId, true);
+        await this.ports.openConsole(runId, run.executionType === 'batch');
     }
 
     /** Every line the search finds, from all of them, newest first, in one file. */
