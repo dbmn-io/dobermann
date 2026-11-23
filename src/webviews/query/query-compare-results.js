@@ -562,5 +562,32 @@
         return { leadColumns, groupHead, compactCell, renderTools, openRecord, recordDetail, slotMenu, closeMenus, anyFilter };
     }
 
-    window.QueryCompareResults = { create };
+    /**
+     * The totals row as the table's columns have them (James, 2026-11-23: "totals in compact views should be for the
+     * baseline only"): a compared column shown in one cell (Compact, `compact:<group>`) takes its Baseline's total and
+     * no other; every other column its own. Pure: the core tests call it too.
+     * @param {Record<string, string>} totals   by result column id (colId), as the host counted them
+     * @param {string[]} tableIds               the table's column ids
+     * @param {{view: string, column: string, group?: string}[]} resultCols
+     * @param {string|undefined} baseline       the compare's Baseline view
+     * @param {(c: object) => string} colId
+     */
+    function compactTotals(totals, tableIds, resultCols, baseline, colId) {
+        const out = {};
+        (tableIds || []).forEach(id => {
+            if (id.indexOf('compact:') === 0) {
+                const cells = resultCols.filter(c => c.group === id.slice(8));
+                const base = cells.find(c => c.view === baseline) || cells[0];
+                const total = base ? totals[colId(base)] : undefined;
+                if (total !== undefined) out[id] = total;
+                return;
+            }
+            if (totals[id] !== undefined) out[id] = totals[id];
+        });
+        return out;
+    }
+
+    const api = { create, compactTotals };
+    if (typeof module !== 'undefined' && module.exports) module.exports = api;
+    if (typeof window !== 'undefined') window.QueryCompareResults = api;
 })();

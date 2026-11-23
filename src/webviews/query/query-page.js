@@ -2231,7 +2231,8 @@
                     const places = (m.places && m.places[i]) || 0;
                     totals[asked.ids[i]] = t === null ? (i === 0 ? 'Total' : '') : t.toLocaleString(undefined, { minimumFractionDigits: places, maximumFractionDigits: places });
                 });
-                table.totals = totals;
+                // (Compact: a compared column's total is its Baseline's, and no other)
+                table.totals = window.QueryCompareResults.compactTotals(totals, (table.columns || []).map(c => c.id), resultCols(), ui.state && ui.state.compare ? ui.state.compare.baseline : undefined, colId);
             } else table.totals = null;
         }
         // The rows on screen, in the footer's summary (the one place the count shows): a search changes it
