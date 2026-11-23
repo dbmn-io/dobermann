@@ -282,19 +282,17 @@
         ];
     }
     /**
-     * A compare's folded steps on Results say what it found (#29, as old Compare): its results, its key, how many DIFF and
-     * how many Missing (the Status menu's counts, among the rows the search finds), and the rows shown.
+     * A compare's folded steps on Results say what it found (#29, as old Compare): its results, how many DIFF and how many
+     * Missing (the Status menu's counts, among the rows the search finds), and the rows shown. Not its key (James,
+     * 2026-11-23: "remove KEY from this summary").
      */
     function compareSummary(shown) {
         const s = ui.state;
         const c = ui.counts;
         const results = ((s.compare && s.compare.views) || []).filter(id => !ui.filter.hidden.includes(placeOfView(id))).length;
-        const first = (s.joins || []).find(j => j.kind === 'compare');
-        const key = first ? first.on.map(p => p.left && p.left.column).filter(Boolean).join(' + ') : '';
         const missing = c ? Object.values(c.missing || {}).reduce((a, b) => a + b, 0) : 0;
         return [
             `${count(results)} results`,
-            key ? `on ${key}` : '',
             c ? `${count(c.diff || 0)} DIFF` : '',
             c ? `${count(missing)} missing` : '',
             shown
