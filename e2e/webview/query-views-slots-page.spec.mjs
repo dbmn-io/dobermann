@@ -76,3 +76,63 @@ test('the pair in the next slot from the start, places to make three, then the p
     await p.evaluate(s => window.postMessage(s, '*'), state([]));
     expect(await slots(p).evaluate(e => e.firstElementChild && e.firstElementChild.id)).toBe('queryAdds');
 });
+
+test('a view added: its lane opens from nothing where it goes, and the pair moves right with it, on its line', async ({ page: p }) => {
+    // James, 2026-11-23: "these views are flying in from the right, not moving across from the left… The view needs to
+    // expand… These buttons need to move across as the view comes in"; before that, "they look flying from the top"
+    await p.setViewportSize({ width: 1280, height: 800 });
+    await open(p);
+    await p.evaluate(s => window.postMessage(s, '*'), state([view('vA', 'Stock')]));
+    await expect(p.locator('#queryViews > .dbmn-lane')).toHaveCount(1);
+    await p.waitForTimeout(400);
+    const before = await p.locator('#queryAdds').boundingBox();
+    // The second view comes in: sample the new lane and the pair every frame while it opens
+    const frames = await p.evaluate(s => new Promise(done => {
+        const out = [];
+        window.postMessage(s, '*');
+        const t0 = performance.now();
+        const tick = () => {
+            const lane = document.querySelectorAll('#queryViews > .dbmn-lane')[1];
+            const adds = document.getElementById('queryAdds').getBoundingClientRect();
+            if (lane) out.push({ t: performance.now() - t0, laneX: lane.getBoundingClientRect().left, laneW: lane.getBoundingClientRect().width, x: adds.left, y: adds.top });
+            if (performance.now() - t0 < 600) requestAnimationFrame(tick); else done(out);
+        };
+        requestAnimationFrame(tick);
+    }), state([view('vA', 'Stock'), view('vB', 'Bins')]));
+    expect(frames.length).toBeGreaterThan(5);
+    const first = frames[0], last = frames[frames.length - 1];
+    // Opens from (near) nothing to a slot's width, where it ends up: never coming in from elsewhere
+    expect(first.laneW).toBeLessThan(60);
+    expect(Math.round(last.laneW)).toBe(200);
+    for (const f of frames) expect(Math.abs(f.laneX - last.laneX)).toBeLessThan(1);
+    // Some frames part-way open: it is seen opening
+    expect(frames.filter(f => f.laneW > 20 && f.laneW < 180).length).toBeGreaterThan(1);
+    // The pair: right of the opening lane at every frame, moving only right, never up or down
+    for (let i = 0; i < frames.length; i++) {
+        const f = frames[i];
+        expect(f.x).toBeGreaterThanOrEqual(f.laneX + f.laneW);
+        expect(Math.abs(f.y - before.y)).toBeLessThan(1);
+        if (i) expect(f.x).toBeGreaterThanOrEqual(frames[i - 1].x - 0.5);
+    }
+    expect(last.x - before.x).toBeGreaterThanOrEqual(200);
+    // Mid-way, part of the way across: it moves, it doesn't jump
+    expect(frames.some(f => f.x > before.x + 20 && f.x < last.x - 20)).toBe(true);
+});
+
+test('lanes are a slot wide each, never stretched across the screen; the rows beneath line up with them', async ({ page: p }) => {
+    // James, 2026-11-23: "These are also way too wide on this screen. They're all ridiculously wide. I've got no room"
+    await p.setViewportSize({ width: 1280, height: 800 });
+    await open(p);
+    await p.evaluate(s => window.postMessage(s, '*'), state([view('vA', 'Stock'), view('vB', 'Bins')]));
+    await expect(p.locator('#queryViews > .dbmn-lane')).toHaveCount(2);
+    await p.waitForTimeout(400);
+    const widths = await p.locator('#queryViews > .dbmn-lane').evaluateAll(ls => ls.map(l => Math.round(l.getBoundingClientRect().width)));
+    expect(widths).toEqual([200, 200]);
+    // (the Views step's lines below: their lanes start and end where the slots do)
+    const top = await p.locator('#queryViews > .dbmn-lane').evaluateAll(ls => ls.map(l => Math.round(l.getBoundingClientRect().left)));
+    const row = p.locator('#queryViewRows .dbmn-lanes-row').first();
+    if (await row.count()) {
+        const below = await row.locator(':scope > .dbmn-lane').evaluateAll(ls => ls.map(l => Math.round(l.getBoundingClientRect().left)));
+        expect(below).toEqual(top);
+    }
+});

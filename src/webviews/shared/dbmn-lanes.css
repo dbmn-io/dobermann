@@ -51,6 +51,11 @@
     align-items: stretch;
 }
 
+/* A lane growing open (DbmnLanes.apply, a view just added): its cells show only what fits so far */
+.dbmn-lanes.is-growing .dbmn-lanes-row > .dbmn-lane,
+.dbmn-lanes-row.is-growing > .dbmn-lane,
+.is-growing .dbmn-lanes-row > .dbmn-lane { overflow: hidden; }
+
 /* Every cell of a row: shrinks to its track, never past it; text stays on one line */
 .dbmn-lanes-row > *,
 .dbmn-lane > * {

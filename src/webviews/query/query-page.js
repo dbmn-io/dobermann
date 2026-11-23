@@ -543,14 +543,14 @@
         // The name's gutter stays put: moving it out and back takes the focus from a name being
         // typed, and each view's rows coming in redraws the slots ("Should never lose focus")
         const box = $('queryViews'), lead = $('queryHeadLead');
-        // (where the pair was, for its slide to the next slot: DbmnLanes.glide, after it is in its new place)
-        const was = ADDS.isConnected ? ADDS.getBoundingClientRect() : null;
         [...box.children].forEach(c => { if (c !== lead) c.remove(); });
         if (lead && box.firstElementChild !== lead) box.prepend(lead);
         box.append(...lanes, end);
-        placeAdds();
-        if (was && was.width && window.DbmnLanes && window.DbmnLanes.glide) window.DbmnLanes.glide(ADDS, was);
+        // A view just added: its lane grows open from nothing (DbmnLanes), and the pair after it is carried right as it
+        // opens, by the grid itself, on its own line (James, 2026-11-23: "The view needs to expand… These buttons need
+        // to move across as the view comes in"; before, the pair was slid separately and came in from above)
         ['queryTop', 'queryViewRows', 'queryJoins', 'queryColumns'].forEach(id => applyLanes($(id)));
+        placeAdds();
         // The slot row and the step's lines under it scroll sideways as one (the step's bar moves both)
         const stepBox = { 1: 'queryViewRows', 2: 'queryJoins', 3: 'queryColumns' }[ui.step] || '';
         if (ui.lanesPaired !== stepBox) {
