@@ -293,8 +293,11 @@
                 const found = list.find(x => x.t === t);
                 if (found) found.who.push(p); else list.push({ t, who: [p] });
             });
+            // (the cell drawn whole here: the table's own drawing of the column's "" goes, else with ¶ on it reads "blank"
+            // in front of the values; James, 2026-11-23, every DIFF cell read "blank5 (6)")
+            td.replaceChildren();
             if (!list.length) return;
-            if (list.length === 1) { td.replaceChildren(shownText(list[0].t)); return; }
+            if (list.length === 1) { td.appendChild(shownText(list[0].t)); return; }
             const pair = cells.length === 2;
             // Plain: with two, the Baseline's; with more, the value most results hold, when the Baseline has the record and
             // one value is held by more than any other; else none is plain, every value a pill (old Compare's rule, 2026-11-22)
