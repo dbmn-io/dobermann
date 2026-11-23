@@ -21,6 +21,8 @@
  *   log.addEventListener('dbmn-log-shown', e => …e.detail.shown, total, following, unseen…);
  *   log.addEventListener('dbmn-log-end', …);     // scrolled down to the oldest line: time for older ones
  *   log.addEventListener('dbmn-log-open', e => …e.detail.open…);   // a line's `open` clicked
+ *   log.addEventListener('dbmn-log-run', e => …e.detail.run…);     // a line's run clicked (its name, a link):
+ *       detail { run: { id, name, batch }, open, key }; the screen opens that run in the Console
  *
  * Lines are kept in time order whatever order they come in; a line given twice (same `key`)
  * shows once. `time` is milliseconds since 1970; it shows (and is searched) as the computer's own
@@ -54,9 +56,22 @@
         { id: 'source', name: 'Source' },
         { id: 'environment', name: 'Environment' },
         // Searched by its name or its id (@run= looks inside), shown by its name
-        { id: 'run', name: 'Run', render: value => runName(value) },
+        // (a line of a run: its name is a link that opens the run in the Console. James, 2026-11-23: "log link. think so. yes")
+        { id: 'run', name: 'Run', render: (value, row) => runLink(value, row) },
         { id: 'message', name: 'Message', render: (value, row) => message(value, row) }
     ];
+
+    function runLink(run, row) {
+        const name = runName(run);
+        if (!name || !run || !run.id) return name;
+        const link = document.createElement('button');
+        link.type = 'button';
+        link.className = 'dbmn-log-run';
+        link.textContent = name;
+        link.dataset.key = row.key;
+        link.title = `Open this run in the Console: ${name}`;
+        return link;
+    }
 
     function message(value, row) {
         const span = document.createElement('span');
@@ -79,7 +94,7 @@
             level: line.level,
             source: line.source,
             environment: line.environment || '',
-            run: line.run ? { name: line.run.name, id: line.run.id } : undefined,
+            run: line.run ? { name: line.run.name, id: line.run.id, batch: !!line.run.batch } : undefined,
             message: line.message,
             detail: line.detail,
             open: line.open
@@ -140,6 +155,17 @@
                 this._tell();
             });
             table.addEventListener('click', event => {
+                // A run's name: the run, in the Console (and nothing else: not the line's request, not a selection)
+                const runLink = event.target.closest('.dbmn-log-run');
+                if (runLink) {
+                    event.stopPropagation();
+                    const row = this._rows.find(r => r.key === runLink.dataset.key);
+                    if (row && row.run) {
+                        this.dispatchEvent(new CustomEvent('dbmn-log-run', { bubbles: true, detail: {
+                            run: { id: row.run.id, name: row.run.name || row.run.id, batch: !!row.run.batch }, open: row.open, key: row.key } }));
+                    }
+                    return;
+                }
                 const span = event.target.closest('.dbmn-log-message.has-detail');
                 if (!span || String(window.getSelection()) || !window.CellDetail) return;
                 const row = this._rows.find(r => r.key === span.dataset.key);

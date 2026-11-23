@@ -264,4 +264,6 @@
 .ds-row .btn[aria-pressed="true"] { box-shadow: inset 0 0 0 1px var(--dbmn-focusBorder); color: var(--dbmn-foreground); }
 
 /* The saved-searches demo: a plain box beside the ★ */
-.ds-saved-box { width: 260px; height: 26px; padding: 0 8px; background: var(--dbmn-input-background); color: var(--dbmn-input-foreground); border: 1px solid var(--dbmn-input-border, var(--dbmn-panel-border)); border-radius: var(--dbmn-radius, 4px); }
+.ds-saved-wrap { position: relative; width: 300px; }
+.ds-saved-wrap > .dbmn-saved-searches { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); }
+.ds-saved-box { width: 100%; height: 28px; box-sizing: border-box; padding: 0 32px 0 8px; background: var(--dbmn-input-background); color: var(--dbmn-input-foreground); border: 1px solid var(--dbmn-input-border, var(--dbmn-panel-border)); border-radius: var(--dbmn-radius, 4px); }

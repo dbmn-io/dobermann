@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Flexion Tech Pty Ltd
 /**
- * <dbmn-saved-searches>: a search box's saved searches, a ★ drop-down beside the box (the design
+ * <dbmn-saved-searches>: a search box's saved searches, a star drop-down inside the box (the design
  * system: src/webviews/design-system). James, 2026-11-23: "drop down beside the box, for sure", and
  * "that saved search should be everywhere where we have a search box".
  *
@@ -9,10 +9,11 @@
  * one fills the box and searches as if it were typed, so an @column the table doesn't show is added
  * as typing it adds it; a saved search never takes a column away.
  *
- *   <dbmn-saved-searches id="saved"></dbmn-saved-searches>      placed beside the search box
- *   <dbmn-saved-searches compact>             inside the box's right end, where a toolbar is tight (Query): the
- *                                             star and the caret only, the saved search's name in the hover text
- *   <dbmn-saved-searches compact="star">      the star alone (22px), beside another icon in a box (the Hub's lists)
+ *   <dbmn-saved-searches id="saved" class="search-box-saved"></dbmn-saved-searches>   in the box's wrapper, after its input
+ *   One look in every screen (James, 2026-11-23: "have it IN to search box as it is in Query", "Just give me
+ *   consistent saved across the system"): the star alone (Lucide's, outlined; filled while the box holds a saved
+ *   search), 22px, inside the search box at its right end (class search-box-saved, a child of the box's wrapper);
+ *   the saved search's name in the hover and the menu. There is no other look to pick.
  *   saved.input = $('querySearch');           // the box it follows (its typing; refresh() after setting it from script)
  *   saved.searches = [{ name: 'Late orders', text: '@status=late' }];   // the screen's list, kept where its table is kept
  *   saved.addEventListener('dbmn-saved-change', e => …e.detail.searches…);   // after a save, rename or delete:
@@ -145,15 +146,15 @@
         _drawButton() {
             const now = this.matching;
             this._button.innerHTML = '';
-            const star = make('span', 'dbmn-saved-star', now ? '★' : '☆');
+            // Lucide's star (James, 2026-11-23: "use this icon for save"): outlined, filled while the box holds a saved search
+            const star = make('span', 'dbmn-saved-star');
+            star.innerHTML = icon('star');
             star.setAttribute('aria-hidden', 'true');
-            const label = make('span', 'dbmn-saved-label', now ? now.name : 'Saved');
-            const caret = make('span', 'dbmn-saved-caret');
-            caret.innerHTML = icon('chevron-down');
-            this._button.append(star, label, caret);
+            // The star alone, in every screen (James, 2026-11-23: "Just give me consistent saved across the system"):
+            // no name beside it, no caret, and no option for either, so the look can't drift; the name is in the hover
+            this._button.append(star);
             this._button.classList.toggle('is-saved', !!now);
             this._button.title = now ? `Saved search: ${now.name}` : 'Saved searches: save this search, or pick one';
-            // (compact: the name isn't shown, so it is the button's name for a screen reader)
             this._button.setAttribute('aria-label', now ? `Saved search: ${now.name}` : 'Saved searches');
         }
 

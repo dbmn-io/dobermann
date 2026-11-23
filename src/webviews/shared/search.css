@@ -81,29 +81,24 @@
 .search-tok-grp-0   { background: rgba(86, 156, 214, 0.10); }
 .search-tok-grp-1   { background: rgba(206, 145, 120, 0.12); }
 
-/* <dbmn-saved-searches> (dbmn-saved-searches.js): a search box's saved searches, a ★ drop-down beside the box */
+/* <dbmn-saved-searches> (dbmn-saved-searches.js): a search box's saved searches, a star drop-down inside the box */
 .dbmn-saved-searches { position: relative; display: inline-flex; flex: 0 0 auto; }
 .dbmn-saved-searches[hidden] { display: none; }
-/* compact: inside the box's right end (Query's toolbar): the star and the caret, no border, the name on hover */
-.dbmn-saved-searches[compact] .dbmn-saved-label { display: none; }
-.dbmn-saved-searches[compact] .dbmn-saved-btn { gap: 2px; height: 22px; padding: 0 4px; border-color: transparent; }
-/* compact="star": the star alone, for a box with room for one more icon only (the Hub's lists, beside the builder) */
-.dbmn-saved-searches[compact="star"] .dbmn-saved-caret { display: none; }
-.dbmn-saved-searches[compact="star"] .dbmn-saved-btn { width: 22px; height: 24px; padding: 0; justify-content: center; }
+/* The button: the star alone, 22px, no border (it sits in the search box) */
 .dbmn-saved-btn {
-    display: inline-flex; align-items: center; gap: 5px;
-    max-width: 200px; height: 26px; padding: 0 8px;
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 22px; height: 22px; padding: 0;
     background: transparent; color: var(--dbmn-foreground);
-    border: 1px solid var(--dbmn-input-border, var(--dbmn-panel-border)); border-radius: var(--dbmn-radius, 4px);
-    font: inherit; font-size: 12px; cursor: pointer; white-space: nowrap;
+    border: 1px solid transparent; border-radius: 3px;
+    cursor: pointer;
 }
 .dbmn-saved-btn:hover, .dbmn-saved-btn[aria-expanded="true"] { background: var(--dbmn-toolbar-hoverBackground, var(--dbmn-hover)); }
 .dbmn-saved-btn:focus-visible { outline: 1px solid var(--dbmn-focusBorder); outline-offset: 1px; }
-.dbmn-saved-star { color: var(--dbmn-descriptionForeground); }
+/* Lucide's star: outlined; filled while the box holds a saved search */
+.dbmn-saved-star { display: inline-flex; color: var(--dbmn-descriptionForeground); }
+.dbmn-saved-star svg { width: 15px; height: 15px; }
 .dbmn-saved-btn.is-saved .dbmn-saved-star { color: var(--dbmn-charts-yellow); }
-.dbmn-saved-label { overflow: hidden; text-overflow: ellipsis; }
-.dbmn-saved-caret { display: inline-flex; color: var(--dbmn-descriptionForeground); }
-.dbmn-saved-caret svg { width: 12px; height: 12px; }
+.dbmn-saved-btn.is-saved .dbmn-saved-star svg { fill: currentColor; }
 
 .dbmn-saved-menu {
     position: absolute; top: calc(100% + 4px); right: 0; z-index: 40;
@@ -164,3 +159,10 @@
 .dbmn-saved-confirm.is-danger { color: var(--dbmn-errorForeground); border-color: var(--dbmn-errorForeground); }
 .dbmn-saved-problem { flex: 1 0 100%; color: var(--dbmn-errorForeground); }
 .dbmn-saved-problem:empty { display: none; }
+
+/* The star inside a search box (.search-input-wrapper: the Console's, a table's own box): at the box's right end,
+   the text and its coloured copy kept clear of it (the same padding on both, so the caret never drifts) */
+/* (above the box's text field, and its menu over the table below: Query's 20, the same in every box) */
+.search-input-wrapper > .dbmn-saved-searches { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); z-index: 20; }
+.search-input-wrapper:has(> .dbmn-saved-searches:not([hidden])) > .search-input,
+.search-input-wrapper:has(> .dbmn-saved-searches:not([hidden])) > .search-input-mirror { padding-right: 32px; }

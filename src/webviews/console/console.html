@@ -121,10 +121,11 @@
                         <svg class="search-icon-inset" width="14" height="14" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg>
                         <div id="search-input-mirror" class="search-input-mirror" aria-hidden="true"></div>
                         <input type="text" id="search-input" class="search-input" placeholder="Search rows, or @column=value" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off" />
+                        <!-- The tab's saved searches (shared/dbmn-saved-searches.js), kept with its View: in the box at
+                             its right, as in Query (James, 2026-11-23: "have it IN to search box as it is in Query") -->
+                        <dbmn-saved-searches id="console-saved" class="search-box-saved" hidden></dbmn-saved-searches>
                     </div>
                 </div>
-                <!-- The tab's saved searches (shared/dbmn-saved-searches.js), kept with its View -->
-                <dbmn-saved-searches id="console-saved" hidden></dbmn-saved-searches>
 
                 <!-- Issue #304: Input rows by the result of the transaction that sent them -->
                 <label class="input-status-filter hidden" id="input-status-filter-wrap">

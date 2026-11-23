@@ -593,8 +593,10 @@
             // (James, 2026-11-23: "that saved search should be everywhere where we have a search box"). The screen
             // keeps the list: savedSearches = [{ name, text }], and dbmn-saved-change tells it of a change
             if (this.hasAttribute('saved-searches') && window.customElements && customElements.get('dbmn-saved-searches')) {
+                // (inside the box at its right end, star only: the one look in every screen, James 2026-11-23)
                 this._saved = document.createElement('dbmn-saved-searches');
-                this._tools.insertBefore(this._saved, this._count);
+                this._saved.className = 'search-box-saved';
+                wrapper.append(this._saved);
                 this._saved.input = this._input;
                 if (this._savedList) this._saved.searches = this._savedList;
             }

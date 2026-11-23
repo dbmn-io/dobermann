@@ -36,7 +36,7 @@ test('save this search: named in the menu, refused when blank or taken; the butt
     const s = p.locator('#s');
     const button = s.locator('.dbmn-saved-btn');
     const menu = s.locator('.dbmn-saved-menu');
-    await expect(button).toHaveText(/Saved/);
+    await expect(button).not.toHaveClass(/is-saved/);
     await expect(menu).toBeHidden();
     // Nothing typed: nothing to save
     await button.click();
@@ -61,7 +61,7 @@ test('save this search: named in the menu, refused when blank or taken; the butt
     await name.press('Enter');
     expect(await p.evaluate(() => window.changes)).toEqual([[{ name: 'Late orders', text: '@status=late' }]]);
     // The box holds it: the button names it, the menu says so and offers no second save
-    await expect(button).toHaveText(/Late orders/);
+    await expect(button).toHaveAttribute('title', 'Saved search: Late orders');
     await expect(button).toHaveClass(/is-saved/);
     await expect(menu.locator('.dbmn-saved-note')).toHaveText('Saved as Late orders');
     await expect(menu.locator('.dbmn-saved-add')).toBeDisabled();
@@ -70,7 +70,7 @@ test('save this search: named in the menu, refused when blank or taken; the butt
     await p.keyboard.press('Escape');
     await expect(menu).toBeHidden();
     await p.locator('#box').fill('@qty>10');
-    await expect(button).toHaveText(/Saved/);
+    await expect(button).not.toHaveClass(/is-saved/);
     await button.click();
     await menu.locator('.dbmn-saved-add').click();
     await name.fill('late ORDERS');
@@ -98,10 +98,10 @@ test('pick fills the box and searches as typed; rename and delete in the menu', 
     await expect(p.locator('#box')).toHaveValue('@qty>10');
     expect(await p.evaluate(() => window.typed)).toEqual(['@qty>10']);
     await expect(menu).toBeHidden();
-    await expect(s.locator('.dbmn-saved-btn')).toHaveText(/Big/);
+    await expect(s.locator('.dbmn-saved-btn')).toHaveAttribute('title', 'Saved search: Big');
     // The box set from script: refresh() makes the button follow
     await p.evaluate(() => { document.getElementById('box').value = '@status=late'; document.getElementById('s').refresh(); });
-    await expect(s.locator('.dbmn-saved-btn')).toHaveText(/Late orders/);
+    await expect(s.locator('.dbmn-saved-btn')).toHaveAttribute('title', 'Saved search: Late orders');
 
     // Rename: ✎, the name in a box
     await s.locator('.dbmn-saved-btn').click();
@@ -121,7 +121,7 @@ test('pick fills the box and searches as typed; rename and delete in the menu', 
     expect(await p.evaluate(() => window.changes.at(-1))).toEqual([{ name: 'Large qty', text: '@qty>10' }]);
     await expect(menu.locator('.dbmn-saved-row')).toHaveCount(1);
     // The box's search is no longer saved: the button says Saved again
-    await expect(s.locator('.dbmn-saved-btn')).toHaveText(/Saved/);
+    await expect(s.locator('.dbmn-saved-btn')).not.toHaveClass(/is-saved/);
 });
 
 test('a screen that fills the box itself (Query): pick only asks; current names the button', async ({ page: p }) => {
@@ -134,9 +134,9 @@ test('a screen that fills the box itself (Query): pick only asks; current names 
     await expect(p.locator('#box')).toHaveValue('@status=late');
     // (the component typed nothing into the box: the screen did)
     expect(await p.evaluate(() => window.typed)).toEqual([]);
-    await expect(s.locator('.dbmn-saved-btn')).toHaveText(/Late orders/);
+    await expect(s.locator('.dbmn-saved-btn')).toHaveAttribute('title', 'Saved search: Late orders');
     await p.locator('#box').fill('@status=late x');
-    await expect(s.locator('.dbmn-saved-btn')).toHaveText(/Saved/);
+    await expect(s.locator('.dbmn-saved-btn')).not.toHaveClass(/is-saved/);
 });
 
 test('at most 50 kept: the 51st is not offered; the menu fits beside the box', async ({ page: p }) => {
@@ -154,15 +154,25 @@ test('at most 50 kept: the 51st is not offered; the menu fits beside the box', a
     expect(menu.x).toBeGreaterThanOrEqual(0);
 });
 
-test('compact (inside a tight toolbar\'s box): the star and the caret, the name in the hover text', async ({ page: p }) => {
+test('one look everywhere: the star alone (Lucide\'s, filled while the box holds a saved search), its name only in the hover', async ({ page: p }) => {
+    // James, 2026-11-23: "Just give me consistent saved across the system, please"; "use this icon for save" (Lucide star)
     await p.setContent(page(false));
-    await p.evaluate(() => { const s = document.getElementById('s'); s.setAttribute('compact', ''); s.searches = [{ name: 'Late orders', text: '@status=late' }]; });
-    await p.locator('#box').fill('@status=late');
+    await p.evaluate(() => { document.getElementById('s').searches = [{ name: 'Late orders', text: '@status=late' }]; });
     const button = p.locator('#s .dbmn-saved-btn');
-    await expect(button.locator('.dbmn-saved-label')).toBeHidden();
+    // No name, no caret: the star (an svg) alone, 22px; outlined
+    await expect(button).toHaveText('');
+    await expect(button.locator('svg')).toHaveCount(1);
+    expect(Math.round((await button.boundingBox()).width)).toBe(22);
+    expect(await button.locator('svg').evaluate(svg => getComputedStyle(svg).fill)).toBe('none');
+    // The box holds a saved search: filled, its name in the hover and for a screen reader
+    await p.locator('#box').fill('@status=late');
+    await expect(button).toHaveClass(/is-saved/);
     await expect(button).toHaveAttribute('title', 'Saved search: Late orders');
     await expect(button).toHaveAttribute('aria-label', 'Saved search: Late orders');
-    expect((await button.boundingBox()).width).toBeLessThan(40);
+    expect(await button.locator('svg').evaluate(svg => getComputedStyle(svg).fill)).not.toBe('none');
+    // An old `compact` changes nothing: there is one look
+    await p.evaluate(() => document.getElementById('s').setAttribute('compact', ''));
+    expect(Math.round((await button.boundingBox()).width)).toBe(22);
     // The menu still works
     await button.click();
     await expect(p.locator('#s .dbmn-saved-note')).toHaveText('Saved as Late orders');

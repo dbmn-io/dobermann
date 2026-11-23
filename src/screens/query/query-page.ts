@@ -85,7 +85,7 @@ export function buildQueryPage(asset: AssetUrl, config: { queryId: string; name:
                         <input type="text" id="querySearch" class="search-input" placeholder="Search rows, or @column=value" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off" data-help="console#search">
                         <!-- Saved searches: the ★ drop-down (the design system's shared/dbmn-saved-searches.js), kept with the query;
                              inside the box at its right end, so the box stays centred and the toolbar keeps its room -->
-                        <dbmn-saved-searches id="querySaved" compact></dbmn-saved-searches>
+                        <dbmn-saved-searches id="querySaved"></dbmn-saved-searches>
                     </div>
                 </div>
                 <button type="button" id="queryChainBtn" class="export-button" data-click="query:chain" title="Send these rows to another API as its Run Batch input">Chain <span class="inline-icon" data-icon="chevron-right"></span></button>

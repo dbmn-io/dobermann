@@ -383,20 +383,21 @@ SearchMatcher.attachColumnSuggest({ input, headings, hidden, types, values })   
 SearchMatcher.renderHighlight(mirror, text, headings, hidden)              the box's colours
 &lt;dbmn-table searchable&gt;  or  table.searchWith(input, mirror)              a table does all three</code></pre>
         <h3>Saved searches <span class="ds-chip is-component">Component</span></h3>
-        <p>A ★ drop-down beside the box (James, 2026-11-23: "drop down beside the box, for sure"). A saved search is the box's text under a name, nothing else. Picking one fills the box and searches as if typed, so an <code>@column</code> the table doesn't show is added, as typing it adds it; it never takes a column away. The button names the saved search the box holds. Each screen keeps its searches where its table is kept: Query's with the query, the Console's with the tab's View. Try it: type a search, then ★ Saved › Save this search.</p>
+        <p>A star in the search box at its right end, the same in every screen (James, 2026-11-23: "have it IN to search box as it is in Query", Lucide's star): outlined, filled while the box holds a saved search, its name in the hover. A saved search is the box's text under a name, nothing else. Picking one fills the box and searches as if typed, so an <code>@column</code> the table doesn't show is added, as typing it adds it; it never takes a column away. The button names the saved search the box holds. Each screen keeps its searches where its table is kept: Query's with the query, the Console's with the tab's View, a lookup table's in its file, Logs' and the Hub lists' in their settings. Try it: type a search, then the star › + Save this search.</p>
         <div class="ds-demo ds-row">
-            <input type="text" id="dsSavedBox" class="ds-saved-box" placeholder="Search rows, or @column=value" spellcheck="false" autocomplete="off">
-            <dbmn-saved-searches id="dsSaved"></dbmn-saved-searches>
+            <div class="search-input-wrapper ds-saved-wrap">
+                <input type="text" id="dsSavedBox" class="ds-saved-box" placeholder="Search rows, or @column=value" spellcheck="false" autocomplete="off">
+                <dbmn-saved-searches id="dsSaved" class="search-box-saved"></dbmn-saved-searches>
+            </div>
             <span class="form-hint" id="dsSavedNote" role="status"></span>
         </div>
-        <pre class="ds-code"><code>&lt;dbmn-saved-searches id="saved"&gt;&lt;/dbmn-saved-searches&gt;         beside the box
+        <pre class="ds-code"><code>&lt;dbmn-saved-searches id="saved" class="search-box-saved"&gt;&lt;/dbmn-saved-searches&gt;   in the box's wrapper, after its input: the star alone
 saved.searches = [{ name: 'Late orders', text: '@status=late' }];   the screen's list, kept where its table is
 saved.input = box;     it follows the box (refresh() after setting the box from script)
 saved.current = text;  or: the screen tells it the box's text
 saved.addEventListener('dbmn-saved-change', e =&gt; …e.detail.searches…);   after a save, rename or delete: keep it, give it back
 saved.addEventListener('dbmn-saved-pick', e =&gt; …e.detail.text…);        unless prevented, the box is filled and its input fires
-&lt;dbmn-table searchable saved-searches&gt;   a table with its own box: its ★ beside it; table.savedSearches = [...]; dbmn-saved-change bubbles
-&lt;dbmn-saved-searches compact&gt;            where room is short (Query's box, the Hub's lists): the star and caret, the name on hover
+&lt;dbmn-table searchable saved-searches&gt;   a table with its own box: the star in it; table.savedSearches = [...]; dbmn-saved-change bubbles
                        a name: needed, at most 30 characters, no two alike; at most 50 searches</code></pre>
     </section>
 

@@ -42,3 +42,20 @@ dbmn-level {
 dbmn-level[level="error"] { color: var(--dbmn-errorForeground, var(--vscode-errorForeground)); }
 dbmn-level[level="warn"] { color: var(--dbmn-editorWarning-foreground, var(--vscode-editorWarning-foreground)); }
 dbmn-level[level="debug"] { color: color-mix(in srgb, var(--dbmn-foreground, var(--vscode-foreground)) 62%, transparent); }
+
+/* A line's run: its name is a link to it in the Console (dbmn-log-run) */
+.dbmn-log-run {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--dbmn-textLink-foreground);
+    font: inherit;
+    cursor: pointer;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: left;
+}
+.dbmn-log-run:hover { text-decoration: underline; }
+.dbmn-log-run:focus-visible { outline: 1px solid var(--dbmn-focusBorder); outline-offset: 1px; }

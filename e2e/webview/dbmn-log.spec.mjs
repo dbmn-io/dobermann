@@ -167,16 +167,18 @@ test('saved-searches: the ★ in the log\'s own search box; picked, it searches;
         log.addEventListener('dbmn-saved-change', e => { window.changes.push(e.detail.searches); log.savedSearches = e.detail.searches; });
         log.savedSearches = [{ name: 'Errors', text: '@level=error' }];
     });
-    // Beside the box, on its line, inside the log
+    // In the box at its right end, star only, the text kept clear of it (as in Query: James, 2026-11-23)
     const box = await page.locator('#log .search-input').boundingBox(), btn = await star.locator('.dbmn-saved-btn').boundingBox();
-    expect(btn.x).toBeGreaterThan(box.x + box.width - 1);
-    expect(Math.abs((btn.y + btn.height / 2) - (box.y + box.height / 2))).toBeLessThan(6);
+    expect(btn.x + btn.width).toBeLessThanOrEqual(box.x + box.width);
+    expect(btn.x).toBeGreaterThan(box.x + box.width - 32);
+    expect(Math.abs((btn.y + btn.height / 2) - (box.y + box.height / 2))).toBeLessThan(2);
+    await expect(star.locator('.dbmn-saved-label')).toBeHidden();
     // Picked: the box holds it and the lines are searched
     await star.locator('.dbmn-saved-btn').click();
     await star.locator('.dbmn-saved-pick', { hasText: 'Errors' }).click();
     await expect(page.locator('#log .search-input')).toHaveValue('@level=error');
     await expect(page.locator('#log .dbmn-table-count')).toHaveText('1 of 202 rows');
-    await expect(star.locator('.dbmn-saved-btn')).toHaveText(/Errors/);
+    await expect(star.locator('.dbmn-saved-btn')).toHaveAttribute('title', 'Saved search: Errors');
     // A new one saved: told to the screen
     await page.locator('#log .search-input').fill('@source=sign-in');
     await star.locator('.dbmn-saved-btn').click();
@@ -185,3 +187,40 @@ test('saved-searches: the ★ in the log\'s own search box; picked, it searches;
     await star.locator('.dbmn-saved-name-input').press('Enter');
     expect(await page.evaluate(() => window.changes.at(-1))).toEqual([{ name: 'Errors', text: '@level=error' }, { name: 'Sign-in', text: '@source=sign-in' }]);
 });
+
+test('a run\'s line: its name is a link that asks for the run in the Console; a line with no run has none', async ({ page }) => {
+    // James, 2026-11-23 (via the manager): "log link. think so. yes"
+    await page.setContent(logPage());
+    await page.evaluate(() => {
+        window.asked = [];
+        window.opened = [];
+        log.addEventListener('dbmn-log-run', e => window.asked.push(e.detail));
+        log.addEventListener('dbmn-log-open', e => window.opened.push(e.detail.open));
+        log.lines = [
+            line({ source: 'start-up', message: 'Hub ready' }),
+            line({ run: { id: 'r-77', name: 'Create Item', batch: true }, message: 'row 1 sent', open: 'req-1' })
+        ];
+    });
+    const runRow = page.locator('#log .dbmn-table-body tr', { hasText: 'row 1 sent' });
+    const plainRow = page.locator('#log .dbmn-table-body tr', { hasText: 'Hub ready' });
+    await expect(plainRow.locator('.dbmn-log-run')).toHaveCount(0);
+    const link = runRow.locator('.dbmn-log-run');
+    await expect(link).toHaveText('Create Item');
+    await expect(link).toHaveAttribute('title', 'Open this run in the Console: Create Item');
+    // Clicked: the run is asked for, and nothing else (not the line's request)
+    await link.click();
+    expect((await page.evaluate(() => window.asked))[0].run).toEqual({ id: 'r-77', name: 'Create Item', batch: true });
+    expect((await page.evaluate(() => window.asked))[0].open).toBe('req-1');
+    expect(await page.evaluate(() => window.opened)).toEqual([]);
+    // By keyboard: focused, Enter asks again
+    await link.focus();
+    await page.keyboard.press('Enter');
+    expect(await page.evaluate(() => window.asked.length)).toBe(2);
+    // The message's own click still opens the request
+    await runRow.locator('.dbmn-log-message').click();
+    expect(await page.evaluate(() => window.opened)).toEqual(['req-1']);
+    // Searched by the run's name, as before
+    await page.locator('#log .search-input').fill('@run=r-77');
+    await expect(page.locator('#log .dbmn-table-count')).toHaveText('1 of 2 rows');
+});
+

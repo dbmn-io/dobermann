@@ -1,6 +1,6 @@
 /**
  * The Console's saved searches (James, 2026-11-23: "that saved search should be everywhere where we
- * have a search box… console"), on the REAL Console page: the ★ beside the box, the searches kept
+ * have a search box… console"), on the REAL Console page: the star in the box at its right, the searches kept
  * with the tab's View and saved with the endpoint's settings; picking one searches as typed, so an
  * @key the View doesn't show is added.
  *
@@ -65,12 +65,18 @@ test('saved with the View and the endpoint\'s settings; picked, it searches and 
     const pageErrors = await open(page);
     const saved = page.locator('#console-saved');
     const button = saved.locator('.dbmn-saved-btn');
-    // Beside the box, on the Completed tab
+    // In the box at its right end, star only (as in Query: James, 2026-11-23), on the Completed tab
     await expect(saved).toBeVisible();
-    const boxAt = await page.locator('.search-container', { has: page.locator('#search-input') }).boundingBox();
+    const boxAt = await page.locator('#search-input').boundingBox();
     const starAt = await button.boundingBox();
-    expect(starAt.x).toBeGreaterThan(boxAt.x + boxAt.width - 2);
-    expect(Math.abs((starAt.y + starAt.height / 2) - (boxAt.y + boxAt.height / 2))).toBeLessThan(6);
+    expect(starAt.x + starAt.width).toBeLessThanOrEqual(boxAt.x + boxAt.width);
+    expect(starAt.x).toBeGreaterThan(boxAt.x + boxAt.width - 32);
+    expect(Math.abs((starAt.y + starAt.height / 2) - (boxAt.y + boxAt.height / 2))).toBeLessThan(2);
+    // Lucide's star, no name beside it (the name is in the hover)
+    await expect(button.locator('svg')).toHaveCount(1);   // (the star alone)
+    await expect(button.locator('.dbmn-saved-label')).toBeHidden();
+    // The text keeps clear of it
+    expect(await page.locator('#search-input').evaluate(i => parseFloat(getComputedStyle(i).paddingRight))).toBeGreaterThanOrEqual(30);
 
     // Save a search
     const box = page.locator('#search-input');
@@ -79,7 +85,8 @@ test('saved with the View and the endpoint\'s settings; picked, it searches and 
     await saved.locator('.dbmn-saved-add').click();
     await saved.locator('.dbmn-saved-name-input').fill('Aisle A');
     await saved.locator('.dbmn-saved-name-input').press('Enter');
-    await expect(button).toHaveText(/Aisle A/);
+    await expect(button).toHaveAttribute('title', 'Saved search: Aisle A');
+    await expect(button).toHaveClass(/is-saved/);
     // Kept on the View, and sent with the endpoint's settings
     expect(await page.evaluate(() => window.dynamicReportManager.getActiveView('success').searches)).toEqual([{ name: 'Aisle A', text: '@bin=A-01' }]);
     await expect.poll(() => page.evaluate(() => {
@@ -93,7 +100,7 @@ test('saved with the View and the endpoint\'s settings; picked, it searches and 
     await box.fill('');
     await page.locator('#console-table thead th', { hasText: 'bin' }).locator('.col-hide-btn').click();
     await expect.poll(() => leaves(page)).not.toContain('data.bin');
-    await expect(button).toHaveText(/Saved/);
+    await expect(button).not.toHaveClass(/is-saved/);
     // Picked: the box holds it, bin comes back, and the rows are searched
     await button.click();
     await saved.locator('.dbmn-saved-pick', { hasText: 'Aisle A' }).click();
@@ -101,6 +108,6 @@ test('saved with the View and the endpoint\'s settings; picked, it searches and 
     await expect.poll(() => leaves(page)).toContain('data.bin');
     await expect(page.locator('#console-table tbody tr.data-row')).toHaveCount(1, { timeout: 10_000 });
     await expect(page.locator('#console-table tbody tr.data-row')).toContainText('Rope Tug');
-    await expect(button).toHaveText(/Aisle A/);
+    await expect(button).toHaveAttribute('title', 'Saved search: Aisle A');
     expect(pageErrors).toEqual([]);
 });
