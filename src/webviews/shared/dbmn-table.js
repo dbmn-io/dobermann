@@ -372,6 +372,28 @@
         }
 
         redrawHeads() { if (this._built) this._heads(); }
+        /**
+         * A column brought into view, sideways (James, 2026-11-23: a column a search adds is
+         * "brought into focus… scroll to right"). `id`: a column, or a key inside one (`data.lines.lot`
+         * is the lines column's), whose heading is scrolled to; its heading is lit for a moment.
+         */
+        reveal(id) {
+            if (!this._built || !id || !this._scroll) return;
+            const ids = this._columns.map(c => c.id);
+            let at = String(id);
+            while (at && !ids.includes(at)) at = at.includes('.') ? at.slice(0, at.lastIndexOf('.')) : '';
+            const th = at && this._head ? [...this._head.querySelectorAll('th[data-col]')].find(h => h.dataset.col === at) : null;
+            if (!th) return;
+            const box = this._scroll.getBoundingClientRect();
+            const head = th.getBoundingClientRect();
+            const sticky = [...this._head.querySelectorAll('th[data-pinned="true"]')].reduce((w, h) => Math.max(w, h.getBoundingClientRect().right - box.left), 0);
+            if (head.right > box.right) this._scroll.scrollLeft += head.right - box.right + 8;
+            else if (head.left < box.left + sticky) this._scroll.scrollLeft -= box.left + sticky - head.left + 8;
+            th.classList.remove('is-revealed');
+            void th.offsetWidth;
+            th.classList.add('is-revealed');
+            setTimeout(() => th.classList.remove('is-revealed'), 1600);
+        }
 
         /**
          * Hidden characters shown (as Word's ¶), the whole table or none of it: in every text cell a faint
@@ -1081,6 +1103,7 @@
             if (!showing.length) return;
             this._heads();
             this._render(true);
+            this.reveal(showing[showing.length - 1]);
             // (told as the user's own change: a screen that keeps the layout keeps it shown)
             this._tell('shown', { id: showing[0], ids: showing });
         }

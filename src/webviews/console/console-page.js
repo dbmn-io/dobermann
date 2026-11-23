@@ -3071,6 +3071,15 @@ class DynamicReportManager {
         }
         const records = this.getRawDataForCurrentTab() || [];
         this.addLeafToView(id, view, records.find(r => r && typeof r === 'object'));
+        this.viewChangedBySearch();
+        // Brought into view, sideways (James, 2026-11-23: no Undo, "user has the Delete key on column
+        // anyways.. JUST bring the new column into focus.. so scroll to right"); a key inside a list
+        // of records: its list's column
+        const table = document.getElementById('console-table');
+        if (table && table.reveal) requestAnimationFrame(() => table.reveal(id));
+    }
+    /** The View changed from the search box: drawn again where the user was, and kept. */
+    viewChangedBySearch() {
         this._tableKey = '';
         this.extractAndRender(this.currentTab, null, { keepScroll: true });
         if (this.currentTab === 'success' || this.currentTab === 'errors') debouncedSaveSettings();

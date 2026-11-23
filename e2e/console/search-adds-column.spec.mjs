@@ -79,6 +79,8 @@ test('a key taken out of the View comes back by searching for it, at the end of 
     expect(await page.evaluate(() => window.dynamicReportManager.getActiveView('success').columns[0].children.map(c => c.id).pop())).toBe('data.bin');
     await expect.poll(() => names(page)).toContain('bin');
     await expect(page.locator('#console-table .dbmn-table-body > tr.data-row')).toHaveCount(1);
+    // Brought into view: scrolled to, sideways, as far as the table can
+    await expect.poll(() => page.locator('#console-table .dbmn-table-scroll').evaluate(b => b.scrollLeft >= b.scrollWidth - b.clientWidth - 1)).toBe(true);
     // Cleared, it stays
     await box.fill('');
     expect(await names(page)).toContain('bin');

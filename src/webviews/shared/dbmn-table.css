@@ -42,6 +42,9 @@ dbmn-table [hidden] { display: none !important; }
 .dbmn-table-grid th .dbmn-col-funnel:hover,
 .dbmn-table-grid th .dbmn-col-funnel:focus-visible { background: var(--dbmn-toolbar-hoverBackground, color-mix(in srgb, var(--dbmn-foreground) 12%, transparent)); }
 .dbmn-table-grid th .dbmn-col-funnel svg { width: 12px; height: 12px; }
+/* A column just brought into view (a search added it): its heading lit, then fading back */
+@keyframes dbmn-col-revealed { from { box-shadow: inset 0 -2px 0 var(--dbmn-focusBorder); } to { box-shadow: inset 0 -2px 0 transparent; } }
+.dbmn-table-grid th.is-revealed { animation: dbmn-col-revealed 1.6s ease-out; }
 .dbmn-table-grid th .header-actions { padding-right: 6px; }
 .dbmn-table-grid td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* A column given wrap: its cells take a second line rather than a wider column (a status of DIFF and Missing) */

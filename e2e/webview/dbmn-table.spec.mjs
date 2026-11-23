@@ -1747,9 +1747,16 @@ test('a finished @name for a column not shown shows it again, at the end, and it
     // Still being typed: nothing yet
     await box.fill('@customer');
     expect(await names(page)).toEqual(['order_no', 'qty', 'notes']);
-    // Its operator (or a space) finishes it: the column comes back at the end, filtered
+    // Its operator (or a space) finishes it: the column comes back at the end, filtered, and is
+    // brought into view: scrolled to sideways, its heading lit for a moment
+    await page.evaluate(() => { t.style.width = '320px'; });
     await box.fill('@customer~mill');
     await expect.poll(() => names(page)).toEqual(['order_no', 'qty', 'notes', 'customer']);
+    await expect(page.locator('#t thead th[data-col="customer"]')).toHaveClass(/is-revealed/);
+    await expect.poll(() => page.locator('#t .dbmn-table-scroll').evaluate(b => b.scrollLeft)).toBeGreaterThan(0);
+    const seen = await page.locator('#t').evaluate(el => { const b = el.querySelector('.dbmn-table-scroll').getBoundingClientRect(); const h = el.querySelector('thead th[data-col="customer"]').getBoundingClientRect(); return h.right <= b.right + 1 && h.left >= b.left - 1; });
+    expect(seen).toBe(true);
+    await page.evaluate(() => { t.style.width = ''; });
     await expect(page.locator('#t .dbmn-table-count')).toHaveText('1,000 of 3,000 rows');
     await expect(page.locator('#t thead th[data-col="customer"] .dbmn-col-funnel')).toBeVisible();
     expect(await page.evaluate(() => window.told)).toContain('shown');
