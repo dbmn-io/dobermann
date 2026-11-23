@@ -186,3 +186,83 @@ test('Translate values applied before comes back with its From and To; another t
     await expect(cols.first()).toHaveValue('z');   // B has z too: kept
     await expect(cols.last()).toHaveValue('z');    // B has no x: its second column
 });
+
+test('Translate values: a value not in From is said in amber with + Add; typing what it becomes adds the row, and the line comes back translated', async ({ page: p }) => {
+    // James, 2026-11-23: "we should have option to ADD value for Group and DZ here too"
+    await p.setContent(page());
+    await p.evaluate(() => {
+        const units = { id: 'uom', name: 'UOM', count: 3, columns: [{ id: 'wms', name: 'WMS' }, { id: 'tms', name: 'TMS' }] };
+        window.lut = [{ wms: 'EA', tms: 'EA' }, { wms: 'ST', tms: 'SE' }, { wms: 'BOX', tms: 'BX' }, { wms: 'CASE', tms: 'BX' }];
+        window.added = [];
+        FUNCTIONS[4] = { id: 'translate', label: 'Translate values', sql: ['TRANSLATE(', 'x', ', ', { key: 'table', label: 'Lookup table', kind: 'lookup', options: [units] }, ')'] };
+        const values = ['EA', 'SE', 'DZ', 'BX'];
+        const answer = (from, to) => values.map(v => {
+            const hits = window.lut.filter(r => r[from] === v);
+            return hits.length === 1 ? { before: v, after: hits[0][to] } : { before: v, after: v, ...(hits.length ? { twice: true } : { missing: true }) };
+        });
+        window.openIt({
+            baseLabel: undefined,
+            sample: applied => { const t = applied.find(a => a.id === 'translate'); return t ? { rows: answer(t.params.from, t.params.to), lookup: { table: 'uom', from: t.params.from, to: t.params.to } } : window.sampleOf(applied); },
+            onAddLookupRow: async row => {
+                window.added.push(row);
+                if (row.out === 'FULL') return { ok: false, error: 'A lookup table has up to 1,000 rows.' };
+                window.lut.push({ [row.from]: row.value, [row.to]: row.out });
+                return { ok: true };
+            }
+        });
+    });
+    const translate = line(p, 'Translate values');
+    await translate.locator('select.dbmn-fx-lookup').selectOption('uom');
+    await translate.locator('select.dbmn-fx-lookup-col').first().selectOption('tms');
+    await translate.locator('select.dbmn-fx-lookup-col').last().selectOption('wms');
+    const cells = () => p.locator('.dbmn-fx-sample tbody tr td:nth-child(2)').allTextContents();
+    await expect.poll(cells).toEqual(['EA', 'ST', 'DZ · not in TMS + Add', 'BX · in TMS twice']);
+    // Found twice: said, never added to
+    await expect(p.locator('.dbmn-fx-sample tbody tr').nth(3).locator('.dbmn-fx-add')).toHaveCount(0);
+    // + Add: a box for what DZ becomes; a refusal is said on its line
+    await p.locator('.dbmn-fx-sample tbody tr').nth(2).locator('.dbmn-fx-add').click();
+    const box = p.locator('.dbmn-fx-add-box');
+    await expect(box).toBeFocused();
+    await expect(box).toHaveAttribute('placeholder', 'WMS for DZ');
+    await box.fill('FULL');
+    await box.press('Enter');
+    await expect(p.locator('.dbmn-fx-add-note')).toHaveText('A lookup table has up to 1,000 rows.');
+    // ...and added: the sample is asked again, and DZ reads translated
+    await box.fill('DOZ');
+    await p.getByRole('button', { name: 'Add to UOM' }).click();
+    await expect.poll(cells).toEqual(['EA', 'ST', 'DOZ', 'BX · in TMS twice']);
+    expect(await p.evaluate(() => window.added.at(-1))).toEqual({ table: 'uom', from: 'tms', to: 'wms', value: 'DZ', out: 'DOZ' });
+});
+
+test('a function before Translate: the value as it reached Translate is said and added, not the column\'s own', async ({ page: p }) => {
+    await p.setContent(page());
+    await p.evaluate(() => {
+        const units = { id: 'uom', name: 'UOM', count: 1, columns: [{ id: 'wms', name: 'WMS' }, { id: 'tms', name: 'TMS' }] };
+        window.added = [];
+        FUNCTIONS[4] = { id: 'translate', label: 'Translate values', sql: ['TRANSLATE(', 'x', ', ', { key: 'table', label: 'Lookup table', kind: 'lookup', options: [units] }, ')'] };
+        window.openIt({ baseLabel: undefined,
+            sample: applied => (applied.some(a => a.id === 'translate') ? { rows: [{ before: ' dz', after: 'dz', looked: 'dz', missing: true }], lookup: { table: 'uom', from: 'tms', to: 'wms' } } : window.sampleOf(applied)),
+            onAddLookupRow: async row => { window.added.push(row); return { ok: true }; } });
+    });
+    const translate = line(p, 'Translate values');
+    await translate.locator('select.dbmn-fx-lookup').selectOption('uom');
+    await translate.locator('select.dbmn-fx-lookup-col').first().selectOption('tms');
+    await translate.locator('select.dbmn-fx-lookup-col').last().selectOption('wms');
+    await expect(p.locator('.dbmn-fx-sample tbody tr td').nth(1)).toContainText('dz · not in TMS');
+    await p.locator('.dbmn-fx-add').click();
+    await p.locator('.dbmn-fx-add-box').fill('DOZ');
+    await p.locator('.dbmn-fx-add-box').press('Enter');
+    await expect.poll(() => p.evaluate(() => window.added.at(-1))).toEqual({ table: 'uom', from: 'tms', to: 'wms', value: 'dz', out: 'DOZ' });
+});
+
+test('Translate values with no onAddLookupRow: a value not found is said, with no + Add', async ({ page: p }) => {
+    await p.setContent(page());
+    await p.evaluate(() => {
+        const units = { id: 'uom', name: 'UOM', count: 1, columns: [{ id: 'wms', name: 'WMS' }, { id: 'tms', name: 'TMS' }] };
+        FUNCTIONS[4] = { id: 'translate', label: 'Translate values', sql: ['TRANSLATE(', 'x', ', ', { key: 'table', label: 'Lookup table', kind: 'lookup', options: [units] }, ')'] };
+        window.openIt({ baseLabel: undefined, sample: applied => (applied.some(a => a.id === 'translate') ? { rows: [{ before: 'DZ', after: 'DZ', missing: true }], lookup: { table: 'uom', from: 'wms', to: 'tms' } } : window.sampleOf(applied)) });
+    });
+    await line(p, 'Translate values').locator('select.dbmn-fx-lookup').selectOption('uom');
+    await expect(p.locator('.dbmn-fx-sample tbody tr td').nth(1)).toHaveText('DZ · not in WMS');
+    await expect(p.locator('.dbmn-fx-add')).toHaveCount(0);
+});

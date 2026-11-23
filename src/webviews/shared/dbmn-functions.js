@@ -33,6 +33,14 @@
  *                                             // to an older ask is dropped; null: nothing to show
  *       onNewLookup: () => …                  // "+ New lookup table…" at the end of the table picker: the
  *                                             // dialog closes first, then the screen makes one (Reporting)
+ *       onAddLookupRow: async ({ table, from, to, value, out }) => ({ ok } | { ok: false, error }),
+ *                                             // "+ Add" on a value a Translate didn't find (James, 2026-11-23:
+ *                                             // "option to ADD value for Group and DZ here too"): the screen adds
+ *                                             // the row (From = value, To = out); then the sample is asked again.
+ *                                             // A sample says which values weren't found: rows: [{ before, after,
+ *                                             // missing?: true, twice?: true, looked? }], lookup: { table, from, to }
+ *                                             // (ids; `looked`: the value as it reached Translate, when functions
+ *                                             // before it changed it: that is what is said and added)
  *       onOpenLookup: id => …                 // "Open" beside a lookup table: the dialog closes first
  *                                             // (an applied table that is not among the options shows as
  *                                             // missing: never quietly another; the screen refuses to run it)
@@ -283,10 +291,21 @@
             sampleBox.hidden = false;
             lutBox.hidden = true;
             const list = Array.isArray(got.rows) ? got.rows : [];
+            const names = lookupNames(got.lookup);
             rows.replaceChildren(...list.map(r => {
                 const tr = el('tr');
                 const before = show(r.before), after = show(r.after);
                 const changed = before !== after;
+                // A value the lookup didn't find (or found twice): left as it was, and said so; one not found can be added
+                if (names && (r.missing || r.twice)) {
+                    // (`looked`: the value as it reached Translate, after any function before it; what is added)
+                    const looked = r.looked === undefined ? before : show(r.looked);
+                    const said = el('td', 'font-mono dbmn-fx-missing', `${looked} · ${r.twice ? `in ${names.from} twice` : `not in ${names.from}`}`);
+                    tr.append(el('td', 'font-mono', before), said);
+                    if (r.missing && typeof o.onAddLookupRow === 'function') said.append(' ', addButton(said, looked, got.lookup, names));
+                    if (withBase) tr.append(el('td', 'font-mono', r.base === undefined ? '' : show(r.base)));
+                    return tr;
+                }
                 tr.append(el('td', 'font-mono', before), el('td', 'font-mono' + (changed ? ' dbmn-fx-changed' : ''), after));
                 if (withBase) {
                     const base = r.base === undefined ? '' : show(r.base);
@@ -300,6 +319,54 @@
             agree.textContent = withBase && pct !== null ? `${pct}% agree with ${o.baseLabel}` : '';
             agree.className = 'form-hint dbmn-fx-agree' + (pct === null ? '' : pct >= 90 ? ' is-good' : pct < 30 ? ' is-low' : '');
             note.textContent = got.error || (list.length ? '' : 'No values to show yet.');
+        }
+
+        /** A lookup's table and From/To columns by name, from the table picker's options; null without one. */
+        function lookupNames(lookup) {
+            if (!lookup || lookup.table === undefined) return null;
+            const tables = functions.flatMap(f => (f.sql || []).filter(p => p && typeof p === 'object' && p.kind === 'lookup').flatMap(p => p.options || []));
+            const table = tables.find(t => t.id === lookup.table);
+            const name = id => ((table && table.columns || []).find(c => c.id === id) || {}).name || id;
+            return { table: table ? table.name : lookup.table, from: name(lookup.from), to: name(lookup.to) };
+        }
+        /**
+         * "+ Add" on a value not found: a box on its line for what it becomes; Enter (or Add) puts the
+         * row in the lookup table through the screen, then the sample is asked again; Esc puts the line back.
+         */
+        function addButton(cell, value, lookup, names) {
+            const b = el('button', 'btn btn-secondary btn-sm dbmn-fx-add', '+ Add');
+            b.type = 'button';
+            b.title = `Add ${value} to ${names.table}, and say what it becomes in ${names.to}`;
+            b.addEventListener('click', () => {
+                const was = Array.from(cell.childNodes);
+                const box = el('input', 'dbmn-modal-input dbmn-fx-add-box');
+                box.placeholder = `${names.to} for ${value}`;
+                box.setAttribute('aria-label', `What ${value} becomes in ${names.to}`);
+                box.spellcheck = false;
+                box.autocomplete = 'off';
+                const go = el('button', 'btn btn-primary btn-sm', `Add to ${names.table}`);
+                go.type = 'button';
+                const said = el('span', 'form-hint dbmn-fx-add-note', '');
+                cell.replaceChildren(el('span', '', `${value} → `), box, ' ', go, ' ', said);
+                box.focus();
+                const add = async () => {
+                    const out = box.value.trim();
+                    if (!out) { box.focus(); return; }
+                    go.disabled = true;
+                    let answer;
+                    try { answer = await o.onAddLookupRow({ table: lookup.table, from: lookup.from, to: lookup.to, value, out }); }
+                    catch (error) { answer = { ok: false, error: error && error.message ? error.message : String(error) }; }
+                    if (answer && answer.ok) { ask(); return; }
+                    go.disabled = false;
+                    said.textContent = (answer && answer.error) || "It couldn't be added.";
+                };
+                go.addEventListener('click', add);
+                box.addEventListener('keydown', event => {
+                    if (event.key === 'Enter') { event.preventDefault(); event.stopPropagation(); add(); }
+                    else if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); cell.replaceChildren(...was); }
+                });
+            });
+            return b;
         }
 
         /**
