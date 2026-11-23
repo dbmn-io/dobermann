@@ -170,7 +170,7 @@ test('saved-searches: the ★ in the log\'s own search box; picked, it searches;
     // In the box at its right end, star only, the text kept clear of it (as in Query: James, 2026-11-23)
     const box = await page.locator('#log .search-input').boundingBox(), btn = await star.locator('.dbmn-saved-btn').boundingBox();
     expect(btn.x + btn.width).toBeLessThanOrEqual(box.x + box.width);
-    expect(btn.x).toBeGreaterThan(box.x + box.width - 32);
+    expect(btn.x).toBeGreaterThan(box.x + box.width - 46);
     expect(Math.abs((btn.y + btn.height / 2) - (box.y + box.height / 2))).toBeLessThan(2);
     await expect(star.locator('.dbmn-saved-label')).toBeHidden();
     // Picked: the box holds it and the lines are searched

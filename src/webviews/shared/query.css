@@ -162,8 +162,8 @@
 /* ...above the box's own text field (.search-input is z-index 1: it took every click, James 2026-11-23 "this thing's not
    interactable at all"), and its menu over Results' table below */
 #queryResultsControls #querySaved { z-index: 20; }
-/* (room for the compact ★, star only, 22px: the same 32px as every other box with one; James, 2026-11-23) */
-#queryResultsControls .search-input, #queryResultsControls .search-input-mirror { padding-right: 32px; }
+/* (room for the ★ and its caret, 38px: the same in every box, search.css's --search-saved-room; James, 2026-11-23) */
+#queryResultsControls .search-input, #queryResultsControls .search-input-mirror { padding-right: var(--search-saved-room, 46px); }
 #queryResultsControls > :not(.search-container) { flex: none; }
 .query-view-tools { display: inline-flex; align-items: center; gap: 16px; flex-wrap: nowrap; }
 /* Every control in the row one height, the toggles' (dbmn-toggle, 34px): "the same height as any other button" (James, 2026-11-22) */

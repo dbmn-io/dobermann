@@ -1,6 +1,6 @@
 /**
  * <dbmn-saved-searches> (shared/dbmn-saved-searches.js) in a real browser from the real files: a
- * search box's saved searches, a ★ drop-down beside the box (James, 2026-11-23: "drop down beside
+ * search box's saved searches, a star drop-down in the box (James, 2026-11-23, at first: "drop down beside
  * the box, for sure").
  *
  *   npm run test:e2e:webview      (no backend needed)
@@ -154,26 +154,37 @@ test('at most 50 kept: the 51st is not offered; the menu fits beside the box', a
     expect(menu.x).toBeGreaterThanOrEqual(0);
 });
 
-test('one look everywhere: the star alone (Lucide\'s, filled while the box holds a saved search), its name only in the hover', async ({ page: p }) => {
-    // James, 2026-11-23: "Just give me consistent saved across the system, please"; "use this icon for save" (Lucide star)
+test('one look everywhere: the star (Lucide\'s, the magnifier\'s size, filled while the box holds a saved search) and a caret; the name only in the hover', async ({ page: p }) => {
+    // James, 2026-11-23: "Just give me consistent saved across the system, please"; "use this icon for save" (Lucide star);
+    // "just give me this star with a drop-down… make it full size… similar size to the search icon"
     await p.setContent(page(false));
     await p.evaluate(() => { document.getElementById('s').searches = [{ name: 'Late orders', text: '@status=late' }]; });
     const button = p.locator('#s .dbmn-saved-btn');
-    // No name, no caret: the star (an svg) alone, 22px; outlined
+    // No name: the star and the caret (two svgs); the star 16px, the magnifier's 14px give or take; outlined
     await expect(button).toHaveText('');
-    await expect(button.locator('svg')).toHaveCount(1);
-    expect(Math.round((await button.boundingBox()).width)).toBe(22);
-    expect(await button.locator('svg').evaluate(svg => getComputedStyle(svg).fill)).toBe('none');
+    await expect(button.locator('svg')).toHaveCount(2);
+    const starBox = await button.locator('.dbmn-saved-star svg').boundingBox();
+    expect(Math.round(starBox.width)).toBe(16);
+    expect(Math.round(starBox.height)).toBe(16);
+    await expect(button.locator('.dbmn-saved-caret svg')).toBeVisible();
+    const width = Math.round((await button.boundingBox()).width);
+    expect(width).toBeLessThanOrEqual(40);
+    expect(await button.locator('.dbmn-saved-star svg').evaluate(svg => getComputedStyle(svg).fill)).toBe('none');
     // The box holds a saved search: filled, its name in the hover and for a screen reader
     await p.locator('#box').fill('@status=late');
     await expect(button).toHaveClass(/is-saved/);
     await expect(button).toHaveAttribute('title', 'Saved search: Late orders');
     await expect(button).toHaveAttribute('aria-label', 'Saved search: Late orders');
-    expect(await button.locator('svg').evaluate(svg => getComputedStyle(svg).fill)).not.toBe('none');
+    expect(await button.locator('.dbmn-saved-star svg').evaluate(svg => getComputedStyle(svg).fill)).not.toBe('none');
+    // (the name is never drawn: the box holds the search)
+    await expect(button).toHaveText('');
     // An old `compact` changes nothing: there is one look
     await p.evaluate(() => document.getElementById('s').setAttribute('compact', ''));
-    expect(Math.round((await button.boundingBox()).width)).toBe(22);
+    expect(Math.round((await button.boundingBox()).width)).toBe(width);
     // The menu still works
     await button.click();
     await expect(p.locator('#s .dbmn-saved-note')).toHaveText('Saved as Late orders');
+    // ...and marks the one the box holds with the same star, drawn (no ★ character anywhere)
+    await expect(p.locator('#s .dbmn-saved-row.is-current .dbmn-saved-mark svg')).toHaveCount(1);
+    expect(await p.locator('#s').evaluate(el => /[★☆]/.test(el.textContent))).toBe(false);
 });

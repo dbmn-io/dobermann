@@ -70,13 +70,16 @@ test('saved with the View and the endpoint\'s settings; picked, it searches and 
     const boxAt = await page.locator('#search-input').boundingBox();
     const starAt = await button.boundingBox();
     expect(starAt.x + starAt.width).toBeLessThanOrEqual(boxAt.x + boxAt.width);
-    expect(starAt.x).toBeGreaterThan(boxAt.x + boxAt.width - 32);
+    expect(starAt.x).toBeGreaterThan(boxAt.x + boxAt.width - 46);
     expect(Math.abs((starAt.y + starAt.height / 2) - (boxAt.y + boxAt.height / 2))).toBeLessThan(2);
-    // Lucide's star, no name beside it (the name is in the hover)
-    await expect(button.locator('svg')).toHaveCount(1);   // (the star alone)
+    // Lucide's star and a caret, no name (the name is in the hover); the star as big as the box's magnifier, give or take 2px
+    await expect(button.locator('svg')).toHaveCount(2);
+    const glass = await page.locator('.search-icon-inset').first().boundingBox();
+    const star = await button.locator('.dbmn-saved-star svg').boundingBox();
+    expect(Math.abs(star.height - glass.height)).toBeLessThanOrEqual(2);
     await expect(button.locator('.dbmn-saved-label')).toBeHidden();
     // The text keeps clear of it
-    expect(await page.locator('#search-input').evaluate(i => parseFloat(getComputedStyle(i).paddingRight))).toBeGreaterThanOrEqual(30);
+    expect(await page.locator('#search-input').evaluate(i => parseFloat(getComputedStyle(i).paddingRight))).toBeGreaterThanOrEqual(starAt.width + 4);
 
     // Save a search
     const box = page.locator('#search-input');

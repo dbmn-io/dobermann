@@ -52,7 +52,9 @@ test.describe('Hub search box (#444)', () => {
         await openList(page, 'catalogue');
         const box = page.locator('#catalogueSearch');
         await box.click();
-        await box.pressSequentially('bulk @method=get @tag=inventory');
+        // (short enough for one line beside the star, its caret and the builder in the list panel's box: James,
+        // 2026-11-23, the star with its drop-down in every box)
+        await box.pressSequentially('bulk @method=get @tag=dogs');
         const one = await measure(page);
         expect(one.boxHeight, 'one line').toBeLessThanOrEqual(32);
         expect(one.mirrorHeight, 'the copy as high as the box').toBe(one.boxHeight);

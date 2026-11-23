@@ -12,8 +12,9 @@
  *   <dbmn-saved-searches id="saved" class="search-box-saved"></dbmn-saved-searches>   in the box's wrapper, after its input
  *   One look in every screen (James, 2026-11-23: "have it IN to search box as it is in Query", "Just give me
  *   consistent saved across the system"): the star alone (Lucide's, outlined; filled while the box holds a saved
- *   search), 22px, inside the search box at its right end (class search-box-saved, a child of the box's wrapper);
- *   the saved search's name in the hover and the menu. There is no other look to pick.
+ *   search) the size of the box's magnifier, and a drop-down caret, inside the search box at its right end (class
+ *   search-box-saved, a child of the box's wrapper); the saved search's name in the hover and the menu, never shown
+ *   (the box holds its text). There is no other look to pick.
  *   saved.input = $('querySearch');           // the box it follows (its typing; refresh() after setting it from script)
  *   saved.searches = [{ name: 'Late orders', text: '@status=late' }];   // the screen's list, kept where its table is kept
  *   saved.addEventListener('dbmn-saved-change', e => …e.detail.searches…);   // after a save, rename or delete:
@@ -150,9 +151,14 @@
             const star = make('span', 'dbmn-saved-star');
             star.innerHTML = icon('star');
             star.setAttribute('aria-hidden', 'true');
-            // The star alone, in every screen (James, 2026-11-23: "Just give me consistent saved across the system"):
-            // no name beside it, no caret, and no option for either, so the look can't drift; the name is in the hover
-            this._button.append(star);
+            // The star and its drop-down caret, in every screen, no name (James, 2026-11-23: "All saved searches should
+            // follow this pattern… I don't need to see the name, because the saved search is loaded into the search box.
+            // So just give me this star with a drop-down… make it full size… similar size to the search icon"): no other
+            // look to pick, so it can't drift; the name is in the hover
+            const caret = make('span', 'dbmn-saved-caret');
+            caret.innerHTML = icon('chevron-down');
+            caret.setAttribute('aria-hidden', 'true');
+            this._button.append(star, caret);
             this._button.classList.toggle('is-saved', !!now);
             this._button.title = now ? `Saved search: ${now.name}` : 'Saved searches: save this search, or pick one';
             this._button.setAttribute('aria-label', now ? `Saved search: ${now.name}` : 'Saved searches');
@@ -198,7 +204,10 @@
                 } else {
                     const pick = make('button', 'dbmn-saved-pick');
                     pick.type = 'button';
-                    pick.append(make('span', 'dbmn-saved-name', s.name), make('span', 'dbmn-saved-text', s.text));
+                    const name = make('span', 'dbmn-saved-name', s.name);
+                    // (the one the box holds: Lucide's star before its name, filled, as on the button)
+                    if (now && now === s) { const mark = make('span', 'dbmn-saved-mark'); mark.innerHTML = icon('star'); mark.setAttribute('aria-hidden', 'true'); name.prepend(mark); }
+                    pick.append(name, make('span', 'dbmn-saved-text', s.text));
                     pick.title = `Search ${s.text}`;
                     pick.addEventListener('click', () => this._pick(s));
                     const edit = make('button', 'dbmn-saved-icon');
