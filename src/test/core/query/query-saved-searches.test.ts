@@ -63,6 +63,31 @@ describe('Query: saved searches', function () {
         controller.dispose();
     });
 
+    it('Add a view\'s picker: its saved searches kept once for every query (not with one), given back with the state', async () => {
+        // (James, 2026-11-23: "everywhere where we have a search box"; the picker's table shows the ★, the design system's)
+        const state = memory();
+        await state.update('queries', [QUERY()]);
+        const seen: Msg[] = [];
+        const session = new ScreenSession({ post: (m: Msg) => { seen.push(m); } } as never, { openExternal() { /* */ } } as never);
+        const ports = {
+            metadata: { getUnifiedExecutionHistory: async () => [] },
+            environments: { getEnvironment: async () => undefined, getEnvironments: async () => [], listEnvironments: async () => [] },
+            endpoints: { getEndpoint: async () => undefined, updateEndpoint: async () => undefined },
+            state, toast: { info() { /* */ }, warn() { /* */ }, error() { /* */ } }, logger: { log() { /* */ }, error() { /* */ } },
+            host: { close() { /* */ }, openConsole: async () => { /* */ } },
+            queryFiles: { read: async () => ({ columns: ['sku', 'qty'], rows: [{ sku: 'A', qty: 1 }] }), save: async () => { /* */ }, remove: async () => { /* */ } }
+        };
+        const controller = new QueryController(session, ports as never, { queryId: 'qry-s' });
+        await controller.handleMessage({ type: 'query.ready' } as never);
+        assert.deepStrictEqual((seen.find(m => m.type === 'query.state') as Msg & { addViewSearches: unknown }).addViewSearches, []);
+        await controller.handleMessage({ type: 'query.saveAddViewSearches', searches: [{ name: 'Prod GETs', text: '@env=prod @method=get' }, { name: '', text: 'x' }] } as never);
+        assert.deepStrictEqual(([...seen].reverse().find(m => m.type === 'query.addViewSearches') as Msg & { searches: unknown }).searches, [{ name: 'Prod GETs', text: '@env=prod @method=get' }]);
+        assert.deepStrictEqual(state.get('query.addView.savedSearches'), [{ name: 'Prod GETs', text: '@env=prod @method=get' }]);
+        // (not on the query: another query's picker has them too)
+        assert.strictEqual((state.get<SavedQuery[]>('queries') ?? [])[0].searches, undefined);
+        controller.dispose();
+    });
+
     it('a query with none says so: an empty list in its state', async () => {
         assert.deepStrictEqual(cleanSearches(QUERY().searches), []);
     });

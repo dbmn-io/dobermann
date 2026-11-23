@@ -796,6 +796,11 @@
         tableEl.setAttribute('searchable', '');
         tableEl.setAttribute('selectable', '');
         tableEl.setAttribute('placeholder', 'Search results: get inventory, an environment, a header value…');
+        // Its saved searches (the ★ beside its box, the design system's): one list for every query, kept by the host
+        tableEl.setAttribute('saved-searches', '');
+        tableEl.savedSearches = (ui.state && ui.state.addViewSearches) || [];
+        tableEl.addEventListener('dbmn-saved-change', e => post({ type: 'query.saveAddViewSearches', searches: (e.detail && e.detail.searches) || [] }));
+        ui.addPicker = tableEl;
         body.appendChild(tableEl);
         const note = el('p', 'form-hint query-add-note');
         body.append(note);
@@ -2775,6 +2780,11 @@
                 break;
             // Saved searches, as the host kept them after a save, a rename or a delete
             case 'query.searches': if (saved) saved.searches = m.searches || []; break;
+            // Add a view's picker's, as kept: on the state, and on the picker if it is open
+            case 'query.addViewSearches':
+                if (ui.state) ui.state.addViewSearches = m.searches || [];
+                if (ui.addPicker && ui.addPicker.isConnected) ui.addPicker.savedSearches = m.searches || [];
+                break;
             case 'query.state': applyState(m); break;
             // The host's counting: its stage as it starts one, or stopped (since: null)
             case 'query.joinCounts': ui.joinCountsWhy = m.counts ? '' : (m.why || ''); joinCountsIn(m.counts); break;

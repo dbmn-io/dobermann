@@ -70,6 +70,9 @@ export interface QueryPorts extends ComparePorts {
     engineHost?(): EngineHost;
 }
 
+/** Where Add a view's picker keeps its saved searches: one list for every query. */
+export const ADD_VIEW_SEARCHES_KEY = 'query.addView.savedSearches';
+
 export interface QueryConfig {
     queryId: string;
     /** Where the tab opens: 'results' runs the query and shows only Results; anything else opens on Views. */
@@ -476,6 +479,14 @@ export class QueryController {
                 // The report's columns, in Results' order: each a view's column with its functions, a compared column's cells sharing a group
                 // Saved searches (the ★ beside the search, the design system's dbmn-saved-searches): the whole list after a
                 // save, rename or delete; kept with the query, nothing runs again; the list given back as kept
+                // Add a view's picker's saved searches: one list for every query, kept in this app's small state (the picker
+                // is the same everywhere; James, 2026-11-23: "everywhere where we have a search box")
+                case 'query.saveAddViewSearches': {
+                    const searches = cleanSearches(message.searches);
+                    await this.ports.state.update(ADD_VIEW_SEARCHES_KEY, searches);
+                    this.post({ type: 'query.addViewSearches', searches });
+                    return;
+                }
                 case 'query.saveSearches': {
                     await this.change(q => { q.searches = cleanSearches(message.searches); }, false);
                     this.post({ type: 'query.searches', searches: cleanSearches(this.query?.searches) });
@@ -1822,8 +1833,9 @@ export class QueryController {
             columnCells: now.columnCells ?? [],
             // A joining view's key, and the column it is matched to: not shown twice
             keyColumns: joinKeyColumns(this.spec().spec).map(k => ({ view: k.key.view, column: k.key.column, sameView: k.same.view, sameColumn: k.same.column })),
-            // Saved searches, for the ★ beside the search
+            // Saved searches, for the ★ beside the search; and Add a view's picker's own
             searches: cleanSearches(query.searches),
+            addViewSearches: cleanSearches(this.ports.state.get(ADD_VIEW_SEARCHES_KEY)),
             allSelected: !(query.select?.length),
             distinct: !!query.distinct,
             duplicates: now.duplicates ?? 0,
