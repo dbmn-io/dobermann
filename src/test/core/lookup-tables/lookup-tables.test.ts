@@ -67,6 +67,22 @@ describe('Lookup tables', () => {
         assert.deepStrictEqual((await store.get(table.id))?.columns.map(c => c.id), ['c1', 'c2']);
     });
 
+    it('a row added (Translate\'s "+ Add"): the others blank, heard by every screen; refused when the value is there, the table full or gone', async () => {
+        const { state, store } = fresh();
+        const heard: string[] = [];
+        new LookupTablesStore(state).onChange(c => heard.push(c.kind));
+        const table = await store.create('UOM', ['TMS', 'WMS', 'ERP']);
+        await store.addRow(table.id, { c1: 'DZ', c2: 'DOZEN' }, { column: 'c1', value: 'DZ' });
+        assert.deepStrictEqual((await store.get(table.id))?.rows, [{ c1: 'DZ', c2: 'DOZEN', c3: '' }]);
+        assert.deepStrictEqual(heard, ['saved', 'saved']);
+        await assert.rejects(store.addRow(table.id, { c1: 'DZ', c2: 'X' }, { column: 'TMS', value: 'DZ' }), /DZ is in TMS already/);
+        const full = await store.get(table.id);
+        await store.save({ ...full!, rows: Array.from({ length: 1000 }, (_, i) => ({ c1: `K${i}`, c2: '', c3: '' })) });
+        await assert.rejects(store.addRow(table.id, { c1: 'NEW' }), /up to 1,000 rows/);
+        await store.remove(table.id);
+        await assert.rejects(store.addRow(table.id, { c1: 'NEW' }), /has been deleted/);
+    });
+
     it('rename, duplicate, delete: a deleted table reads as undefined', async () => {
         const { store } = fresh();
         const table = await store.create('Units');

@@ -1036,8 +1036,14 @@
             const resolve = waiting.get(m.seq);
             if (!resolve) return;
             waiting.delete(m.seq);
+            // (Translate values: lines already { before, after, missing?, twice? } with the lookup they are for)
+            if (m.lookup) { resolve({ rows: m.rows || [], lookup: m.lookup, agree: null, error: m.error }); return; }
             resolve(Object.assign({ rows: (m.rows || []).map(r => ({ before: r[0], after: r[1] })), agree: null, error: m.error }, m.table ? { table: m.table, value: m.value } : {}));
         };
+        // Translate values' "+ Add": the host adds the row, and says so (query.lookupRowAdded); the dialog then asks its sample again
+        let addSeq = 0;
+        const adding = new Map();
+        ui.lookupRowAdded = m => { const done = adding.get(m.seq); if (!done) return; adding.delete(m.seq); done(m.ok ? { ok: true } : { ok: false, error: m.error || 'The row could not be added.' }); };
         const applied = await window.DbmnFunctions.open({
             title: `Functions on ${ref.column || 'the column'}`,
             column: name,
@@ -1049,6 +1055,11 @@
             asLabel: join ? 'Joins as' : 'Shows as',
             // A lookup table opens in its own tab, from Reporting
             onOpenLookup: id => post({ type: 'query.openLookup', id }),
+            onAddLookupRow: ({ table, from, to, value, out }) => new Promise(resolve => {
+                const seq = ++addSeq;
+                adding.set(seq, resolve);
+                post({ type: 'query.addLookupRow', seq, table, from, to, value, out });
+            }),
             // "+ New lookup table…": a new table in its own tab, as Reporting's + New lookup table makes
             // (its name and columns from the shared dialog, shared/lookup-new.js, when the page has it; else the host's default)
             onNewLookup: () => {
@@ -2718,6 +2729,7 @@
             case 'query.exported': setBusy(''); break;
             case 'query.idle': setBusy(''); break;
             case 'query.fnSample': if (ui.fnSample) ui.fnSample(m); break;
+            case 'query.lookupRowAdded': if (ui.lookupRowAdded) ui.lookupRowAdded(m); break;
             case 'query.calcCheck': if (ui.calcCheck) ui.calcCheck(m); break;
             case 'query.recordDetail': compareResults.recordDetail(m); break;
             case 'query.viewRowsData': if (ui.viewRows) ui.viewRows(m); break;

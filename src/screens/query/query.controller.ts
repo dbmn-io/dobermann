@@ -36,7 +36,7 @@ import { alignCompareJoins, groupCompare, isCompare, MAX_COMPARE_VIEWS, queryCom
 import { columnCellDiffs, comparedGroups, otherFilters, passes, rowStatus, statusCounts, statusMenuCounts, type RowStatus, type StatusCounts, type StatusFilter } from '../../services/query/query-status';
 import { resultWorkbook } from '../../services/query/query-export';
 import { asColumnValue, lookupsIn } from '../../services/column-functions/column-functions';
-import type { LookupTablesReader, LookupTableSummary } from '../../services/lookup-tables/lookup-tables';
+import { lookupValue, type LookupTablesReader, type LookupTableSummary } from '../../services/lookup-tables/lookup-tables';
 import type { ColumnRef, QueryFn, QueryJoin, QueryJoinKind, QueryJoinStats, QueryKey, QuerySpec } from '../../services/query/query-types';
 import { ConsoleExportService } from '../../services/console/export.service';
 import type { ColumnDefinition } from '../../types/console-messages';
@@ -508,6 +508,20 @@ export class QueryController {
                     this.result = undefined;
                 });
                 case 'query.record': return await this.record(Number(message.index), Array.isArray(message.hidden) ? (message.hidden as string[]).map(String) : []);
+                // Translate values' "+ Add": a row for a value not in the From column (the store refuses in words)
+                case 'query.addLookupRow': {
+                    const seq = Number(message.seq);
+                    const value = String(message.value ?? '');
+                    const from = String(message.from ?? '');
+                    try {
+                        if (!this.ports.lookups?.addRow) throw new Error('Lookup tables can\'t be changed here.');
+                        await this.ports.lookups.addRow(String(message.table ?? ''), { [from]: value, [String(message.to ?? '')]: String(message.out ?? '') }, { column: from, value });
+                        this.post({ type: 'query.lookupRowAdded', seq, ok: true });
+                    } catch (error) {
+                        this.post({ type: 'query.lookupRowAdded', seq, ok: false, error: error instanceof Error ? error.message : String(error) });
+                    }
+                    return;
+                }
                 case 'query.newLookup': {
                     if (this.ports.newLookup) await this.ports.newLookup(typeof message.name === 'string' ? message.name : undefined, Array.isArray(message.columns) ? (message.columns as unknown[]).map(String) : undefined);
                     return;
@@ -1077,8 +1091,33 @@ export class QueryController {
         } catch (e) {
             error = e instanceof Error ? e.message : String(e);
         }
-        const last = [...(message.fns ?? [])].reverse().find(f => f.fn === 'translate');
+        const fns = message.fns ?? [];
+        const at = fns.map(f => f.fn).lastIndexOf('translate');
+        const last = at >= 0 ? fns[at] : undefined;
         const lookup = last && last.fn === 'translate' ? await this.ports.lookups?.get(last.table) : undefined;
+        if (last && last.fn === 'translate' && lookup && message.column && !error) {
+            // Translate values (James, 2026-11-23, the mock's step 3): the column's values before and after, up to 50, each
+            // said missing when not in the From column, or twice, by the rule Translate keeps (lookupValue), on the value
+            // as it comes to Translate (after the functions before it)
+            try {
+                const all = fnSampleQueries(message.view, message.column, fns, '').few;
+                const before = fnSampleQueries(message.view, message.column, fns.slice(0, at), '').few;
+                const made = (await this.engineWindow(spec, all, 50, message.view)).rows;
+                const input = new Map((await this.engineWindow(spec, before, 50, message.view)).rows.map(r => [String(r[0]), r[1]]));
+                const lines = made.map(r => {
+                    const fed = input.has(String(r[0])) ? input.get(String(r[0])) : r[0];
+                    const looked = fed === null || fed === undefined ? '' : String(fed);
+                    const answer = lookupValue(lookup, last.from, looked, last.to);
+                    // (`looked`: the value Translate looked up, and what "+ Add" adds, when a function before it changed it)
+                    const as = answer.kind !== 'found' && looked !== String(r[0] ?? '') ? { looked } : {};
+                    return { before: r[0], after: r[1], ...(answer.kind === 'missing' ? { missing: true } : {}), ...(answer.kind === 'twice' ? { twice: true } : {}), ...as };
+                });
+                this.post({ type: 'query.fnSample', seq: message.seq, rows: lines, lookup: { table: last.table, from: last.from, to: last.to } });
+                return;
+            } catch (e) {
+                error = e instanceof Error ? e.message : String(e);
+            }
+        }
         const lookupTable = lookup ? { columns: lookup.columns.map(c => ({ id: c.id, name: c.name })), rows: lookup.rows } : undefined;
         this.post({ type: 'query.fnSample', seq: message.seq, rows, error, ...(lookupTable ? { table: lookupTable, value: rows[0]?.[0] ?? null } : {}) });
     }

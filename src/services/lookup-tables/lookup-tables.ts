@@ -73,6 +73,8 @@ export interface LookupTablesReader {
     get(id: string): Promise<LookupTable | undefined>;
     /** Called after a table is saved or deleted; returns a function that stops it. */
     onChange(listener: (change: LookupChange) => void): () => void;
+    /** One row added (Translate values' "+ Add" in Query): LookupTablesStore.addRow. */
+    addRow?(id: string, row: Record<string, string>, unique?: { column: string; value: string }): Promise<LookupTable>;
 }
 
 export interface LookupTablesStoreOptions {
@@ -297,6 +299,25 @@ export class LookupTablesStore implements LookupTablesReader {
         await this.writeOne(kept);
         this.tell({ kind: 'saved', id: kept.id });
         return kept;
+    }
+
+    /**
+     * One row added (James, 2026-11-23: Translate values' "+ Add" on a value not in the From column): `row` a value by
+     * column id, the others blank. With `unique`, refused when that column already holds the value (another screen added
+     * it first). Refused in words when the table is gone or full. Kept as save keeps a table (written whole, beside, then
+     * put in place) and every screen on it hears (onChange).
+     */
+    async addRow(id: string, row: Record<string, string>, unique?: { column: string; value: string }): Promise<LookupTable> {
+        const table = await this.get(id);
+        if (!table) throw new Error('This lookup table has been deleted.');
+        if (table.rows.length >= LOOKUP_MAX_ROWS) throw new Error(`A lookup table has up to ${LOOKUP_MAX_ROWS.toLocaleString('en-AU')} rows.`);
+        if (unique) {
+            const column = lookupColumn(table, unique.column);
+            if (column && table.rows.some(r => (r[column.id] ?? '') === unique.value)) throw new Error(`${unique.value} is in ${column.name} already.`);
+        }
+        const added: Record<string, string> = {};
+        table.columns.forEach(c => { const v = row[c.id]; added[c.id] = v === null || v === undefined ? '' : String(v); });
+        return this.save({ ...table, rows: [...table.rows, added] });
     }
 
     async rename(id: string, name: string): Promise<LookupTable> {
