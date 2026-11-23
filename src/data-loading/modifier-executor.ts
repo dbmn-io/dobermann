@@ -22,6 +22,7 @@ import {
     DateMathModifier,
     DateMathUnit
 } from './modifier-types';
+import { applyLookup } from './template-lookups';
 
 /**
  * Apply all modifiers to a value
@@ -61,7 +62,7 @@ export function applyModifiers(
             }
         }
 
-        // Apply string transforms (upper, lower)
+        // Apply string transforms (upper, lower), and lookups (`lu`), in the order written
         for (const mod of modifiers.modifiers) {
             if (mod.kind === 'string') {
                 if (mod.type === 'upper') {
@@ -69,6 +70,10 @@ export function applyModifiers(
                 } else if (mod.type === 'lower') {
                     processedValue = processedValue.toLowerCase();
                 }
+            } else if (mod.kind === 'lookup') {
+                const looked = applyLookup(processedValue, mod);
+                if (!looked.success) return looked;
+                processedValue = String(looked.value);
             }
         }
 
@@ -488,6 +493,8 @@ function applyFormatString(date: Date, format: string): string {
  */
 export function hasValidationModifiers(modifiers: ParsedModifiers): boolean {
     for (const mod of modifiers.modifiers) {
+        // (a lookup fails a value that isn't in its table)
+        if (mod.kind === 'lookup') return true;
         if (mod.kind === 'string') {
             if (['exactLength', 'minLength', 'maxLength', 'lengthRange'].includes(mod.type)) {
                 return true;
@@ -522,7 +529,7 @@ export function hasTransformModifiers(modifiers: ParsedModifiers): boolean {
                 return true;
             }
         }
-        if (mod.kind === 'dateMath') {
+        if (mod.kind === 'dateMath' || mod.kind === 'lookup') {
             return true;
         }
     }

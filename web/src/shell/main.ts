@@ -53,6 +53,8 @@ import { BLOCKED_HELP, folderState, pickWorkspaceFolder, reconnectWorkspaceFolde
 import { desktopBridge } from './desktop';
 import { desktopFolder, desktopFolderSource } from './desktop-folder';
 import { DATA_DIR, WORKSPACE_MARKER } from '../../../src/services/workspace/workspace-layout';
+import { allTablesOf, useTemplateLookups } from '../../../src/data-loading/template-lookups';
+import { LookupTablesStore } from '../../../src/services/lookup-tables/lookup-tables';
 
 /** #344: how often the VS Code icon asks whether DBMN for VS Code is there. */
 const AGENT_CONNECTION_CHECK_MS = 5_000;
@@ -295,6 +297,8 @@ async function start(): Promise<void> {
     // Home's "New in vX.Y.Z": this installation's, whoever is signed in
     const whatsNew = await loadWhatsNew(browserDeviceStore('installation'));
 
+    // `lu` in request templates reads the lookup tables the Hub and Query keep (read when a run needs them)
+    useTemplateLookups(allTablesOf(new LookupTablesStore(lookupFolder)));
     hub = new HubController(hubSession, {
         endpoints,
         environments,

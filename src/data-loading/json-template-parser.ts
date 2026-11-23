@@ -554,6 +554,25 @@ function parseVariableContent(content: string, keyContext: KeyContext): ParsedVa
         };
     }
 
+    // A pipe before any colon: {{Name | modifiers}}, a text value with modifiers (James, 2026-11-23:
+    // {{uom | lu:uom:tms>wms}}), as {{Name:string|modifiers}}
+    const pipeAt = content.indexOf('|');
+    const colonAt = content.indexOf(':');
+    if (pipeAt > 0 && (colonAt === -1 || pipeAt < colonAt)) {
+        const name = content.substring(0, pipeAt).trim();
+        const { dataType, formatModifier, parseError } = parseTypeFormatModifier('string|' + content.substring(pipeAt + 1).trim());
+        if (parseError) return { error: parseError, errorType: 'INVALID_TYPE' };
+        return {
+            name,
+            dataType: dataType as DataType,
+            hasExplicitType: false,
+            isInferred: false,
+            isA8Variable: false,
+            isEnvVariable: false,
+            formatModifier
+        };
+    }
+
     // Check for colon (could be A8 variable or typed variable)
     const colonIndex = content.indexOf(':');
 

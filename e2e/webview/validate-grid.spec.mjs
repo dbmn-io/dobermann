@@ -235,3 +235,25 @@ test('nested data entry: Tab on the last cell adds a row; the next Tab copies th
     expect((await rowsOf(page))[1]).toEqual(['SO-1', 'Harbour Foods', 'B-2', '7']);
     await expect(page.locator('#progressiveCopyHint')).toHaveCount(0);
 });
+
+test('lu: a value not in the lookup table, or in it twice, is a row to fix, saying why; one in it passes; the tables come from the screen', async ({ page }) => {
+    // James, 2026-11-23: "{{uom | lu:uom:tms>wms}}… any failed lookup returns as a validate failure in step 3"
+    const LU = JSON.stringify({ items: [{ uom: '{{uom | lu:uom:tms>wms}}', check: '{{code | lu:uom:wms}}' }] });
+    await page.setContent(gridPage(LU));
+    // The screen gives the tables (Run Batch: templateLookups)
+    await page.evaluate(() => DTDataEntryGrid.setLookupTables([{
+        id: 'lkp-uom', name: 'UOM', columns: [{ id: 'c1', name: 'WMS' }, { id: 'c3', name: 'TMS' }],
+        rows: [{ c1: 'EA', c3: 'EA' }, { c1: 'ST', c3: 'SE' }, { c1: 'CS', c3: 'CA' }, { c1: 'BX', c3: 'CA' }]
+    }]));
+    await page.evaluate(rows => {
+        const vars = window.state.gridTemplateVariables.map(v => Object.assign({}, v, { mappedTo: v.name }));
+        DTDataEntryGrid.populateGridFromMappedData({ headers: ['uom', 'code'], rows }, vars);
+    }, [['SE', 'ST'], ['DZ', 'EA'], ['CA', 'EA'], ['EA', 'XX']]);
+    await expect(page.locator('#csvNextBtn')).toHaveText('Next');
+    await expect(page.locator('.grid-hint')).toHaveText(/^Showing the 3 rows that need fixing, of 4\./);
+    await expect(body(page).locator('td.grid-row-num')).toHaveText(['2', '3', '4']);
+    await expect(td(page, 0, 1)).toHaveAttribute('title', /uom DZ isn't in UOM's TMS column/);
+    await expect(td(page, 1, 1)).toHaveAttribute('title', /uom CA is in UOM's TMS column 2 times/);
+    await expect(td(page, 2, 2)).toHaveAttribute('title', /code XX isn't in UOM's WMS column/);
+    await expect(td(page, 2, 1)).not.toHaveClass(/grid-cell-error/);
+});

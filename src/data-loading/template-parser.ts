@@ -22,6 +22,7 @@ import {
 } from './json-template-parser';
 import { parseModifiers, extractModifiersFromFormat } from './modifier-parser';
 import { applyModifiers, applyModifiersAndFormat } from './modifier-executor';
+import { refreshTemplateLookups, templateUsesLookups } from './template-lookups';
 import { ParsedModifiers, ModifierResult } from './modifier-types';
 
 // Re-export for use by other modules
@@ -550,6 +551,9 @@ export class TemplateParser {
                 this.sequenceCache.clear();
             }
 
+            // `lu`: the lookup tables read again, so an edit made a moment ago counts
+            if (templateUsesLookups(template)) await refreshTemplateLookups();
+
             // Issue #130: Use JSON-aware parsing for full {{}} support
             const jsonResult = extractVariablesFromJsonTemplate(template);
 
@@ -648,7 +652,9 @@ export class TemplateParser {
                     else if (convertedValue === null && (variable.dataType !== 'string' || variable.formatModifier)) {
                         return {
                             success: false,
-                            error: `Invalid ${variable.dataType} value: ${value} for variable ${variable.resolvedName}`
+                            error: this.lastConvertError
+                                ? `${variable.resolvedName}: ${this.lastConvertError}`
+                                : `Invalid ${variable.dataType} value: ${value} for variable ${variable.resolvedName}`
                         };
                     }
                 }
@@ -1241,6 +1247,12 @@ export class TemplateParser {
         hasExplicitType: boolean;
         isA8Variable: boolean;
     } {
+        // {{Name | modifiers}}: a text value with modifiers (lu…), its name before the pipe
+        const pipeAt = declaration.indexOf('|');
+        const colonAt = declaration.indexOf(':');
+        if (pipeAt > 0 && (colonAt === -1 || pipeAt < colonAt)) {
+            return { name: declaration.substring(0, pipeAt).trim(), dataType: 'string', hasExplicitType: false, isA8Variable: false };
+        }
         const colonIndex = declaration.indexOf(':');
         
         if (colonIndex === -1) {
@@ -1312,7 +1324,11 @@ export class TemplateParser {
      * @param timezoneConfig - Optional timezone configuration for source/target conversion
      * @returns The converted value, or { value, omitKey } for opt modifier, or null for errors
      */
+    /** Why the last value convertValue gave back null could not be converted, when the modifiers said (lu). */
+    private lastConvertError?: string;
+
     private convertValue(value: string, dataType: DataType, formatModifier?: string, timezoneConfig?: TimezoneConfig): any {
+        this.lastConvertError = undefined;
         // GitHub Issue #175: Use modifier system if modifiers are present
         if (formatModifier && (dataType === 'string' || dataType === 'number')) {
             const result = this.applyModifiersToValue(value, dataType, formatModifier);
@@ -1328,7 +1344,8 @@ export class TemplateParser {
                 }
                 return result.value;
             }
-            // If modifier application fails, return null to trigger error handling
+            // If modifier application fails, return null to trigger error handling (its words kept: "EA isn't in uom's TMS column")
+            this.lastConvertError = result.error;
             return null;
         }
 
@@ -1491,6 +1508,10 @@ export class TemplateParser {
         try {
             // Extract modifiers from the format string
             const { formatOnly, modifiers } = extractModifiersFromFormat(formatModifier, dataType);
+
+            // A broken `lu` never falls back: a code sent untranslated is worse than a row that stops
+            const luError = modifiers.errors.find(e => e.startsWith('lu needs'));
+            if (luError) return { success: false, error: luError };
 
             // If there are parse errors, log and fall back to simple conversion
             if (modifiers.errors.length > 0) {

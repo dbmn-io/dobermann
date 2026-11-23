@@ -35,6 +35,7 @@ import { sharedScript } from '../../utils/shared-script';
 import { JsonGenerator } from '../../data-loading/json-generator';
 import { ArrayRepetitionHelper } from '../../services/transaction-preparation/helpers/array-repetition.helper';
 import { TemplateParser } from '../../data-loading/template-parser';
+import { refreshTemplateLookups, templateUsesLookups } from '../../data-loading/template-lookups';
 const TemplateRename = sharedScript<typeof templateRenameScript>(templateRenameScript, 'TemplateRename');
 // GitHub Issue #226: Centralised column-mismatch detection (testable utility)
 import {
@@ -54,7 +55,7 @@ export interface RunBatchConfig extends WebviewConfig {
 }
 
 export interface RunBatchMessage extends WebviewMessage {
-    type: 'processCSVFile' | 'validateColumnMappings' | 'executeBatch' | 'closeWebview' |
+    type: 'processCSVFile' | 'validateColumnMappings' | 'executeBatch' | 'closeWebview' | 'requestTemplateLookups' |
     'showSuccessMessage' | 'showErrorMessage' | 'requestEndpointConfig' | 'executeBulkLoadCommand' |
     'getEndpointTemplate' | 'generateJsonPreview' | 'generateBulkJson' | 'verifyCSV' |
     'getCurrentEnvironment' |
@@ -209,6 +210,10 @@ export class RunBatchController {
                 await this.handleRequestEndpointConfig();
                 break;
 
+            case 'requestTemplateLookups':
+                await this.postTemplateLookups();
+                break;
+
             case 'executeBulkLoadCommand':
                 await this.handleExecuteBulkLoadCommand(message);
                 break;
@@ -289,9 +294,23 @@ export class RunBatchController {
             });
             // GitHub Issue #247: chained rows go in once the page knows the endpoint.
             if (this.chain) this.postChainPreload();
+            await this.postTemplateLookups();
         } catch (error) {
             console.error('[RunBatchWebview] Failed to load endpoint config:', error);
         }
+    }
+
+    /**
+     * `lu` in the template (James, 2026-11-23): the lookup tables it names, read again and given to
+     * the page, so Validate checks each row as the run will. Sent with the endpoint, and again when
+     * the page asks (it reaches Validate), so an edit made in the meantime counts.
+     */
+    private async postTemplateLookups(): Promise<void> {
+        const template = JSON.stringify(this.endpointConfig ?? {});
+        if (!templateUsesLookups(template)) return;
+        const named = new Set(Array.from(template.matchAll(/\|\s*lu:([^:|}"]+)/gi), m => m[1].trim().toLowerCase()));
+        const tables = (await refreshTemplateLookups()).filter(t => named.has(t.name.trim().toLowerCase()));
+        this.session.post({ type: 'templateLookups', tables });
     }
 
     /** GitHub Issue #247: chaining into a Run Batch that is already open replaces its Step 1 data. */

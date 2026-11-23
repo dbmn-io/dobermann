@@ -79,6 +79,14 @@ export function parseModifiers(modifierString: string, dataType: DataType): Pars
             continue;
         }
 
+        // `lu:table:from>to` or `lu:table:column`: a lookup (any type: the value is looked up as text)
+        if (partLower.startsWith('lu:')) {
+            const lookup = parseLookupModifier(part);
+            if (typeof lookup === 'string') result.errors.push(lookup);
+            else result.modifiers.push(lookup);
+            continue;
+        }
+
         const parsed = parseSingleModifier(part, dataType);
 
         if (parsed.error) {
@@ -93,6 +101,18 @@ export function parseModifiers(modifierString: string, dataType: DataType): Pars
     }
 
     return result;
+}
+
+/** `lu:table:from>to` or `lu:table:column` as a lookup modifier, or what is wrong with it. */
+export function parseLookupModifier(token: string): Modifier | string {
+    const parts = token.split(':').map(p => p.trim());
+    const table = parts[1] || '';
+    const columns = parts.slice(2).join(':');
+    const [from, to, ...more] = columns.split('>').map(c => c.trim());
+    if (!table || !from || more.length || (to !== undefined && !to)) {
+        return `lu needs a table and a column: lu:table:column, or lu:table:from>to (got ${token})`;
+    }
+    return to === undefined ? { kind: 'lookup', type: 'lookup', table, from } : { kind: 'lookup', type: 'lookup', table, from, to };
 }
 
 /**
@@ -378,6 +398,10 @@ function isModifierToken(token: string, dataType: DataType): boolean {
     if (tokenLower === 'asstring') {
         return true;
     }
+    // A lookup (all types)
+    if (tokenLower.startsWith('lu:')) {
+        return true;
+    }
 
     // String modifiers
     if (dataType === 'string') {
@@ -433,6 +457,8 @@ export function validateModifierCompatibility(
     const allowedTypes = MODIFIER_TYPE_COMPATIBILITY[dataType];
 
     for (const modifier of modifiers.modifiers) {
+        // (a lookup goes with any type: the value is looked up as text)
+        if (modifier.kind === 'lookup') continue;
         const modifierType = modifier.kind === 'dateMath' ? 'dateMath' : modifier.type;
         if (!allowedTypes.includes(modifierType)) {
             errors.push(`Modifier '${modifierType}' is not valid for type '${dataType}'`);
@@ -463,6 +489,8 @@ export function serializeModifiers(modifiers: ParsedModifiers): string {
 
 function serializeSingleModifier(modifier: Modifier): string {
     switch (modifier.kind) {
+        case 'lookup':
+            return `lu:${modifier.table}:${modifier.from}${modifier.to !== undefined ? '>' + modifier.to : ''}`;
         case 'string':
             switch (modifier.type) {
                 case 'trim':

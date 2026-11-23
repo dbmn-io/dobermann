@@ -49,6 +49,7 @@
             toUpper: false,         // String: convert to uppercase
             toLower: false,         // String: convert to lowercase
             dateMath: null,         // Date: date math expression (e.g., "+2d")
+            lookups: [],            // lu:table:from>to or lu:table:column (any type)
             hints: []               // Human-readable hints for display
         };
 
@@ -70,6 +71,16 @@
             if (partLower === 'null') {
                 result.isNullable = true;
                 // Don't add 'nullable' to hints - it shows as ○ indicator instead
+                continue;
+            }
+
+            // `lu`: the value looked up in a lookup table (James, 2026-11-23), any type
+            if (partLower.indexOf('lu:') === 0) {
+                var luParts = part.split(':');
+                var luCols = luParts.slice(2).join(':').split('>');
+                var lookup = { table: (luParts[1] || '').trim(), from: (luCols[0] || '').trim(), to: luCols.length > 1 ? (luCols[1] || '').trim() : undefined };
+                result.lookups.push(lookup);
+                result.hints.push(lookup.to !== undefined ? lookup.from + ' → ' + lookup.to + ' in ' + lookup.table : 'in ' + lookup.table + "'s " + lookup.from);
                 continue;
             }
 
@@ -630,6 +641,8 @@
      * GitHub Issue #129 (the first grid), on the shared table since 2026-11-20.
      */
     function initializeDataEntryGrid(endpoint) {
+        // `lu`: the lookup tables asked for again as Validate opens (an edit made since counts)
+        try { const vs = getVscode && getVscode(); if (vs) vs.postMessage({ type: 'requestTemplateLookups' }); } catch { /* none */ }
         const container = document.getElementById('csvGridEntry');
         if (!container) {
             console.warn('[Grid] Container #csvGridEntry not found - modal may not be open yet');
@@ -1759,6 +1772,40 @@
      * GitHub Issue #223: Validate a data model row without DOM
      * Same validation logic as validateGridRow but operates on plain arrays
      */
+    /**
+     * The lookup tables a template's `lu` reads, as the screen gives them (setLookupTables), and one
+     * value through one `lu`: the rule and the words of template-lookups.ts applyLookup (the run's),
+     * so Validate says what the run would: exact text, a table and its columns by name any case.
+     */
+    var lookupTables = [];
+    function setLookupTables(tables) {
+        lookupTables = Array.isArray(tables) ? tables : [];
+        if (csvState && csvState.gridDataModel && csvState.gridDataModel.length) refreshGridIssues({ keepRows: true });
+    }
+    function lookupColumnOf(table, ref) {
+        var want = String(ref == null ? '' : ref);
+        return table.columns.filter(function (c) { return c.id === want; })[0] ||
+            table.columns.filter(function (c) { return String(c.name).toLowerCase() === want.toLowerCase(); })[0];
+    }
+    function lookupInTables(lu, value) {
+        var table = lookupTables.filter(function (t) { return String(t.name).trim().toLowerCase() === String(lu.table).trim().toLowerCase(); })[0];
+        if (!table) return { error: "there's no lookup table called " + lu.table };
+        var from = lookupColumnOf(table, lu.from);
+        if (!from) return { error: table.name + ' has no column called ' + lu.from };
+        var to = lu.to === undefined ? null : lookupColumnOf(table, lu.to);
+        if (lu.to !== undefined && !to) return { error: table.name + ' has no column called ' + lu.to };
+        if (!value) return { error: 'needs a value from ' + table.name + "'s " + from.name + ' column' };
+        var hits = (table.rows || []).filter(function (r) { return (r[from.id] == null ? '' : String(r[from.id])) === value; });
+        if (!hits.length) return { error: value + " isn't in " + table.name + "'s " + from.name + ' column' };
+        if (hits.length > 1) return { error: value + ' is in ' + table.name + "'s " + from.name + ' column ' + hits.length + ' times' };
+        if (to) {
+            var out = hits[0][to.id] == null ? '' : String(hits[0][to.id]);
+            if (out === '') return { error: value + "'s " + to.name + ' in ' + table.name + ' is blank' };
+            return { value: out };
+        }
+        return { value: value };
+    }
+
     function validateDataModelRow(rowData, rowIndex) {
         var rowErrors = [];
         if (!csvState.gridTemplateVariables) return rowErrors;
@@ -1776,6 +1823,19 @@
             if (!value || value.trim() === '') return;
 
             value = value.trim();
+
+            // Lookups (lu), in the order written, after upper/lower as the run does: the first that fails
+            if (mods.lookups && mods.lookups.length) {
+                var looked = mods.toUpper ? value.toUpperCase() : mods.toLower ? value.toLowerCase() : value;
+                for (var li = 0; li < mods.lookups.length; li++) {
+                    var luAnswer = lookupInTables(mods.lookups[li], looked);
+                    if (luAnswer.error) {
+                        rowErrors.push({ row: rowIndex, col: colIndex, variable: variable.name, value: value, error: luAnswer.error });
+                        return;
+                    }
+                    looked = luAnswer.value;
+                }
+            }
 
             // String validations
             if (dataType === 'string') {
@@ -2282,6 +2342,9 @@
             csvState = sharedState;
             getVscode = vscodeFn;
         },
+
+        // The lookup tables a template's lu reads (the screen gives them; Validate checks against them)
+        setLookupTables,
 
         // Template variable extraction
         parseModifiersForGrid,

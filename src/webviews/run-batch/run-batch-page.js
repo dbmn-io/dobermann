@@ -88,6 +88,12 @@
                 }
                 break;
 
+            // `lu` in the template: the lookup tables it names, for Validate to check against
+            // (its own case, before the run of cases below that all go to the CSV handler)
+            case 'templateLookups':
+                if (window.DTDataEntryGrid && window.DTDataEntryGrid.setLookupTables) window.DTDataEntryGrid.setLookupTables(message.tables || []);
+                break;
+
             // Route CSV handler messages
             case 'formatDetected':
             case 'formatConversionComplete':

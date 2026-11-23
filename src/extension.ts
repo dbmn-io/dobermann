@@ -61,6 +61,9 @@ import { AgentHost } from './services/agent/local-agent';
 import { VsCodeAgentListener } from './platform/vscode/vscode-agent-listener';
 import { createClient } from '@supabase/supabase-js';
 import type { IEnvironmentAuthGate } from './services/environment/auth-gate';
+import { allTablesOf, useTemplateLookups } from './data-loading/template-lookups';
+import { LookupTablesStore } from './services/lookup-tables/lookup-tables';
+import { vsCodeLookupFolder } from './platform/vscode/vscode-execution-storage';
 
 let dobermann: Dobermann;
 /** Dobermann issue 7: the app's one log (made first in activate, saved in deactivate). */
@@ -170,6 +173,8 @@ export async function activate(context: vscode.ExtensionContext) {
         }
     });
     AppLogRegistry.setAppLog(appLog);
+    // `lu` in request templates reads the lookup tables the Hub and Query keep (read when a run needs them)
+    useTemplateLookups(() => allTablesOf(new LookupTablesStore(vsCodeLookupFolder()))());
     const log = appLog;
     const started = Date.now();
     const step = (name: string) => log.write({ level: 'info', source: 'start-up', message: `${name} (+${Date.now() - started} ms)` });
