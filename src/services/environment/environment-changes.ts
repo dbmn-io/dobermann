@@ -25,9 +25,19 @@ function canonical(value: unknown): string {
         : v));
 }
 
-/** The same stored environment, field for field (in any key order). */
+/**
+ * Kept with an environment but not one of its settings: createdAt (made up afresh on every read when an environment
+ * was kept without one: sanitizeEnvironmentConfig) and lastUsed (moved when it is picked). Left out when two readings
+ * are compared, or every save of anything at all read as "settings changed" (the manager for James, 2026-11-23).
+ */
+const BOOKKEEPING = new Set(['createdAt', 'lastUsed']);
+const settingsOf = (reading: Reading | undefined): unknown => (reading && typeof reading === 'object'
+    ? Object.fromEntries(Object.entries(reading).filter(([key]) => !BOOKKEEPING.has(key)))
+    : reading);
+
+/** The same stored environment, setting for setting (in any key order; its bookkeeping aside). */
 export function sameEnvironment(a: Reading | undefined, b: Reading | undefined): boolean {
-    return canonical(a) === canonical(b);
+    return canonical(settingsOf(a)) === canonical(settingsOf(b));
 }
 
 /** "org is now nz", "header Accept changed", "name is now Staging": the differences, most useful first. */

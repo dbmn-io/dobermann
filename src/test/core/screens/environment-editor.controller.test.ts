@@ -435,6 +435,27 @@ describe('EnvironmentEditorController: the environment changes under the form', 
     const staging = (): EnvironmentConfig => ({ id: 'env-s', name: 'Staging', baseUrl: 'https://staging.example', environmentType: 'development',
         authMethod: 'none', variables: { org: 'aus' }, variableSettings: { org: { options: ['aus', 'nz'], source: 'manual', showInHeader: true } } } as unknown as EnvironmentConfig);
 
+    // The manager for James, 2026-11-23: "Updated: settings changed" popped up on every unrelated save (a saved search)
+    // with an Environment tab open. An environment kept without createdAt is given Date.now() on every read
+    // (sanitizeEnvironmentConfig), and lastUsed moves when another environment is picked: neither is a setting
+    it('an unrelated save, or a reading that differs only in createdAt or lastUsed, is no change; a real one still is', async () => {
+        const environments = memoryEnvironments([staging()]);
+        let clock = 1000;
+        const read = environments.getEnvironment;
+        // (as the manager reads it: createdAt made up afresh on each read, lastUsed moved by picking it elsewhere)
+        environments.getEnvironment = async id => { const env = await read(id); return env ? { ...env, createdAt: clock++, lastUsed: clock++ } as EnvironmentConfig : undefined; };
+        const { controller, posted } = editor(environments, 'env-s');
+        await controller.handle({ type: 'loadEnvironment', environmentId: 'env-s' });
+        environments.changed();   // something else saved (a query's saved search, another environment)
+        await settle();
+        expect(posted.filter(m => m.type === 'environmentChangedElsewhere')).to.deep.equal([]);
+        // A real change: still said
+        await environments.updateEnvironment('env-s', { variables: { org: 'nz' } });
+        await settle();
+        const told = posted.find(m => m.type === 'environmentChangedElsewhere') as { changes: string[] } | undefined;
+        expect(told?.changes).to.deep.equal(['org is now nz']);
+    });
+
     it('a form with no edits takes the change and says what moved', async () => {
         const environments = memoryEnvironments([staging()]);
         const { controller, session, posted } = editor(environments, 'env-s');

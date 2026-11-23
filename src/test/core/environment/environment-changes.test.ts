@@ -40,4 +40,12 @@ describe('environment changes, in words', () => {
         // ...but the order of a list is a change
         expect(sameEnvironment(env({ oauthConfig: { ...oauth, scopes: ['a', 'b'] } as EnvironmentConfig['oauthConfig'] }), env({ oauthConfig: { ...oauth, scopes: ['b', 'a'] } as EnvironmentConfig['oauthConfig'] }))).to.equal(false);
     });
+
+    it('createdAt and lastUsed are bookkeeping, not settings: readings differing only there are the same', () => {
+        const before = env({ createdAt: 1, lastUsed: 2 } as Partial<EnvironmentConfig>);
+        const after = env({ createdAt: 3, lastUsed: 4 } as Partial<EnvironmentConfig>);
+        expect(sameEnvironment(before, after)).to.equal(true);
+        expect(describeEnvironmentChanges(before, after)).to.deep.equal([]);
+        expect(sameEnvironment(env(), env({ lastUsed: 9 } as Partial<EnvironmentConfig>))).to.equal(true);
+    });
 });
