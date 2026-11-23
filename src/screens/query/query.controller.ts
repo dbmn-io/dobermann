@@ -536,7 +536,7 @@ export class QueryController {
                     else if (id) this.ports.toast.info('Lookup tables open from Reporting.');
                     return;
                 }
-                case 'query.fnSample': return await this.fnSample(message as unknown as { view: string; column: string; fns?: QueryFn[]; seq: number; record?: string });
+                case 'query.fnSample': return await this.fnSample(message as unknown as { view: string; column: string; fns?: QueryFn[]; seq: number; record?: string; steps?: boolean });
                 case 'query.setWidth': return await this.change(q => {
                     const key = String(message.key ?? '');
                     const width = Math.round(Number(message.width));
@@ -1071,7 +1071,7 @@ export class QueryController {
     }
 
     /** A few of a column's values, as they are and as `fns` leave them: the function dialog's sample. */
-    private async fnSample(message: { view: string; column: string; fns?: QueryFn[]; seq: number; record?: string }): Promise<void> {
+    private async fnSample(message: { view: string; column: string; fns?: QueryFn[]; seq: number; record?: string; steps?: boolean }): Promise<void> {
         const { spec } = this.spec();
         // Translate values being tried: its table loaded, its columns filled in
         message.fns = this.withLookupColumns(message.fns ?? []);
@@ -1079,13 +1079,13 @@ export class QueryController {
     }
 
     /** fnSample, on the engine. */
-    private async fnSampleOnEngine(spec: QuerySpec, message: { view: string; column: string; fns?: QueryFn[]; seq: number; record?: string }): Promise<void> {
+    private async fnSampleOnEngine(spec: QuerySpec, message: { view: string; column: string; fns?: QueryFn[]; seq: number; record?: string; steps?: boolean }): Promise<void> {
         let rows: unknown[][] = [];
         let error: string | undefined;
         try {
             await this.loadEngineLookups(await this.engineFor(spec), lookupsIn(message.fns));
             if (message.column) {
-                const { few, own } = fnSampleQueries(message.view, message.column, message.fns ?? [], String(message.record ?? ''));
+                const { few, own } = fnSampleQueries(message.view, message.column, message.fns ?? [], String(message.record ?? ''), !!message.steps);
                 rows = (await this.engineWindow(spec, few, 6, message.view)).rows;
                 if (own) {
                     const mine = (await this.engineWindow(spec, own, 1, message.view)).rows[0];
@@ -1104,7 +1104,7 @@ export class QueryController {
             // said missing when not in the From column, or twice (the first row's used), by the rule Translate keeps (lookupValue), on the value
             // as it comes to Translate (after the functions before it)
             try {
-                const all = fnSampleQueries(message.view, message.column, fns, '').few;
+                const all = fnSampleQueries(message.view, message.column, fns, '', !!message.steps).few;
                 const before = fnSampleQueries(message.view, message.column, fns.slice(0, at), '').few;
                 const made = (await this.engineWindow(spec, all, 50, message.view)).rows;
                 const input = new Map((await this.engineWindow(spec, before, 50, message.view)).rows.map(r => [String(r[0]), r[1]]));
@@ -1116,7 +1116,10 @@ export class QueryController {
                     // (in the table twice: `after` is the first row's, as Translate gives it; the line says it was the first)
                     const twice = answer.kind === 'found' && (answer.rows ?? 0) > 1;
                     const as = (answer.kind === 'missing' || twice) && looked !== String(r[0] ?? '') ? { looked } : {};
-                    return { before: r[0], after: r[1], ...(answer.kind === 'missing' ? { missing: true } : {}), ...(twice ? { twice: true } : {}), ...as };
+                    // (the chain of steps, asked for: each step's value; on a value not found, up to the Translate step and none
+                    // after (missingAt, its place); in the table twice, every step, and twiceAt)
+                    const chain = message.steps ? (answer.kind === 'missing' ? { steps: r.slice(1, 1 + at), missingAt: at } : { steps: r.slice(1), ...(twice ? { twiceAt: at } : {}) }) : {};
+                    return { before: r[0], after: r[r.length - 1], ...(answer.kind === 'missing' ? { missing: true } : {}), ...(twice ? { twice: true } : {}), ...as, ...chain };
                 });
                 this.post({ type: 'query.fnSample', seq: message.seq, rows: lines, lookup: { table: last.table, from: last.from, to: last.to } });
                 return;
@@ -1125,7 +1128,7 @@ export class QueryController {
             }
         }
         const lookupTable = lookup ? { columns: lookup.columns.map(c => ({ id: c.id, name: c.name })), rows: lookup.rows } : undefined;
-        this.post({ type: 'query.fnSample', seq: message.seq, rows, error, ...(lookupTable ? { table: lookupTable, value: rows[0]?.[0] ?? null } : {}) });
+        this.post({ type: 'query.fnSample', seq: message.seq, rows, error, ...(message.steps ? { steps: true } : {}), ...(lookupTable ? { table: lookupTable, value: rows[0]?.[0] ?? null } : {}) });
     }
 
     /** Every column a formula can name: its key, its whole @ path, the shortest that is unique, and a value from it. */

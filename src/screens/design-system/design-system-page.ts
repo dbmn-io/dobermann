@@ -347,18 +347,18 @@ DbmnContextMenu.show(button, [{ summary: { title: 'BL · inventory', lines: [['V
 DbmnContextMenu.show(button, [{ id: 'left', label: 'Left join', detail: 'All of Stock; Counts where it matches', glyph: RelationGlyph.join('left'), checked: true }], id =&gt; …);</code></pre>
 
         <h3>Functions on a column</h3>
-        <p>One dialog wherever a column is changed on its way in: Query's Join and Columns, Run Batch's Map. Tick any; they apply in the order ticked, each written around the column's name with its values typed in place. Beside them: what they make, and a few values before and after. With a column to compare against (a compare's BL), its values on the same rows too, and how many agree. Try it: tick Trim spaces, then Drop leading zeros.</p>
+        <p>One dialog wherever a column is changed on its way in: Query's Join and Columns. The functions are a chain of steps, top to bottom (James, 2026-11-23: "we chain them together, we don't nest them"): the source column, then a row per step with its plain name and short labelled fields, and at its right the sample value as it leaves that step, every value in one column. A grip drags a step up or down (Alt+↑ / Alt+↓ too), × removes it, + Add a step adds one; Next sample walks the column's values down the chain. No function is written as code anywhere. Try it: add Trim spaces, then Drop leading zeros, then drag one above the other.</p>
         <div class="ds-demo ds-row">
-            <button type="button" class="btn btn-secondary" data-click="ds:functions">Functions on C1.sku</button>
+            <button type="button" class="btn btn-secondary" data-click="ds:functions">Functions on sku</button>
             <span class="form-hint" id="dsFunctionsSaid"></span>
         </div>
-        <pre class="ds-code"><code>const applied = await DbmnFunctions.open({ column: 'C1.sku', functions, applied, defaults: { n: 4 },
-    asLabel: 'Compares as', baseLabel: 'BL',            // leave baseLabel out: no column to compare with
-    sample: async applied =&gt; ({ rows: [{ before, after, base }], agree: 0.93 }),   // an older answer is dropped
-    onOpenLookup: id =&gt; … });                           // a lookup table's Open: the dialog closes first
-// [{ id, params }] in the order ticked, or null
-{ id: 'first', label: 'First characters', sql: ['SUBSTR(', 'x', ', 1, ', { key: 'n', label: 'How many', number: true }, ')'] }
-{ key: 'table', label: 'Lookup table', kind: 'lookup', options: [{ id, name, count }] }   // a value picked from saved tables</code></pre>
+        <pre class="ds-code"><code>const applied = await DbmnFunctions.open({ column: 'uom', functions, applied, defaults: { n: 4 },
+    baseLabel: 'BL',                                    // "93% agree with BL"; leave out: no column to compare with
+    sample: async (applied, { steps }) =&gt; ({ rows: [{ before, steps: [out1, out2…], after, base, missing?, missingAt? }], agree: 0.93 }),
+    onAddLookupRow, onNewLookup, onOpenLookup });       // a Translate's + Add, + New lookup table…, Open
+// [{ id, params }] in the chain's order, or null
+{ id: 'first', label: 'First characters', sql: ['SUBSTR(', 'x', ', 1, ', { key: 'n', label: 'Count', number: true }, ')'] }   // only its values are read
+{ key: 'table', label: 'Table', kind: 'lookup', options: [{ id, name, count, columns }] }   // Table, then From and To</code></pre>
     </section>
 
     <section class="ds-section" id="search">

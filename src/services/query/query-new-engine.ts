@@ -845,17 +845,22 @@ export const SAMPLE_ROWS = 1000;
 export const FN_SAMPLE_ROWS = SAMPLE_ROWS;
 
 /** The function dialog's sample: a few different values of a view's column, as they are and as `fns` leave them; the record's own first. */
-export function fnSampleQueries(view: string, column: string, fns: ColumnFn[], record: string): { few: Query; own: Query | undefined } {
+export function fnSampleQueries(view: string, column: string, fns: ColumnFn[], record: string, steps = false): { few: Query; own: Query | undefined } {
     const plain: Expr = { column, of: view };
-    const made = fns.reduce<Expr>((x, f) => fnExpr(x, f), plain);
-    const pick = { select: 'kept', columns: [{ name: 'plain', value: plain }, { name: 'made', value: made }] };
+    // (`steps`: the value after each function in turn, the dialog's chain of steps (James, 2026-11-23, mock v6); the last
+    // column is the value after them all either way)
+    const after: Expr[] = [];
+    fns.reduce<Expr>((x, f) => { const next = fnExpr(x, f); after.push(next); return next; }, plain);
+    const made = after.length ? after[after.length - 1] : plain;
+    const outs = steps && after.length ? after.map((value, i) => ({ name: `s${i + 1}`, value })) : [{ name: 'made', value: made }];
+    const pick = { select: 'kept', columns: [{ name: 'plain', value: plain }, ...outs] };
     return {
         // (a few values to show: from the first rows of the view, never the whole of a large one)
         few: { steps: [
             { from: view, first: FN_SAMPLE_ROWS },
             { as: 'kept', filter: 'step 1', where: { fn: 'AND', args: [{ fn: '=', args: [plain, plain] }, { fn: '<>', args: [plain, { value: '' }] }] } },
             { as: 'picked', ...pick },
-            { group: 'picked', by: [{ name: 'plain', value: { column: 'plain' } }, { name: 'made', value: { column: 'made' } }], aggregates: [] }
+            { group: 'picked', by: [{ name: 'plain', value: { column: 'plain' } }, ...outs.map(o => ({ name: o.name, value: { column: o.name } }))], aggregates: [] }
         ] },
         own: record ? { steps: [
             { from: view },

@@ -42,8 +42,8 @@ describe('Query: Translate values\' "+ Add" (a value not in the lookup table)', 
         const controller = new QueryController(session, ports as never, { queryId: query.id, start: 'results' });
         await controller.handleMessage({ type: 'query.ready' } as never);
         const fns = [...first, { fn: 'translate', table: uom.id, from: 'c1', to: 'c2' }];
-        const sample = async (seq: number) => {
-            await controller.handleMessage({ type: 'query.fnSample', seq, view: 'vA', column: 'uom', fns } as never);
+        const sample = async (seq: number, steps = false) => {
+            await controller.handleMessage({ type: 'query.fnSample', seq, view: 'vA', column: 'uom', fns, ...(steps ? { steps: true } : {}) } as never);
             return [...seen].reverse().find(m => m.type === 'query.fnSample' && m.seq === seq) as Msg & { rows: Line[]; lookup?: unknown };
         };
         return { controller, lookups, uom, seen, sample };
@@ -65,6 +65,15 @@ describe('Query: Translate values\' "+ Add" (a value not in the lookup table)', 
         const by = new Map((await sample(3)).rows.map(r => [String(r.before), r]));
         assert.deepStrictEqual(by.get('gr'), { before: 'gr', after: 'GR', missing: true, looked: 'GR' });
         assert.deepStrictEqual(by.get('EA'), { before: 'EA', after: 'EACH' });
+        controller.dispose();
+    });
+
+    it('the chain of steps (mock v6): each step\'s value; a value not found stops at the Translate step (missingAt); twice, every step and twiceAt', async () => {
+        const { sample, controller } = await setUp([{ fn: 'upper' }]);
+        const by = new Map((await sample(4, true)).rows.map(r => [String(r.before), r as Line & { steps?: unknown[]; missingAt?: number; twiceAt?: number }]));
+        assert.deepStrictEqual(by.get('gr'), { before: 'gr', after: 'GR', missing: true, looked: 'GR', steps: ['GR'], missingAt: 1 });
+        assert.deepStrictEqual(by.get('EA'), { before: 'EA', after: 'EACH', steps: ['EA', 'EACH'] });
+        assert.deepStrictEqual(by.get('BX'), { before: 'BX', after: 'BOX', twice: true, steps: ['BX', 'BOX'], twiceAt: 1 });
         controller.dispose();
     });
 

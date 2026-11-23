@@ -28,9 +28,10 @@
         { id: 'number', label: 'As a number', sql: ['CAST(', 'x', ' AS NUMERIC)'] },
         { id: 'text', label: 'As text', sql: ['CAST(', 'x', ' AS TEXT)'] },
         { id: 'ltrimZeros', label: 'Drop leading zeros', sql: ['LTRIM(', 'x', ", '0')"] },
-        { id: 'first', label: 'First characters', sql: ['SUBSTR(', 'x', ', 1, ', { key: 'n', number: true, label: 'How many characters' }, ')'] },
-        { id: 'last', label: 'Last characters', sql: ['SUBSTR(', 'x', ', -', { key: 'n', number: true, label: 'How many characters' }, ')'] },
-        { id: 'replace', label: 'Replace text', sql: ['REPLACE(', 'x', ", '", { key: 'from', label: 'Text to replace' }, "', '", { key: 'to', label: 'Replace it with' }, "')"] }
+        // (each value box labelled, James 2026-11-23, the Functions dialog mock v5: labelled fields, not words)
+        { id: 'first', label: 'First characters', sql: ['SUBSTR(', 'x', ', 1, ', { key: 'n', number: true, label: 'How many' }, ')'] },
+        { id: 'last', label: 'Last characters', sql: ['SUBSTR(', 'x', ', -', { key: 'n', number: true, label: 'How many' }, ')'] },
+        { id: 'replace', label: 'Replace text', sql: ['REPLACE(', 'x', ", '", { key: 'from', label: 'Replace' }, "', '", { key: 'to', label: 'With' }, "')"] }
     ];
     const FN_DEFAULTS = { n: 4, from: '-', to: '' };
     /** Shared classes: a SQL word, and quiet text. */
@@ -1015,7 +1016,10 @@
         if (!window.DbmnFunctions) return;
         const viewId = ref.view || (join && join.view);
         const v = view(viewId);
-        const name = (v ? v.name + '.' : '') + (ref.column || 'column');
+        // The source column by its plain name ("Source column: uom"); "uom (BL)" when another view has a column of that name
+        const plain = ref.column || 'column';
+        const shared = views().some(o => o.id !== viewId && (o.columns || []).some(c => c.name === plain));
+        const name = shared && v ? `${plain} (${v.run || v.name})` : plain;
         const known = id => FNS.some(d => d.id === id) || id === 'translate';
         const toQuery = applied => applied.filter(a => known(a.id)).map(a => Object.assign({ fn: a.id }, a.params || {}));
         const fromQuery = fns => (fns || []).filter(f => known(f.fn)).map(f => {
@@ -1031,17 +1035,19 @@
             waiting.delete(m.seq);
             // (Translate values: lines already { before, after, missing?, twice? } with the lookup they are for)
             if (m.lookup) { resolve({ rows: m.rows || [], lookup: m.lookup, agree: null, error: m.error }); return; }
-            resolve(Object.assign({ rows: (m.rows || []).map(r => ({ before: r[0], after: r[1] })), agree: null, error: m.error }, m.table ? { table: m.table, value: m.value } : {}));
+            // (each value before and after; with the chain of steps asked for, after each step in turn too: the last is `after`)
+            resolve(Object.assign({ rows: (m.rows || []).map(r => Object.assign({ before: r[0], after: r[r.length - 1] }, m.steps ? { steps: r.slice(1) } : {})), agree: null, error: m.error }, m.table ? { table: m.table, value: m.value } : {}));
         };
         // Translate values' "+ Add": the host adds the row, and says so (query.lookupRowAdded); the dialog then asks its sample again
         let addSeq = 0;
         const adding = new Map();
         ui.lookupRowAdded = m => { const done = adding.get(m.seq); if (!done) return; adding.delete(m.seq); done(m.ok ? { ok: true } : { ok: false, error: m.error || 'The row could not be added.' }); };
         const applied = await window.DbmnFunctions.open({
-            title: `Functions on ${ref.column || 'the column'}`,
+            // (no title: the dialog's header is "Functions", with "Source column: …" from `column` beside it)
             column: name,
             // Translate values, always (with no lookup table yet, "+ New lookup table…" makes one): the table, its from and to columns
-            functions: FNS.concat([{ id: 'translate', label: 'Translate values', sql: ['TRANSLATE(', 'x', ', ', { key: 'table', label: 'Lookup table', kind: 'lookup', options: lookupTables() }, ')'] }])
+            // (Translate values first: James 2026-11-23, the Functions dialog mock)
+            functions: [{ id: 'translate', label: 'Translate values', sql: ['TRANSLATE(', 'x', ', ', { key: 'table', label: 'Lookup table', kind: 'lookup', options: lookupTables() }, ')'] }].concat(FNS)
                 .map(d => ({ id: d.id, label: d.label, sql: d.sql })),
             defaults: FN_DEFAULTS,
             applied: fromQuery(ref.fns),
@@ -1059,11 +1065,12 @@
                 if (!window.LookupNew) { post({ type: 'query.newLookup' }); return; }
                 window.LookupNew.ask({ taken: lookupTables().map(t => t.name) }).then(made => { if (made) post({ type: 'query.newLookup', name: made.name, columns: made.columns }); });
             },
-            sample: list => new Promise(resolve => {
+            sample: (list, opts) => new Promise(resolve => {
                 const seq = ++asked;
                 waiting.set(seq, resolve);
-                // (this record's value: the one shown in the cell whose ƒ was clicked, first among the samples)
-                post({ type: 'query.fnSample', view: viewId, column: ref.column, fns: toQuery(list), seq, record: sampleOf(viewId, ref.column) });
+                // (this record's value: the one shown in the cell whose ƒ was clicked, first among the samples; `steps`: the
+                // value after each function too, for the dialog's chain)
+                post({ type: 'query.fnSample', view: viewId, column: ref.column, fns: toQuery(list), seq, record: sampleOf(viewId, ref.column), steps: !!(opts && opts.steps) });
             })
         });
         ui.fnSample = null;

@@ -529,25 +529,35 @@
             replace: (v, p) => v.split(p.from || '').join(p.to || '')
         };
         const applied = await window.DbmnFunctions.open({
-            column: 'C1.sku',
+            column: 'sku',
+            // (the screen's list and order: Translate values first; short labels for the values)
             functions: [
+                { id: 'translate', label: 'Translate values', sql: ['TRANSLATE(', 'x', ', ', { key: 'table', label: 'Table', kind: 'lookup', options: LOOKUP_OPTIONS }, ')'] },
                 { id: 'trim', label: 'Trim spaces', sql: ['TRIM(', 'x', ')'] },
                 { id: 'upper', label: 'Upper case', sql: ['UPPER(', 'x', ')'] },
                 { id: 'ltrimZeros', label: 'Drop leading zeros', sql: ['LTRIM(', 'x', ", '0')"] },
-                { id: 'first', label: 'First characters', sql: ['SUBSTR(', 'x', ', 1, ', { key: 'n', number: true, label: 'How many characters' }, ')'] },
-                { id: 'replace', label: 'Replace text', sql: ['REPLACE(', 'x', ", '", { key: 'from', label: 'Text to replace' }, "', '", { key: 'to', label: 'Replace it with' }, "')"] },
-                { id: 'translate', label: 'Translate values', sql: ['TRANSLATE(', 'x', ', ', { key: 'table', label: 'Lookup table', kind: 'lookup', options: LOOKUP_OPTIONS }, ')'] }
+                { id: 'first', label: 'First characters', sql: ['SUBSTR(', 'x', ', 1, ', { key: 'n', number: true, label: 'Count' }, ')'] },
+                { id: 'replace', label: 'Replace text', sql: ['REPLACE(', 'x', ", '", { key: 'from', label: 'Replace' }, "', '", { key: 'to', label: 'With' }, "')"] }
             ],
             defaults: { n: 4, from: '-', to: '' },
-            asLabel: 'Compares as',
             baseLabel: 'BL',
+            // Each value through the steps, as Query's host answers: every step's value, or where a Translate didn't find it
             sample: applied => new Promise(done => setTimeout(() => {
-                // Translate values ticked: the whole table, the row with this record's value lit
-                const lookup = applied.find(x => x.id === 'translate');
-                const table = lookup && LOOKUP_ROWS[lookup.params.table];
-                if (table) { done({ table: { columns: LOOKUP_OPTIONS.find(t => t.id === lookup.params.table).columns, rows: table }, value: lookup.params.table === 'uom' ? 'CS' : 'MEL' }); return; }
-                const after = before.map(v => applied.reduce((value, a) => (fns[a.id] ? fns[a.id](value, a.params) : value), v));
-                done({ rows: before.map((v, i) => ({ before: v, after: after[i], base: base[i] })), agree: after.filter((v, i) => v === base[i]).length / base.length });
+                const rows = before.map((v, r) => {
+                    const steps = [];
+                    let now = v;
+                    for (let i = 0; i < applied.length; i++) {
+                        const a = applied[i];
+                        if (a.id === 'translate') {
+                            const hit = (LOOKUP_ROWS[a.params.table] || []).find(x => x[a.params.from] === now);
+                            if (!hit) return { before: v, steps, after: v, missing: true, missingAt: i, base: base[r] };
+                            now = hit[a.params.to];
+                        } else if (fns[a.id]) now = fns[a.id](now, a.params);
+                        steps.push(now);
+                    }
+                    return { before: v, steps, after: now, base: base[r] };
+                });
+                done({ rows, agree: rows.filter(x => x.after === x.base).length / rows.length });
             }, 120)),
             onOpenLookup: id => window.DbmnToast && window.DbmnToast.info(`Would open the lookup table "${id}" in Reporting`)
         });

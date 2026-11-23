@@ -1,80 +1,94 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 Flexion Tech Pty Ltd */
 /*
- * DbmnFunctions (dbmn-functions.js): the functions on a column, in a dialog. The list of
- * functions on the left; what they make and a few values, before and after, on the right.
+ * DbmnFunctions (dbmn-functions.js): the functions on a column as a chain of steps, top to bottom:
+ * the source column, then a row per step (grip, number, name and fields, the value it leaves, ×).
+ * Every row is the same grid, so the values line up in one column, level with each step's name
+ * (James, 2026-11-23: "line it up perfectly").
  */
 .dbmn-fx-form {
     display: grid;
-    grid-template-columns: 320px minmax(0, 1fr);
-    gap: 20px;
-    align-items: start;
-    width: min(780px, calc(100vw - 96px));
+    gap: 10px;
+    width: min(720px, calc(100vw - 96px));
+    max-height: min(560px, calc(100vh - 220px));
+    overflow-y: auto;
 }
-.dbmn-fx-side { display: grid; gap: 8px; min-width: 0; }
-.dbmn-fx-side > .form-hint { margin: 0; min-height: 18px; }
-.dbmn-fx-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.dbmn-fx-list { display: grid; gap: 2px; }
-.dbmn-fx-line {
+.dbmn-fx-nav { display: flex; gap: 6px; }
+.dbmn-fx-chain { display: grid; }
+.dbmn-fx-row {
     display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
-    column-gap: 8px;
-    row-gap: 1px;
-    align-items: center;
-    padding: 5px 10px;
-    border-radius: 4px;
+    grid-template-columns: 16px 18px minmax(0, 1fr) 170px 22px;
+    gap: 4px 10px;
+    align-items: start;
+    padding: 8px 6px;
+    border: 1px solid var(--dbmn-panel-border, rgba(128, 128, 128, 0.35));
+    border-radius: 6px;
+    line-height: 22px;
+}
+.dbmn-fx-row.is-source { background: var(--dbmn-list-hoverBackground, rgba(128, 128, 128, 0.12)); }
+.dbmn-fx-row.is-dragging { opacity: 0.5; }
+.dbmn-fx-row.is-drop-before { box-shadow: 0 -2px 0 var(--dbmn-focusBorder); }
+.dbmn-fx-row.is-drop-after { box-shadow: 0 2px 0 var(--dbmn-focusBorder); }
+.dbmn-fx-link { height: 12px; margin-left: 41px; border-left: 2px solid var(--dbmn-panel-border, rgba(128, 128, 128, 0.35)); }
+.dbmn-fx-grip,
+.dbmn-fx-remove {
+    width: 100%;
+    height: 22px;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    border: 0;
+    border-radius: 3px;
+    background: none;
+    color: var(--dbmn-descriptionForeground);
+    font: inherit;
     cursor: pointer;
 }
-.dbmn-fx-line:hover { background: var(--dbmn-list-hoverBackground, rgba(128, 128, 128, 0.12)); }
-.dbmn-fx-line > .dbmn-fx-code { grid-column: 2; }
-.dbmn-fx-code { font-family: var(--dbmn-editor-font-family, monospace); font-size: 12px; line-height: 20px; overflow-wrap: anywhere; }
-.dbmn-fx-code strong { color: var(--dbmn-textLink-foreground); font-weight: 600; }
-.dbmn-fx-code input,
-.dbmn-fx-code select {
-    height: 20px;
-    padding: 0 4px;
-    margin: 0 1px;
-    max-width: 100%;
-    font-family: inherit;
-    font-size: 12px;
-    vertical-align: top;
-    box-sizing: border-box;
-}
-.dbmn-fx-code input[type="number"] { width: 6ch; }
+.dbmn-fx-grip { cursor: grab; }
+.dbmn-fx-grip svg { width: 14px; height: 14px; }
+.dbmn-fx-remove { font-size: 15px; }
+.dbmn-fx-grip:hover, .dbmn-fx-grip:focus-visible,
+.dbmn-fx-remove:hover, .dbmn-fx-remove:focus-visible { color: var(--dbmn-foreground); background: var(--dbmn-list-hoverBackground); outline: none; }
+.dbmn-fx-num { font-size: 12px; color: var(--dbmn-descriptionForeground); font-variant-numeric: tabular-nums; text-align: right; }
+.dbmn-fx-what { display: grid; gap: 6px; min-width: 0; }
+.dbmn-fx-name { font-weight: 500; }
+/* A step's values: short labels, each box as wide as what's in it, wrapping onto lines of their own */
+.dbmn-fx-fields { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; color: var(--dbmn-descriptionForeground); font-size: 12px; }
+.dbmn-fx-field { display: inline-flex; align-items: center; gap: 6px; }
+.dbmn-fx-field .dbmn-modal-input { width: auto; height: 24px; padding: 0 6px; font-size: 12.5px; box-sizing: border-box; }
+.dbmn-fx-field input[type="number"] { width: 7ch; }
+.dbmn-fx-value { font-family: var(--dbmn-editor-font-family, monospace); }
 /* A lookup table that no longer exists */
-.dbmn-fx-code select.is-missing { border-color: var(--dbmn-inputValidation-errorBorder); color: var(--dbmn-errorForeground); }
-.dbmn-fx-order { margin-left: 8px; font-size: 11px; font-weight: 600; color: var(--dbmn-textLink-foreground); }
-.dbmn-fx-sql {
-    display: block;
-    box-sizing: border-box;
-    min-height: calc(3 * 18px + 14px);
-    padding: 6px 8px;
+.dbmn-fx-field select.is-missing { border-color: var(--dbmn-inputValidation-errorBorder); color: var(--dbmn-errorForeground); }
+/* The value a step leaves: one column, level with the step's name */
+.dbmn-fx-out { display: grid; gap: 2px; justify-items: start; min-width: 0; }
+.dbmn-fx-val {
+    display: inline-block;
+    max-width: 100%;
+    padding: 0 6px;
+    border-radius: 3px;
+    background: var(--dbmn-editor-background, rgba(128, 128, 128, 0.12));
     font-family: var(--dbmn-editor-font-family, monospace);
-    font-size: 12px;
-    line-height: 18px;
-    border: 1px solid var(--dbmn-panel-border, rgba(128, 128, 128, 0.35));
-    border-radius: 4px;
-    overflow-wrap: anywhere;
-    user-select: text;
+    font-size: 13px;
+    line-height: 22px;
+    white-space: pre;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
-.dbmn-fx-sample-box { margin: 0; }
-.dbmn-fx-sample { table-layout: fixed; width: 100%; }
-.dbmn-fx-sample th,
-.dbmn-fx-sample td { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* A value the functions changed; one that now matches the column compared with */
-.dbmn-fx-sample td.dbmn-fx-changed { color: var(--dbmn-textLink-foreground); }
-/* A value a lookup didn't find (or found twice): left as it was, said in amber; + Add on one not found */
-.dbmn-fx-sample td.dbmn-fx-missing { color: var(--dbmn-editorWarning-foreground); white-space: normal; }
-/* Found more than once: the first row's answer, said quietly (not a warning) */
-.dbmn-fx-sample td.dbmn-fx-twice { color: var(--dbmn-descriptionForeground); white-space: normal; }
-.dbmn-fx-sample .dbmn-fx-add { margin-left: 6px; padding: 0 8px; }
-.dbmn-fx-sample .dbmn-fx-add-box { width: 9em; padding: 2px 6px; }
-.dbmn-fx-sample .dbmn-fx-add-note { color: var(--dbmn-editorWarning-foreground); }
-.dbmn-fx-sample td.dbmn-fx-agrees { color: var(--dbmn-testing-iconPassed, var(--dbmn-charts-green)); }
+.dbmn-fx-val.is-changed { color: var(--dbmn-testing-iconPassed, var(--dbmn-charts-green)); }
+.dbmn-fx-val.is-missing { color: var(--dbmn-editorWarning-foreground); font-family: inherit; white-space: normal; }
+.dbmn-fx-val.is-stopped { background: none; color: var(--dbmn-descriptionForeground); font-family: inherit; font-style: italic; }
+.dbmn-fx-twice { font-size: 11.5px; color: var(--dbmn-descriptionForeground); line-height: 15px; }
+.dbmn-fx-out .dbmn-fx-add { padding: 0 8px; }
+.dbmn-fx-out .dbmn-fx-add-box { width: 100%; padding: 2px 6px; }
+.dbmn-fx-out .dbmn-fx-add-note { color: var(--dbmn-editorWarning-foreground); }
+.dbmn-fx-under { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .dbmn-fx-agree { margin: 0; }
 .dbmn-fx-agree.is-good { color: var(--dbmn-testing-iconPassed, var(--dbmn-charts-green)); }
 .dbmn-fx-agree.is-low { color: var(--dbmn-editorWarning-foreground); }
+.dbmn-fx-agree:empty, .dbmn-fx-note:empty { display: none; }
 .dbmn-fx-note { margin: 0; }
+.dbmn-fx-plus,
 .dbmn-fx-clear,
 .dbmn-fx-open {
     padding: 0;
@@ -84,20 +98,7 @@
     font: inherit;
     cursor: pointer;
 }
-.dbmn-fx-open { margin-left: 4px; font-size: 11px; }
-.dbmn-fx-clear:hover,
-.dbmn-fx-open:hover { text-decoration: underline; }
-.dbmn-fx-clear:disabled { visibility: hidden; }
-@media (max-width: 700px) { .dbmn-fx-form { grid-template-columns: minmax(0, 1fr); } }
-/* Translate values: From and To after the table */
-.dbmn-fx-code select.dbmn-fx-lookup-col { max-width: 9em; }
-.dbmn-fx-word { color: var(--dbmn-descriptionForeground); }
-/* The whole lookup table: From and To marked, the other columns quieter, this record's row lit */
-.dbmn-fx-lut-box { margin: 0; max-height: 260px; overflow: auto; }
-.dbmn-fx-lut { width: 100%; }
-.dbmn-fx-lut th,
-.dbmn-fx-lut td { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 16em; }
-.dbmn-fx-lut th { position: sticky; top: 0; background: var(--dbmn-editor-background); }
-.dbmn-fx-lut th small { color: var(--dbmn-textLink-foreground); font-weight: 600; }
-.dbmn-fx-lut td:not(.is-from):not(.is-to) { color: var(--dbmn-descriptionForeground); }
-.dbmn-fx-lut tr.is-used td { background: color-mix(in srgb, var(--dbmn-editorWarning-foreground, #cca700) 18%, transparent); color: var(--dbmn-foreground); }
+.dbmn-fx-open { font-size: 12px; }
+.dbmn-fx-plus:hover:not(:disabled), .dbmn-fx-clear:hover, .dbmn-fx-open:hover { text-decoration: underline; }
+.dbmn-fx-plus:disabled { color: var(--dbmn-descriptionForeground); cursor: default; }
+@media (prefers-reduced-motion: reduce) { .dbmn-fx-row { transition: none; } }
