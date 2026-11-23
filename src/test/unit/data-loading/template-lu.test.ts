@@ -63,6 +63,10 @@ describe('Template lu: a value looked up in a lookup table', () => {
         const { variables, errors } = extractVariablesFromJsonTemplate('{ "uom": "{{uom | lu:uom:tms>wms}}", "qty": "{{qty:number}}" }');
         expect(errors).to.deep.equal([]);
         expect(variables.map(v => [v.resolvedName, v.dataType, v.formatModifier])).to.deep.equal([['uom', 'string', 'lu:uom:tms>wms'], ['qty', 'number', undefined]]);
+        // A type, then a pipe with spaces around it
+        const typed = extractVariablesFromJsonTemplate('{ "uom": "{{uom:string | lu:uom:wms}}" }');
+        expect(typed.errors).to.deep.equal([]);
+        expect(typed.variables.map(v => [v.resolvedName, v.dataType, v.formatModifier])).to.deep.equal([['uom', 'string', 'lu:uom:wms']]);
         expect(templateUsesLookups('{{uom | lu:uom:wms}}')).to.equal(true);
         expect(templateUsesLookups('{{uom:string|upper}}')).to.equal(false);
     });

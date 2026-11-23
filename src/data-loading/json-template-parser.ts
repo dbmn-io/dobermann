@@ -449,8 +449,9 @@ function parseTypeFormatModifier(suffix: string): {
     }
 
     // Has pipe - split into type part and modifier part
-    const beforePipe = suffix.substring(0, pipeIndex);
-    const afterPipe = suffix.substring(pipeIndex + 1);
+    // (spaces around the pipe are the writer's: {{note:string | ifblank}} is {{note:string|ifblank}})
+    const beforePipe = suffix.substring(0, pipeIndex).trim();
+    const afterPipe = suffix.substring(pipeIndex + 1).trim();
 
     // beforePipe could be "type" or "type:format"
     const colonIndex = beforePipe.indexOf(':');
