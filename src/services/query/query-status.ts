@@ -138,6 +138,25 @@ export function passes(status: RowStatus, filter: StatusFilter): boolean {
     return true;
 }
 
+/**
+ * The filters besides the Status menu's own ticks that narrow Results' rows: a compared column's DIFF pill, the
+ * relationship filter. Undefined when there are none. The Status menu counts under these (statusMenuCounts), so each
+ * of its lines says what ticking it would give with the rest as they are (James, 2026-11-23: "update these numbers
+ * based on other filters").
+ */
+export function otherFilters(filter?: StatusFilter | null): StatusFilter | undefined {
+    if (!filter) return undefined;
+    const columns = filter.columns?.length ? filter.columns : undefined;
+    const relations = filter.relations ?? undefined;
+    return columns || relations ? { ...(columns ? { columns } : {}), ...(relations ? { relations } : {}) } : undefined;
+}
+
+/** The Status menu's counts: among the rows the search found (`searched`) that every other filter leaves (otherFilters). */
+export function statusMenuCounts(statuses: RowStatus[], searched: number[], filter?: StatusFilter | null): StatusCounts {
+    const others = otherFilters(filter);
+    return statusCounts(statuses, others ? searched.filter(i => passes(statuses[i], others)) : searched);
+}
+
 /** The counts Results' controls show: each status, each relationship, and each compared column's DIFFs. */
 export interface StatusCounts {
     all: number;

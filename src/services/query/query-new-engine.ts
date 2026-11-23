@@ -899,9 +899,10 @@ export interface PagedStatus extends StatusPlaces {
 }
 
 /** The status counts (statusCounts') among the rows the search finds: the paged query up to its search, then a group over its status columns. */
-export async function pagedCounts(engineIn: QueryEngine | EngineHost, spec: QuerySpec, search: unknown, status: PagedStatus, held?: string): Promise<StatusCounts | undefined> {
+export async function pagedCounts(engineIn: QueryEngine | EngineHost, spec: QuerySpec, search: unknown, status: PagedStatus, held?: string, narrow?: StatusFilter): Promise<StatusCounts | undefined> {
     const engine = hostOf(engineIn);
-    const { query, layout } = pagedQuery(spec, null, search, { ...status, filter: undefined }, held);
+    // (`narrow`: the filters to count under, the Status menu's other filters (otherFilters); none: every row the search finds)
+    const { query, layout } = pagedQuery(spec, null, search, { ...status, filter: narrow }, held);
     if (!layout.status) return undefined;
     const st = layout.status;
     // The rows (the search's, or all of them), then each count in one pass over their status columns (statusCountsStep's, in its order)

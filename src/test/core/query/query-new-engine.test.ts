@@ -21,7 +21,7 @@ import { buildQuery, resultsKey, runHeld, fromKeptCompare, countAlike, sampleQue
 import { parseFormula, FORMULA_FUNCTIONS } from '../../../services/query/formula';
 import type { Query, Value } from '../../../services/engine/engine-types';
 import { compareKeySql, resultColumns } from '../reference/query-sql';
-import { passes, rowStatus, statusCounts, type StatusFilter } from '../../../services/query/query-status';
+import { otherFilters, passes, rowStatus, statusCounts, statusMenuCounts, type StatusFilter } from '../../../services/query/query-status';
 import type { QueryKey, QuerySpec } from '../../../services/query/query-types';
 import { SQL_WASM_PATH } from '../fixtures/temp-storage';
 
@@ -522,6 +522,24 @@ describe('Query compare on the new engine', () => {
                 assert.deepStrictEqual(counts, statusCounts(st.rows, st.rows.map((_, i) => i)));
             });
         }
+
+        // James, 2026-11-23: "update these numbers based on other filters": the Status menu's counts are over the rows every
+        // other filter leaves (a column's DIFF pill, relations), never narrowed by the menu's own ticks
+        it('the Status menu\'s counts follow the other filters (a DIFF pill, relations), never its own ticks: paged as held', async () => {
+            const { spec, engine, st } = await held([]);
+            const every = st.rows.map((_, i) => i);
+            const filters: StatusFilter[] = [{ columns: ['qty'] }, { columns: ['status', 'qty'] }, { relations: ['onlyOther'] }, { kinds: ['diff'], columns: ['status'] }, { kinds: ['same'], relations: ['oneToOne'] }];
+            for (const filter of filters) {
+                const want = statusMenuCounts(st.rows, every, filter);
+                assert.strictEqual(want.all, every.filter(i => passes(st.rows[i], { ...filter, kinds: null })).length, `held: the rows the other filters leave, ${JSON.stringify(filter)}`);
+                assert.deepStrictEqual(await pagedCounts(engine, spec, undefined, status([]), undefined, otherFilters(filter)), want, `paged, ${JSON.stringify(filter)}`);
+            }
+            // The menu's own ticks alone narrow nothing: each line still says what it would give
+            assert.deepStrictEqual(statusMenuCounts(st.rows, every, { kinds: ['diff'] }), statusCounts(st.rows, every));
+            assert.strictEqual(otherFilters({ kinds: ['diff'] }), undefined);
+            // A DIFF pill narrows them all: every row left differs in qty
+            assert.strictEqual(statusMenuCounts(st.rows, every, { columns: ['qty'] }).columns.qty, statusMenuCounts(st.rows, every, { columns: ['qty'] }).all);
+        });
 
         it('compared columns of every kind: a view joined beside the compare, a COMPARE calculation\'s sides', async () => {
             const spec = runsSpec();

@@ -33,7 +33,7 @@ import { columnTypes, spread, TYPE_SAMPLE, type ColumnType } from '../../service
 import { CALC_VIEW, QUERY_JOIN_KINDS } from '../../services/query/query-types';
 import { comparableRuns, type RequestTemplates, type RunHeaderValue } from '../../services/compare/compare-runs';
 import { alignCompareJoins, groupCompare, isCompare, MAX_COMPARE_VIEWS, queryCompare, runJoin } from '../../services/query/query-compare';
-import { columnCellDiffs, comparedGroups, passes, rowStatus, statusCounts, type RowStatus, type StatusCounts, type StatusFilter } from '../../services/query/query-status';
+import { columnCellDiffs, comparedGroups, otherFilters, passes, rowStatus, statusCounts, statusMenuCounts, type RowStatus, type StatusCounts, type StatusFilter } from '../../services/query/query-status';
 import { resultWorkbook } from '../../services/query/query-export';
 import { asColumnValue, lookupsIn } from '../../services/column-functions/column-functions';
 import type { LookupTablesReader, LookupTableSummary } from '../../services/lookup-tables/lookup-tables';
@@ -2187,23 +2187,26 @@ export class QueryController {
             // The Status menu's counts: among the rows the search finds, and among them all (asked for with the first page only)
             const counts = status && paged.layout.status ? async () => {
                 const held = this.pagedHeld?.host === host ? this.pagedHeld.result.id : undefined;
-                // (they change with the search, not with the sort or the Status filter: counted once for each)
-                const counted = async (text: string): Promise<StatusCounts | undefined> => {
-                    const key = held ? `${held}\n${text}` : '';
+                // (they change with the search and the other filters, not with the sort or the Status menu's own ticks:
+                // counted once for each; `narrow`, the other filters, otherFilters)
+                const counted = async (text: string, narrow?: StatusFilter): Promise<StatusCounts | undefined> => {
+                    const key = held ? `${held}\n${text}\n${JSON.stringify(narrow ?? null)}` : '';
                     const had = key ? this.countsKept.get(key) : undefined;
                     if (had) return had;
                     // (the rows the search found are Results' rows when no Status filter is on: counted from them, not searched again)
                     const out = text && !status.filter && text === search
                         ? await pagedCounts(host, spec, undefined, status, paged.id)
-                        : await pagedCounts(host, spec, text ? this.searchArg(columns, text) : undefined, status, held);
+                        : await pagedCounts(host, spec, text ? this.searchArg(columns, text) : undefined, status, held, narrow);
                     if (key && out) {
                         if (this.countsKept.size > 20) this.countsKept.clear();
                         this.countsKept.set(key, out);
                     }
                     return out;
                 };
-                const found = await counted(search);
-                const every = search ? await counted('') : found;
+                // The menu's counts: the search's rows that the other filters leave; and the whole compare's, unfiltered
+                const narrow = otherFilters(status.filter);
+                const found = await counted(search, narrow);
+                const every = search || narrow ? await counted('') : found;
                 // (what the whole compare found, for the Hub list's line: kept when it changes)
                 if (every && !status.filter?.hidden?.length) await this.rememberFound(every);
                 // (differences only in spaces or blanks, across the whole compare: Results shows the special characters then.
@@ -2232,7 +2235,7 @@ export class QueryController {
                 rows: indices.slice(offset, offset + limit).map(i => result.rows[i]),
                 ...(statuses ? { status: indices.slice(offset, offset + limit).map(i => statuses[i]), index: indices.slice(offset, offset + limit) } : {})
             }),
-            ...(statuses ? { counts: async () => ({ counts: statusCounts(statuses, found.searched ?? indices), countsAll: statusCounts(statuses, statuses.map((_, i) => i)) }) } : {}),
+            ...(statuses ? { counts: async () => ({ counts: statusMenuCounts(statuses, found.searched ?? indices, message.filter), countsAll: statusCounts(statuses, statuses.map((_, i) => i)) }) } : {}),
             each: async each => { for (let at = 0; at < indices.length; at += 20_000) await each(indices.slice(at, at + 20_000).map(i => result.rows[i]), at); },
             totals: async () => this.totals(result, indices)
         };
