@@ -23,6 +23,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { IKeyValueStore } from '../../platform/interfaces/key-value-store.interface';
 import { freeName as freeFileName, safeFileName } from '../query/query-folder';
+import { cleanSearches, type SavedSearch } from '../query/query-store';
 import * as lookupValueScript from '../../webviews/shared/lookup-value.js';
 import type { LookupAnswer as SharedAnswer } from '../../webviews/shared/lookup-value.js';
 import { sharedScript } from '../../utils/shared-script';
@@ -56,6 +57,9 @@ export interface LookupTable {
     /** A row: a value by column id. */
     rows: Array<Record<string, string>>;
     updatedAt: string;
+    /** The ★'s saved searches on the table's page (James, 2026-11-23: "everywhere where we have a search box"), kept in
+     *  its file so they travel with it; none when missing. */
+    searches?: SavedSearch[];
 }
 
 /** A table as the list shows it: its columns, and how many rows. */
@@ -323,7 +327,9 @@ export class LookupTablesStore implements LookupTablesReader {
         if (!from) throw new Error('This lookup table has been deleted.');
         const copy: LookupTable = {
             id: newId(tables), name: freeName(tables, `${from.name} copy`),
-            columns: from.columns.map(c => ({ ...c })), rows: from.rows.map(r => ({ ...r })), updatedAt: this.now()
+            columns: from.columns.map(c => ({ ...c })), rows: from.rows.map(r => ({ ...r })), updatedAt: this.now(),
+            // (its saved searches too: a copy is the same table)
+            ...(from.searches && from.searches.length ? { searches: from.searches.map(x => ({ ...x })) } : {})
         };
         await this.writeOne(copy);
         this.tell({ kind: 'saved', id: copy.id });
@@ -359,7 +365,8 @@ function clean(raw: unknown): LookupTable | undefined {
             ids.forEach(id => { row[id] = r[id] === null || r[id] === undefined ? '' : String(r[id]); });
             return row;
         });
-    return { id: t.id, name: String(t.name ?? '').trim(), columns, rows, updatedAt: typeof t.updatedAt === 'string' ? t.updatedAt : '' };
+    const searches = t.searches === undefined ? undefined : cleanSearches(t.searches);
+    return { id: t.id, name: String(t.name ?? '').trim(), columns, rows, updatedAt: typeof t.updatedAt === 'string' ? t.updatedAt : '', ...(searches && searches.length ? { searches } : {}) };
 }
 
 function newId(tables: LookupTable[]): string {

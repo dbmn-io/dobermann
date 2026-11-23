@@ -13,17 +13,17 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const read = rel => readFileSync(join(ROOT, 'src/webviews', rel), 'utf8');
 const STYLES = ['shared/atomic.css', 'shared/core.css', 'shared/tables.css', 'shared/console.css', 'shared/search.css', 'shared/modals.css', 'shared/column-head.css', 'shared/column-drag.css', 'shared/dbmn-table.css', 'shared/dbmn-log.css'];
 const SCRIPTS = ['shared/icons.js', 'shared/search-matcher.js', 'shared/value-formatter.js', 'shared/dbmn-modal.js', 'shared/dbmn-clipboard.js', 'shared/cell-detail.js',
-    'shared/virtual-window.js', 'shared/dbmn-context-menu.js', 'shared/column-drag.js', 'shared/column-head.js', 'shared/dbmn-table.js', 'shared/dbmn-level.js', 'shared/dbmn-log.js'];
+    'shared/virtual-window.js', 'shared/dbmn-context-menu.js', 'shared/column-drag.js', 'shared/column-head.js', 'shared/dbmn-saved-searches.js', 'shared/dbmn-table.js', 'shared/dbmn-level.js', 'shared/dbmn-log.js'];
 
 // Local times, so the expected text is the computer's own whatever the time zone the test runs in
 const AT = new Date(2026, 10, 19, 14, 3, 22, 120).getTime();
-const logPage = () => `<!doctype html><html><head>
+const logPage = (attrs = '') => `<!doctype html><html><head>
 <style>:root{--vscode-foreground:#ccc;--vscode-editor-background:#1e1e1e;--vscode-panel-border:#444;--vscode-input-background:#2a2a2a}
 ${STYLES.map(read).join('\n')}
 body{margin:0;padding:16px;width:1000px;height:420px;display:flex;flex-direction:column;box-sizing:border-box;background:#1e1e1e;color:#ccc;font:13px sans-serif}
 dbmn-log{flex:1}</style>
 ${SCRIPTS.map(rel => `<script>${read(rel)}</script>`).join('\n')}</head><body>
-<dbmn-log id="log" label="Logs"></dbmn-log>
+<dbmn-log id="log" label="Logs" ${attrs}></dbmn-log>
 <script>
   const log = document.getElementById('log');
   window.told = [];
@@ -149,4 +149,39 @@ test('a line that opens (a request) asks the screen to open it', async ({ page }
     await page.locator('#log .search-input').fill('@level=error @source=run');
     await page.locator('#log .dbmn-log-message.has-detail', { hasText: 'Row 3' }).click();
     expect(await asked).toBe('m3');
+});
+
+test('without saved-searches, the log has no ★', async ({ page }) => {
+    await page.setContent(logPage());
+    await expect(page.locator('#log dbmn-saved-searches')).toHaveCount(0);
+});
+
+test('saved-searches: the ★ in the log\'s own search box; picked, it searches; a save is told to the screen', async ({ page }) => {
+    // James, 2026-11-23: "that saved search should be everywhere where we have a search box"
+    // (one page per test: a second setContent keeps the window, and its script's `const log` can't be declared again)
+    await page.setContent(logPage('saved-searches'));
+    const star = page.locator('#log dbmn-saved-searches');
+    await expect(star).toHaveCount(1);
+    await page.evaluate(() => {
+        window.changes = [];
+        log.addEventListener('dbmn-saved-change', e => { window.changes.push(e.detail.searches); log.savedSearches = e.detail.searches; });
+        log.savedSearches = [{ name: 'Errors', text: '@level=error' }];
+    });
+    // Beside the box, on its line, inside the log
+    const box = await page.locator('#log .search-input').boundingBox(), btn = await star.locator('.dbmn-saved-btn').boundingBox();
+    expect(btn.x).toBeGreaterThan(box.x + box.width - 1);
+    expect(Math.abs((btn.y + btn.height / 2) - (box.y + box.height / 2))).toBeLessThan(6);
+    // Picked: the box holds it and the lines are searched
+    await star.locator('.dbmn-saved-btn').click();
+    await star.locator('.dbmn-saved-pick', { hasText: 'Errors' }).click();
+    await expect(page.locator('#log .search-input')).toHaveValue('@level=error');
+    await expect(page.locator('#log .dbmn-table-count')).toHaveText('1 of 202 rows');
+    await expect(star.locator('.dbmn-saved-btn')).toHaveText(/Errors/);
+    // A new one saved: told to the screen
+    await page.locator('#log .search-input').fill('@source=sign-in');
+    await star.locator('.dbmn-saved-btn').click();
+    await star.locator('.dbmn-saved-add').click();
+    await star.locator('.dbmn-saved-name-input').fill('Sign-in');
+    await star.locator('.dbmn-saved-name-input').press('Enter');
+    expect(await page.evaluate(() => window.changes.at(-1))).toEqual([{ name: 'Errors', text: '@level=error' }, { name: 'Sign-in', text: '@source=sign-in' }]);
 });

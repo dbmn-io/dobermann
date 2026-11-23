@@ -12,6 +12,7 @@
  *   <dbmn-saved-searches id="saved"></dbmn-saved-searches>      placed beside the search box
  *   <dbmn-saved-searches compact>             inside the box's right end, where a toolbar is tight (Query): the
  *                                             star and the caret only, the saved search's name in the hover text
+ *   <dbmn-saved-searches compact="star">      the star alone (22px), beside another icon in a box (the Hub's lists)
  *   saved.input = $('querySearch');           // the box it follows (its typing; refresh() after setting it from script)
  *   saved.searches = [{ name: 'Late orders', text: '@status=late' }];   // the screen's list, kept where its table is kept
  *   saved.addEventListener('dbmn-saved-change', e => …e.detail.searches…);   // after a save, rename or delete:

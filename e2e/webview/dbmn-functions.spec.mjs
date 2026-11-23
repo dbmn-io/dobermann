@@ -229,3 +229,17 @@ test('Cancel gives nothing; what was applied comes back in its order with its va
     await p.getByRole('button', { name: 'Cancel' }).click();
     await expect.poll(() => p.evaluate(() => window.result)).toBe(null);
 });
+
+test('Escape in the + Add a step menu closes the menu only; a second Escape closes the dialog', async ({ page: p }) => {
+    // (round 23: Escape closed the whole dialog with the menu open)
+    await open(p, []);
+    await p.getByRole('button', { name: '+ Add a step' }).click();
+    const menu = p.locator('.dbmn-context-menu');
+    await expect(menu).toBeVisible();
+    await p.keyboard.press('Escape');
+    await expect(menu).toHaveCount(0);
+    await expect(p.locator('.dbmn-modal')).toBeVisible();
+    await p.keyboard.press('Escape');
+    await expect(p.locator('.dbmn-modal')).toHaveCount(0);
+    await expect.poll(() => p.evaluate(() => window.result)).toBe(null);
+});

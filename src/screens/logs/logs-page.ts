@@ -31,7 +31,7 @@ export function buildLogsPage(asset: AssetUrl): string {
     </div>
 
     <main class="logs-page">
-        <dbmn-log id="logsList" label="Logs"></dbmn-log>
+        <dbmn-log id="logsList" label="Logs" saved-searches></dbmn-log>
     </main>
 
     <dbmn-footer class="logs-footer">
@@ -55,6 +55,7 @@ export function buildLogsPage(asset: AssetUrl): string {
     ${script('shared/help-mode.js')}
     ${script('shared/dbmn-modal.js')}
     ${script('shared/dbmn-context-menu.js')}
+    ${script('shared/dbmn-saved-searches.js')}
     ${script('shared/dbmn-toast.js')}
     ${script('shared/dbmn-clipboard.js')}
     ${script('shared/icons.js')}

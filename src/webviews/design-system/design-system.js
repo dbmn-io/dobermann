@@ -216,7 +216,7 @@
         ['Buttons', '.btn, .btn-primary, .btn-secondary, .btn-danger', S, 'Every screen', 'shared/buttons.css'],
         ['Toggle button', '.dbmn-toggle: an icon that is on or off (aria-pressed); its name in the hover text', S, 'Query (Results: Totals, hidden characters, Filter), Design system', 'shared/buttons.css'],
         ['<dbmn-name>', 'A report\'s name on its screen, renamed in place', C, 'Query', 'shared/dbmn-name.js'],
-        ['<dbmn-saved-searches>', 'A search box\'s saved searches: a ★ drop-down beside the box', C, 'Query (Results), Console (Completed, Error)', 'shared/dbmn-saved-searches.js'],
+        ['<dbmn-saved-searches>', 'A search box\'s saved searches: a ★ drop-down beside the box', C, 'Query (Results), Console (Completed, Error), Logs, lookup tables, the Hub\'s lists', 'shared/dbmn-saved-searches.js'],
         ['Rename dialog', 'Right-click → Rename in the Hub\'s lists: reports, endpoints, environments, runs', M, 'Hub lists', 'hub/hub-tabs.js (askRename)'],
         ['Tabs in a screen', 'A screen\'s own tabs (Environment, Console)', S, 'Environment, Console', 'shared/tabs.css'],
 

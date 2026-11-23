@@ -1048,6 +1048,13 @@ body.hub { padding: 0; }
 }
 .catalogue-search.has-mirror .catalogue-search-icon { z-index: 2; }
 .search-box-builder { z-index: 2; }
+/* The box's saved searches (★, compact): inside the box at its right, beside the builder; the text keeps clear of it */
+.catalogue-search .search-box-saved { position: absolute; top: 3px; right: 28px; z-index: 2; }
+.catalogue-search:not(:has(.search-box-builder)) .search-box-saved { right: 3px; }
+.catalogue-search:has(.search-box-saved) textarea.search-box-input,
+.catalogue-search:has(.search-box-saved) .search-box-mirror { padding-right: 52px; }
+.catalogue-search:has(.search-box-saved):not(:has(.search-box-builder)) textarea.search-box-input,
+.catalogue-search:has(.search-box-saved):not(:has(.search-box-builder)) .search-box-mirror { padding-right: 28px; }
 /* (the box's colours are the tables', search.css: colour only, never weight, so the caret never drifts) */
 .search-box-builder {
     position: absolute;

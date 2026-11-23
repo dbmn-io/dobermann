@@ -40,6 +40,9 @@
         } else searching.removeAttribute('count');
     }
 
+    // The ★'s saved searches: kept by the controller (James, 2026-11-23: "everywhere where we have a search box")
+    log.addEventListener('dbmn-saved-change', event => vscode.postMessage({ type: 'logs.saveSearches', searches: event.detail.searches }));
+
     // A request's line clicked: the controller reads its run log
     log.addEventListener('dbmn-log-open', event => vscode.postMessage({ type: 'logs.open', open: event.detail.open, key: event.detail.key }));
 
@@ -94,6 +97,7 @@
                 tell();
                 break;
             case 'logs.searchFor': log.search = m.text || ''; break;
+            case 'logs.searches': log.savedSearches = m.searches || []; break;
             case 'logs.opened': if (window.CellDetail) window.CellDetail.open(m.text || '', { title: 'The request' }); break;
         }
     });

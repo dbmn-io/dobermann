@@ -33,7 +33,7 @@ export function buildLookupPage(asset: AssetUrl, config: { name: string }): stri
     </div>
 
     <main class="lookup-page">
-        <dbmn-table id="lookupTable" label="${title}" editable add-row row-delete row-move edit-columns searchable></dbmn-table>
+        <dbmn-table id="lookupTable" label="${title}" editable add-row row-delete row-move edit-columns searchable saved-searches></dbmn-table>
         <p class="lookup-gone" id="lookupGone" hidden>This lookup table has been deleted.</p>
     </main>
 
@@ -56,6 +56,7 @@ export function buildLookupPage(asset: AssetUrl, config: { name: string }): stri
     ${script('shared/dbmn-clipboard.js')}
     ${script('shared/icons.js')}
     ${script('shared/dbmn-footer.js')}
+    ${script('shared/dbmn-saved-searches.js')}
     ${script('shared/dbmn-table.js')}
     ${script('shared/editor-window-controls.js')}
     ${script('lookup/lookup-page.js')}

@@ -11,6 +11,7 @@
  * deleted).
  */
 import type { ScreenSession } from '../screen-session';
+import { cleanSearches } from '../../services/query/query-store';
 import {
     LOOKUP_MAX_COLUMNS, LOOKUP_MAX_ROWS, type LookupColumn, type LookupTablesStore
 } from '../../services/lookup-tables/lookup-tables';
@@ -31,7 +32,7 @@ export interface LookupConfig {
 
 export type LookupMessage =
     | { type: 'lookup.ready' }
-    | { type: 'lookup.save'; table: { columns: LookupColumn[]; rows: Array<Record<string, unknown>> }; seq?: number }
+    | { type: 'lookup.save'; table: { columns: LookupColumn[]; rows: Array<Record<string, unknown>>; searches?: unknown }; seq?: number }
     | { type: 'lookup.rename'; name: string }
     | { type: string; [key: string]: unknown };
 
@@ -92,7 +93,9 @@ export class LookupController {
                     const out: Record<string, string> = {};
                     columns.forEach(c => { const v = row[c.id]; out[c.id] = v === null || v === undefined ? '' : String(v); });
                     return out;
-                })
+                }),
+                // The ★'s saved searches, kept in the table's file (the store cleans them); a page that sent none keeps the table's
+                searches: message.table && message.table.searches !== undefined ? cleanSearches(message.table.searches) : kept.searches
             });
             this.session.post({ type: 'lookup.saved', seq, updatedAt: saved.updatedAt, rows: saved.rows.length });
         } catch (error) {

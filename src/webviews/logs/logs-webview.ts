@@ -32,6 +32,7 @@ export class LogsWebview extends WebviewBase {
                     return true;
                 }
             },
+            prefs: context.globalState,
             toast: {
                 info: m => this.toast?.info(m),
                 warn: m => this.toast?.warn(m),

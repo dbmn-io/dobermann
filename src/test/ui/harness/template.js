@@ -79,6 +79,7 @@
             HUB_JS_URI: asset(base, 'hub/hub.js'),
             EXECUTION_ACTIONS_JS_URI: asset(base, 'shared/execution-actions.js'),
             DBMN_CONTEXT_MENU_JS_URI: asset(base, 'shared/dbmn-context-menu.js'),
+            DBMN_SAVED_SEARCHES_JS_URI: asset(base, 'shared/dbmn-saved-searches.js'),
             SEARCH_WORDS_JS_URI: asset(base, 'shared/search-words.js'), // #444
             SEARCH_MATCHER_JS_URI: asset(base, 'shared/search-matcher.js'),
             SEARCH_CSS_URI: asset(base, 'shared/search.css'),

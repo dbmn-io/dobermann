@@ -19,6 +19,10 @@ import type { ScreenSession } from '../screen-session';
 import { logRowText, type LogCursor, type LogRow } from '../../services/logging/log-reader';
 import { requestDetail } from '../../services/logging/request-detail';
 import type { LogsPorts } from './logs.ports';
+import { cleanSearches } from '../../services/query/query-store';
+
+/** Where Logs keeps its saved searches (the ★ beside its box): the host's global state. */
+export const LOGS_SEARCHES_KEY = 'dbmn.logs.savedSearches';
 
 export interface LogsConfig {
     /** Open with this in the search box (a toast's Show in Logs, a run's own lines). */
@@ -33,6 +37,7 @@ export type LogsMessage =
     | { type: 'logs.older' }
     | { type: 'logs.save'; text?: string }
     | { type: 'logs.open'; open: string; key?: string }
+    | { type: 'logs.saveSearches'; searches: unknown }
     | { type: string; [key: string]: unknown };
 
 /** Lines a page brings. */
@@ -53,10 +58,25 @@ export class LogsController {
 
     constructor(private readonly session: ScreenSession, private readonly ports: LogsPorts, private readonly config: LogsConfig = {}) {}
 
+    /** The saved searches, as kept, to the ★. */
+    private sendSearches(): void {
+        if (!this.ports.prefs) return;
+        this.session.post({ type: 'logs.searches', searches: cleanSearches(this.ports.prefs.get(LOGS_SEARCHES_KEY)) });
+    }
+
     async handleMessage(message: LogsMessage): Promise<void> {
         try {
             switch (message.type) {
-                case 'logs.ready': return await this.find(this.config.search ?? '', true);
+                case 'logs.ready':
+                    this.sendSearches();
+                    return await this.find(this.config.search ?? '', true);
+                // The ★'s saved searches (James, 2026-11-23: "everywhere where we have a search box"): kept, then told back
+                case 'logs.saveSearches': {
+                    const searches = cleanSearches(message.searches);
+                    await this.ports.prefs?.update(LOGS_SEARCHES_KEY, searches);
+                    this.sendSearches();
+                    return;
+                }
                 // Refresh: read again, as the search box has it now
                 case 'logs.refresh':
                     this.ports.reader.forget?.();

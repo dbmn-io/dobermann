@@ -117,12 +117,15 @@
             table.setAttribute('searchable', '');
             table.setAttribute('removable', '');
             table.setAttribute('follow', 'top');
+            // (its ★, when the screen keeps saved searches: Logs keeps them in its settings)
+            if (this.hasAttribute('saved-searches')) table.setAttribute('saved-searches', '');
             table.setAttribute('label', this.getAttribute('label') || 'Log lines');
             table.setAttribute('placeholder', this.getAttribute('placeholder') || 'Search the lines, or @level=error, @source=sign-in, @run=…');
             this._table = table;
             this.replaceChildren(table);
             table.columns = COLUMNS;
             table.rows = this._rows;
+            if (this._savedList) table.savedSearches = this._savedList;
             if (this._busy) table.busy = true;
             this._scroll = table.querySelector('.dbmn-table-scroll');
             if (this._scroll) this._scroll.addEventListener('scroll', () => this._end(), { passive: true });
@@ -224,6 +227,9 @@
             if (this._table) this._table.busy = this._busy;
         }
 
+        /** `saved-searches`: the ★'s list, passed to the table (the screen keeps it). */
+        get savedSearches() { return this._table ? this._table.savedSearches : (this._savedList || []); }
+        set savedSearches(list) { this._savedList = list; if (this._table) this._table.savedSearches = list; }
         get search() { return this._table ? this._table.search : ''; }
         set search(text) {
             if (this._table) this._table.search = text || '';

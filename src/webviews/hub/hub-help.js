@@ -20,6 +20,10 @@
         { selector: '.hub-nav-item[data-section="export"]', help: 'import-export#export' },
         { selector: '.hub-nav-item[data-section="account"]', help: 'hub#account' },
         { selector: '.hub-nav-item[data-section="settings"]', help: 'hub#settings' },
+        // Logs (the logging session's page, dbmn.io/docs/logs/): the rail item, and Settings → Logs's two boxes
+        { selector: '.hub-nav-item[data-section="logs"]', help: 'logs#logs' },
+        { selector: '#logsKeepDays', help: 'logs#keep' },
+        { selector: '#logsMostMegabytes', help: 'logs#keep' },
         // List panel
         { selector: '#catalogueAddEndpoint', help: 'endpoints' },
         { selector: '#catalogueAddFromClipboard', help: 'sharing-endpoints' },

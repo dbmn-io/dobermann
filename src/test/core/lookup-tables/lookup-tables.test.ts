@@ -179,6 +179,20 @@ describe('Lookup tables: one JSON file each (James, 2026-11-21)', () => {
         assert.deepStrictEqual(heard, ['saved']);
         fs.rmSync(dir, { recursive: true, force: true });
     });
+
+    // James, 2026-11-23: "that saved search should be everywhere where we have a search box": a table's ★, kept in its file
+    it('a table\'s saved searches: kept with it, read back by a fresh store, cleaned; a rename and a duplicate keep them', async () => {
+        const { state, store } = fresh();
+        const table = await store.create('Units', ['ERP', 'WMS']);
+        await store.save({ ...table, searches: [{ name: 'Each', text: '@erp=EA' }, { name: '', text: 'no name' }, { name: 'each', text: 'twice' }] });
+        const again = new LookupTablesStore(state, { now: () => NOW });
+        assert.deepStrictEqual((await again.get(table.id))!.searches, [{ name: 'Each', text: '@erp=EA' }]);
+        assert.deepStrictEqual((await again.rename(table.id, 'UOM')).searches, [{ name: 'Each', text: '@erp=EA' }]);
+        assert.deepStrictEqual((await again.duplicate(table.id)).searches, [{ name: 'Each', text: '@erp=EA' }]);
+        // A table without them: none
+        const plain = await store.create('Sites', ['code']);
+        assert.strictEqual((await again.get(plain.id))!.searches, undefined);
+    });
 });
 
 function expect2(actual: string[], wanted: string[]) { assert.deepStrictEqual(actual, wanted); }

@@ -66,7 +66,7 @@
         if (why) { say(`Not kept: ${why}`, 'warn'); return; }
         ui.seq += 1;
         say('Keeping…');
-        vscode.postMessage({ type: 'lookup.save', seq: ui.seq, table: { columns: columnsNow(), rows: table.rows } });
+        vscode.postMessage({ type: 'lookup.save', seq: ui.seq, table: { columns: columnsNow(), rows: table.rows, searches: ui.searches || [] } });
     }
 
     function load(kept, limits) {
@@ -76,6 +76,9 @@
         $('lookupGone').hidden = true;
         table.columns = kept.columns.map(asShown);
         table.rows = kept.rows.map(row => Object.assign({}, row));
+        // The ★'s saved searches: kept in the table's own file, so they travel with it
+        ui.searches = Array.isArray(kept.searches) ? kept.searches : [];
+        table.savedSearches = ui.searches;
         const why = problem();
         say(why ? `Not kept: ${why}` : `${plural(kept.rows.length, 'row')} · kept`, why ? 'warn' : '');
         // A table with no rows yet opens with one empty row, its first cell held to type or paste into
@@ -101,6 +104,12 @@
     // Every change the table makes: a cell (typed, pasted, undone), a row added or deleted, a column renamed, added or deleted
     table.addEventListener('dbmn-table-edit', () => setTimeout(changed, 0));
     table.addEventListener('dbmn-table-rows', changed);
+    // A saved search added, renamed or deleted (James, 2026-11-23: "everywhere where we have a search box"): kept with the table
+    table.addEventListener('dbmn-saved-change', event => {
+        ui.searches = (event.detail && event.detail.searches) || [];
+        table.savedSearches = ui.searches;
+        changed();
+    });
     table.addEventListener('dbmn-table-columns', event => {
         const d = event.detail;
         // (a column added past the limit, or named as another is: refused, and said why)

@@ -153,6 +153,8 @@
  *       A sort's icon is a clock until the new rows land. Both events are told for `rows` too.
  *   orders.layout = saved;            // after `columns`: the order, widths, hidden columns and sort kept
  *   orders.searchWith(input, mirror); // the screen's own search box, with the @column suggestions
+ *   <dbmn-table searchable saved-searches>  its own box with a ★ (needs dbmn-saved-searches.js): orders.savedSearches =
+ *                                     [{ name, text }]; dbmn-saved-change { searches } after a save, rename or delete
  *   orders.searchFields = [{ id: 'body', name: 'body', get: row => row.request.body }];
  *                                     // fields the search reaches that are not columns: @body names them
  *                                     // (a plain word looks only in the columns shown), @ suggests them
@@ -469,8 +471,14 @@
             this._recolour();
         }
 
+        /** `saved-searches`: the saved searches its ★ offers ([{ name, text }]: the screen's list, kept where the table is). */
+        get savedSearches() { return this._saved ? this._saved.searches : (this._savedList || []); }
+        set savedSearches(list) {
+            this._savedList = Array.isArray(list) ? list : [];
+            if (this._saved) this._saved.searches = this._savedList;
+        }
         /** What the search box holds (the table's own, or the screen's); set it to search from script. */
-        set search(text) { const input = this._box(); if (input) { input.value = text || ''; this._searched(); } }
+        set search(text) { const input = this._box(); if (input) { input.value = text || ''; this._searched(); if (this._saved) this._saved.refresh(); } }
         get search() { const input = this._box(); return input ? input.value : ''; }
         /**
          * The columns a search the screen runs itself filters (a box the table does not own: Query's
@@ -581,6 +589,15 @@
             this._count = make('span', 'search-results dbmn-table-count');
             this._count.setAttribute('role', 'status');
             this._tools.append(container, this._count);
+            // `saved-searches`: the box's ★ beside it (shared/dbmn-saved-searches.js), for a table with its own box
+            // (James, 2026-11-23: "that saved search should be everywhere where we have a search box"). The screen
+            // keeps the list: savedSearches = [{ name, text }], and dbmn-saved-change tells it of a change
+            if (this.hasAttribute('saved-searches') && window.customElements && customElements.get('dbmn-saved-searches')) {
+                this._saved = document.createElement('dbmn-saved-searches');
+                this._tools.insertBefore(this._saved, this._count);
+                this._saved.input = this._input;
+                if (this._savedList) this._saved.searches = this._savedList;
+            }
             // What the search is read as, in words, under the box (only while it asks something of a column)
             this._reads = make('div', 'form-hint dbmn-table-reads');
             this._reads.setAttribute('role', 'status');

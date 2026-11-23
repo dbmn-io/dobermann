@@ -53,7 +53,9 @@
         if (!current) return;
         const items = Array.from(current.querySelectorAll('.dbmn-context-menu-item:not([aria-disabled="true"])'));
         const at = items.indexOf(document.activeElement);
-        if (e.key === 'Escape') { e.preventDefault(); close(); }
+        // (Escape closes the menu only: a dialog it opened in keeps open, for a second Escape. Caught here, in the
+        // capture phase, before the dialog's own handler hears it)
+        if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); }
         else if (e.key === 'ArrowDown') { e.preventDefault(); (items[at + 1] || items[0])?.focus(); }
         else if (e.key === 'ArrowUp') { e.preventDefault(); (items[at - 1] || items[items.length - 1])?.focus(); }
         else if (e.key === 'Enter' && at >= 0) { e.preventDefault(); items[at].click(); }

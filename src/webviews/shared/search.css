@@ -87,6 +87,9 @@
 /* compact: inside the box's right end (Query's toolbar): the star and the caret, no border, the name on hover */
 .dbmn-saved-searches[compact] .dbmn-saved-label { display: none; }
 .dbmn-saved-searches[compact] .dbmn-saved-btn { gap: 2px; height: 22px; padding: 0 4px; border-color: transparent; }
+/* compact="star": the star alone, for a box with room for one more icon only (the Hub's lists, beside the builder) */
+.dbmn-saved-searches[compact="star"] .dbmn-saved-caret { display: none; }
+.dbmn-saved-searches[compact="star"] .dbmn-saved-btn { width: 22px; height: 24px; padding: 0; justify-content: center; }
 .dbmn-saved-btn {
     display: inline-flex; align-items: center; gap: 5px;
     max-width: 200px; height: 26px; padding: 0 8px;

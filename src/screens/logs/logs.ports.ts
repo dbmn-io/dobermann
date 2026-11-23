@@ -32,4 +32,9 @@ export interface LogsPorts {
     };
     /** Ms since 1970: tests set the clock. */
     now?(): number;
+    /** Small settings kept for the user (the ★'s saved searches): the host's global state. */
+    prefs?: {
+        get(key: string): unknown;
+        update(key: string, value: unknown): PromiseLike<void> | void;
+    };
 }

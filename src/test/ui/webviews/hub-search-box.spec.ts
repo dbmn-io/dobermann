@@ -126,5 +126,41 @@ test.describe('Hub search box (#444)', () => {
         await box.fill('');
         await expect.poll(shown).toBe(3);
     });
-});
 
+    // James, 2026-11-23: "that saved search should be everywhere where we have a search box"
+    test('the ★ beside each list\'s box: saved in the Hub\'s preferences, one list each; picked, it searches', async ({ dbmn, page }) => {
+        await dbmn.openHub();
+        await openList(page, 'catalogue');
+        const box = page.locator('#catalogueSearch');
+        const star = page.locator('#catalogueSaved');
+        // Inside the box at its right, beside the builder, the text kept clear of it (a typical search stays one line)
+        const b = (await box.boundingBox())!, s = (await star.locator('.dbmn-saved-btn').boundingBox())!;
+        const builder = (await page.locator('#catalogueFilterBtn').boundingBox())!;
+        expect(s.x + s.width).toBeLessThanOrEqual(builder.x + 1);
+        expect(s.x).toBeGreaterThan(b.x + b.width - 52 - 1);
+        expect(s.y).toBeGreaterThanOrEqual(b.y);
+        expect(s.y + s.height).toBeLessThanOrEqual(b.y + b.height);
+        await box.click();
+        await box.pressSequentially('inventory');
+        await star.locator('.dbmn-saved-btn').click();
+        await star.locator('.dbmn-saved-add').click();
+        await star.locator('.dbmn-saved-name-input').fill('Inventory');
+        await star.locator('.dbmn-saved-name-input').press('Enter');
+        // Kept in the Hub's preferences (mirrored to the host), under Endpoints' own key
+        await expect.poll(() => page.evaluate(() => ((window as unknown as { vscode: { getState(): { savedSearches?: Record<string, unknown> } } }).vscode.getState() || {}).savedSearches))
+            .toEqual({ endpoints: [{ name: 'Inventory', text: 'inventory' }] });
+        await page.keyboard.press('Escape');
+        // Cleared, then picked: the box holds it and the list is searched as typed
+        await box.click();
+        await box.press('ControlOrMeta+a');
+        await box.press('Delete');
+        await star.locator('.dbmn-saved-btn').click();
+        await star.locator('.dbmn-saved-pick', { hasText: 'Inventory' }).click();
+        await expect(box).toHaveValue('inventory');
+        await expect(star.locator('.dbmn-saved-btn')).toHaveAttribute('title', 'Saved search: Inventory');
+        // History has its own list
+        await openList(page, 'transactions');
+        await page.locator('#transactionsSaved .dbmn-saved-btn').click();
+        await expect(page.locator('#transactionsSaved .dbmn-saved-empty')).toHaveText('No saved searches yet');
+    });
+});

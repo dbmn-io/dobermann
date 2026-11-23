@@ -1275,6 +1275,39 @@
         }
     }
 
+    /**
+     * The ★ beside each list's search box (James, 2026-11-23: "that saved search should be everywhere where we have a
+     * search box"): its saved searches kept in the Hub's preferences, one list each (mirrored to the host, as every
+     * Hub preference is). Picking one fills the box and searches as typed.
+     */
+    const SAVED_LISTS = [
+        { id: 'catalogueSaved', box: 'catalogueSearch', key: 'endpoints' },
+        { id: 'transactionsSaved', box: 'transactionsSearch', key: 'history' },
+        { id: 'compareSaved', box: 'compareSearch', key: 'reporting' }
+    ];
+    function wireSavedSearches() {
+        if (!window.customElements || !customElements.get('dbmn-saved-searches')) return;
+        SAVED_LISTS.forEach(list => {
+            const saved = document.getElementById(list.id), box = document.getElementById(list.box);
+            if (!saved || !box || saved.dataset.wired) return;
+            saved.dataset.wired = '1';
+            saved.input = box;
+            saved.addEventListener('dbmn-saved-change', event => {
+                const all = Object.assign({}, (vscode.getState() || {}).savedSearches);
+                all[list.key] = (event.detail && event.detail.searches) || [];
+                persistState({ savedSearches: all });
+                saved.searches = all[list.key];
+            });
+        });
+    }
+    function showSavedSearches(state) {
+        const all = (state && state.savedSearches) || {};
+        SAVED_LISTS.forEach(list => {
+            const saved = document.getElementById(list.id);
+            if (saved && saved.dataset.wired) saved.searches = Array.isArray(all[list.key]) ? all[list.key] : [];
+        });
+    }
+
     function persistState(patch) {
         try {
             const prev = vscode.getState() || {};
@@ -1285,6 +1318,8 @@
     function restoreState() {
         try {
             const state = vscode.getState() || {};
+            wireSavedSearches();
+            showSavedSearches(state);
             // Persisted drawer width is a *preference*; applyLayout()
             // clamps it against the live Hub width (Issues #292, #349).
             const savedW = parseInt(state.hubCol2Width, 10);

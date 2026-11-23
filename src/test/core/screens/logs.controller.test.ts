@@ -7,7 +7,7 @@
  */
 import { expect } from 'chai';
 import { ScreenSession } from '../../../screens/screen-session';
-import { LogsController, LOGS_PAGE } from '../../../screens/logs/logs.controller';
+import { LogsController, LOGS_PAGE, LOGS_SEARCHES_KEY } from '../../../screens/logs/logs.controller';
 import type { LogsPorts } from '../../../screens/logs/logs.ports';
 import { AppLog, localDay, type AppLogPersistence, type LogLine } from '../../../services/logging/app-log';
 import { LogReader, type LogRow, type RunRecord } from '../../../services/logging/log-reader';
@@ -21,7 +21,7 @@ class Days implements AppLogPersistence {
     async read(day: string) { return this.lines.filter(l => localDay(l.time) === day); }
 }
 
-async function setUp(opts: { search?: string; runs?: RunRecord[] } = {}) {
+async function setUp(opts: { search?: string; runs?: RunRecord[]; prefs?: Map<string, unknown> } = {}) {
     const days = new Days();
     const log = new AppLog({ saveAfterMs: 0 });
     await log.start(days);
@@ -40,7 +40,8 @@ async function setUp(opts: { search?: string; runs?: RunRecord[] } = {}) {
         redact: text => log.redactor.text(text),
         files: { save: async (name, text) => { saved.push({ name, text }); return true; } },
         toast: { info: m => toasts.push(`info ${m}`), warn: m => toasts.push(`warn ${m}`), error: m => toasts.push(`error ${m}`) },
-        now: () => new Date(2026, 10, 19, 14, 5).getTime()
+        now: () => new Date(2026, 10, 19, 14, 5).getTime(),
+        prefs: opts.prefs ? { get: key => opts.prefs!.get(key), update: (key, value) => { opts.prefs!.set(key, value); } } : undefined
     };
     const controller = new LogsController(session, ports, { search: opts.search });
     const write = async (message: string, time: number, over: Partial<LogLine> = {}) => { log.write({ level: 'info', source: 'sign-in', message, time, ...over }); await log.flush(); };
@@ -170,5 +171,23 @@ describe('Logs screen (controller)', () => {
         expect(said[0]).to.deep.equal({ type: 'logs.searching', value: 0 });
         for (const m of said.slice(1)) expect(m.value).to.be.within(0, 100).and.to.be.a('number');
     });
-});
 
+    // James, 2026-11-23: "that saved search should be everywhere where we have a search box"
+    it('the ★\'s saved searches: given to the page as it opens, kept when changed (cleaned), and told back', async () => {
+        const prefs = new Map<string, unknown>([[LOGS_SEARCHES_KEY, [{ name: 'Errors', text: '@level=error' }]]]);
+        const { posted, controller } = await setUp({ prefs });
+        await controller.handleMessage({ type: 'logs.ready' });
+        expect(of(posted, 'logs.searches')[0].searches).to.deep.equal([{ name: 'Errors', text: '@level=error' }]);
+        await controller.handleMessage({ type: 'logs.saveSearches', searches: [{ name: ' Errors ', text: '@level=error' }, { name: 'errors', text: 'twice' }, { name: 'Sign-in', text: ' @source=sign-in ' }, { name: '', text: 'x' }] });
+        const kept = [{ name: 'Errors', text: '@level=error' }, { name: 'Sign-in', text: '@source=sign-in' }];
+        expect(prefs.get(LOGS_SEARCHES_KEY)).to.deep.equal(kept);
+        expect(of(posted, 'logs.searches').pop()!.searches).to.deep.equal(kept);
+    });
+
+    it('no settings store: no saved searches, and nothing breaks', async () => {
+        const { posted, controller } = await setUp();
+        await controller.handleMessage({ type: 'logs.ready' });
+        await controller.handleMessage({ type: 'logs.saveSearches', searches: [{ name: 'A', text: 'a' }] });
+        expect(of(posted, 'logs.searches')).to.deep.equal([]);
+    });
+});

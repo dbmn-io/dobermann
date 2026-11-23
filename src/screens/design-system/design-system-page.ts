@@ -395,6 +395,8 @@ saved.input = box;     it follows the box (refresh() after setting the box from 
 saved.current = text;  or: the screen tells it the box's text
 saved.addEventListener('dbmn-saved-change', e =&gt; …e.detail.searches…);   after a save, rename or delete: keep it, give it back
 saved.addEventListener('dbmn-saved-pick', e =&gt; …e.detail.text…);        unless prevented, the box is filled and its input fires
+&lt;dbmn-table searchable saved-searches&gt;   a table with its own box: its ★ beside it; table.savedSearches = [...]; dbmn-saved-change bubbles
+&lt;dbmn-saved-searches compact&gt;            where room is short (Query's box, the Hub's lists): the star and caret, the name on hover
                        a name: needed, at most 30 characters, no two alike; at most 50 searches</code></pre>
     </section>
 

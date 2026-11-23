@@ -158,6 +158,7 @@ export function buildHubPage(
         ICONS_JS_URI: asset('shared/icons.js'),
         EXECUTION_ACTIONS_JS_URI: asset('shared/execution-actions.js'),
         DBMN_CONTEXT_MENU_JS_URI: asset('shared/dbmn-context-menu.js'),
+        DBMN_SAVED_SEARCHES_JS_URI: asset('shared/dbmn-saved-searches.js'),   // each list's ★ beside its search box
         BADGES_JS_URI: asset('shared/badges.js'),
         DEV_BACKEND_PILL: devBackend.DEV_BACKEND_PILL,
         DEV_BACKEND_NOTE: devBackend.DEV_BACKEND_NOTE,

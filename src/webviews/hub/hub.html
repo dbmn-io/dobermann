@@ -130,6 +130,8 @@
                             <svg class="catalogue-search-icon" width="14" height="14" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg>
                             <!-- #444: a textarea so a long query wraps onto more lines; Enter never adds one -->
                             <textarea id="catalogueSearch" class="search-box-input" rows="1" placeholder="Search, e.g. inventory @tag=bulk · @ for fields" autocomplete="off" spellcheck="false" data-help="hub#search"></textarea>
+                            <!-- Its saved searches (shared/dbmn-saved-searches.js), in the box beside the builder: kept in the Hub's preferences -->
+                            <dbmn-saved-searches id="catalogueSaved" class="search-box-saved" compact="star"></dbmn-saved-searches>
                             <button type="button" id="catalogueFilterBtn" class="search-box-builder" aria-label="Build a search" title="Build a search" data-help="hub#search">
                                 <span class="icon" data-icon="text-search"></span>
                             </button>
@@ -347,6 +349,8 @@
                         <div class="catalogue-search">
                             <svg class="catalogue-search-icon" width="14" height="14" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg>
                             <textarea id="transactionsSearch" class="search-box-input" rows="1" placeholder="Search, e.g. 404 @status=error @ran>7d" autocomplete="off" spellcheck="false" data-help="hub#search"></textarea>
+                            <!-- Its saved searches (shared/dbmn-saved-searches.js), in the box beside the builder: kept in the Hub's preferences -->
+                            <dbmn-saved-searches id="transactionsSaved" class="search-box-saved" compact="star"></dbmn-saved-searches>
                             <button type="button" id="transactionsFilterBtn" class="search-box-builder" aria-label="Build a search" title="Build a search" data-help="hub#search">
                                 <span class="icon" data-icon="text-search"></span>
                             </button>
@@ -387,6 +391,7 @@
                             <svg class="catalogue-search-icon" width="14" height="14" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg>
                             <!-- #444: the Hub's search box, as in Endpoints and History -->
                             <textarea id="compareSearch" class="search-box-input" rows="1" placeholder="Search, e.g. stock @env=current @ran>7d" autocomplete="off" spellcheck="false" data-help="hub#search"></textarea>
+                            <dbmn-saved-searches id="compareSaved" class="search-box-saved" compact="star"></dbmn-saved-searches>
                         </div>
                     </div>
                 </header>
@@ -926,6 +931,7 @@
     <script defer src="{{THEME_PICKER_JS_URI}}"></script>
     <script defer src="{{HUB_HELP_JS_URI}}"></script>
     <script defer src="{{HUB_ACTIVITY_JS_URI}}"></script>
+    <script defer src="{{DBMN_SAVED_SEARCHES_JS_URI}}"></script>
     <script defer src="{{SEARCH_MATCHER_JS_URI}}"></script>
     <script defer src="{{SEARCH_WORDS_JS_URI}}"></script>
     <script defer src="{{CATALOGUE_JS_URI}}"></script>
