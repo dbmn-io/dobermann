@@ -65,6 +65,35 @@ export function nextRunName(query: Pick<SavedQuery, 'sources'>, of: string): str
     return `C${n}`;
 }
 
+/** A search kept under a name on Results (James, 2026-11-23, issue 16): the search box's text only. */
+export interface SavedSearch {
+    name: string;
+    text: string;
+}
+/** A saved search's name, at most; and how many a query keeps. */
+export const SAVED_SEARCH_NAME_MAX = 30;
+export const SAVED_SEARCHES_MAX = 50;
+
+/**
+ * A query's saved searches as it keeps them: trimmed; one with no name or no text left out; a name cut to 30 characters;
+ * each name once, any letter case (the first kept); up to 50. The ★ drop-down refuses the same in words, so nothing it
+ * sends is dropped here; this is for a pasted (imported) query, or a file edited by hand.
+ */
+export function cleanSearches(list: unknown): SavedSearch[] {
+    const out: SavedSearch[] = [];
+    const names = new Set<string>();
+    for (const item of Array.isArray(list) ? list : []) {
+        if (!item || typeof item !== 'object') continue;
+        const name = String((item as SavedSearch).name ?? '').trim().slice(0, SAVED_SEARCH_NAME_MAX).trim();
+        const text = String((item as SavedSearch).text ?? '').trim();
+        if (!name || !text || names.has(name.toLowerCase())) continue;
+        names.add(name.toLowerCase());
+        out.push({ name, text });
+        if (out.length >= SAVED_SEARCHES_MAX) break;
+    }
+    return out;
+}
+
 export interface SavedQuery {
     id: string;
     name: string;
@@ -77,6 +106,8 @@ export interface SavedQuery {
     calc?: QueryCalc[];
     /** Results as it was left: its search, its sort and whether totals show. */
     search?: string;
+    /** Searches kept under a name (the ★ beside Results' search): they travel with Duplicate, Copy the query and Import. */
+    searches?: SavedSearch[];
     sort?: { column: number; dir: 'asc' | 'desc' } | null;
     totals?: boolean;
     /** Results' column widths the user set, in px, by `view:column`. */
@@ -460,7 +491,7 @@ export function queryForSupport(query: SavedQuery): QueryCopy {
     const sources = query.sources.map(s => keep(s, ['id', 'name', 'endpointId', 'endpointName', 'request', 'system', 'view', 'executionId', 'isBatch', 'environment', 'executedAt', 'file', 'off', 'runOf', 'run']) as QuerySource);
     return {
         kind: 'dbmn.query', version: 1, copiedAt: new Date().toISOString(),
-        query: { ...keep(query, ['name', 'joins', 'select', 'distinct', 'calc', 'search', 'sort', 'totals', 'widths', 'createdAt', 'updatedAt']), sources }
+        query: { ...keep(query, ['name', 'joins', 'select', 'distinct', 'calc', 'search', 'searches', 'sort', 'totals', 'widths', 'createdAt', 'updatedAt']), sources }
     };
 }
 
@@ -484,6 +515,8 @@ export async function importQueryCopy(state: QueryState, text: string): Promise<
         name: freeReportName(state, String(q.name || 'Imported query').slice(0, REPORT_NAME_MAX)),
         createdAt: q.createdAt || now, updatedAt: now, reached: 4
     } as SavedQuery;
+    // (its saved searches as a query keeps them: a pasted copy may have been edited)
+    if (query.searches !== undefined) query.searches = cleanSearches(query.searches);
     repairQuery(query);
     await saveQuery(state, query);
     return { query };

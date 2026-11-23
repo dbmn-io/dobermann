@@ -2043,6 +2043,7 @@
         clearSearch: () => {
             clearTimeout(searchTimer);
             $('querySearch').value = '';
+            savedNow();
             ui.search = '';
             window.SearchMatcher.renderHighlight($('querySearchMirror'), '', searchHeadings(), notInReport());
             renderReads();
@@ -2383,6 +2384,24 @@
         ].filter(Boolean).join(' ');
     }
 
+    /**
+     * Saved searches (James, 2026-11-23, issue 16): the ★ beside the search (the design system's dbmn-saved-searches) shows
+     * the query's list, and the name of the one the box holds. Picking one puts its text in the box and searches, the way
+     * typing it does: an `@name` for a column not in the report adds it (addFromSearch); nothing is taken away. A save,
+     * rename or delete sends the whole list to the host, which keeps it with the query.
+     */
+    const saved = document.getElementById('querySaved');
+    function savedNow() { if (saved) saved.current = $('querySearch').value; }
+    if (saved) {
+        saved.addEventListener('dbmn-saved-pick', e => {
+            const text = String((e.detail && e.detail.text) || '');
+            setSearch(text, false);
+            compareResults.renderTools();
+            if (!addFromSearch(true)) loadRows();
+        });
+        saved.addEventListener('dbmn-saved-change', e => post({ type: 'query.saveSearches', searches: (e.detail && e.detail.searches) || [] }));
+    }
+
     function applyState(m) {
         // (counting: the step is drawn, its counts still to come; done: no longer)
         ui.counting = m.counting ? { since: m.counting, stage: (ui.counting && ui.counting.since === m.counting && ui.counting.stage) || '' } : (ui.counting && ui.counting.stopped ? ui.counting : null);
@@ -2397,6 +2416,7 @@
         // Results' columns as the search knew them, before this state (a view taken out is still named here)
         const searchedBefore = ui.state && ui.search ? searchCols(resultCols()) : null;
         ui.state = m;
+        if (saved) saved.searches = m.searches || [];
         // A column gone from Results takes its search terms with it (James, 2026-11-23: "if a column is removed
         // from table, so should its search filter"); a term another column still answers to stays. The reload below searches again
         if (searchedBefore && window.SearchMatcher.withoutColumns) {
@@ -2424,6 +2444,7 @@
             ui.sort = m.sort || null;
             ui.totals = !!m.totals;
             $('querySearch').value = ui.search;
+            savedNow();
             // (a column name that Results does not have shows in red, as in every table's search)
             window.SearchMatcher.renderHighlight($('querySearchMirror'), ui.search, searchHeadings(), notInReport());
             renderReads();
@@ -2507,6 +2528,7 @@
         clearTimeout(searchTimer);
         ui.search = text;
         $('querySearch').value = text;
+        savedNow();
         window.SearchMatcher.renderHighlight($('querySearchMirror'), text, searchHeadings(), notInReport());
         renderReads();
         compareResults.renderTools();
@@ -2535,12 +2557,13 @@
      * columns set as the Columns step sets them (query-search-adds.js says which), and the query runs again with the
      * normal working line; the search then finds the column. True when it did.
      */
-    function addFromSearch() {
+    /** `whole`: the search is finished as it stands (a saved one picked): its last `@name` counts, though nothing follows it. */
+    function addFromSearch(whole) {
         const adds = window.QuerySearchAdds, matcher = window.SearchMatcher;
         if (!adds || !matcher || !matcher.columnTerms || !ui.state || !ui.search) return false;
         // (a term once it is finished, as search-matcher says: an operator, or a space or comma after the name; so typing
         // @qt on the way to @qty adds nothing. A matcher without `done` counts every term as finished)
-        const names = matcher.columnTerms(ui.search).filter(t => t.done !== false).map(t => t.name);
+        const names = matcher.columnTerms(ui.search).filter(t => whole || t.done !== false).map(t => t.name);
         if (!names.length) return false;
         const report = (ui.state.columns || []).map(c => ({ view: c.view, column: c.column, group: c.group }));
         const known = views().filter(v => !v.off).map(v => ({ id: v.id, alias: aliasOf(v), columns: (v.columns || []).map(c => c.name) }));
@@ -2588,6 +2611,7 @@
     // `@` lists the columns, each with its kind, then the operators and values that fit it
     window.SearchMatcher.attachColumnSuggest({ input: $('querySearch'), headings: searchHeadings, types: searchType, hidden: notInReport, adds: notInReport });
     $('querySearch').addEventListener('input', () => {
+        savedNow();
         renderReads();
         window.SearchMatcher.renderHighlight($('querySearchMirror'), $('querySearch').value, searchHeadings(), notInReport());
         clearTimeout(searchTimer);
@@ -2682,6 +2706,8 @@
                 // (the Join step says how far a view still arriving has got)
                 if (ui.step === 2 && ui.state && (ui.state.views || []).some(v => v.reading)) renderJoins();
                 break;
+            // Saved searches, as the host kept them after a save, a rename or a delete
+            case 'query.searches': if (saved) saved.searches = m.searches || []; break;
             case 'query.state': {
                 // ("New compare engine (testing)": how long the page takes to draw what the engine gave)
                 const drawn = performance.now();

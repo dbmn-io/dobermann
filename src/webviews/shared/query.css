@@ -155,6 +155,13 @@
 #queryResultsControls { flex: 1 1 100%; min-width: 0; flex-wrap: nowrap; gap: 16px; justify-content: flex-start; }
 #queryResultsControls > .search-container { flex: 1 1 0; min-width: 140px; display: flex; justify-content: center; margin: 0; }
 #queryResultsControls > .search-container .search-input-wrapper { width: 100%; max-width: 440px; }
+/* Saved searches' ★, inside the box at its right end (as the Hub's Build a search is): the box keeps its width and its
+   place, centred, and Chain its room at 900px. Star and caret only; its name is the ★'s tooltip ("Saved search: …"), and
+   the ★ fills in while the box holds one. The text, and its highlight, stop short of it */
+#queryResultsControls #querySaved { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); }
+#queryResultsControls #querySaved .dbmn-saved-btn { height: 26px; padding: 0 5px; border-color: transparent; }
+#queryResultsControls #querySaved .dbmn-saved-label { display: none; }
+#queryResultsControls .search-input, #queryResultsControls .search-input-mirror { padding-right: 46px; }
 #queryResultsControls > :not(.search-container) { flex: none; }
 .query-view-tools { display: inline-flex; align-items: center; gap: 16px; flex-wrap: nowrap; }
 /* Every control in the row one height, the toggles' (dbmn-toggle, 34px): "the same height as any other button" (James, 2026-11-22) */

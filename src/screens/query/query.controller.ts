@@ -28,7 +28,7 @@ import { FORMULA_FUNCTIONS, fullRef, fullText, parseFormula, shortRef, shortText
 import type { FormulaNode } from '../../services/query/formula';
 import { reportNameProblem } from '../../services/compare/report-name';
 import { loadQueryFolder } from '../../services/query/query-folder';
-import { cleanViewName, getQuery, rebaseCompare, repairQuery, guessViewName, viewNameFromPath, VIEW_NAME_MAX, MAX_QUERY_VIEWS, moveView, moveViewFirst, changesCompareBaseline, newSourceId, nextRunName, QuerySource, renameView, runName, saveQuery, SavedQuery } from '../../services/query/query-store';
+import { cleanSearches, cleanViewName, getQuery, rebaseCompare, repairQuery, guessViewName, viewNameFromPath, VIEW_NAME_MAX, MAX_QUERY_VIEWS, moveView, moveViewFirst, changesCompareBaseline, newSourceId, nextRunName, QuerySource, renameView, runName, saveQuery, SavedQuery } from '../../services/query/query-store';
 import { columnTypes, spread, TYPE_SAMPLE, type ColumnType } from '../../services/query/column-types';
 import { CALC_VIEW, QUERY_JOIN_KINDS } from '../../services/query/query-types';
 import { comparableRuns, type RequestTemplates, type RunHeaderValue } from '../../services/compare/compare-runs';
@@ -477,6 +477,13 @@ export class QueryController {
                     alignCompareJoins(q.joins, runsOf(q));
                 });
                 // The report's columns, in Results' order: each a view's column with its functions, a compared column's cells sharing a group
+                // Saved searches (the ★ beside the search, the design system's dbmn-saved-searches): the whole list after a
+                // save, rename or delete; kept with the query, nothing runs again; the list given back as kept
+                case 'query.saveSearches': {
+                    await this.change(q => { q.searches = cleanSearches(message.searches); }, false);
+                    this.post({ type: 'query.searches', searches: cleanSearches(this.query?.searches) });
+                    return;
+                }
                 case 'query.setSelect': return await this.change(q => {
                     q.select = Array.isArray(message.select) ? (message.select as ColumnRef[]).map(c => ({
                         view: String(c.view), column: String(c.column),
@@ -1804,6 +1811,8 @@ export class QueryController {
             columnCells: now.columnCells ?? [],
             // A joining view's key, and the column it is matched to: not shown twice
             keyColumns: joinKeyColumns(this.spec().spec).map(k => ({ view: k.key.view, column: k.key.column, sameView: k.same.view, sameColumn: k.same.column })),
+            // Saved searches, for the ★ beside the search
+            searches: cleanSearches(query.searches),
             allSelected: !(query.select?.length),
             distinct: !!query.distinct,
             duplicates: now.duplicates ?? 0,

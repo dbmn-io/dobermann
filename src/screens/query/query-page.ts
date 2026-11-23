@@ -82,6 +82,9 @@ export function buildQueryPage(asset: AssetUrl, config: { queryId: string; name:
                         <svg class="search-icon-inset" width="14" height="14" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg>
                         <div id="querySearchMirror" class="search-input-mirror" aria-hidden="true"></div>
                         <input type="text" id="querySearch" class="search-input" placeholder="Search rows, or @column=value" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off" data-help="console#search">
+                        <!-- Saved searches: the ★ drop-down (the design system's shared/dbmn-saved-searches.js), kept with the query;
+                             inside the box at its right end, so the box stays centred and the toolbar keeps its room -->
+                        <dbmn-saved-searches id="querySaved"></dbmn-saved-searches>
                     </div>
                 </div>
                 <button type="button" id="queryChainBtn" class="export-button" data-click="query:chain" title="Send these rows to another API as its Run Batch input">Chain <span class="inline-icon" data-icon="chevron-right"></span></button>
@@ -153,6 +156,7 @@ export function buildQueryPage(asset: AssetUrl, config: { queryId: string; name:
     ${script('shared/column-head.js')}
     ${script('shared/help-mode.js')}
     ${script('shared/dbmn-modal.js')}
+    ${script('shared/dbmn-saved-searches.js')}
     ${script('shared/dbmn-context-menu.js')}
     ${script('shared/dbmn-toast.js')}
     ${script('shared/dbmn-clipboard.js')}
