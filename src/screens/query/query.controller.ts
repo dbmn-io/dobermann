@@ -432,7 +432,6 @@ export class QueryController {
                     });
                 });
                 // Delete join (the join-type menu): the views go back to not joined, out of the report until joined again
-                // A compare's kind, from its one button: every join in it takes it, in one change
                 // Stop (the Join step's counting): what is being worked out is left; the step says the counts were stopped
                 // Count again, after Stop
                 case 'query.recount': return await this.refresh();
@@ -449,10 +448,15 @@ export class QueryController {
                     this.post({ type: 'query.counting', since: null, stage: 'Stopped: the counts were not worked out' });
                     return;
                 }
+                // A compare's kind, from its one button. Another kind (James, 2026-11-23: "if I change from compare to any other
+                // join… I don't want to add a second join"): one join line of that kind, its columns cleared, and the compare's
+                // other views not joined; a join for each is added by hand (+ Add join)
                 case 'query.setCompareKind': return await this.change(q => {
                     const kind = String(message.kind) as QueryJoinKind;
-                    if (!QUERY_JOIN_KINDS.includes(kind)) return;
-                    q.joins.forEach(j => { if (j.kind === 'compare') j.kind = kind; });
+                    if (!QUERY_JOIN_KINDS.includes(kind) || kind === 'compare') return;
+                    const inCompare = q.joins.filter(j => j.kind === 'compare');
+                    this.outOfCompare(q, new Set(inCompare.map(j => j.view)));
+                    inCompare.forEach((j, i) => { j.kind = i === 0 ? kind : 'left'; j.on = []; });
                     alignCompareJoins(q.joins, runsOf(q));
                 });
                 // Reset joins (the Join step's footer): every join back to "Pick a column", each keeping its kind; a compare stays a
@@ -466,14 +470,7 @@ export class QueryController {
                 case 'query.deleteJoin': return await this.change(q => {
                     const gone = new Set((Array.isArray(message.views) ? message.views : [message.view]).map(String));
                     q.joins.forEach(j => { if (gone.has(j.view)) { j.kind = 'left'; j.on = []; } });
-                    // A run is only ever compared with its first run: out of the compare, it is a view of its own
-                    q.sources.forEach(x => {
-                        if (!gone.has(x.id) || !x.runOf) return;
-                        const head = q.sources.find(h => h.id === x.runOf);
-                        delete x.runOf;
-                        delete x.run;
-                        x.name = guessViewName(head?.name ?? x.name, q.sources.filter(o => o !== x).map(o => o.name));
-                    });
+                    this.outOfCompare(q, gone);
                     alignCompareJoins(q.joins, runsOf(q));
                 });
                 // The report's columns, in Results' order: each a view's column with its functions, a compared column's cells sharing a group
@@ -1242,6 +1239,17 @@ export class QueryController {
         const b = q.sources.find(x => x.id === id);
         const shapes = this.shapes(q);
         return !!a && !!b && sameShape(shapes.find(s => s.id === a.id), shapes.find(s => s.id === b.id));
+    }
+
+    /** Views leaving a compare: a run is only ever compared with its first run, so out of the compare it is a view of its own. */
+    private outOfCompare(q: SavedQuery, gone: Set<string>): void {
+        q.sources.forEach(x => {
+            if (!gone.has(x.id) || !x.runOf) return;
+            const head = q.sources.find(h => h.id === x.runOf);
+            delete x.runOf;
+            delete x.run;
+            x.name = guessViewName(head?.name ?? x.name, q.sources.filter(o => o !== x).map(o => o.name));
+        });
     }
 
     /** Each view as grouping a compare needs it: what it reads, and its columns. */

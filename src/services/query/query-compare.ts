@@ -132,7 +132,7 @@ export function sameShape(a: CompareViewShape | undefined, b: CompareViewShape |
 /**
  * Views read the same way (one endpoint, one View) compare as one group: the Baseline's key
  * column is theirs too. `pullIn` (the join just made a Compare): every view of the Baseline's
- * shape whose join has no column picked yet joins the compare, up to MAX_COMPARE_VIEWS. Then
+ * shape joins the compare, a plain join of its own replaced, up to MAX_COMPARE_VIEWS. Then
  * each Compare join of that shape with its own column blank takes the Baseline's (same name,
  * any case), so the key is picked once. A view of another shape keeps its column to pick.
  */
@@ -142,12 +142,13 @@ export function groupCompare(joins: QueryJoin[], views: CompareViewShape[], pull
     const base = views.find(v => v.id === compare.baseline);
     if (!base) return;
     const asBase = (v: CompareViewShape | undefined): v is CompareViewShape => sameShape(base, v);
-    const picked = (j: QueryJoin): boolean => j.on.some(p => p.right.parts.some(x => !!x.column));
     if (pullIn) {
         let size = compare.views.length;
         for (const join of joins) {
             if (size >= MAX_COMPARE_VIEWS) break;
-            if (join.kind === 'compare' || picked(join) || !asBase(views.find(v => v.id === join.view))) continue;
+            // (a plain join of its own is replaced: both ways into a compare take the same views, James 2026-11-23;
+            // "Not compared" on the compare's line leaves one out, and it stays out until a join is made a Compare again)
+            if (join.kind === 'compare' || !asBase(views.find(v => v.id === join.view))) continue;
             join.kind = 'compare';
             size++;
         }

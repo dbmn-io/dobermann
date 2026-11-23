@@ -57,6 +57,8 @@ async function joinStep(p, width, state = STATE) {
     await p.addStyleTag({ content: ':root{--vscode-font-family:system-ui,sans-serif;--vscode-font-size:13px;--vscode-editor-font-family:monospace} body{font-family:var(--vscode-font-family);font-size:var(--vscode-font-size)}' });
     await p.getByRole('button', { name: 'Next: Join' }).click();
     await expect(p.locator('.query-made-line').first()).toBeVisible();
+    // (every view's line on show: + Add join until none is left, as a user brings each up)
+    for (let i = 0; i < 5 && await p.locator('#queryJoins .query-add-join').count(); i++) await p.locator('#queryJoins .query-add-join').click();
     return errors;
 }
 
@@ -109,9 +111,9 @@ for (const width of [1280, 1024]) {
     test(`four views at ${width}px: notes and every "Pick a column" read whole`, async ({ page: p }) => {
         expect(await joinStep(p, width, FOUR)).toEqual([]);
         const notes = p.locator('.query-made-line .query-warn');
-        // (one view not joined is open at a time, its boxes under every other view, those on its right too: two lines)
-        expect(await notes.count()).toBe(2);
-        expect(await p.locator('.query-join select').count()).toBe(6);
+        // (each view's line brought up: B's made, C's and D's not joined, each with boxes under every other view)
+        expect(await notes.count()).toBe(3);
+        expect(await p.locator('.query-join select').count()).toBe(10);
         expect(await notes.evaluateAll((list, f) => list.map(n => new Function(`return (${f})`)()(n)).filter(Boolean), cutText.toString())).toEqual([]);
         expect(await p.locator('.query-join select').evaluateAll((list, f) => list.map(n => new Function(`return (${f})`)()(n)).filter(Boolean), cutSelect.toString())).toEqual([]);
     });

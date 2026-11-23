@@ -122,9 +122,14 @@ describe('A compare inside Query', () => {
         js[1].on[0].right = col('c', 'onHand');
         groupCompare(js, views, false);
         assert.strictEqual(js[1].on[0].right.parts[0].column, 'onHand');
-        // A view already joined by hand is never pulled in
+        // A same-shaped view with a plain join of its own comes in too, its join replaced (James, 2026-11-23: Compare, then
+        // Join, then Compare again left C2 out with a plain join; "Not compared" is the way to leave one out)
         const mine: QueryJoin[] = [{ view: 'b', kind: 'compare', on: [] }, { view: 'c', kind: 'left', on: [{ left: col('a', 'gtin'), right: col('c', 'GTIN') }] }];
         groupCompare(mine, views, true);
+        assert.strictEqual(mine[1].kind, 'compare');
+        // ...but only as a join is made a Compare: a view taken out afterwards ("Not compared") stays out
+        mine[1].kind = 'left';
+        groupCompare(mine, views, false);
         assert.strictEqual(mine[1].kind, 'left');
     });
 

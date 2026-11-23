@@ -72,6 +72,10 @@
         seq: 0,
         loading: false,
         statsOpen: {},      // a join's stats shown, by its view
+        // The plain join lines brought up (+ Add join, or a line he had) and not taken away; touched: one was added or taken
+        // away, so the first line no longer comes by itself (query-join-rules.js joinLines; James, 2026-11-23)
+        joinLines: new Set(),
+        joinsTouched: false,
         joinCounts: null    // the Join step's counts, run by run (the host's query.joinCounts)
     };
 
@@ -1319,7 +1323,16 @@
                 if (id === 'reset') { resetJoins(); return; }
                 if (id === 'hide') { setBusy('Joining…'); post({ type: 'query.toggleView', id: v.id }); return; }
                 if (id === 'delete') {
+                    // An empty line: the line goes (the host has nothing to delete)
+                    if (rules.remove.line && join.kind !== 'compare') {
+                        ui.joinLines.delete(join.view);
+                        ui.joinsTouched = true;
+                        renderJoins();
+                        return;
+                    }
                     const gone = join.kind === 'compare' ? ui.state.joins.filter(j => j.kind === 'compare').map(j => j.view) : [join.view];
+                    // (a compare deleted: its first view keeps an empty line, so the step doesn't go blank; nothing else appears)
+                    if (join.kind === 'compare' && gone.length) ui.joinLines.add(gone[0]);
                     setBusy('Joining…');
                     post({ type: 'query.deleteJoin', views: gone });
                     return;
@@ -1583,7 +1596,12 @@
         band.setAttribute('aria-label', `Compare ${members.map(id => (view(id) || {}).name).join(', ')}`);
         const joinOf = id => s.joins.find(j => j.view === id);
         // (one change for the whole compare: one refresh, one step back)
-        const sendAll = (kind) => { joins.forEach(j => { j.kind = kind; }); post({ type: 'query.setCompareKind', kind }); };
+        // (another kind: the host clears the compare to one join line of that kind, its first view's; the others not joined)
+        const sendAll = (kind) => {
+            if (kind !== 'compare' && joins[0]) ui.joinLines.add(joins[0].view);
+            joins.forEach(j => { j.kind = kind; });
+            post({ type: 'query.setCompareKind', kind });
+        };
         first.on.forEach((pair, p) => {
             const cells = {};
             views().forEach(v => {
@@ -1759,10 +1777,11 @@
             cells[v.id] = cell;
         });
         band.appendChild(line('query-counts-line', cells, [], [gutter]));
-        // A repeated key: what it does to Results, in one line
+        // A repeated key: said once, plainly, as a fact, not a problem (James, 2026-11-23: "I like we're showing it's one to
+        // many… it just is what it is… You're making it look like a problem"): how many key values repeat and over how many
+        // records, by the runs alike. No warning colour, no advice
         const rep = others.filter(v => countOf(v).count && countOf(v).count.repeatedKeys);
         if (rep.length) {
-            // Said once, plainly: how many key values repeat and over how many records, by the runs alike; and what it means
             const keyName = first.on.map(p => p.left.column).filter(Boolean).join(' + ');
             const byN = new Map();
             rep.forEach(v => { const c = countOf(v).count; const at = `${c.repeatedKeys}\u0000${c.repeatedRecords}`; byN.set(at, [...(byN.get(at) || []), nameOf(v)]); });
@@ -1771,11 +1790,10 @@
                 const [keys, records] = at.split('\u0000').map(Number);
                 return `${count(keys)} ${keyName} ${keys === 1 ? 'value repeats' : 'values repeat'} in ${list(names)}, across ${count(records)} records.`;
             });
-            const warn = document.createElement('dbmn-status');
-            warn.setAttribute('inline', '');
-            warn.setAttribute('tone', 'warn');
-            warn.textContent = `${words.join(' ')} Records with the same key are paired in the order they come, so they may not be the same record. Add a column to the key (+ AND) so each key finds one record.`;
-            band.appendChild(line('query-compare-verdict', { __span: warn }, [], []));
+            const said = document.createElement('dbmn-status');
+            said.setAttribute('inline', '');
+            said.textContent = words.join(' ');
+            band.appendChild(line('query-compare-verdict', { __span: said }, [], []));
         }
         // Results' rows, once every run is counted
         const r = jc && jc.results;
@@ -1902,16 +1920,27 @@
         }
         // The views in a compare join as one: one band, first; the joins that bring views in to show below it
         if (s.joins.some(j => j.kind === 'compare')) lines.push(compareBand());
-        // A join a view at a time, as SQL is written: every join made, and the first still to make; the views after it wait
-        let open = false;
-        s.views.slice(1).forEach((v, i) => {
-            const join = s.joins.find(j => j.view === v.id);
-            if (!join || join.kind === 'compare') return;
-            const made = join.on.length > 0 && join.on.every(p => p.left.column && p.right.column);
-            if (!made) { if (open) return; open = true; }
+        // The plain joins: each made, and each brought up by + Add join; nothing appears or goes by itself (James, 2026-11-23:
+        // "add an add join button and stop sort of flipping and adding and removing the second join")
+        const shown = window.QueryJoinRules.joinLines(s, ui.joinLines, ui.joinsTouched);
+        shown.lines.forEach(id => {
+            const v = view(id);
+            const join = s.joins.find(j => j.view === id);
+            if (!v || !join) return;
+            ui.joinLines.add(id);
             // (its columns from any other view: a view moved keeps its join, to a view on its right too)
             lines.push(joinBand(v, join, s.views.filter(x => x.id !== v.id)));
         });
+        // + Add join: the next view not joined gets its line, every box "Pick a column"
+        if (shown.next) {
+            const add = el('button', 'compare-tool-btn text-link font-mono font-size-12 query-add-join', '+ Add join');
+            add.type = 'button';
+            add.title = `A join for ${(view(shown.next) || {}).name || 'the next view'}`;
+            add.addEventListener('click', () => { ui.joinLines.add(shown.next); ui.joinsTouched = true; renderJoins(); });
+            const row = el('div', 'query-add-join-row');
+            row.appendChild(add);
+            lines.push(row);
+        }
         box.replaceChildren(...lines);
         applyLanes(box);
         injectIcons(box);
@@ -2310,8 +2339,11 @@
             grid.key = columnsKey();
             post({ type: 'query.moveColumn', from, to });
         } else if (detail.change === 'removed') {
-            // (a compared column goes as one: every cell of it)
-            const gone = new Set(detail.ids && detail.ids.length ? detail.ids : [detail.id]);
+            // (a compared column goes as one: every cell of it; in Compact its one column is `compact:<group>`, every cell of
+            // that group: else nothing left the report, the table only hid it, and a search naming it showed it again in
+            // its old place, James 2026-11-23)
+            const named = detail.ids && detail.ids.length ? detail.ids : [detail.id];
+            const gone = new Set(named.flatMap(id => (String(id).indexOf('compact:') === 0 ? resultCols().filter(c => c.group === String(id).slice(8)).map(colId) : [id])));
             const i = at(detail.id);
             const columns = resultCols().filter(c => !gone.has(colId(c)));
             if (!columns.length || columns.length === resultCols().length) return;

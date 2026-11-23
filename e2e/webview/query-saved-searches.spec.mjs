@@ -108,3 +108,20 @@ for (const width of [900, 1280]) {
         await p.locator('#queryResultsControls').screenshot({ path: join(ROOT, '.dev-local', 'query-saved-searches', `toolbar-${width}.png`) });
     });
 }
+
+test('Results: a real click on the ★ opens its menu (nothing over it takes the click), over the table below', async ({ page: p }) => {
+    // (James, 2026-11-23: "I cannot save it though… Clicking this does nothing": the box's text field was on top)
+    await p.setViewportSize({ width: 1280, height: 700 });
+    expect(await open(p)).toEqual([]);
+    await p.evaluate(() => window.postMessage({ type: 'query.goTo', start: 'results' }, '*'));
+    await expect(p.locator('#queryResultsControls')).toBeVisible();
+    await p.locator('#querySearch').fill('@qty<5');
+    // (Playwright clicks where a user would, and refuses if another element would receive it)
+    await p.locator('#querySaved button').first().click();
+    const menu = p.locator('#querySaved .dbmn-saved-menu');
+    await expect(menu).toBeVisible();
+    // the menu is on top where it shows: the point at its middle is in it
+    const onTop = await menu.evaluate(m => { const r = m.getBoundingClientRect(); const at = document.elementFromPoint(r.left + r.width / 2, r.top + Math.min(20, r.height / 2)); return !!at && m.contains(at); });
+    expect(onTop).toBe(true);
+    await p.locator('#querySaved').screenshot({ path: join(ROOT, '.dev-local', 'query-saved-searches', 'menu-open.png') }).catch(() => {});
+});

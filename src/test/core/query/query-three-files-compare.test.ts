@@ -92,6 +92,32 @@ describe('Query: three files on Join, one made Compare (demo set c)', function (
         controller.dispose();
     });
 
+    it('Compare, then Join, then Compare again (James\'s evening test): all three back in the compare; no plain join left for C2', async () => {
+        // (Compare → Join makes C1 and C2 plain joins on sku; Compare again takes C2 in too, its plain join replaced)
+        const { controller, send, state, joinOf, keys } = await setUp();
+        await send(compareOn);
+        await send({ type: 'query.setCompareKind', kind: 'left' });
+        assert.strictEqual(state().compare, null, 'a plain join now');
+        // (he picks sku again on the one join line, then Compare)
+        await send({ type: 'query.setJoin', view: 'vC1', kind: 'left', on: [{ left: { view: 'vBL', column: 'sku' }, right: { column: 'sku' } }] });
+        await send(compareOn);
+        assert.deepStrictEqual(state().compare?.views, ['vBL', 'vC1', 'vC2']);
+        assert.strictEqual(joinOf('vC2').kind, 'compare');
+        assert.deepStrictEqual(keys('vC2'), ['vBL.sku=sku']);
+        controller.dispose();
+    });
+
+    it('Compare changed to another kind (James\'s evening test): one plain join of that kind, its columns cleared, and no second join', async () => {
+        // ("if I change from compare to any other join… I don't want to add a second join, that's really really weird")
+        const { controller, send, state, joinOf } = await setUp();
+        await send(compareOn);
+        await send({ type: 'query.setCompareKind', kind: 'inner' });
+        assert.strictEqual(state().compare, null);
+        assert.deepStrictEqual({ kind: joinOf('vC1').kind, on: joinOf('vC1').on }, { kind: 'inner', on: [] }, 'the first: the kind picked, to pick its columns');
+        assert.deepStrictEqual({ kind: joinOf('vC2').kind, on: joinOf('vC2').on }, { kind: 'left', on: [] }, 'the others: not joined');
+        controller.dispose();
+    });
+
     it('Delete join on a plain join: that view back to unjoined, the others as they were', async () => {
         const { controller, send, joinOf, keys } = await setUp(['code', 'dog', 'count']);
         await send({ type: 'query.setJoin', view: 'vC2', kind: 'left', on: [{ left: { view: 'vBL', column: 'sku' }, right: { column: 'code' } }] });
