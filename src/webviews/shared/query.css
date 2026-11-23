@@ -94,7 +94,12 @@
 /* The link between a pair's columns, over the lanes: each column's cell leaves room at its end
    for the link's dots. Its lines run while the join is under the pointer */
 /* (room for the link at either end: the view joined to can be on either side, a view moved keeps its join) */
-.query-link-from, .query-link-to { padding-left: 18px; padding-right: 18px; }
+/* Room for the join's dot on the side facing the other view only (both sides cut "Pick a column" at three views) */
+.query-link-from.is-dot-right, .query-link-to.is-dot-right { padding-right: 18px; }
+.query-link-from.is-dot-left, .query-link-to.is-dot-left { padding-left: 18px; }
+/* A join's note beside its counts: wrapped onto more lines, never cut */
+.query-says:has(> .query-counts) { white-space: normal; overflow: visible; }
+.query-says > .query-counts { white-space: normal; text-align: left; line-height: 1.35; }
 .query-link { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
 .query-link line { stroke: color-mix(in srgb, var(--vscode-foreground) 55%, transparent); stroke-width: 1.5; }
 .query-link circle { fill: var(--lanes-c, var(--compare-c)); }

@@ -1361,12 +1361,14 @@
             // A box under every earlier view, until one is picked from: that view is what this one joins to
             earlier.forEach(e => {
                 const mine = e.id === pair.left.view && !!pair.left.column;
-                const cell = at(e.id, mine ? 'query-link-from' : '');
+                // (room for the link's dot on the side facing the view joined: only that side, so the box keeps the rest; James,
+                // 2026-11-23, three views read "Pick a columr")
+                const cell = at(e.id, mine ? `query-link-from ${viewAt(e.id) < viewAt(v.id) ? 'is-dot-right' : 'is-dot-left'}` : '');
                 // Once a column is picked, the other views' boxes go: emptying it ("Pick a column") brings them back
                 if (mine || !pair.left.column) cell.appendChild(sidePicker(join, p, 'left', e));
                 cells[e.id] = cell;
             });
-            const right = at(v.id, 'query-link-to');
+            const right = at(v.id, `query-link-to ${viewAt(pair.left.view) < viewAt(v.id) ? 'is-dot-left' : 'is-dot-right'}`);
             right.appendChild(sidePicker(join, p, 'right', v));
             cells[v.id] = right;
             const lead = [];
@@ -1465,11 +1467,16 @@
         more.addEventListener('click', () => { ui.statsOpen[v.id] = !open; renderJoins(); });
         // (while the host counts, a made join says so, as the compare does)
         const counting = !stats && !!ui.counting && !ui.counting.stopped && join.on.some(p => p.left.column && p.right.column);
+        // Its note read whole (James, 2026-11-23: "there is something cut off, I don't know what this is meant to say"): with no
+        // counts on the line, said across the lanes under the join; beside counts, at the end, on as many lines as it takes
+        const made_ = note => note && !stats
+            ? line('query-made-line', { __span: note }, [], [el('span', 'query-lead-text', 'Rows after this join'), more])
+            : line('query-made-line', after, note ? [note] : [], [el('span', 'query-lead-text', 'Rows after this join'), more]);
         const made = counting
             ? line('query-made-line', { __span: countingSays(0) }, [], [el('span', 'query-lead-text', 'Rows after this join'), more])
             : sentence
             ? line('query-made-line', { __span: sentence }, [el('span', 'query-made query-compare-rows', `${count(stats.rowsAfter)} rows`)], [el('span', 'query-lead-text', 'Rows after this join'), more])
-            : line('query-made-line', after, [v.error ? errorLine(v) : joinNote(join, stats)], [el('span', 'query-lead-text', 'Rows after this join'), more]);
+            : made_(v.error ? errorLine(v) : joinNote(join, stats));
         made.dataset.kind = 'made';
         made.classList.toggle('is-openable', !!stats);
         band.appendChild(made);
