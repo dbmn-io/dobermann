@@ -110,6 +110,23 @@ export interface CompareViewShape {
     endpointId?: string;
     view?: string;
     columns: string[];
+    /** A file's view (read from a spreadsheet or CSV, no endpoint). */
+    file?: boolean;
+}
+
+/**
+ * Two views read the same way, so one can be a run of the other in a compare: a request's views, by the same endpoint
+ * and View; files (James, 2026-11-23, demo set c: three files and Compare took in only two), by the same column names,
+ * in any order and letter case.
+ */
+export function sameShape(a: CompareViewShape | undefined, b: CompareViewShape | undefined): boolean {
+    if (!a || !b || a.id === b.id) return false;
+    if (a.file || b.file) {
+        if (!a.file || !b.file || !a.columns.length || a.columns.length !== b.columns.length) return false;
+        const names = new Set(a.columns.map(c => c.toLowerCase()));
+        return b.columns.every(c => names.has(c.toLowerCase()));
+    }
+    return !!a.endpointId && a.endpointId === b.endpointId && (a.view ?? '') === (b.view ?? '');
 }
 
 /**
@@ -124,13 +141,13 @@ export function groupCompare(joins: QueryJoin[], views: CompareViewShape[], pull
     if (!compare) return;
     const base = views.find(v => v.id === compare.baseline);
     if (!base) return;
-    const sameShape = (v: CompareViewShape | undefined): v is CompareViewShape => !!v && v.id !== base.id && !!v.endpointId && v.endpointId === base.endpointId && (v.view ?? '') === (base.view ?? '');
+    const asBase = (v: CompareViewShape | undefined): v is CompareViewShape => sameShape(base, v);
     const picked = (j: QueryJoin): boolean => j.on.some(p => p.right.parts.some(x => !!x.column));
     if (pullIn) {
         let size = compare.views.length;
         for (const join of joins) {
             if (size >= MAX_COMPARE_VIEWS) break;
-            if (join.kind === 'compare' || picked(join) || !sameShape(views.find(v => v.id === join.view))) continue;
+            if (join.kind === 'compare' || picked(join) || !asBase(views.find(v => v.id === join.view))) continue;
             join.kind = 'compare';
             size++;
         }
@@ -140,7 +157,7 @@ export function groupCompare(joins: QueryJoin[], views: CompareViewShape[], pull
     if (!first) return;
     for (const join of joins.filter(j => j.kind === 'compare')) {
         const shape = views.find(v => v.id === join.view);
-        if (!sameShape(shape)) continue;
+        if (!asBase(shape)) continue;
         join.on = first.on.map((pair, i) => {
             const own = join.on[i]?.right;
             if (own && own.parts.some(x => !!x.column)) return { left: pair.left, right: own };

@@ -197,7 +197,7 @@
 
     function joinsReady() {
         const s = ui.state;
-        // A view that sits out (hidden, or not joined yet) holds nothing up: the report is the views that are in
+        // (a view not joined yet holds Next up: notJoined; a hidden one sits out and holds nothing up)
         return !!s && !s.error && s.views.some(v => !v.waiting && !v.error) && s.views.every(v => !v.error || v.off);
     }
     /** Columns left empty (the last column taken out, with no key): Results would show the column just removed. A compare always has its key. */
@@ -205,24 +205,13 @@
     // (through ui: the step bar can draw before the Columns step is made)
     function reportEmpty() { const c = ui.columnsStep; return !!(c && typeof c.isEmpty === 'function' && c.isEmpty()); }
     /**
-     * With more than one view in, every view after the first needs a column to join on before Columns: until then it
-     * sits out, and Columns and Results would show the first view alone (James, 2026-11-22). A view hidden is not in.
+     * Every view on show joined before Columns and Results: until then Next waits and says which view (James, 2026-11-23:
+     * "unjoined or unselected columns should block"). A hidden view holds nothing up. The rule: query-join-rules.js.
      */
-    const JOIN_FIRST = 'Pick a column to join on first.';
-    function joinMissing() {
-        const s = ui.state;
-        if (!s) return false;
-        const within = s.views.filter(v => !v.off);
-        if (within.length < 2) return false;
-        const picked = part => !!(part && part.column);
-        return within.slice(1).some(v => {
-            const join = (s.joins || []).find(j => j.view === v.id);
-            return !join || !join.on.length || join.on.some(p => !picked(p.left) || !picked(p.right));
-        });
-    }
+    function notJoined() { return window.QueryJoinRules ? window.QueryJoinRules.notJoined(ui.state) : ''; }
     function waitsFor(n) {
         if (n >= 2 && views().length === 0) return 'Views';
-        if (n >= 3 && (!joinsReady() || joinMissing())) return 'Join';
+        if (n >= 3 && (!joinsReady() || notJoined())) return 'Join';
         if (n >= 4 && reportEmpty()) return 'Columns';
         // A new query is walked through: a step opens once the one before it has been visited, so
         // Join and Columns are seen before Results (a view left unjoined still sits out and holds
@@ -240,7 +229,7 @@
             const blocked = waitsFor(n);
             if (!blocked) return { status: 'available', summary: '', title: `Go to ${STEPS[i].label}` };
             // (an empty report says what to do, in the footer's status, as the step bar's reason)
-            const says = blocked === 'Columns' && reportEmpty() ? EMPTY_REPORT : blocked === 'Join' && joinMissing() ? JOIN_FIRST : `Waits for ${blocked}`;
+            const says = blocked === 'Columns' && reportEmpty() ? EMPTY_REPORT : blocked === 'Join' && notJoined() ? notJoined() : `Waits for ${blocked}`;
             return n === ui.step + 1 ? { status: 'blocked', waitsFor: blocked, summary: says } : { status: 'pending', summary: '' };
         });
         // What each step holds, for the list the folded steps open
@@ -257,7 +246,7 @@
         next.classList.toggle('hidden', ui.step === 4);
         next.textContent = ui.step < 4 ? `Next: ${STEPS[ui.step].label}` : 'Next';
         next.disabled = !!waitsFor(ui.step + 1) || !!ui.busy;
-        next.title = ui.step === 3 && reportEmpty() ? EMPTY_REPORT : ui.step === 2 && joinMissing() ? JOIN_FIRST : '';
+        next.title = ui.step === 3 && reportEmpty() ? EMPTY_REPORT : ui.step === 2 && notJoined() ? notJoined() : '';
         // (and on the Columns step itself, where the columns are put back)
         const emptyNote = $('queryColumnsEmpty');
         if (emptyNote) {
@@ -1097,7 +1086,7 @@
                 if (column && of && !of.reading && !of.error && !of.columns.some(c => c.name === column)) gone.push(`${column} is no longer in ${of.name}.`);
             }));
             const of = view(join.view);
-            said = gone.length ? `${gone.join(' ')} Pick another column.` : ui.state && ui.state.error ? 'Not counted: the query can\'t run (above).' : of && of.off ? 'Hidden: left out of the report.' : join.on.some(p => p.left.column && p.right.column) ? 'Joins to a view that is left out.' : 'Pick the columns this view joins on. Until then it is left out of the report.';
+            said = gone.length ? `${gone.join(' ')} Pick another column.` : ui.state && ui.state.error ? 'Not counted: the query can\'t run (above).' : of && of.off ? 'Hidden: left out of the report.' : join.on.some(p => p.left.column && p.right.column) ? 'Joins to a view that is left out.' : 'Not joined yet: pick the columns it joins on, or hide it.';
         } else if (stats.typeMismatch) said = 'One side is numbers and the other text, so they never match. Try ƒ: As text.';
         if (!said) return null;
         const line = el('span', 'query-row form-hint query-counts');
@@ -1320,12 +1309,15 @@
             }));
             // Delete join, at the bottom: the view (a compare: every view in it) goes back to not joined.
             // Reset joins under it, for every join (James, 2026-11-23: "Just in the menu", not the footer)
-            const anyPicked = (ui.state.joins || []).some(j => (j.on || []).some(p => (p.left && p.left.column) || (p.right && p.right.column)));
-            items.push({ separator: true }, { id: 'delete', label: 'Delete join', icon: 'trash-2' },
-                { id: 'reset', label: 'Reset joins', icon: 'many-to-one-sync', disabled: !anyPicked, detail: anyPicked ? 'Every join back to "Pick a column"' : 'No join has a column picked yet' });
+            // (query-join-rules.js: Delete join greyed, saying why, on a view not joined yet; Hide this view there, the way on without it)
+            const rules = window.QueryJoinRules.menu(ui.state, join);
+            items.push({ separator: true }, { id: 'delete', label: 'Delete join', icon: 'trash-2', disabled: rules.remove.disabled, detail: rules.remove.detail || undefined },
+                { id: 'reset', label: 'Reset joins', icon: 'many-to-one-sync', disabled: rules.reset.disabled, detail: rules.reset.detail });
+            if (rules.hide) items.push({ id: 'hide', label: 'Hide this view', icon: 'eye-off', detail: `${v.name} is left out of the report until it is shown again (Views)` });
             window.DbmnContextMenu.show(b, items, id => {
                 b.setAttribute('aria-expanded', 'false');
                 if (id === 'reset') { resetJoins(); return; }
+                if (id === 'hide') { setBusy('Joining…'); post({ type: 'query.toggleView', id: v.id }); return; }
                 if (id === 'delete') {
                     const gone = join.kind === 'compare' ? ui.state.joins.filter(j => j.kind === 'compare').map(j => j.view) : [join.view];
                     setBusy('Joining…');
@@ -1638,6 +1630,8 @@
                 }
                 // A view after the Baseline, out of the compare: its columns, to put it in
                 if (p === 0 && join && viewAt(v.id) > viewAt(baseline.id)) {
+                    // (built as a view in the compare is, picker then value, so the lanes line up: James, 2026-11-23, "the cell
+                    // widths are different"; its own join line below says it isn't joined)
                     const cell = at(v.id, 'query-compare-out');
                     const select = el('select');
                     select.setAttribute('aria-label', `${v.name} in the compare`);
@@ -1654,7 +1648,7 @@
                     });
                     const pick = el('span', 'query-pick');
                     pick.appendChild(select);
-                    cell.append(pick, el('span', 'query-compare-out-says', 'joins below, to show'));
+                    cell.append(pick, el('span', 'query-compare-value font-mono', ''));
                     cells[v.id] = cell;
                 }
             });

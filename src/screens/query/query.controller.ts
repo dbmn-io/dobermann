@@ -32,7 +32,7 @@ import { cleanViewName, getQuery, rebaseCompare, repairQuery, guessViewName, vie
 import { columnTypes, spread, TYPE_SAMPLE, type ColumnType } from '../../services/query/column-types';
 import { CALC_VIEW, QUERY_JOIN_KINDS } from '../../services/query/query-types';
 import { comparableRuns, type RequestTemplates, type RunHeaderValue } from '../../services/compare/compare-runs';
-import { alignCompareJoins, groupCompare, isCompare, MAX_COMPARE_VIEWS, queryCompare, runJoin } from '../../services/query/query-compare';
+import { alignCompareJoins, groupCompare, isCompare, MAX_COMPARE_VIEWS, queryCompare, runJoin, sameShape, type CompareViewShape } from '../../services/query/query-compare';
 import { columnCellDiffs, comparedGroups, otherFilters, passes, rowStatus, statusCounts, statusMenuCounts, type RowStatus, type StatusCounts, type StatusFilter } from '../../services/query/query-status';
 import { resultWorkbook } from '../../services/query/query-export';
 import { asColumnValue, lookupsIn } from '../../services/column-functions/column-functions';
@@ -1231,12 +1231,13 @@ export class QueryController {
         const baseline = queryCompare(q.joins, q.sources[0]?.id)?.baseline;
         const a = q.sources.find(x => x.id === baseline);
         const b = q.sources.find(x => x.id === id);
-        return !!a && !!b && a !== b && !a.file && !b.file && a.endpointId === b.endpointId && (a.view ?? '') === (b.view ?? '');
+        const shapes = this.shapes(q);
+        return !!a && !!b && sameShape(shapes.find(s => s.id === a.id), shapes.find(s => s.id === b.id));
     }
 
     /** Each view as grouping a compare needs it: what it reads, and its columns. */
-    private shapes(q: SavedQuery): { id: string; endpointId?: string; view?: string; columns: string[] }[] {
-        return q.sources.map(x => ({ id: x.id, endpointId: x.file ? undefined : x.endpointId, view: x.view, columns: this.loaded.get(x.id)?.columns ?? [] }));
+    private shapes(q: SavedQuery): CompareViewShape[] {
+        return q.sources.map(x => ({ id: x.id, endpointId: x.file ? undefined : x.endpointId, view: x.view, columns: this.loaded.get(x.id)?.columns ?? [], file: !!x.file }));
     }
 
     /** A move that would change a compare's Baseline is refused (query-store changesCompareBaseline): said, plainly. */

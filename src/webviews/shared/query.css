@@ -230,12 +230,13 @@
 
 /* A compare's Join: one band, a box under every view in it, the value on the first record they all have */
 /* A compare's key: picker, ƒ and its value on one line; in a narrow lane only the value drops below, whole (James, 2026-11-22) */
-.query-compare-key { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 10px; }
-.query-compare-key > .query-pick { flex: 0 1 auto; min-width: 0; }
-.query-compare-key > .query-compare-value { flex: 1 0 auto; max-width: 100%; }
+.query-compare-key, .query-compare-out { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 10px; }
+.query-compare-key > .query-pick, .query-compare-out > .query-pick { flex: 0 1 auto; min-width: 0; }
+.query-compare-key > .query-compare-value, .query-compare-out > .query-compare-value { flex: 1 0 auto; max-width: 100%; }
 .query-compare-value { font-size: 11px; color: var(--vscode-descriptionForeground); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-height: 14px; }
-.query-compare-out { display: flex; flex-direction: column; align-items: stretch; gap: 2px; background: repeating-linear-gradient(135deg, transparent 0 6px, color-mix(in srgb, var(--vscode-panel-border) 35%, transparent) 6px 12px); }
-.query-compare-out-says { font-size: 11px; color: var(--vscode-descriptionForeground); }
+/* A view out of the compare: hatched, laid out as a view in it is (the rules above), so the lanes line up; its own class,
+   so a view in the compare is still counted by .query-compare-key alone */
+.query-compare-out { background: repeating-linear-gradient(135deg, transparent 0 6px, color-mix(in srgb, var(--vscode-panel-border) 35%, transparent) 6px 12px); }
 .query-compare-count .query-lead-text { white-space: nowrap; }
 .query-compare-rows { font-weight: 600; }
 .query-slot-badge { display: inline-flex; align-items: center; gap: 3px; font-size: 10px; color: var(--vscode-descriptionForeground); margin-left: auto; white-space: nowrap; }
@@ -370,7 +371,7 @@ dbmn-progress[inline].query-read-progress .dbmn-progress-count { margin-left: 0;
 /* A cell across a view's whole lane (its runs alike) */
 .dbmn-lane > .query-lane-whole { grid-column: 1 / -1; }
 /* The key's sample sits under its picker, indented as the picker is */
-.query-compare-key .query-compare-value { padding-left: 0; }
+.query-compare-key .query-compare-value, .query-compare-out .query-compare-value { padding-left: 0; }
 .query-compare-key .query-compare-same { padding-left: 8px; }
 /* A view brought in beside a compare: its bar a sentence across the lanes */
 .query-join-said { display: flex; align-items: center; justify-content: space-between; gap: 14px; min-width: 0; overflow: hidden; white-space: nowrap; cursor: pointer; }

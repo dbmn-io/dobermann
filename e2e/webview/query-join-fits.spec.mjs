@@ -87,7 +87,7 @@ for (const width of [1280, 860]) {
     test(`three views at ${width}px: each join's note is read whole`, async ({ page: p }) => {
         expect(await joinStep(p, width)).toEqual([]);
         const notes = p.locator('.query-made-line .query-warn');
-        await expect(notes).toHaveText(['Joins to a view that is left out.', 'Pick the columns this view joins on. Until then it is left out of the report.']);
+        await expect(notes).toHaveText(['Joins to a view that is left out.', 'Not joined yet: pick the columns it joins on, or hide it.']);
         expect(await notes.evaluateAll((list, f) => list.map(n => new Function(`return (${f})`)()(n)).filter(Boolean), cutText.toString())).toEqual([]);
     });
 
@@ -98,6 +98,45 @@ for (const width of [1280, 860]) {
         expect(await selects.evaluateAll((list, f) => list.map(n => new Function(`return (${f})`)()(n)).filter(Boolean), cutSelect.toString())).toEqual([]);
     });
 }
+
+/** Four views: the c-pack three and a fourth file, joined to the first on sku. */
+const FOUR = {
+    ...STATE,
+    views: [...STATE.views, view('vD', 'c-pack-d', ['sku', 'qty', 'colour'])],
+    joins: [...STATE.joins, { view: 'vD', kind: 'left', on: [{ left: { view: 'vA', column: '' }, right: { view: 'vD', column: '' } }] }]
+};
+for (const width of [1280, 1024]) {
+    test(`four views at ${width}px: notes and every "Pick a column" read whole`, async ({ page: p }) => {
+        expect(await joinStep(p, width, FOUR)).toEqual([]);
+        const notes = p.locator('.query-made-line .query-warn');
+        // (one view not joined is open at a time, its boxes under every other view, those on its right too: two lines)
+        expect(await notes.count()).toBe(2);
+        expect(await p.locator('.query-join select').count()).toBe(6);
+        expect(await notes.evaluateAll((list, f) => list.map(n => new Function(`return (${f})`)()(n)).filter(Boolean), cutText.toString())).toEqual([]);
+        expect(await p.locator('.query-join select').evaluateAll((list, f) => list.map(n => new Function(`return (${f})`)()(n)).filter(Boolean), cutSelect.toString())).toEqual([]);
+    });
+}
+
+test('a compare of two files with a third of other columns left out: its "Not compared" box sits as the others do, the lanes even', async ({ page: p }) => {
+    // (James, 2026-11-23: "the cell widths are different": the box filled its lane and said "joins below, to show")
+    const state = {
+        ...STATE,
+        views: [STATE.views[0], STATE.views[1], view('vC', 'c-pack-c', ['code', 'dog', 'count'])],
+        compare: { baseline: 'vA', views: ['vA', 'vB'] },
+        joins: [{ view: 'vB', kind: 'compare', on: [{ left: { view: 'vA', column: 'sku' }, right: { view: 'vB', column: 'sku' } }] }, { view: 'vC', kind: 'left', on: [] }]
+    };
+    expect(await joinStep(p, 1280, state)).toEqual([]);
+    const boxes = await p.locator('.query-compare .query-line').first().locator('.dbmn-lane-run').evaluateAll(cells => cells.map(c => {
+        const pick = c.querySelector('.query-pick');
+        return { lane: Math.round(c.getBoundingClientRect().width), pick: pick ? Math.round(pick.getBoundingClientRect().width) : 0, text: c.textContent };
+    }));
+    expect(boxes.length).toBe(3);
+    // (the lanes the same width; no box filling its lane while the others don't)
+    expect(new Set(boxes.map(b => b.lane)).size).toBe(1);
+    expect(boxes.every(b => b.pick < b.lane - 8)).toBe(true);
+    expect(boxes.map(b => b.text).join(' ')).not.toContain('joins below');
+    await p.screenshot({ path: join(ROOT, '.dev-local', 'query-join-fits', 'compare-left-out.png') });
+});
 
 test('a note beside the join\'s counts (numbers against text) wraps onto more lines, never cut', async ({ page: p }) => {
     const stats = { leftRows: 3, leftMatched: 0, rowsAfter: 3, rightRows: 3, rightMatched: 0, relationship: 'oneToOne', typeMismatch: true };
