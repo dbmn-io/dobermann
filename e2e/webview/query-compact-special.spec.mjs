@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const read = rel => readFileSync(join(ROOT, 'src/webviews', rel), 'utf8');
-const STYLES = ['shared/atomic.css', 'shared/core.css', 'shared/tables.css', 'shared/search.css', 'shared/column-head.css', 'shared/dbmn-table.css'];
+const STYLES = ['shared/atomic.css', 'shared/core.css', 'shared/tables.css', 'shared/search.css', 'shared/column-head.css', 'shared/dbmn-table.css', 'shared/compare.css'];
 const SCRIPTS = ['shared/icons.js', 'shared/search-matcher.js', 'shared/value-formatter.js', 'shared/dbmn-modal.js', 'shared/dbmn-clipboard.js', 'shared/cell-detail.js',
     'shared/virtual-window.js', 'shared/dbmn-context-menu.js', 'shared/column-drag.js', 'shared/column-head.js', 'shared/dbmn-table.js', 'query/query-compare-results.js'];
 
@@ -36,7 +36,8 @@ ${SCRIPTS.map(rel => `<script>${read(rel)}</script>`).join('\n')}</head><body>
   t.rows = [
     { sku: 'A', 'BL.qty': 5, 'C1.qty': 6, 'BL.colour': 'black', 'C1.colour': 'grey', __status: st },
     { sku: 'B', 'BL.qty': 3, 'C1.qty': 3, 'BL.colour': 'gold', 'C1.colour': 'gold', __status: st },
-    { sku: 'C', 'BL.qty': '', 'C1.qty': 7, 'BL.colour': 'tan ', 'C1.colour': 'tan', __status: st }
+    { sku: 'C', 'BL.qty': '', 'C1.qty': 7, 'BL.colour': 'tan ', 'C1.colour': 'tan', __status: st },
+    { sku: 'D', 'BL.qty': 1, 'C1.qty': 1, 'BL.colour': 'bouncy', 'C1.colour': 'bouncy\\n', __status: st }
   ];
   t.specialCharacters = true;
 </script></body></html>`;
@@ -60,4 +61,22 @@ test('Compact with ¶ on: a value that really is empty is "blank", once; a trail
     await expect(cell(p, 2, 1)).toContainText('7');
     await expect(cell(p, 2, 2).locator('.dbmn-sc')).not.toHaveCount(0);
     await expect(cell(p, 2, 2).locator('.is-blank')).toHaveCount(0);
+});
+
+test('Compact with ¶ on: a line break at the end of a pill has its ↵ inside the pill, not over its edge', async ({ page: p }) => {
+    // James, 2026-11-23 evening test: "bouncy↵" (kennel demo) had its mark hanging over the pill's right edge
+    await p.setContent(page());
+    const pill = cell(p, 3, 2).locator('.compare-pill').last();
+    await expect(pill.locator('.dbmn-sc.is-break')).toHaveCount(1);
+    const fits = await pill.evaluate(el => {
+        const mark = el.querySelector('.dbmn-sc.is-break');
+        const probe = document.createElement('span');
+        probe.textContent = '\u21b5';
+        mark.parentElement.appendChild(probe);
+        const glyph = probe.getBoundingClientRect().width;
+        probe.remove();
+        const box = el.getBoundingClientRect(), at = mark.getBoundingClientRect();
+        return { markEnd: Math.round(at.left + glyph), room: Math.round(box.right - 2) };
+    });
+    expect(fits.markEnd).toBeLessThanOrEqual(fits.room);
 });

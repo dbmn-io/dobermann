@@ -35,7 +35,9 @@
  *   - Auto-focuses the first form field, or failing that the primary action.
  *
  * Field schema:
- *   { id, type, label?, value?, placeholder?, required?, autoFocus?, options?, suggestions? }
+ *   { id, type, label?, value?, placeholder?, required?, autoFocus?, options?, suggestions?, row?, rowLabel? }
+ *     row: 'columns' (any name): the fields given it share one line, side by side; the first one's
+ *     `rowLabel` heads the line (their own labels left out)
  *     suggestions: ['EA', …] (text only): offered as it's typed in, filtered by the typing
  *     type ∈ 'text' | 'email' | 'password' | 'number' | 'textarea' | 'select'
  *     options: [{ value, label, group? }] (select only; `group` puts it under that heading)
@@ -131,6 +133,8 @@
         input.id = 'dbmn-modal-field-' + field.id;
         input.name = field.id;
         input.className = 'dbmn-modal-input';
+        // (a field with no label of its own, as one of a row's: its name for a screen reader)
+        if (field.ariaLabel) input.setAttribute('aria-label', field.ariaLabel);
         // Password managers and the browser's autofill belong only where a sign-in is asked for: an
         // email, a user name or a password (a field may say so with `autocomplete`, as 'username').
         // Everywhere else they stay out ("name" in the Rename dialog drew 1Password's button over
@@ -398,9 +402,23 @@
                 const fieldsWrap = el('div', {
                     className: 'dbmn-modal-fields' + (opts.columns === 2 ? ' is-2col' : '')
                 });
+                // Fields given one `row` (a name) share one line, their label over it: five short boxes side by side
+                // (New lookup table's columns; James, 2026-11-23: "make that smaller. It's too spread out")
+                const rows = new Map();
                 opts.fields.forEach((field) => {
                     const { wrap, input, errorEl } = buildField(field);
-                    fieldsWrap.appendChild(wrap);
+                    if (field.row) {
+                        let line = rows.get(field.row);
+                        if (!line) {
+                            const group = el('div', { className: 'dbmn-modal-field dbmn-modal-row-field' });
+                            if (field.rowLabel) group.appendChild(el('label', { text: field.rowLabel, attrs: { for: 'dbmn-modal-field-' + field.id } }));
+                            line = el('div', { className: 'dbmn-modal-field-row' });
+                            group.appendChild(line);
+                            fieldsWrap.appendChild(group);
+                            rows.set(field.row, line);
+                        }
+                        line.appendChild(wrap);
+                    } else fieldsWrap.appendChild(wrap);
                     fieldInputs.push({ field, input, errorEl });
 
                     // No live validation — feels nagging, and the fields typically

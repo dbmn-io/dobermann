@@ -125,6 +125,36 @@ test('rows move: Alt+↑ / Alt+↓ and a right-click, kept; Ctrl+Z puts it back;
     await expect.poll(lastSaved).toEqual(['EA', 'CS', 'PL']);
 });
 
+test('a new table opens with one empty row, its first cell ready to type in; Add row sits straight under the last row', async ({ page: p }) => {
+    // James, 2026-11-23: "we should always start with one row, one empty row added already"; "the add row button is in a weird spot"
+    await p.setContent(page());
+    await expect.poll(() => p.evaluate(() => window.posted.map(m => m.type))).toEqual(['lookup.ready']);
+    await send(p, { type: 'lookup.load', table: { ...TABLE, rows: [] }, limits: { columns: 5, rows: 1000 } });
+    await expect(p.locator('#lookupTable .dbmn-table-body tr')).toHaveCount(1);
+    await expect(td(p, 0, 1).locator('input.dbmn-cell-input')).toBeFocused();
+    await expect(p.locator('#lookupStatus')).toHaveText('0 rows · kept');
+    // Nothing kept until something is typed
+    await p.waitForTimeout(600);
+    expect((await saves(p)).length).toBe(0);
+    await p.keyboard.type('EA');
+    await p.keyboard.press('Tab');
+    await p.keyboard.type('EACH');
+    await p.keyboard.press('ArrowUp');
+    await expect.poll(async () => { const s = await saves(p); return s.length ? s[s.length - 1].table.rows : []; }).toEqual([{ c1: 'EA', c2: 'EACH' }]);
+    // Add row: right under the last row, not at the foot of the window
+    const add = p.locator('#lookupTable .dbmn-table-add-row');
+    await expect(add).toBeVisible();
+    const gap = await p.evaluate(() => {
+        const rows = document.querySelectorAll('#lookupTable .dbmn-table-body tr');
+        const last = rows[rows.length - 1].getBoundingClientRect();
+        return Math.round(document.querySelector('#lookupTable .dbmn-table-add-row').getBoundingClientRect().top - last.bottom);
+    });
+    expect(gap).toBeGreaterThanOrEqual(0);
+    expect(gap).toBeLessThan(12);
+    await add.click();
+    await expect(p.locator('#lookupTable .dbmn-table-body tr')).toHaveCount(2);
+});
+
 test('typed in fast: Tab to the next cell; past the last, and Enter on the last row, a new row', async ({ page: p }) => {
     await open(p);
     await td(p, 1, 1).click();
@@ -175,6 +205,11 @@ test('New lookup table: a name, then up to five columns; a name taken or two col
     const dialog = p.locator('.dbmn-modal');
     await expect(dialog).toContainText('New lookup table');
     const field = id => dialog.locator(`#dbmn-modal-field-${id}`);
+    // The columns: five short boxes side by side on one line, an example in each (James, 2026-11-23: "make that smaller")
+    const tops = await Promise.all([0, 1, 2, 3, 4].map(i => field('column' + i).evaluate(e => Math.round(e.getBoundingClientRect().top))));
+    expect(new Set(tops).size).toBe(1);
+    await expect(field('column0')).toHaveAttribute('placeholder', 'WMS');
+    await expect(field('column0')).toHaveAttribute('aria-label', 'Column 1');
     await field('name').fill('regions');
     await field('column0').fill('WMS');
     await field('column1').fill('wms');

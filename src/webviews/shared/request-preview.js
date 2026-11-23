@@ -15,8 +15,7 @@
  * here, and the Console's Raw tab and Raw window (console/modules/raw-tab-handler.js) call it too.
  * inputSection() draws its heading and an empty <dbmn-table>; once the card is on the page,
  * fillInputTables() gives each table its columns and rows (the table draws only those in view).
- * The whole card is to become one shared component (a `dbmn-` piece on the Design system page),
- * so Run Batch's Review and the Console draw it the same way.
+ * The whole card is to become one component (design-system-handoff.md).
  * Browser: window.RequestPreview. Node: module.exports (tests, standalone renders).
  */
 (function (root, factory) {

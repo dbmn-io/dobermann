@@ -78,6 +78,15 @@
         table.rows = kept.rows.map(row => Object.assign({}, row));
         const why = problem();
         say(why ? `Not kept: ${why}` : `${plural(kept.rows.length, 'row')} · kept`, why ? 'warn' : '');
+        // A table with no rows yet opens with one empty row, its first cell held to type or paste into
+        // (James, 2026-11-23: "we should always start with one row, one empty row added already"). Kept only
+        // once something is typed in it, as any change is
+        if (!kept.rows.length && kept.columns.length) {
+            const empty = {};
+            kept.columns.forEach(c => { empty[c.id] = ''; });
+            table.rows = [empty];
+            setTimeout(() => table.select(0, kept.columns[0].id), 0);
+        }
     }
 
     function gone() {

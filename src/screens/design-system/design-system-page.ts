@@ -332,6 +332,7 @@ Icons.icon('check')                                   the SVG as text</code></pr
         <pre class="ds-code"><code>const yes = await DbmnModal.confirm({ title: 'Delete the query?', body: '…', confirmLabel: 'Delete', confirmVariant: 'danger' });
 const { actionId, fields } = await DbmnModal.show({ title, fields: [{ id: 'name', type: 'text', label: 'Name' }], actions: [{ id: 'save', label: 'Save', variant: 'primary' }] });
 { id: 'uom', type: 'text', label: 'uom', suggestions: ['EA', 'CS', …] }   a field that offers values, filtered as it's typed
+{ id: 'column0', type: 'text', row: 'columns', rowLabel: 'Columns', ariaLabel: 'Column 1', placeholder: 'WMS' }   fields of one row: short boxes side by side
 DbmnToast.success('Saved');   DbmnToast.warn('…');   DbmnToast.error('…', { persistent: true });
 DbmnContextMenu.show(event, [{ id: 'rename', label: 'Rename', icon: 'pencil' }], id =&gt; …);
 DbmnContextMenu.show(button, [{ summary: { title: 'BL · inventory', lines: [['View', 'LowStock'], read /* read.tone = 'warn' */] } }, { separator: true }, …actions], id =&gt; …);</code></pre>

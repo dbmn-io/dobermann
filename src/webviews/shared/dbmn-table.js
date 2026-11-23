@@ -598,15 +598,17 @@
             this._below.setAttribute('aria-hidden', 'true');
             this._foot = make('tfoot', 'dbmn-table-foot');
             this._table.append(this._cols, this._head, this._above, this._body, this._below, this._foot);
-            this._scroll.append(this._table);
-            // (`add-row`: a line under the rows that adds one, ready to type in)
+            // (`add-row`: a line straight under the last row that adds one, ready to type in. In the scroll box
+            // after the table, so it moves down as rows come and is never at the foot of a tall box: James,
+            // 2026-11-23: "the add row button is in a weird spot")
             this._addLine = make('button', 'dbmn-table-add-row');
             this._addLine.type = 'button';
             this._addLine.hidden = true;
             this._addLine.append(make('span', 'dbmn-table-add-icon'), make('span', '', 'Add row'));
             if (window.Icons) window.Icons.setIcon(this._addLine.firstChild, 'plus');
             this._addLine.addEventListener('click', () => this._addRow());
-            this.replaceChildren(this._tools, this._reads, this._scroll, this._addLine);
+            this._scroll.append(this._table, this._addLine);
+            this.replaceChildren(this._tools, this._reads, this._scroll);
             if (window.Icons) window.Icons.injectIcons(this._tools);
 
             const matcher = window.SearchMatcher;

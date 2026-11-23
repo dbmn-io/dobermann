@@ -178,12 +178,14 @@ dbmn-table[editable] .dbmn-table-body td.dbmn-cell-box { cursor: pointer; }
 .dbmn-row-cell:focus-within .dbmn-row-delete { display: inline-flex; }
 .dbmn-row-delete:hover { background: var(--dbmn-list-hoverBackground); }
 .dbmn-row-delete:focus-visible { outline: 1px solid var(--dbmn-focusBorder); }
-/* `add-row`: the line under the rows */
+/* `add-row`: the line straight under the last row (in the scroll box, kept at its left as it scrolls sideways) */
 .dbmn-table-add-row {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    align-self: flex-start;
+    position: sticky;
+    left: 0;
+    margin-top: 4px;
     padding: 4px 8px;
     border: 1px dashed var(--dbmn-panel-border, rgba(128, 128, 128, 0.35));
     border-radius: 4px;
@@ -258,6 +260,9 @@ dbmn-table[selectable] .dbmn-table-body tr { cursor: pointer; }
 /* A line break: one line in a row (the break is a space under "↵"), a real break where the column wraps */
 .dbmn-sc.is-break { white-space: nowrap; }
 .dbmn-sc.is-break::after { content: '\21b5'; text-align: left; }
+/* (on one line the break is a space, narrower than its ↵: room after it, so a break at the end of a value,
+   or of a pill, holds its whole mark and never hangs over the edge; James, 2026-11-23: "bouncy↵") */
+.dbmn-sc.is-break:not(.is-breaking) { padding-right: 0.7em; }
 .dbmn-sc.is-break.is-breaking { white-space: pre; }
 /* A character that draws nothing (zero-width, a control): its code, boxed, beside it */
 .dbmn-sc.is-code::after,

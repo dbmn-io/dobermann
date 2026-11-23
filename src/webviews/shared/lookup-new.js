@@ -49,11 +49,14 @@
         if (!window.DbmnModal) return Promise.resolve(null);
         let made = null;
         const fields = [{ id: 'name', type: 'text', label: 'Name', placeholder: 'UOM', autoFocus: true, validate: { required: true, maxLength: NAME_MAX, message: 'The table needs a name' } }]
+            // (the columns side by side on one line, an example in each: James, 2026-11-23: "make that smaller")
             .concat(Array.from({ length: MAX_COLUMNS }, (_, i) => ({
                 id: 'column' + i,
                 type: 'text',
-                label: i === 0 ? 'Columns: one for each system, up to 5' : '',
-                placeholder: EXAMPLES[i] ? `Column ${i + 1}, e.g. ${EXAMPLES[i]}` : `Column ${i + 1}`,
+                row: 'columns',
+                rowLabel: i === 0 ? 'Columns, one per system (up to 5)' : undefined,
+                ariaLabel: `Column ${i + 1}`,
+                placeholder: EXAMPLES[i] || '',
                 validate: { maxLength: COLUMN_MAX }
             })));
         return window.DbmnModal.show({
