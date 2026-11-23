@@ -3046,19 +3046,43 @@ class DynamicReportManager {
      * eg, asnline.sku gets added to asnline array"). Named from the row basis, as the View editor's
      * tree names them; each also answers to its last part (`@sku`). None for a View that cannot change.
      */
-    fieldsToAdd(view, fixed) {
+    fieldsToAdd(view, fixed, columns) {
         if (fixed || !view || !Array.isArray(view.columns) || !this.tableBuilder.recordLeafPaths) return [];
         const records = this.getRawDataForCurrentTab() || [];
         const basis = view.rowBasis && view.rowBasis !== 'root' ? view.rowBasis + '.' : '';
+        // A name the table's columns already answer to stays theirs: the response's own `status` is
+        // never offered beside the records' status column (@status!=active would read it too, blank)
+        const taken = new Set((columns || []).flatMap(c => [c.name, c.id, String(c.id || '').split('.').pop()]).filter(Boolean).map(n => String(n).toLowerCase()));
+        const sample = records.find(r => r && typeof r === 'object');
+        const hiddenSubs = new Set(view.hiddenSubColumns || []);
         return this.tableBuilder.recordLeafPaths(records, 500)
-            .filter(path => !this.findColumnById(view.columns, path))
+            .filter(path => {
+                if (this.findColumnById(view.columns, path)) return false;
+                // A key inside a list of records the View shows as one column (its records in the cell):
+                // there unless taken out of it. (A list the View is a group of, the rows' own, shows only its own.)
+                const list = this.listHolding(path, sample);
+                const shownList = list && this.findColumnById(view.columns, list);
+                return !(shownList && !(Array.isArray(shownList.children) && shownList.children.length)) || hiddenSubs.has(path);
+            })
             .map(path => {
                 const own = basis && path.startsWith(basis) ? path.slice(basis.length) : path;
                 const name = this.aliasEnvelopeDataPath(own);
                 const last = own.split('.').pop();
-                const aliases = [...new Set([own, last].filter(a => a && a !== name))];
+                const aliases = [...new Set([own, last].filter(a => a && a !== name && !taken.has(a.toLowerCase())))];
                 return { id: path, name, aliases, adds: true };
-            });
+            })
+            // (a field answers to its id's last part too: metadata.status would still be @status)
+            .filter(f => !taken.has(f.name.toLowerCase()) && !taken.has(f.id.split('.').pop().toLowerCase()));
+    }
+    /** The list of records a key is inside (its nearest array in the record), or null. */
+    listHolding(path, sample) {
+        if (!sample) return null;
+        const parts = String(path).split('.');
+        for (let k = parts.length - 1; k >= 1; k--) {
+            const at = parts.slice(0, k).join('.');
+            if (this.classifyStructuralKind(sample, at) === 'array') return at;
+        }
+        return null;
     }
     /** A search named a key the View does not have: it goes in at the end of its group, and stays. */
     addFieldFromSearch(id) {
@@ -3070,7 +3094,10 @@ class DynamicReportManager {
             return;
         }
         const records = this.getRawDataForCurrentTab() || [];
-        this.addLeafToView(id, view, records.find(r => r && typeof r === 'object'));
+        // A key taken out of a list of records the View shows comes back to it; any other goes in at
+        // the end of its group (a list not in the View yet comes in with it)
+        if ((view.hiddenSubColumns || []).includes(id)) view.hiddenSubColumns = view.hiddenSubColumns.filter(h => h !== id);
+        else this.addLeafToView(id, view, records.find(r => r && typeof r === 'object'));
         this.viewChangedBySearch();
         // Brought into view, sideways (James, 2026-11-23: no Undo, "user has the Delete key on column
         // anyways.. JUST bring the new column into focus.. so scroll to right"); a key inside a list
@@ -3140,9 +3167,9 @@ class DynamicReportManager {
             this._tableKey = key;
             table.columns = this.tableColumns(columns);
             table.layout = this.tableLayout();
-            table.searchFields = this.fieldsToAdd(view, readOnly || locked);
+            table.searchFields = this.fieldsToAdd(view, readOnly || locked, columns);
         }
-        else if (redraw) { table.redrawHeads(); table.searchFields = this.fieldsToAdd(view, readOnly || locked); }
+        else if (redraw) { table.redrawHeads(); table.searchFields = this.fieldsToAdd(view, readOnly || locked, columns); }
         table.rows = data || [];
         if (!options.keepScroll) {
             const scroller = table.querySelector('.dbmn-table-scroll');

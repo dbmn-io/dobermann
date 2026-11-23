@@ -87,23 +87,25 @@ test('a key taken out of the View comes back by searching for it, at the end of 
     expect(pageErrors).toEqual([]);
 });
 
-test('a key inside a list of records goes in at the end of that list\'s columns', async ({ page }) => {
+test('a key taken out of a list of records comes back into that list by searching for it', async ({ page }) => {
     const pageErrors = await open(page);
-    // Take lot out of the lines list (as the View editor's tree would)
+    const view = () => page.evaluate(() => window.dynamicReportManager.getActiveView('success'));
+    // A list of records shows every key of its records: lot is there, a key of the lines column, not one to add
+    const box = page.locator('#search-input');
+    await box.fill('@lines.l');
+    await expect(page.locator('.column-suggest-option', { hasText: '@lines.lot' })).toHaveCount(1);
+    await expect(page.locator('.column-suggest-option', { hasText: '@lines.lot' })).not.toContainText('adds it');
+    // Taken out of the list (as x on its sub-column does), it is offered, and a search brings it back
+    await box.fill('');
     await page.evaluate(() => {
         const m = window.dynamicReportManager;
-        const view = m.getActiveView('success');
-        view.columns = m.removeColumnById(view.columns, 'data.lines.lot');
+        m.getActiveView('success').hiddenSubColumns = ['data.lines.lot'];
         m._tableKey = '';
         m.extractAndRender('success');
     });
-    const lines = () => page.evaluate(() => {
-        const find = (cols, id) => { for (const c of cols || []) { if (c.id === id) return c; const f = find(c.children, id); if (f) return f; } return null; };
-        const group = find(window.dynamicReportManager.getActiveView('success').columns, 'data.lines');
-        return group ? group.children.map(c => c.id.split('.').pop()) : null;
-    });
-    expect(await lines()).toEqual(['item', 'qty']);
-    await page.locator('#search-input').fill('@lines.lot=L2 ');
-    await expect.poll(lines).toEqual(['item', 'qty', 'lot']);
+    await box.fill('@lines.l');
+    await expect(page.locator('.column-suggest-option', { hasText: '@lines.lot' })).toContainText('adds it');
+    await box.fill('@lines.lot=L2 ');
+    await expect.poll(async () => (await view()).hiddenSubColumns || []).toEqual([]);
     expect(pageErrors).toEqual([]);
 });

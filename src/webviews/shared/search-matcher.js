@@ -1169,7 +1169,7 @@ function columnSuggestions(typed, headings, keysOf, typesOf, hidden, valuesOf, a
         var typedName = unquote(at[2]);
         var partial = typedName.toLowerCase();
         // `@column.`: the keys inside that column's nested data (then the keys inside those)
-        var inside = nestedSuggestions(typedName, names, keys, start, text, typeOf);
+        var inside = nestedSuggestions(typedName, names, keys, start, text, typeOf, isAdded);
         if (inside) return inside;
         // `@` alone, with columns not shown: first, `@@` (a word searched in every column)
         var deepFirst = !at[2] && unseen.length ? [{ text: '@@', label: 'a word in every column, shown or not', start: start, end: text.length, hidden: true }] : [];
@@ -1196,8 +1196,9 @@ function columnSuggestions(typed, headings, keysOf, typesOf, hidden, valuesOf, a
 }
 
 /** After `@column.` (and `@column.key.`): the keys there, those holding what is typed first; a key typed in full, the operators. */
-function nestedSuggestions(typedName, names, keys, start, text, typeOf) {
+function nestedSuggestions(typedName, names, keys, start, text, typeOf, isAdded) {
     typeOf = typeOf || function () { return ''; };
+    isAdded = isAdded || function () { return false; };
     if (typedName.indexOf('.') < 0) return null;
     var low = typedName.toLowerCase();
     // The longest heading the text starts with, a dot after it
@@ -1217,7 +1218,14 @@ function nestedSuggestions(typedName, names, keys, start, text, typeOf) {
         .filter(function (x) { return x.pos !== -1; })
         .sort(function (a, b) { return (a.pos === 0 ? 0 : 1) - (b.pos === 0 ? 0 : 1); })
         .slice(0, 12)
-        .map(function (x) { return { text: lead + x.k, label: TYPE_WORDS[typeOf(heading, path.concat([x.k]))] || (keys(heading, path.concat([x.k])).length ? 'key, nested' : 'key'), start: start, end: text.length }; });
+        .map(function (x) {
+            var label = TYPE_WORDS[typeOf(heading, path.concat([x.k]))] || (keys(heading, path.concat([x.k])).length ? 'key, nested' : 'key');
+            // (a key the screen does not show, a search for it adds: said, as a column's is)
+            var adds = isAdded(lead.slice(1) + x.k);
+            var item = { text: lead + x.k, label: adds ? label + ' · adds it' : label, start: start, end: text.length };
+            if (adds) item.hidden = true;
+            return item;
+        });
 }
 function opSuggestions(text, end, nested, type) {
     // A column whose kind is known: the operators that fit it, with words that fit it
