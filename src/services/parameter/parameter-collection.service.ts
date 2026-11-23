@@ -887,7 +887,7 @@ export class ParameterCollectionService implements IParameterCollectionService {
             // would naturally trip on empty (NaN / invalid date), but strings
             // silently pass empty through — this gate keeps the modal's
             // enforcement consistent with the template's declared intent.
-            if (value.trim() === '' && parsed.emptyBehavior === 'default') {
+            if (value.trim() === '' && parsed.emptyBehavior === 'default' && parsed.ifBlank === undefined) {
                 errors[variable.name] = 'Required';
                 continue;
             }

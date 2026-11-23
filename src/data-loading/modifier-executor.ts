@@ -46,8 +46,12 @@ export function applyModifiers(
             processedValue = processedValue.trim();
         }
 
-        // Check for empty value and apply empty behavior
-        const isEmpty = processedValue === '' || processedValue === undefined || processedValue === null;
+        // Check for empty value and apply empty behavior (`ifblank:text`: the blank becomes the text first)
+        let isEmpty = processedValue === '' || processedValue === undefined || processedValue === null;
+        if (isEmpty && modifiers.ifBlank !== undefined) {
+            processedValue = modifiers.ifBlank;
+            isEmpty = processedValue === '';
+        }
         if (isEmpty) {
             switch (modifiers.emptyBehavior) {
                 case 'opt':

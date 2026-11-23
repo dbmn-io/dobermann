@@ -132,7 +132,7 @@ export class JsonGenerator {
         const isOptional = (v: { dataType: string; formatModifier?: string }) =>
             [...JsonGenerator.splitTypeAndModifiers(v.dataType).modifiers,
              ...JsonGenerator.splitTypeAndModifiers('x|' + (v.formatModifier ?? '')).modifiers]
-                .some(m => m === 'opt' || m === 'null');
+                .some(m => m === 'opt' || m === 'null' || m.toLowerCase().startsWith('ifblank:'));
 
         const missing = variables.filter(v =>
             !v.isA8Variable

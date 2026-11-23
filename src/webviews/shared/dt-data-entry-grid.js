@@ -49,6 +49,7 @@
             toUpper: false,         // String: convert to uppercase
             toLower: false,         // String: convert to lowercase
             dateMath: null,         // Date: date math expression (e.g., "+2d")
+            ifBlank: null,          // ifblank:text - what a blank becomes (so a blank is fine)
             lookups: [],            // lu:table:from>to or lu:table:column (any type)
             hints: []               // Human-readable hints for display
         };
@@ -66,6 +67,11 @@
             if (partLower === 'opt') {
                 result.isOptional = true;
                 // Don't add 'optional' to hints - it shows as ○ indicator instead
+                continue;
+            }
+            if (partLower.indexOf('ifblank:') === 0) {
+                result.ifBlank = part.slice(8).trim().replace(/^(['"])(.*)\1$/, '$2');
+                result.hints.push('blank → ' + result.ifBlank);
                 continue;
             }
             if (partLower === 'null') {
@@ -96,7 +102,8 @@
                     continue;
                 }
                 if (partLower === 'notrim') {
-                    // Transform, not validation
+                    // Transform, not validation (but spaces then aren't blank: ifblank leaves them)
+                    result.noTrim = true;
                     continue;
                 }
 
@@ -611,7 +618,7 @@
     function gridVariables() { return csvState.gridTemplateVariables || []; }
     function isBooleanVar(v) { return !!v && (v.dataType === 'boolean' || v.dataType === 'bool'); }
     function isNumberVar(v) { return !!v && (v.dataType === 'number' || v.dataType === 'integer' || v.dataType === 'int'); }
-    function isOptionalVar(v) { return !!(v && v.modifiers && (v.modifiers.isOptional || v.modifiers.isNullable)); }
+    function isOptionalVar(v) { return !!(v && v.modifiers && (v.modifiers.isOptional || v.modifiers.isNullable || v.modifiers.ifBlank !== null && v.modifiers.ifBlank !== undefined)); }
     function modelRows() {
         if (!Array.isArray(csvState.gridDataModel)) csvState.gridDataModel = [];
         return csvState.gridDataModel;
@@ -1817,6 +1824,8 @@
             var dataType = variable.dataType;
             var value = rowData[colIndex] || '';
 
+            // ifblank: a blank is what it becomes (checked from there on, as the run fills it)
+            if ((!value || (!mods.noTrim && value.trim() === '')) && mods.ifBlank !== null && mods.ifBlank !== undefined) value = mods.ifBlank;
             // Skip optional/nullable fields when empty
             if ((mods.isOptional || mods.isNullable) && (!value || value.trim() === '')) return;
             // Skip empty required fields (handled by blank cell validation)

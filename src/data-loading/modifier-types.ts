@@ -169,6 +169,11 @@ export interface ParsedModifiers {
     emptyBehavior: EmptyValueBehavior;
     /** Forces JSON string output regardless of type (e.g., number 1 → "1") */
     outputAsString: boolean;
+    /**
+     * `ifblank:text`: a blank value (or one of spaces only, unless notrim) becomes `text` (James,
+     * 2026-11-23: `{{note | ifblank:none}}`). A blank is then never "required", nor left out.
+     */
+    ifBlank?: string;
     /** Any parse errors encountered */
     errors: string[];
 }

@@ -79,6 +79,12 @@ export function parseModifiers(modifierString: string, dataType: DataType): Pars
             continue;
         }
 
+        // `ifblank:text`: what a blank becomes (any type; quotes around the text are taken off)
+        if (partLower.startsWith('ifblank:')) {
+            result.ifBlank = part.slice('ifblank:'.length).trim().replace(/^(['"])(.*)\1$/, '$2');
+            continue;
+        }
+
         // `lu:table:from>to` or `lu:table:column`: a lookup (any type: the value is looked up as text)
         if (partLower.startsWith('lu:')) {
             const lookup = parseLookupModifier(part);
@@ -398,8 +404,8 @@ function isModifierToken(token: string, dataType: DataType): boolean {
     if (tokenLower === 'asstring') {
         return true;
     }
-    // A lookup (all types)
-    if (tokenLower.startsWith('lu:')) {
+    // A lookup, and what a blank becomes (all types)
+    if (tokenLower.startsWith('lu:') || tokenLower.startsWith('ifblank:')) {
         return true;
     }
 

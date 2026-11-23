@@ -257,3 +257,18 @@ test('lu: a value not in the lookup table, or in it twice, is a row to fix, sayi
     await expect(td(page, 2, 2)).toHaveAttribute('title', /code XX isn't in UOM's WMS column/);
     await expect(td(page, 2, 1)).not.toHaveClass(/grid-cell-error/);
 });
+
+test('ifblank: a blank (or spaces only) is not a row to fix: it becomes the text; with notrim, spaces stay', async ({ page }) => {
+    // James, 2026-11-23: "{{note | ifblank:none}}"
+    const IB = JSON.stringify({ items: [{ sku: '{{sku:string|3-10}}', note: '{{note | ifblank:none}}', uom: '{{uom | ifblank:EA | lu:uom:wms}}' }] });
+    await page.setContent(gridPage(IB));
+    await page.evaluate(() => DTDataEntryGrid.setLookupTables([{ id: 'lkp-uom', name: 'UOM', columns: [{ id: 'c1', name: 'WMS' }], rows: [{ c1: 'EA' }] }]));
+    await page.evaluate(rows => {
+        const vars = window.state.gridTemplateVariables.map(v => Object.assign({}, v, { mappedTo: v.name }));
+        DTDataEntryGrid.populateGridFromMappedData({ headers: ['sku', 'note', 'uom'], rows }, vars);
+    }, [['SKU001', '', ''], ['SKU002', '   ', 'EA'], ['SKU003', 'rush', 'DZ']]);
+    await expect(page.locator('#csvNextBtn')).toHaveText('Next');
+    // Only row 3 (DZ) is to fix: the blank notes and the blank uom (→ EA, in UOM) are fine
+    await expect(page.locator('.grid-hint')).toHaveText(/^Showing the 1 row that needs? fixing, of 3\./);
+    await expect(td(page, 0, 3)).toHaveAttribute('title', /uom DZ isn't in UOM's WMS column/);
+});
