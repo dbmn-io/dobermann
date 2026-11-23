@@ -36,9 +36,9 @@ export function buildLogsPage(asset: AssetUrl): string {
 
     <dbmn-footer class="logs-footer">
         <dbmn-actions>
-            <button type="button" id="logsRefreshBtn" class="btn btn-secondary" data-click="logs:refresh" title="Read the lines again, newest first">Refresh</button>
-            <button type="button" class="btn btn-secondary" data-click="logs:copy" title="Copy the lines shown">Copy</button>
-            <button type="button" class="btn btn-secondary" data-click="logs:save" title="Save the lines shown to a file">Save</button>
+            <button type="button" id="logsRefreshBtn" class="btn btn-secondary" data-click="logs:refresh" data-help="logs#copy-save" title="Read the lines again, newest first">Refresh</button>
+            <button type="button" class="btn btn-secondary" data-click="logs:copy" data-help="logs#copy-save" title="Copy the lines shown">Copy</button>
+            <button type="button" class="btn btn-secondary" data-click="logs:save" data-help="logs#copy-save" title="Save the lines shown to a file">Save</button>
         </dbmn-actions>
         <!-- How many lines; while a search looks back through the days kept, how far it has got instead -->
         <dbmn-status id="logsStatus"></dbmn-status>

@@ -102,6 +102,13 @@
         }
     });
 
+    // Help mode (dbmn.io/docs/logs): the parts the log list draws itself; the footer's buttons say it in their markup
+    if (window.HelpMode) window.HelpMode.register([
+        { selector: '#logsList .search-input', help: 'logs#search' },
+        { selector: '#logsList dbmn-saved-searches', help: 'logs#saved-searches' },
+        { selector: '#logsList thead th', help: 'logs#columns', first: true }
+    ]);
+
     if (window.Icons) window.Icons.injectIcons();
     vscode.postMessage({ type: 'logs.ready' });
 })();
