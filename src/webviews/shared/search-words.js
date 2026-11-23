@@ -21,6 +21,8 @@
  */
 (function () {
     'use strict';
+    /** The matcher's `@@word` (a word in every field, shown or not): the Hub's lists have it, nothing else does. */
+    const DEEP = { deep: true };
 
     /** Split the typed text into words: `"a phrase"` stays one, `-word` is left out. */
     function parseWords(text) {
@@ -206,7 +208,8 @@
         const sm = matcher();
         const text = String(query || '').trim();
         if (!text || !sm) return () => true;
-        const terms = sm.parseSearchExpression(text);
+        // `@@word` is the Hub's alone (James, 2026-11-23: "@@ only for hub"): the lists ask for it
+        const terms = sm.parseSearchExpression(text, undefined, DEEP);
         const now = current || {};
         // `current` in a System's or environment's value: the current one's name
         (terms.clauses || []).forEach(c => (c.columnTerms || []).forEach(t => {
@@ -250,7 +253,7 @@
         const sm = matcher();
         const paint = text => {
             if (!sm || !sm.tokenizeForDisplay) return escapeHtml(text);
-            return sm.tokenizeForDisplay(text).map(seg => '<span class="search-tok search-tok-' + seg.kind + '">' + escapeHtml(seg.text) + '</span>').join('');
+            return sm.tokenizeForDisplay(text, undefined, undefined, DEEP).map(seg => '<span class="search-tok search-tok-' + seg.kind + '">' + escapeHtml(seg.text) + '</span>').join('');
         };
         return '<dl class="dbmn-filter-legend" data-help="hub#search">' + rows.map(r =>
             '<dt>' + paint(r[0]) + '</dt><dd>' + escapeHtml(r[1]) + '</dd>').join('') + '</dl>';
@@ -281,7 +284,7 @@
         const fit = () => {
             const f = fields();
             // (a field's aliases colour as it does: `@environment` as `@env`; the @ list keeps to the names)
-            if (sm && sm.renderHighlight) sm.renderHighlight(mirror, input.value, f.headings.concat(f.aliases || []), f.hidden.concat(f.hiddenAliases || []));
+            if (sm && sm.renderHighlight) sm.renderHighlight(mirror, input.value, f.headings.concat(f.aliases || []), f.hidden.concat(f.hiddenAliases || []), DEEP);
             else mirror.textContent = input.value;
             // (a last line break holds the height of a trailing empty line)
             mirror.appendChild(document.createTextNode('\n'));
@@ -307,7 +310,9 @@
                 input,
                 headings: () => fields().headings,
                 hidden: () => fields().hidden,
-                values: opts.values
+                values: opts.values,
+                // (`@@`, a word in every field, offered first: the Hub's lists alone have it)
+                deep: true
             });
         }
 

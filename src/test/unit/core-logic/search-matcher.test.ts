@@ -1136,9 +1136,9 @@ describe('SearchMatcher: a column searched but not shown is told apart (James, 2
 
     it('in the @ list: shown columns first, then those not shown, marked', () => {
         const list = columnSuggestions('@', headings, undefined, undefined, hidden);
-        expect(list.map((s: { text: string }) => s.text)).to.deep.equal(['@@', '@order_no', '@status', '@body', '@customer']);
-        expect(list.map((s: { label: string }) => s.label)).to.deep.equal(['a word in every column, shown or not', 'column', 'column', 'column · not shown', 'column · not shown']);
-        expect(list.filter((s: { hidden?: boolean }) => s.hidden).length).to.equal(3);
+        expect(list.map((s: { text: string }) => s.text)).to.deep.equal(['@order_no', '@status', '@body', '@customer']);
+        expect(list.map((s: { label: string }) => s.label)).to.deep.equal(['column', 'column', 'column · not shown', 'column · not shown']);
+        expect(list.filter((s: { hidden?: boolean }) => s.hidden).length).to.equal(2);
         expect(columnSuggestions('@', headings).map((s: { text: string }) => s.text)).to.deep.equal(['@body', '@customer', '@order_no', '@status'], 'none given: as before');
     });
 
@@ -1148,12 +1148,24 @@ describe('SearchMatcher: a column searched but not shown is told apart (James, 2
     });
 });
 
-describe('SearchMatcher: a plain word looks in the columns shown; @@word in every column (James, 2026-11-21)', () => {
+describe('SearchMatcher: a plain word looks in the columns shown; @@word in every column, the Hub\'s alone (James, 2026-11-21, 2026-11-23)', () => {
     const { describeSearch } = require('../../../webviews/shared/search-matcher.js');
     const columns = [{ id: 'method', name: 'method' }, { id: 'path', name: 'path' }, { id: 'body', name: 'body', hidden: true }];
     const row = { method: 'GET', path: '/inventory', body: '{"note":"very urgent"}' };
     const at = (r: Record<string, string>, id: string) => r[id];
-    const finds = (text: string) => matchesRow(parseSearchExpression(text), row, columns, at);
+    // (the Hub's lists ask for @@: { deep: true })
+    const DEEP = { deep: true };
+    const finds = (text: string) => matchesRow(parseSearchExpression(text, undefined, DEEP), row, columns, at);
+
+    it('anywhere but the Hub, @@word is the plain word: never offered, coloured or said, and it looks where a word looks', () => {
+        const plain = (text: string) => matchesRow(parseSearchExpression(text), row, columns, at);
+        expect(plain('@@urgent')).to.equal(false, 'the hidden body is not reached');
+        expect(plain('@@inventory')).to.equal(true, 'a habit from the Hub still finds what is shown');
+        expect(plain('-@@inventory')).to.equal(false);
+        expect(tokenizeForDisplay('get @@urgent', ['method', 'body'], ['body']).map((s: { kind: string }) => s.kind)).to.not.include('deep');
+        expect(describeSearch('@@urgent', ['method', 'body'], undefined, undefined, ['body'])).to.equal('');
+        expect(columnSuggestions('@', ['method', 'body'], undefined, undefined, ['body']).map((s: { text: string }) => s.text)).to.not.include('@@');
+    });
 
     it('a plain word skips a column marked hidden; @@ reaches it; a shown column is found either way', () => {
         expect(finds('urgent')).to.equal(false);
@@ -1176,14 +1188,14 @@ describe('SearchMatcher: a plain word looks in the columns shown; @@word in ever
     });
 
     it('coloured as one piece; said under the box; offered first after @ when a column is not shown', () => {
-        const kinds = tokenizeForDisplay('get -@@urgent', ['method', 'path', 'body'], ['body']).map((s: { text: string; kind: string }) => `${s.text}:${s.kind}`);
+        const kinds = tokenizeForDisplay('get -@@urgent', ['method', 'path', 'body'], ['body'], DEEP).map((s: { text: string; kind: string }) => `${s.text}:${s.kind}`);
         expect(kinds).to.include('@@urgent:deep');
-        expect(describeSearch('@@urgent', ['method', 'body'], undefined, undefined, ['body'])).to.equal('Reading this as: the row holds urgent (in any column, shown or not)');
+        expect(describeSearch('@@urgent', ['method', 'body'], undefined, undefined, ['body'], DEEP)).to.equal('Reading this as: the row holds urgent (in any column, shown or not)');
         expect(describeSearch('urgent', ['method', 'body'])).to.equal('');
-        const list = columnSuggestions('@', ['method', 'body'], undefined, undefined, ['body']);
+        const list = columnSuggestions('@', ['method', 'body'], undefined, undefined, ['body'], undefined, undefined, true);
         expect(list[0].text).to.equal('@@');
-        expect(columnSuggestions('@', ['method', 'body']).map((s: { text: string }) => s.text)).to.not.include('@@', 'nothing hidden: not offered');
-        expect(columnSuggestions('@@', ['method', 'body'], undefined, undefined, ['body'])).to.deep.equal([]);
+        expect(columnSuggestions('@', ['method', 'body'], undefined, undefined, [], undefined, undefined, true).map((s: { text: string }) => s.text)).to.not.include('@@', 'nothing hidden: not offered');
+        expect(columnSuggestions('@@', ['method', 'body'], undefined, undefined, ['body'], undefined, undefined, true)).to.deep.equal([]);
     });
 });
 
@@ -1201,7 +1213,7 @@ describe('planSearch', () => {
     const read = (row: Record<string, unknown>, id: string) => row[id];
     /** The engine's way: each term's test run once per distinct value, its answer kept. */
     const cached = (text: string) => {
-        const plan = planSearch(parseSearchExpression(text), cols);
+        const plan = planSearch(parseSearchExpression(text, undefined, { deep: true }), cols);
         const asked: string[][] = plan.terms.map(() => []);
         const kept = plan.terms.map(() => new Map<unknown, boolean>());
         const found = rows.map(row => plan.rowMatches((i: number) => plan.terms[i].columns.some((id: string) => {
@@ -1215,7 +1227,7 @@ describe('planSearch', () => {
     it('gives matchesRow\'s answers, row by row, for words, -, @@, commas, @column and typed terms', () => {
         ['get', '-get', 'get -post', '@@urgent', '-@@draft', 'get, post', '@qty>4', '@qty>4 -@@draft', '@method=get|post @qty<10', '@nope=1', '@nope=1, get', '', 'urgent', '"get all"', 'g?t*', 'null', '@qty=""']
             .forEach(text => {
-                const terms = parseSearchExpression(text);
+                const terms = parseSearchExpression(text, undefined, { deep: true });
                 expect(cached(text).found, text).to.deep.equal(rows.map(row => matchesRow(terms, row, cols, read)));
             });
     });

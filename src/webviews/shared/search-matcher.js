@@ -38,7 +38,7 @@
  * @param {number} [now] - the moment relative times (`7d`, `today`) are counted from, in milliseconds; the clock's when left out
  * @returns {Array<{pattern: string, negated: boolean, exact: boolean, hasWildcards: boolean, andGroup: number, _regex: RegExp|null}>}
  */
-function parseSearchExpression(searchString, now) {
+function parseSearchExpression(searchString, now, opts) {
     if (!searchString || searchString.trim() === '') {
         return [];
     }
@@ -53,17 +53,17 @@ function parseSearchExpression(searchString, now) {
             var columnTerms = [];
             var rest = extractColumnTerms(clause, columnTerms);
             columnTerms.forEach(function (term) { term.now = at; });
-            return { columnTerms: columnTerms, words: parseWords(rest) };
+            return { columnTerms: columnTerms, words: parseWords(rest, opts) };
         }).filter(function (c) { return c.columnTerms.length || c.words.length; });
         var withColumns = [];
         withColumns.clauses = clauses;
         return withColumns;
     }
-    return parseWords(searchString);
+    return parseWords(searchString, opts);
 }
 
 /** The words of a search (no column terms): commas OR, `+` AND, `-` NOT, as the find box always read them. */
-function parseWords(searchString) {
+function parseWords(searchString, opts) {
     if (!searchString || searchString.trim() === '') return [];
 
     // Split on commas (OR clauses), then on boundary + / - within each clause.
@@ -87,7 +87,7 @@ function parseWords(searchString) {
                 var raw = words[w].trim();
                 if (raw === '' || raw === '-') continue;
 
-                var term = parseSingleTerm(raw);
+                var term = parseSingleTerm(raw, opts);
                 if (!term.pattern) continue;
                 term.andGroup = andGroupIndex;
                 parsed.push(term);
@@ -407,7 +407,7 @@ function columnsNamed(columns, name) {
  * @param {string} raw - Trimmed term string
  * @returns {{pattern: string, negated: boolean, exact: boolean, hasWildcards: boolean, andGroup: number, _regex: RegExp|null}}
  */
-function parseSingleTerm(raw) {
+function parseSingleTerm(raw, opts) {
     var negated = false;
     var exact = false;
     var pattern = raw;
@@ -424,9 +424,11 @@ function parseSingleTerm(raw) {
 
     // `@@word`: searched in every column, the ones not shown too (a plain word: only those shown).
     // James, 2026-11-21: "just the word only searches on what's visible… a deep search… @@"
+    // Only the Hub's lists have it (James, 2026-11-23: "@@ only for hub"): `opts.deep`. Anywhere
+    // else `@@word` reads as the plain word, so a habit from the Hub still finds things
     var deep = false;
     if (pattern.indexOf('@@') === 0) {
-        deep = true;
+        deep = !!(opts && opts.deep);
         pattern = pattern.substring(2);
     }
 
@@ -771,7 +773,7 @@ function planSearch(parsedTerms, columns) {
  * @returns {Array<{text: string, kind: string}>}
  */
 var DISPLAY_TERM_AT = new RegExp('^@("[^"]*"?|[^\\s=!~<>",]*)(\\s*)(!=|!~|>=|<=|=|~|>|<)?(\\s*)' + COLUMN_VALUE_SRC + '?');
-function tokenizeForDisplay(searchString, headings, hidden) {
+function tokenizeForDisplay(searchString, headings, hidden, opts) {
     if (!searchString) return [];
     // With the table's columns given: a name that is none of them (nor a key inside one) is
     // 'col-unknown', shown in red. Not while it is still being typed: a start of a column's
@@ -814,10 +816,11 @@ function tokenizeForDisplay(searchString, headings, hidden) {
     while (i < len) {
         var ch = searchString.charAt(i);
 
-        // `@@word`: a word searched in every column, shown or not ('deep', coloured as a hidden column)
+        // `@@word`: a word searched in every column, shown or not ('deep', coloured as a hidden column);
+        // only where the search has it (the Hub's lists): elsewhere the plain word it reads as
         if (ch === '@' && searchString.charAt(i + 1) === '@' && (i === 0 || /[\s,+\-]/.test(searchString.charAt(i - 1)))) {
             var dm = /^@@("[^"]*"?|[^\s,]*)/.exec(searchString.slice(i));
-            push(dm[0], 'deep', false);
+            push(dm[0], opts && opts.deep ? 'deep' : termKind(), false);
             i += dm[0].length;
             prevChar = searchString.charAt(i - 1);
             atGroupStart = false;
@@ -1006,9 +1009,9 @@ function withoutColumns(text, columns, keep) {
  * GitHub Issue #261: paint the find box's highlight mirror (the coloured copy of what is typed,
  * behind the transparent input). Shared by the Console and Compare (#298).
  */
-function renderHighlight(mirrorEl, value, headings, hidden) {
+function renderHighlight(mirrorEl, value, headings, hidden, opts) {
     if (!mirrorEl) return;
-    var segments = tokenizeForDisplay(value, headings, hidden);
+    var segments = tokenizeForDisplay(value, headings, hidden, opts);
     if (segments.length === 0) {
         mirrorEl.textContent = '';
         return;
@@ -1119,7 +1122,7 @@ function wordStartAt(name, typed) {
     return -1;
 }
 var OP_WORDS = { '=': 'is (a|b either, 1..9 between)', '!=': 'is not', '~': 'contains', '!~': "doesn't contain", '>': 'more than', '<': 'less than', '>=': 'at least', '<=': 'at most' };
-function columnSuggestions(typed, headings, keysOf, typesOf, hidden, valuesOf, adds) {
+function columnSuggestions(typed, headings, keysOf, typesOf, hidden, valuesOf, adds, deep) {
     var text = String(typed || '');
     var names = (headings || []).filter(function (h) { return h; });
     // Columns searched but not shown in the table: offered after the shown ones, and marked
@@ -1172,7 +1175,7 @@ function columnSuggestions(typed, headings, keysOf, typesOf, hidden, valuesOf, a
         var inside = nestedSuggestions(typedName, names, keys, start, text, typeOf, isAdded);
         if (inside) return inside;
         // `@` alone, with columns not shown: first, `@@` (a word searched in every column)
-        var deepFirst = !at[2] && unseen.length ? [{ text: '@@', label: 'a word in every column, shown or not', start: start, end: text.length, hidden: true }] : [];
+        var deepFirst = deep && !at[2] && unseen.length ? [{ text: '@@', label: 'a word in every column, shown or not', start: start, end: text.length, hidden: true }] : [];
         var exact = names.filter(function (h) { return h.toLowerCase() === partial; });
         // Typed in full: on to the operators (and a dot, when it holds nested data)
         if (exact.length && at[2].length) return opSuggestions(text, text.length, keys(exact[0], []).length > 0, typeOf(exact[0], []));
@@ -1246,11 +1249,11 @@ function opSuggestions(text, end, nested, type) {
  * show anywhere else. Plain text; '' when the box asks nothing of a column.
  *   typesOf(heading, path): the kind of a column, as for the suggestions; headings: the columns there are
  */
-function describeSearch(text, headings, typesOf, now, hidden) {
+function describeSearch(text, headings, typesOf, now, hidden, opts) {
     var terms = [];
     var rest = extractColumnTerms(String(text || ''), terms);
     // (words alone need no reading, unless one is searched in every column: that is said)
-    if (!terms.length && !/(^|[\s,+\-])@@./.test(String(text || ''))) return '';
+    if (!terms.length && !(opts && opts.deep && /(^|[\s,+\-])@@./.test(String(text || '')))) return '';
     var names = (headings || []).filter(function (h) { return h; });
     var day = function (ms) { return new Date(ms).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }); };
     var moment = function (t) {
@@ -1286,7 +1289,7 @@ function describeSearch(text, headings, typesOf, now, hidden) {
         return term.column + (notes ? ' (' + notes + ')' : '') + ' ' + (ranged ? (term.op === '!=' ? 'is not' : 'is') : word) + ' ' + value;
     });
     // The words: each found anywhere in the row (a phrase as one), or left out
-    var parsedWords = parseWords(rest.replace(/,/g, ' '));
+    var parsedWords = parseWords(rest.replace(/,/g, ' '), opts);
     var shown = function (t) { return (t.exact ? '"' + t.pattern + '"' : t.pattern) + (t.deep ? ' (in any column, shown or not)' : ''); };
     var found = parsedWords.filter(function (t) { return !t.negated; }).map(shown);
     var without = parsedWords.filter(function (t) { return t.negated; }).map(shown);
@@ -1330,7 +1333,7 @@ function attachColumnSuggest(opts) {
     function close() { list.hidden = true; shown = []; }
     function render() {
         var caret = input.selectionEnd == null ? input.value.length : input.selectionEnd;
-        shown = caret === input.value.length ? columnSuggestions(input.value, opts.headings ? opts.headings() : [], opts.keys, opts.types, opts.hidden ? opts.hidden() : [], opts.values, opts.adds ? opts.adds() : []) : [];
+        shown = caret === input.value.length ? columnSuggestions(input.value, opts.headings ? opts.headings() : [], opts.keys, opts.types, opts.hidden ? opts.hidden() : [], opts.values, opts.adds ? opts.adds() : [], !!opts.deep) : [];
         if (!shown.length) { close(); return; }
         if (active >= shown.length) active = 0;
         list.innerHTML = shown.map(function (s, i) {

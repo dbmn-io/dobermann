@@ -143,9 +143,9 @@
  *   orders.layout = saved;            // after `columns`: the order, widths, hidden columns and sort kept
  *   orders.searchWith(input, mirror); // the screen's own search box, with the @column suggestions
  *   orders.searchFields = [{ id: 'body', name: 'body', get: row => row.request.body }];
- *                                     // fields the search reaches that are not columns: @@word finds a word
- *                                     // in them (a plain word looks only in the columns shown), @body names
- *                                     // them, @ suggests them (with every column, shown or not)
+ *                                     // fields the search reaches that are not columns: @body names them
+ *                                     // (a plain word looks only in the columns shown), @ suggests them
+ *                                     // (with every column, shown or not). `@@word` is the Hub's alone.
  *   orders.totals = { qty: '12,410' } // a row under the rows, from the screen; null takes it away
  *   orders.busy = true;               // something is looking: the search box's glass is the spinner
  *                                     // (with `source` it turns by itself while rows are asked for)
@@ -1491,7 +1491,7 @@
         }
         /** What a search reaches: every column (shown or not, the table's own left out) and the screen's hidden fields. */
         _searchColumns() {
-            // (`hidden`: not shown. A plain word skips it; `@@word` and `@name` reach it)
+            // (`hidden`: not shown. A plain word skips it; `@name` reaches it. `@@word` is the Hub's alone: here the plain word)
             const shown = new Set(this._columns.map(c => c.id));
             const columns = this._all.filter(c => !own(c.id)).map(c => ({ id: c.id, name: c.name || c.id, hidden: !shown.has(c.id), ...(Array.isArray(c.aliases) && c.aliases.length ? { aliases: c.aliases } : {}) }));
             const fields = (this._fields || []).filter(f => !columns.some(c => c.id === f.id)).map(f => ({ id: f.id, name: f.name || f.id, hidden: true }));
@@ -1508,7 +1508,7 @@
         }
         /**
          * Fields the search reaches that are not columns (an endpoint's body, a run's headers):
-         * [{ id, name, get?(row) }]. `@@word` finds a word in them (a plain word looks only in the
+         * [{ id, name, get?(row) }]. `@name` names them (a plain word looks only in the
          * columns shown), `@name` names them, `@` suggests them.
          */
         set searchFields(list) {

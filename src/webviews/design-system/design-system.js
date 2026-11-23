@@ -208,7 +208,7 @@
         ['ColumnDrag', 'Drag a column to another place', M, 'Query, Console', 'shared/column-drag.js'],
         ['VirtualWindow', 'Draw only the rows in view', M, 'Query, Console', 'shared/virtual-window.js'],
         ['CellDetail', 'A cell\'s whole value, opened from the cell', M, 'Query, Console', 'shared/cell-detail.js'],
-        ['SearchMatcher', 'The one search: words, -not, a,b, @column=value, @@word, the coloured box and its @ list', M, 'Hub lists, Console, Query (Add a view, Results), <dbmn-table>', 'shared/search-matcher.js, shared/search.css'],
+        ['SearchMatcher', 'The one search: words, -not, a,b, @column=value, the coloured box and its @ list; @@word in the Hub\'s lists only', M, 'Hub lists, Console, Query (Add a view, Results), <dbmn-table>', 'shared/search-matcher.js, shared/search.css'],
         ['SearchWords', 'The Hub lists\' fields and filter dialogs, over SearchMatcher (@tag=, @system=current, @ran>7d)', M, 'Hub lists', 'shared/search-words.js'],
         ['ThemePicker', 'Choosing a theme', M, 'Hub', 'shared/theme-picker.js'],
         ['SystemPicker', 'Choosing a System', M, 'Endpoint, Environment', 'shared/system-picker.js'],

@@ -1494,7 +1494,7 @@ test('selectable="single": one row at a time, round boxes, no box in the heading
 
 /* ── One search: hidden columns and fields ── */
 
-test('the search reaches what is not shown: a removed column and the screen\'s hidden fields, by @@word and by @name (a plain word: only what is shown); @ suggests them all', async ({ page }) => {
+test('the search reaches what is not shown by @name (a plain word: only what is shown; @@word is the Hub\'s alone, here the plain word); @ suggests them all', async ({ page }) => {
     await page.setContent(tablePage());
     await page.evaluate(() => {
         const t = document.getElementById('t');
@@ -1503,13 +1503,14 @@ test('the search reaches what is not shown: a removed column and the screen\'s h
     // A plain word looks only in the columns shown: a word only in a hidden field finds nothing
     await page.locator('#t .search-input').fill('urgent');
     await expect(page.locator('#t .dbmn-table-count')).toHaveText(/^0 of/);
-    // @@word looks in every column, shown or not
+    // @@word is the Hub's alone (James, 2026-11-23): in a table it is the plain word, never deeper,
+    // never coloured or said as anything else
     await page.locator('#t .search-input').fill('@@urgent');
-    await expect(page.locator('#t .dbmn-table-count')).not.toHaveText(/^0 of/);
-    await expect(page.locator('#t .search-tok-deep')).toHaveText('@@urgent');
-    await expect(page.locator('#t .dbmn-table-reads')).toContainText('urgent (in any column, shown or not)');
-    const urgent = await page.evaluate(() => document.getElementById('t').shown.every(r => r.qty > 40));
-    expect(urgent).toBe(true);
+    await expect(page.locator('#t .dbmn-table-count')).toHaveText(/^0 of/);
+    await expect(page.locator('#t .search-tok-deep')).toHaveCount(0);
+    await expect(page.locator('#t .dbmn-table-reads')).not.toContainText('in any column');
+    await page.locator('#t .search-input').fill('@@kettle');
+    await expect(page.locator('#t .dbmn-table-count')).toHaveText('1,000 of 3,000 rows');
     // @body names it
     await page.locator('#t .search-input').fill('@body~SO-10005-X');
     await expect(page.locator('#t .dbmn-table-count')).toHaveText('1 of 3,000 rows');
@@ -1554,8 +1555,8 @@ test('a column searched but not shown is told apart: its own colour in the box, 
     const texts = await options.locator('.column-suggest-text').allTextContents();
     const hiddenTexts = await page.locator('#t .column-suggest-option.is-hidden .column-suggest-text').allTextContents();
     // (customer is shown again by now: only the screen's hidden field is last, and marked)
-    expect(hiddenTexts).toEqual(['@@', '@body']);   // (@@ first: a word in every column)
-    expect(texts[0]).toBe('@@');
+    expect(hiddenTexts).toEqual(['@body']);   // (no @@: the Hub's lists alone have it)
+    expect(texts).not.toContain('@@');
     expect(texts[texts.length - 1]).toBe('@body');
     expect(texts).toContain('@customer');
     await expect(page.locator('#t .column-suggest-option.is-hidden').last()).toContainText('@bodytext · not shown');
