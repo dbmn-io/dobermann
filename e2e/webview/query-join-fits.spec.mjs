@@ -70,6 +70,8 @@ const cutText = node => {
     for (let a = node.parentElement; a; a = a.parentElement) {
         const cs = getComputedStyle(a);
         if (cs.overflowX === 'visible' && cs.overflowY === 'visible') continue;
+        // (a box that scrolls shows it by scrolling: the row scrolls sideways when the views don't fit, slots never shrink)
+        if (cs.overflowX === 'auto' || cs.overflowX === 'scroll') break;
         const box = a.getBoundingClientRect();
         if (r.right > box.right + 1 || r.left < box.left - 1 || r.bottom > box.bottom + 1) return `${node.textContent} cut by ${a.className}`;
     }

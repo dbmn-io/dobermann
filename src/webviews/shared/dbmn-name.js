@@ -10,6 +10,11 @@
  *   name.value = 'Open orders by item';      // what the screen's controller says it is called
  *   name.unnamed = true;                      // the name is still the one it was given by default
  *   name.addEventListener('dbmn-name-change', e => post({ type: 'query.rename', name: e.detail.name }));
+ *   <dbmn-name … placeholder="Name this query">   what an empty box says
+ *   name.edit();                              // the box, open and focused (a new query: named first. James,
+ *                                             // 2026-11-23: "name the query and start off with focus on that").
+ *                                             // A name not given yet starts empty, the placeholder showing
+ *   name.addEventListener('dbmn-name-done', e => …);   // Enter pressed (renamed or not): the screen may move on
  *       The component only asks: the controller checks the name (unique, not too long) and
  *       answers with the name it kept, which the screen sets as `value` again.
  *
@@ -26,7 +31,7 @@
     const clean = (text, max) => String(text || '').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max).trim();
 
     class DbmnName extends HTMLElement {
-        static get observedAttributes() { return ['value', 'unnamed', 'label']; }
+        static get observedAttributes() { return ['value', 'unnamed', 'label', 'placeholder']; }
 
         constructor() {
             super();
@@ -48,6 +53,12 @@
         get unnamed() { return this.hasAttribute('unnamed'); }
         set unnamed(on) { this.toggleAttribute('unnamed', !!on); }
         get max() { return Number(this.getAttribute('max')) || 30; }
+        /** Open the box to type a name in, focused: a name not given yet starts empty (its placeholder shows). */
+        edit() {
+            if (!this._built) this._build();
+            this._draw();
+            this._edit();
+        }
 
         _build() {
             this._built = true;
@@ -76,7 +87,11 @@
 
             this._show.addEventListener('click', () => this._edit());
             this._input.addEventListener('keydown', event => {
-                if (event.key === 'Enter') { event.preventDefault(); this._done(true); }
+                if (event.key === 'Enter') {
+                    event.preventDefault();
+                    this._done(true);
+                    this.dispatchEvent(new CustomEvent('dbmn-name-done', { bubbles: true, detail: { name: this._value } }));
+                }
                 else if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); this._done(false); }
             });
             // Leaving the box (Tab, a click elsewhere) keeps what was typed: only Esc gives it up
@@ -90,11 +105,13 @@
             this._show.setAttribute('aria-label', `${label}: ${this._value}. Rename`);
             this._input.setAttribute('aria-label', label);
             this._input.maxLength = this.max;
+            this._input.placeholder = this.getAttribute('placeholder') || '';
         }
 
         _edit() {
             this._editing = true;
-            this._input.value = this._value;
+            // (a name not given yet: an empty box, its placeholder showing; leaving it empty keeps the name)
+            this._input.value = this.unnamed && this.hasAttribute('placeholder') ? '' : this._value;
             this._show.hidden = true;
             this._input.hidden = false;
             this._input.focus();

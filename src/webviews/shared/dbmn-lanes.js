@@ -97,7 +97,24 @@
         };
     }
 
-    var api = { tracks: tracks, minWidth: minWidth, apply: apply, together: together, runsOf: runsOf, DEFAULTS: DEFAULTS };
+    /**
+     * Something moved to another cell (Query's Add a view / Add a file, into the next empty slot): slid there from
+     * where it was, so the eye follows it (James, 2026-11-23: "Animate them moving across"). `before`: its box before
+     * the move (getBoundingClientRect). Nothing when it hasn't moved, or the viewer asks for less motion.
+     *
+     *   const was = adds.getBoundingClientRect();  …redraw, the element moved…;  DbmnLanes.glide(adds, was);
+     */
+    function glide(el, before, ms) {
+        if (!el || !before || typeof el.animate !== 'function') return;
+        if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+        var now = el.getBoundingClientRect();
+        var dx = before.left - now.left, dy = before.top - now.top;
+        if (Math.abs(dx) < 1 && Math.abs(dy) < 1) return;
+        el.animate([{ transform: 'translate(' + dx + 'px, ' + dy + 'px)' }, { transform: 'none' }],
+            { duration: ms || 320, easing: 'cubic-bezier(.2, .8, .2, 1)' });
+    }
+
+    var api = { tracks: tracks, minWidth: minWidth, apply: apply, together: together, runsOf: runsOf, glide: glide, DEFAULTS: DEFAULTS };
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
     if (root) root.DbmnLanes = api;
 })(typeof window !== 'undefined' ? window : null);

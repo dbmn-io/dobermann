@@ -119,9 +119,14 @@
     /** Every view, lane by lane (a view's runs beside it). */
     function views() { return laneGroups().flat(); }
     /** Set the grid's tracks on a lanes container: a lane per view, as wide as its runs. */
+    /** The slots row's free places after the last view: the Add pair's, and empty ones to make three at the start. */
+    function addPlaces() { return Math.max(1, 3 - views().length); }
     function applyLanes(box) {
-        // (a gutter a bit narrower than dbmn-lanes' 230px, as James asked: its own option)
-        if (box && window.DbmnLanes) window.DbmnLanes.apply(box, laneGroups().map(g => ({ runs: g.length })), { gutter: 180 });
+        // (a gutter a bit narrower than dbmn-lanes' 230px, as James asked: its own option; each run at least a slot wide,
+        // 200px, so slots never shrink and more views than fit scroll the row, as the mock has it (and "Pick a column"
+        // is never cut); the end as wide as the free places it holds, each one slot wide, 8px apart)
+        const places = addPlaces();
+        if (box && window.DbmnLanes) window.DbmnLanes.apply(box, laneGroups().map(g => ({ runs: g.length })), { gutter: 180, run: 200, end: 6 + places * 200 + (places - 1) * 8 });
     }
     /** The lookup tables Translate values can read: { id, name, count, columns }. */
     function lookupTables() { return (ui.state && ui.state.lookupTables) || []; }
@@ -527,15 +532,24 @@
         });
         const end = el('div', 'dbmn-lanes-end');
         end.dataset.end = '';
-        // + Add a view and + Add a file: the next slot, after the last view, on every step (James, 2026-11-22)
+        // Add a view and Add a file: the next slot, after the last view, on every step (James, 2026-11-22); with fewer
+        // than two views, empty slots after it, so a new query shows three places from the start (James, 2026-11-23)
         end.dataset.adds = 'slots';
+        for (let i = 1; i < addPlaces(); i++) {
+            const empty = el('div', 'query-slot-empty');
+            empty.appendChild(el('span', '', 'then the next'));
+            end.appendChild(empty);
+        }
         // The name's gutter stays put: moving it out and back takes the focus from a name being
         // typed, and each view's rows coming in redraws the slots ("Should never lose focus")
         const box = $('queryViews'), lead = $('queryHeadLead');
+        // (where the pair was, for its slide to the next slot: DbmnLanes.glide, after it is in its new place)
+        const was = ADDS.isConnected ? ADDS.getBoundingClientRect() : null;
         [...box.children].forEach(c => { if (c !== lead) c.remove(); });
         if (lead && box.firstElementChild !== lead) box.prepend(lead);
         box.append(...lanes, end);
         placeAdds();
+        if (was && was.width && window.DbmnLanes && window.DbmnLanes.glide) window.DbmnLanes.glide(ADDS, was);
         ['queryTop', 'queryViewRows', 'queryJoins', 'queryColumns'].forEach(id => applyLanes($(id)));
         // The slot row and the step's lines under it scroll sideways as one (the step's bar moves both)
         const stepBox = { 1: 'queryViewRows', 2: 'queryJoins', 3: 'queryColumns' }[ui.step] || '';
@@ -621,7 +635,6 @@
     /** Views, on the slots' grid as Join is: a line per thing a view says, each view's under its slot. */
     function renderViews() {
         const box = $('queryViewRows');
-        $('queryViewsEmpty').classList.toggle('hidden', views().length > 0);
         const full = !!ui.state && views().length >= ui.state.maxViews;
         addsEl('queryAddBtn').disabled = full;
         addsEl('queryAddBtn').title = full ? `A query takes up to ${ui.state.maxViews} views.` : '';
@@ -717,10 +730,14 @@
 
     /** + Add a view / + Add a file: the slots row's next slot (or, with no views yet, under the empty step's words). */
     function placeAdds() {
-        // (no views yet: under the empty step's words, as the lines are hidden)
-        const want = views().length ? 'slots' : ui.step === 1 ? 'empty' : '';
-        const holder = want && document.querySelector(`[data-adds="${want}"]`);
-        if (holder && ADDS.parentElement !== holder) holder.appendChild(ADDS);
+        // (the slots row's next slot, with no views too: the same place and shape on every step; first in it, before any
+        // empty slots; each view added scrolls the pair into sight, so add, add, add stays under the pointer)
+        const holder = document.querySelector('[data-adds="slots"]');
+        if (!holder) return;
+        if (holder.firstChild !== ADDS) holder.prepend(ADDS);
+        const count = views().length;
+        if (ui.addsAt !== undefined && count > ui.addsAt && ADDS.scrollIntoView) ADDS.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+        ui.addsAt = count;
     }
 
     /** Read a file the user picked and send it: text for CSV-like files, base64 for a workbook. */
@@ -2673,6 +2690,12 @@
         label.innerHTML = (window.Icons ? window.Icons.icon(is ? 'scale' : 'blend') : '') + `<span>${is ? 'Compare' : 'Query'}</span>`;
     }
     $('queryName').addEventListener('dbmn-name-change', event => post({ type: 'query.rename', name: event.detail.name }));
+    // (Enter in the name as the query opened, named or left as it was: on to Add a view)
+    $('queryName').addEventListener('dbmn-name-done', () => {
+        if (!ui.naming) return;
+        ui.naming = false;
+        requestAnimationFrame(() => { const add = $('queryAddBtn'); if (add && !add.disabled) add.focus(); });
+    });
 
     // A compare's record: a row's click, or a right-click anywhere on it
     table.addEventListener('dbmn-table-row', event => { if (hasStatus()) compareResults.openRecord(event.detail.row); });
@@ -2691,6 +2714,11 @@
         switch (m.type) {
             case 'query.init':
                 showName(m.name);
+                // A new query: its name ready to type (James, 2026-11-23: "name first"); Enter then moves on to Add a view
+                if (/^New query( \d+)?$/.test(m.name || '') && (Number(m.reached) || 1) <= 1 && $('queryName').edit) {
+                    ui.naming = true;
+                    requestAnimationFrame(() => $('queryName').edit());
+                }
                 // Side by side or Compact, as the user left it in any query (#18)
                 if (m.prefs && m.prefs.resultsView === 'compact') ui.resultsView = 'compact';
                 // Hidden characters: the user's own choice, and whether this report has them off (after turning on by itself)

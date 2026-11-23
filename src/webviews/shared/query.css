@@ -418,11 +418,59 @@ dbmn-table.is-reading .dbmn-table-none { visibility: hidden; }
 /* + Add a view / + Add a file in the slots row's last cell: the next slot, one above the other, compact */
 /* The next slot: an empty cell in dotted lines after the last view, as tall as a slot, holding + Add a view and + Add a
    file (James, 2026-11-22). Nothing below moves when it isn't there (Columns, Results): it is never taller than a slot */
-#queryViews > .dbmn-lanes-end[data-adds] { display: flex; align-items: flex-end; padding-left: 6px; }
-#queryViews > .dbmn-lanes-end .query-adds { width: 100%; height: var(--query-slot-h, 41px); box-sizing: border-box; justify-content: center; gap: 0; padding: 0 8px; border: 1px dashed var(--vscode-panel-border, rgba(128, 128, 128, 0.45)); border-radius: 3px; }
-#queryViews > .dbmn-lanes-end .query-adds .btn { background: none !important; border: 0 !important; box-shadow: none !important; padding: 0 !important; min-height: 0; font-size: 12px; line-height: 18px; text-align: left; color: var(--vscode-textLink-foreground); }
-#queryViews > .dbmn-lanes-end .query-adds .btn:hover:not(:disabled) { text-decoration: underline; }
-#queryViews > .dbmn-lanes-end .query-adds .btn:disabled { color: var(--vscode-descriptionForeground); }
+/* Add a view and Add a file: two half-size buttons side by side in the next empty slot, the same shape and place with no
+   views as with ten (James, 2026-11-23: "Create these two buttons where the first file is going to go… half-size
+   buttons side by side"); after them, with fewer than two views, the slots still to come ("then the next"). One slot
+   wide each: --query-add-w (Query sizes the end cell to hold them: query-page.js applyLanes) */
+#queryViews > .dbmn-lanes-end[data-adds] { display: flex; align-items: flex-end; gap: 8px; padding-left: 6px; }
+#queryViews > .dbmn-lanes-end .query-adds {
+    flex: none;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+    width: var(--query-add-w, 200px);
+    height: var(--query-slot-h, 41px);
+    box-sizing: border-box;
+    padding: 0;
+    border: 0;
+}
+#queryViews > .dbmn-lanes-end .query-adds > button {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1px;
+    min-width: 0;
+    height: 100%;
+    padding: 2px 4px;
+    border: 1px dashed var(--dbmn-textLink-foreground, #3794ff);
+    border-radius: 3px;
+    background: color-mix(in srgb, var(--dbmn-textLink-foreground, #3794ff) 6%, transparent);
+    color: var(--dbmn-textLink-foreground, #3794ff);
+    font: inherit;
+    font-size: 12px;
+    line-height: 15px;
+    cursor: pointer;
+}
+#queryViews > .dbmn-lanes-end .query-adds > button:hover:not(:disabled),
+#queryViews > .dbmn-lanes-end .query-adds > button:focus-visible { border-style: solid; background: var(--dbmn-list-hoverBackground); outline: none; }
+#queryViews > .dbmn-lanes-end .query-adds > button:disabled { opacity: .5; cursor: default; }
+#queryViews > .dbmn-lanes-end .query-adds .inline-icon { display: inline-flex; }
+#queryViews > .dbmn-lanes-end .query-adds .inline-icon svg { width: 15px; height: 15px; }
+.query-adds-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+/* A slot still to come: dashed, quiet */
+.query-slot-empty {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: var(--query-add-w, 200px);
+    height: var(--query-slot-h, 41px);
+    box-sizing: border-box;
+    border: 1px dashed var(--dbmn-panel-border, rgba(128, 128, 128, 0.45));
+    border-radius: 3px;
+    color: var(--dbmn-descriptionForeground);
+    font-size: 12px;
+}
 
 /* Results' working line: over the top of the table, not pushing it down (no jump when a quick filter shows it), and
    only once the work has taken a moment (query-page.js: READING_AFTER_MS) */

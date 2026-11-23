@@ -40,14 +40,15 @@ export function buildQueryPage(asset: AssetUrl, config: { queryId: string; name:
             <!-- The slots' row is a row of the grid every step's lines share (dbmn-lanes): the name in its gutter, a lane per view, its runs under one heading -->
             <div id="queryTop" class="dbmn-lanes query-top">
                 <div id="queryViews" class="dbmn-lanes-row query-slots" data-line="slots" role="group" aria-label="The views joined">
-                    <span id="queryHeadLead" class="dbmn-lanes-gutter query-lead query-head-lead" data-gutter><dbmn-name id="queryName" label="Query name" max="30" value="${attr(config.name)}"></dbmn-name><span id="queryKindLabel" class="query-kind-label" role="status"></span></span>
+                    <span id="queryHeadLead" class="dbmn-lanes-gutter query-lead query-head-lead" data-gutter><dbmn-name id="queryName" placeholder="Name this query" label="Query name" max="30" value="${attr(config.name)}"></dbmn-name><span id="queryKindLabel" class="query-kind-label" role="status"></span></span>
                 </div>
             </div>
-            <!-- On their own line under the rows of Views and Join (placeAdds moves them there) -->
+            <!-- Add a view and Add a file, side by side in the next empty slot on every step (placeAdds moves them there;
+                 James, 2026-11-23: "two half-size buttons side by side… add, add, add") -->
             <span id="queryAdds" class="query-adds">
-            <button type="button" class="btn btn-secondary" id="queryAddBtn" data-click="query:add">+ Add a view</button>
+            <button type="button" id="queryAddBtn" data-click="query:add" title="Pick a result from History"><span class="inline-icon" data-icon="sheet"></span><span class="query-adds-label">Add a view</span></button>
             <!-- A file is a view too, with a button of its own: a CSV, or a workbook whose sheets are picked next -->
-            <button type="button" class="btn btn-secondary" id="queryAddFileBtn" data-click="query:addFile" title="A CSV, or a spreadsheet: each sheet you pick becomes a view, its first row the column names">+ Add a file</button>
+            <button type="button" id="queryAddFileBtn" data-click="query:addFile" title="A CSV, or a spreadsheet: each sheet you pick becomes a view, its first row the column names"><span class="inline-icon" data-icon="file-spreadsheet"></span><span class="query-adds-label">Add a file</span></button>
             <input type="file" id="queryAddFile" class="hidden" accept=".csv,.tsv,.txt,.xlsx,.xls" aria-label="A CSV or Excel file">
             </span>
             <!-- Results' tools join the views, as Compare's join its slots: find, Distinct, Totals, the SQL, Export. The count of rows is the footer's (its summary): one place -->
@@ -99,7 +100,6 @@ export function buildQueryPage(asset: AssetUrl, config: { queryId: string; name:
             <section class="execution-section">
                 <!-- On the slots' grid, as Join is: a line per thing a view says, each view's under its slot -->
                 <div id="queryViewRows" class="dbmn-lanes query-views"></div>
-                <div id="queryViewsEmpty" class="query-views-empty"><p class="form-hint">No views yet. Click <strong>+ Add a view</strong> to pick a result, or <strong>+ Add a file</strong> for a CSV or Excel file.</p><div class="query-adds-holder" data-adds="empty"></div></div>
             </section>
         </div>
 

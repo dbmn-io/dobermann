@@ -72,3 +72,33 @@ test('the name renames in place: click, type, then Enter, Tab or a click elsewhe
     await p.keyboard.press('Enter');
     await expect(box).toBeVisible();
 });
+
+test('edit(): a new query is named first: the box opens focused, empty with its placeholder; Enter tells the screen to move on', async ({ page: p }) => {
+    // James, 2026-11-23: "get the user to name the query and start off with focus on that"
+    await p.setContent(page());
+    await p.evaluate(() => {
+        const n = document.getElementById('n');
+        n.setAttribute('placeholder', 'Name this query');
+        window.done = [];
+        n.addEventListener('dbmn-name-done', e => window.done.push(e.detail.name));
+        n.edit();
+    });
+    const box = p.locator('#n .dbmn-name-input');
+    await expect(box).toBeFocused();
+    await expect(box).toHaveValue('');
+    await expect(box).toHaveAttribute('placeholder', 'Name this query');
+    // Enter with nothing typed: the name stays, and the screen is told to move on all the same
+    await box.press('Enter');
+    await expect(p.locator('#n .dbmn-name-text')).toHaveText('New query');
+    expect(await p.evaluate(() => window.done)).toEqual(['New query']);
+    expect(await p.evaluate(() => window.asked)).toEqual([]);
+    // Typed and Enter: renamed, and told
+    await p.evaluate(() => document.getElementById('n').edit());
+    await p.keyboard.type('Stock check');
+    await p.keyboard.press('Enter');
+    expect(await p.evaluate(() => window.asked)).toEqual(['Stock check']);
+    expect(await p.evaluate(() => window.done)).toEqual(['New query', 'Stock check']);
+    // A name given: edit() opens it with the name in it
+    await p.evaluate(() => document.getElementById('n').edit());
+    await expect(box).toHaveValue('Stock check');
+});

@@ -266,7 +266,9 @@ line.addEventListener('dbmn-progress-stop', () =&gt; post({ type: 'query.stopCou
 name.value = 'Open orders by item';        // what the controller says it is called
 name.unnamed = true;                       // still the default name: italics
 name.addEventListener('dbmn-name-change', e =&gt; post({ type: 'query.rename', name: e.detail.name }));
-                                           // the controller checks it and answers with the name it kept</code></pre>
+                                           // the controller checks it and answers with the name it kept
+&lt;dbmn-name … placeholder="Name this query"&gt;  name.edit();   a new report: the box open and focused, empty with its placeholder
+name.addEventListener('dbmn-name-done', e =&gt; …);   Enter pressed, renamed or not: move on (Query: to Add a view)</code></pre>
     </section>
 
     <section class="ds-section" id="buttons">
@@ -548,6 +550,7 @@ map.matched = { c1: { text: '1,180 of 1,198 match BL', tone: 'ok' } };
             <div class="dbmn-lanes" id="dsLanesMixed"></div>
         </div>
         <pre class="ds-code"><code>DbmnLanes.apply(step, [{ runs: 4 }, { runs: 1 }, { runs: 1 }]);   // sets --lanes-tracks and --lanes-min on the step
+DbmnLanes.glide(el, rectBefore);   // something moved to another cell (Query's Add a view / Add a file): slid there
 &lt;div class="dbmn-lanes"&gt;                                       // the step: scrolls sideways when the rows can't fit
   &lt;div class="dbmn-lanes-row"&gt;
     &lt;div class="dbmn-lanes-gutter"&gt;Key&lt;/div&gt;                  // .is-name: the left-aligned bold name
