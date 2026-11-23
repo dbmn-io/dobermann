@@ -24,6 +24,19 @@ Three hosts, one core.
   (`src/screens/design-system`, `src/webviews/design-system`). Components draw and report
   clicks; they hold no business logic and no colours of their own. A new screen is built from
   them, and a new shared piece is added to that page in the same change.
+- **Query's engine** (`src/services/engine`) is a small library of its own: no dependencies,
+  and nothing of screens, SQL, files, workers or storage. A table goes in (`load`, `append`), a
+  query goes in as plain data (steps `from`, `join`, `compare`, `select`, `filter`, `group`,
+  `sort`, with expressions and functions), and a table comes out (`run`, then `read`, `stats`,
+  `release`). It keeps a table a column at a time: a one-byte kind per row, numbers in a
+  `Float64Array`, text as codes into one dictionary shared by every table, so repeated text, and
+  the same keys in several runs, are held once. A long run works in slices, says how far it has
+  got and can be cancelled; `engine-host.ts` runs it in the same thread (VS Code) or in a worker
+  (the web app). `src/services/query/query-new-engine.ts` turns a saved query into an engine
+  query and its results back into Results. Query runs on the engine alone; the SQLite version is
+  kept in `src/test/core/reference` as the test that the engine gives what SQLite gave, and
+  `engine-types.ts` lists the few differences on purpose (equality by the text form, `42` =
+  `"42"`; one rule for reading text as a number).
 - **Standard Systems** are configuration rows (`global_systems`) the app applies: sign-in URL
   templates, token request headers, token claims, organisation headers, default headers. The
   code knows how to apply a System's configuration, never what any System's configuration is.

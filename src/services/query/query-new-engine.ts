@@ -1,17 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Flexion Tech Pty Ltd
 /**
- * Query's compare on the new engine (src/services/engine), behind the development setting "New
- * compare engine (testing)": the first piece of Query moving off SQLite
- * (~/Projects/dbmn/audits/query-2026-11-21/compare-first-switch.md).
- *
- * A query that is one compare and nothing else (no other join, no calculated column, no Translate
- * values, no Distinct) runs here; anything more runs on SQLite as before, and `whyNotOnEngine` says
- * why in a line the Join step shows. This file only translates: the views' rows into the engine,
- * the spec into an engine Query (a compare step, then a select of Results' columns and each view's
- * key), the engine's rows back into what Results reads (rows and key values, as
- * QuerySession.rows({ extra: compareKeySql }) gives them), and CompareStats into the fields the
- * Join step's compare summary reads (QueryJoinStats).
+ * Query on its engine (src/services/engine; ARCHITECTURE.md, "Query's engine"). Every query runs
+ * here. This file only translates: the views' rows and the lookup tables into the engine, the spec
+ * into an engine Query (its joins and compare, calculated columns and functions, then a select of
+ * Results' columns and each view's key), the engine's rows back into what Results reads (rows and
+ * key values), and the engine's stats into the fields the Join step reads (QueryJoinStats).
  */
 import { asColumnValue, wholeNumber, type ColumnFn } from '../column-functions/column-functions';
 import { QueryEngine } from '../engine/engine';

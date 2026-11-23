@@ -2,11 +2,11 @@
 // Copyright (C) 2026 Flexion Tech Pty Ltd
 /**
  * Query's engine: its interface. A library with no dependencies and no knowledge of screens, SQL,
- * files, workers or storage (~/Projects/dbmn/engine-poc/DESIGN.md, "Final shape"). A Table in, a
- * Query as plain data, a Table out.
+ * files, workers or storage (ARCHITECTURE.md, "Query's engine"). A Table in, a Query as plain data,
+ * a Table out.
  *
- * Built in pieces, each tested against SQLite (sql.js, as the app runs today) by the tester's
- * reference harness. **Pieces 1 to 6** implement: `load`, `append`, `drop`, `check`, `run` (with
+ * Built in pieces, each tested against SQLite (sql.js) by the reference harness in
+ * src/test/core/reference. **Pieces 1 to 6** implement: `load`, `append`, `drop`, `check`, `run` (with
  * progress) / `cancel` / `read` / `release` for a query of every step (`from`, `join`, `compare`,
  * `select`, `filter`, `group`, `sort`), `stats` for a compare or join step, and every function in FUNCTIONS
  * with its operators.

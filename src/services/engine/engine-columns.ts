@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Flexion Tech Pty Ltd
 /**
- * How the engine keeps a table: a column at a time, not a row at a time (the proof of concept's
- * idea, ~/Projects/dbmn/engine-poc/owncolumnar.mjs). Each column holds, per row, a one-byte tag
+ * How the engine keeps a table: a column at a time, not a row at a time (ARCHITECTURE.md, "Query's
+ * engine"). Each column holds, per row, a one-byte tag
  * (blank, integer, real or text) and, only where it has them, its numbers in a Float64Array and its
  * text as codes into one dictionary of texts shared by every table, each text kept once. A column
  * of repeated text ("ACTIVE", a store code) costs four bytes a row, and the same keys in four runs
