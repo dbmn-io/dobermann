@@ -1960,14 +1960,22 @@
             // (its columns from any other view: a view moved keeps its join, to a view on its right too)
             lines.push(joinBand(v, join, s.views.filter(x => x.id !== v.id)));
         });
-        // + Add join: the next view not joined gets its line, every box "Pick a column"
+        // Add join: the next view not joined gets its line, every box "Pick a column". The lists' add-row button
+        // (dbmn-table-add-row: a plus, the screen's own font), in the gutter under the join's picture, straight under the
+        // last join (James, 2026-11-23: "in a weird spot… make it a proper add row")
         if (shown.next) {
-            const add = el('button', 'compare-tool-btn text-link font-mono font-size-12 query-add-join', '+ Add join');
+            const add = el('button', 'dbmn-table-add-row query-add-join');
             add.type = 'button';
             add.title = `A join for ${(view(shown.next) || {}).name || 'the next view'}`;
+            const plus = el('span', 'dbmn-table-add-icon');
+            plus.dataset.icon = 'plus';
+            add.append(plus, el('span', '', 'Add join'));
             add.addEventListener('click', () => { ui.joinLines.add(shown.next); ui.joinsTouched = true; renderJoins(); });
-            const row = el('div', 'query-add-join-row');
-            row.appendChild(add);
+            const row = el('div', 'dbmn-lanes-row query-line query-add-join-line');
+            const start = el('div', 'dbmn-lanes-gutter query-lead');
+            start.dataset.gutter = '';
+            start.appendChild(add);
+            row.appendChild(start);
             lines.push(row);
         }
         box.replaceChildren(...lines);

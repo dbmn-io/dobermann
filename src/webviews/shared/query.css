@@ -242,9 +242,17 @@
 .query-compare-key > .query-pick, .query-compare-out > .query-pick { flex: 0 1 auto; min-width: 0; }
 .query-compare-key > .query-compare-value, .query-compare-out > .query-compare-value { flex: 1 0 auto; max-width: 100%; }
 .query-compare-value { font-size: 11px; color: var(--vscode-descriptionForeground); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-height: 14px; }
-/* + Add join: under the last join line, at the left, as + AND is a join's (James, 2026-11-23) */
-.query-add-join-row { display: flex; align-items: center; padding-block: 2px 6px; }
-.query-add-join-row .query-add-join { font-size: 12px; }
+/* Add join: the lists' add-row button in the gutter, under the join's picture, straight under the last join */
+.query-add-join-line .query-add-join { margin-top: 0; font-size: 12px; }
+/* The step's rows scroll sideways only when they don't fit, with the app's thin themed bar, never the browser's grey
+   one (James, 2026-11-23: "a grey bar hangs under it") */
+.query-page .dbmn-lanes { scrollbar-width: thin; scrollbar-color: var(--vscode-scrollbarSlider-background, rgba(121, 121, 121, 0.4)) transparent; }
+.query-page .dbmn-lanes::-webkit-scrollbar { height: 8px; }
+.query-page .dbmn-lanes::-webkit-scrollbar-thumb { background: var(--vscode-scrollbarSlider-background, rgba(121, 121, 121, 0.4)); border-radius: 4px; }
+.query-page .dbmn-lanes::-webkit-scrollbar-track { background: transparent; }
+/* A line's tools at its end (+ AND, ×) are never cut or shrunk ("+ AN…" at the right edge) */
+.query-says > button { flex: none; }
+.query-says:has(> button) { overflow: visible; }
 /* A view out of the compare: hatched, laid out as a view in it is (the rules above), so the lanes line up; its own class,
    so a view in the compare is still counted by .query-compare-key alone */
 .query-compare-out { background: repeating-linear-gradient(135deg, transparent 0 6px, color-mix(in srgb, var(--vscode-panel-border) 35%, transparent) 6px 12px); }
