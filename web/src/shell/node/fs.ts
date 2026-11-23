@@ -16,6 +16,7 @@
  */
 import type { FolderFile, FolderSource } from './folder-source';
 import { isUnderRoot, rootsByFolderName } from '../../../../src/services/workspace/folder-check';
+import { writesNow } from '../../../../src/services/workspace/write-now';
 
 type Data = Uint8Array;
 
@@ -38,6 +39,13 @@ const rewritten = new Set<string>();
 const CHUNK = '\u0000';
 const chunkKey = (p: string, i: number) => `${p}${CHUNK}${String(i).padStart(8, '0')}`;
 let flushTimer: ReturnType<typeof setTimeout> | undefined;
+/**
+ * Small JSON files written whole (a saved query, a lookup table, a setting): written out on the next tick, on their own,
+ * not 300 ms on with the rest (write-now.ts). A change saved just before a reload was lost while every write waited
+ * (2026-11-23: a saved search deleted, the page reloaded at once, and it came back). The rest stays batched.
+ */
+const soon = new Set<string>();
+let soonTimer: ReturnType<typeof setTimeout> | undefined;
 
 function norm(p: string | URL): string {
     const s = String(p).replace(/\\/g, '/');
@@ -74,7 +82,20 @@ function touch(p: string, appended = false): void {
     times.set(p, Date.now());
     dirty.add(p);
     if (!appended) rewritten.add(p);
+    if (writesNow(p, files.get(p)?.length ?? 0, appended)) {
+        soon.add(p);
+        if (!soonTimer) soonTimer = setTimeout(flushSoon, 0);
+        return;
+    }
     if (!flushTimer) flushTimer = setTimeout(() => { void flush(); }, 300);
+}
+
+/** The small files changed since the last tick, written on their own (one flush at a time, as flush). */
+function flushSoon(): void {
+    soonTimer = undefined;
+    const only = [...soon];
+    soon.clear();
+    flushing = flushing.then(() => flushNow(only), () => flushNow(only));
 }
 
 function ensureDirs(p: string): void {
@@ -91,16 +112,18 @@ function ensureDirs(p: string): void {
 export function flush(): Promise<void> {
     flushTimer = undefined;
     // One flush at a time: the folder's writes are async, and two at once could interleave
-    flushing = flushing.then(flushNow, flushNow);
+    flushing = flushing.then(() => flushNow(), () => flushNow());
     return flushing;
 }
 
 let flushing: Promise<void> = Promise.resolve();
 
-async function flushNow(): Promise<void> {
+/** `only`: these paths (still changed), the rest left for the next flush; else every changed file. */
+async function flushNow(only?: string[]): Promise<void> {
     if (dirty.size === 0) return;
-    const all = [...dirty];
-    dirty.clear();
+    const all = only ? only.filter(p => dirty.has(p)) : [...dirty];
+    if (!all.length) return;
+    all.forEach(p => dirty.delete(p));
     const toFolder = all.filter(inFolder);
     if (toFolder.length) await flushToFolder(toFolder);
     const paths = all.filter(p => !inFolder(p));
@@ -173,6 +196,8 @@ export async function mountBrowserFs(scope: string): Promise<void> {
         if (parts.length > 64) touch(p);
     }
     addEventListener('pagehide', () => { void flush(); });
+    // (hidden first: a closed or switched-away tab is hidden before pagehide, so the writes start sooner)
+    addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') void flush(); });
 }
 
 export function existsSync(p: string): boolean {
