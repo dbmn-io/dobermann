@@ -95,4 +95,36 @@ test.describe('Hub search box (#444)', () => {
         await box.press('Escape');
         await expect(box).toHaveValue('');
     });
+
+    test('History is searched by each header variable by its own name: @org=vic, and an old run\'s org; never @organization', async ({ dbmn, page }) => {
+        // James, 2026-11-23: "if environment header is org, or version, or env, or host… it should come up as a search. not organisation"
+        dbmn.seed.environments[0] = { ...dbmn.seed.environments[0], headerVariables: [{ name: 'org', value: 'vic', options: ['vic', 'nsw'] }, { name: 'env', value: 'uat', options: [] }] } as typeof dbmn.seed.environments[0];
+        const run = (id: string, more: Record<string, unknown>) => ({ id, endpointId: 'test-endpoint-002', endpointName: 'Minimal Test Endpoint', status: 'completed', createdAt: '2026-11-23T10:00:00Z', completedAt: '2026-11-23T10:00:05Z', ...more });
+        dbmn.seed.transactions = [
+            run('tx-vic', { environmentVariables: { org: 'vic', env: 'uat' } }),
+            run('tx-nsw', { environmentVariables: { org: 'nsw' } }),
+            // From before: only its org was kept, as organization
+            run('tx-old', { organization: 'qld' })
+        ];
+        await dbmn.openHub();
+        await openList(page, 'transactions');
+        const box = page.locator('#transactionsSearch');
+        await box.click();
+        await box.pressSequentially('@');
+        const texts = await page.locator('.column-suggest-option .column-suggest-text').allTextContents();
+        expect(texts).toContain('@org');
+        // A header named as one of the run's own fields keeps out of its way
+        expect(texts).toContain('@header.env');
+        expect(texts).not.toContain('@organization');
+        const shown = () => page.locator('#transactionsList .tx-row').count();
+        await box.fill('@org=vic');
+        await expect.poll(shown).toBe(1);
+        await box.fill('@org=qld');
+        await expect.poll(shown).toBe(1);
+        await box.fill('@header.env=uat');
+        await expect.poll(shown).toBe(1);
+        await box.fill('');
+        await expect.poll(shown).toBe(3);
+    });
 });
+

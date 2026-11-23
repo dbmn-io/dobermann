@@ -576,7 +576,7 @@
     /**
      * What the search reaches on a run (the tables' search): its title, endpoint and path, status,
      * method, environment and HTTP status are on its row; the rest (the endpoint's current name and
-     * tags, organisation, error, when it ran) is found by @@word or @field. Its bodies are searched
+     * tags, error, when it ran, the header variables' values: @org, @version…) is found by @@word or @field. Its bodies are searched
      * by the host for `@@word`s: `body` reads as the words found in this run's.
      */
     function runFields(endpointsById) {
@@ -597,11 +597,31 @@
             { id: 'path', hidden: true, get: t => t.endpointPath || '' },
             { id: 'tag', hidden: true, get: t => (ep(t) && Array.isArray(ep(t).tags) ? ep(t).tags : []) },
             { id: 'system', hidden: true, get: t => envSystem.get(t.environmentId) || envSystem.get(t.environment) || '' },
-            { id: 'organization', hidden: true, get: t => t.organization || '' },
             { id: 'error', hidden: true, get: t => [t.errorMessage, t.httpStatusText].filter(Boolean).join('\n') },
             { id: 'ran', hidden: true, get: t => { const ms = txTimestamp(t); return ms ? new Date(ms).toISOString() : ''; } },
             { id: 'body', hidden: true, get: t => (contentMatchIds ? Array.from(contentMatchIds.keys()).filter(w => contentMatchIds.get(w).has(t.id)).join('\n') : '') }
-        ];
+        ].concat(headerFields(state));
+    }
+    /**
+     * The environments' header variables, searched by their own names: @org=vic, @version=… (James,
+     * 2026-11-23: "if environment header is org, or version, or env, or host… it should come up as
+     * a search. not organisation"). A run keeps the values it was sent with (environmentVariables);
+     * a run from before kept only its org, as `organization`, and it answers to @org. A header
+     * named as one of the run's own fields (env, status…) is @header.env: the run's own keeps its name.
+     */
+    function headerFields(state) {
+        const own = ['title', 'endpoint', 'status', 'method', 'env', 'environment', 'http', 'name', 'path', 'tag', 'system', 'error', 'ran', 'body'];
+        const names = [];
+        (state.environments || []).forEach(e => (Array.isArray(e.headerVariables) ? e.headerVariables : []).forEach(v => {
+            const name = v && String(v.name || '').trim();
+            if (name && !names.some(n => n.toLowerCase() === name.toLowerCase())) names.push(name);
+        }));
+        if (!names.some(n => n.toLowerCase() === 'org') && (state.transactions || []).some(t => t && t.organization)) names.push('org');
+        return names.map(name => {
+            const id = own.includes(name.toLowerCase()) ? `header.${name}` : name;
+            const legacy = name.toLowerCase() === 'org';
+            return { id, hidden: true, get: t => String((t.environmentVariables && t.environmentVariables[name]) || (legacy ? t.organization || '' : '')) };
+        });
     }
     /** The box's fields, shown and not, for its colours and `@` list. */
     function boxFields() {
