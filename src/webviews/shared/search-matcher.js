@@ -935,7 +935,9 @@ function tokenizeForDisplay(searchString, headings, hidden) {
  * As the box's colours read them: a term starts at the start, or after a space or a comma.
  *
  * @param {string} text
- * @returns {Array<{start: number, end: number, name: string}>}   name: unquoted, as typed
+ * @returns {Array<{start: number, end: number, name: string, op: string, done: boolean}>}
+ *   name: unquoted, as typed; op: its operator ('' for none); done: not still being typed (an
+ *   operator, or a space or a comma after the name)
  */
 function columnTerms(text) {
     var out = [];
@@ -953,7 +955,8 @@ function columnTerms(text) {
         // (no operator: the term is the name alone, the space after it not its own)
         var end = i + (m[3] ? m[0].length : 1 + m[1].length);
         var name = unquote(m[1]);
-        if (name) out.push({ start: start, end: end, name: name });
+        // (`done`: no longer being typed: it has its operator, or a space or a comma follows the name)
+        if (name) out.push({ start: start, end: end, name: name, op: m[3] || '', done: !!m[3] || /[\s,]/.test(s.charAt(end)) });
         i = end - 1;
     }
     return out;
@@ -1116,12 +1119,16 @@ function wordStartAt(name, typed) {
     return -1;
 }
 var OP_WORDS = { '=': 'is (a|b either, 1..9 between)', '!=': 'is not', '~': 'contains', '!~': "doesn't contain", '>': 'more than', '<': 'less than', '>=': 'at least', '<=': 'at most' };
-function columnSuggestions(typed, headings, keysOf, typesOf, hidden, valuesOf) {
+function columnSuggestions(typed, headings, keysOf, typesOf, hidden, valuesOf, adds) {
     var text = String(typed || '');
     var names = (headings || []).filter(function (h) { return h; });
     // Columns searched but not shown in the table: offered after the shown ones, and marked
     var unseen = (hidden || []).map(function (h) { return String(h).toLowerCase(); });
     var isHidden = function (h) { return unseen.indexOf(String(h).toLowerCase()) !== -1; };
+    // Of those, the ones a search for them adds to the table (James, 2026-11-23: "@ search which
+    // returns column that is hidden, should ADD the column"): said so
+    var adding = (adds || []).map(function (h) { return String(h).toLowerCase(); });
+    var isAdded = function (h) { return adding.indexOf(String(h).toLowerCase()) !== -1; };
     var quote = function (h) { return /\s/.test(h) ? '"' + h + '"' : h; };
     var keys = function (heading, path) { return (keysOf && keysOf(heading, path)) || []; };
     // The kind of a column (or of a key inside it), when the box knows: '' leaves everything as it was
@@ -1177,7 +1184,7 @@ function columnSuggestions(typed, headings, keysOf, typesOf, hidden, valuesOf) {
             .slice(0, 30)
             .map(function (x) {
                 var label = TYPE_WORDS[typeOf(x.h, [])] || (keys(x.h, []).length ? 'column, nested' : 'column');
-                var item = { text: '@' + quote(x.h), label: isHidden(x.h) ? label + ' · not shown' : label, start: start, end: text.length };
+                var item = { text: '@' + quote(x.h), label: isAdded(x.h) ? label + ' · adds it' : isHidden(x.h) ? label + ' · not shown' : label, start: start, end: text.length };
                 if (isHidden(x.h)) item.hidden = true;
                 return item;
             }));
@@ -1291,8 +1298,10 @@ function describeSearch(text, headings, typesOf, now, hidden) {
  *       types: (heading, path) => 'date',                   optional: the kind of a column or a key inside it
  *       values: heading => [{ value, count?, label? }],      optional: a column's values, offered after `@column=`
  *                                                           (a list's tags, Systems, environments)
- *       hidden: () => ['customer', …] })                    optional: those of the headings searched but not
+ *       hidden: () => ['customer', …],                      optional: those of the headings searched but not
  *                                                           shown in the table (listed last, marked "not shown")
+ *       adds: () => ['notes', …] })                         optional: those of them a search for adds to the
+ *                                                           table (marked "adds it" instead)
  *                                                           ('text', 'number', 'yesno', 'date', 'nested';
  *                                                           typeOfValues works it out from values). With it
  *                                                           the list says each column's kind, offers the
@@ -1313,7 +1322,7 @@ function attachColumnSuggest(opts) {
     function close() { list.hidden = true; shown = []; }
     function render() {
         var caret = input.selectionEnd == null ? input.value.length : input.selectionEnd;
-        shown = caret === input.value.length ? columnSuggestions(input.value, opts.headings ? opts.headings() : [], opts.keys, opts.types, opts.hidden ? opts.hidden() : [], opts.values) : [];
+        shown = caret === input.value.length ? columnSuggestions(input.value, opts.headings ? opts.headings() : [], opts.keys, opts.types, opts.hidden ? opts.hidden() : [], opts.values, opts.adds ? opts.adds() : []) : [];
         if (!shown.length) { close(); return; }
         if (active >= shown.length) active = 0;
         list.innerHTML = shown.map(function (s, i) {

@@ -1213,6 +1213,39 @@ function createConsoleTableBuilder() {
             return columns;
         },
 
+        /**
+         * Every leaf a record has, as the View names it: a dot path from the record's root
+         * (`asnline.sku`), arrays of records gone into (their keys from the first few items, as
+         * the View editor's tree lists them), an array of plain values one leaf. Merged over the
+         * first `records` given, in the order first met; at most `cap`. For the search box: `@`
+         * offers the ones the View does not have yet, and a search for one adds it (James,
+         * 2026-11-23: "@ also shows keys NOT yet shown… asnline.sku gets added to asnline array").
+         */
+        recordLeafPaths(records, cap) {
+            const most = cap || 500;
+            const out = [];
+            const seen = new Set();
+            const add = path => { if (!seen.has(path) && out.length < most) { seen.add(path); out.push(path); } };
+            const walk = (node, prefix, depth) => {
+                if (out.length >= most || depth > 12 || !node || typeof node !== 'object' || Array.isArray(node)) return;
+                Object.keys(node).forEach(key => {
+                    const value = node[key];
+                    const path = prefix + key;
+                    if (Array.isArray(value)) {
+                        const items = value.filter(v => v && typeof v === 'object' && !Array.isArray(v)).slice(0, 20);
+                        if (!items.length) { add(path); return; }
+                        items.forEach(item => walk(item, path + '.', depth + 1));
+                    } else if (value && typeof value === 'object') {
+                        walk(value, path + '.', depth + 1);
+                    } else {
+                        add(path);
+                    }
+                });
+            };
+            (records || []).slice(0, 20).forEach(record => walk(record, '', 0));
+            return out;
+        },
+
         // Phase 1B.14: walk a JSON path drilling into the first object item
         // when crossing arrays; report the FINAL node's structural kind.
         // Mirrors the editor helper of the same name so the shared builder

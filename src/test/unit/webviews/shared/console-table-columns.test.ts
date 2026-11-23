@@ -119,3 +119,20 @@ describe('Console columns — the status code and the body', () => {
         ]);
     });
 });
+
+// James, 2026-11-23: "@ also shows keys NOT yet shown and then allows us to add them into their group"
+describe('The Console: every leaf a record has, as the View names it', () => {
+    const paths = (records: unknown[], cap?: number) => createConsoleTableBuilder().recordLeafPaths(records, cap);
+
+    it('dot paths from the root, into objects and into lists of records; a list of plain values is one leaf', () => {
+        expect(paths([{ id: 1, header: { site: 'A' }, asnline: [{ sku: 'X', qty: 1 }, { sku: 'Y', lot: 'L1' }], tags: ['a', 'b'], empty: [] }]))
+            .to.deep.equal(['id', 'header.site', 'asnline.sku', 'asnline.qty', 'asnline.lot', 'tags', 'empty']);
+    });
+
+    it('merged over the records, each once, in the order first met, and never more than asked', () => {
+        expect(paths([{ a: 1 }, { b: 2, a: 3 }, null, 'text'])).to.deep.equal(['a', 'b']);
+        expect(paths([{ a: 1, b: 2, c: 3 }], 2)).to.deep.equal(['a', 'b']);
+        expect(paths([])).to.deep.equal([]);
+    });
+});
+

@@ -2994,6 +2994,8 @@ class DynamicReportManager {
             table.rowClass = () => 'data-row';
             table.searchWith(document.getElementById('search-input'), document.getElementById('search-input-mirror'));
             table.addEventListener('dbmn-table-layout', event => this.tableChanged(event.detail || {}));
+            // A search for a key the View does not have yet adds it (James, 2026-11-23)
+            table.addEventListener('dbmn-table-add-column', event => this.addFieldFromSearch(event.detail.id));
             table.addEventListener('dbmn-table-shown', event => this.tableShown(event.detail || {}));
             // A column let go outside its own object's columns: say where it can go
             table.addEventListener('dbmn-table-outside', event => this.columnLeftItsLevel(event.detail.id));
@@ -3036,6 +3038,42 @@ class DynamicReportManager {
             if (c.type === 'array') column.nested = { controls: () => (view && view.rowBasis !== c.id ? this.setAsRowButton(c.id) : null) };
             return column;
         });
+    }
+    /**
+     * The record's keys the View does not show yet, for the search box: `@` lists them ("adds it"),
+     * and a search for one adds it to the View at the end of its own group (James, 2026-11-23: "@
+     * also shows keys NOT yet shown and then allows us to add them into their group, at the end,
+     * eg, asnline.sku gets added to asnline array"). Named from the row basis, as the View editor's
+     * tree names them; each also answers to its last part (`@sku`). None for a View that cannot change.
+     */
+    fieldsToAdd(view, fixed) {
+        if (fixed || !view || !Array.isArray(view.columns) || !this.tableBuilder.recordLeafPaths) return [];
+        const records = this.getRawDataForCurrentTab() || [];
+        const basis = view.rowBasis && view.rowBasis !== 'root' ? view.rowBasis + '.' : '';
+        return this.tableBuilder.recordLeafPaths(records, 500)
+            .filter(path => !this.findColumnById(view.columns, path))
+            .map(path => {
+                const own = basis && path.startsWith(basis) ? path.slice(basis.length) : path;
+                const name = this.aliasEnvelopeDataPath(own);
+                const last = own.split('.').pop();
+                const aliases = [...new Set([own, last].filter(a => a && a !== name))];
+                return { id: path, name, aliases, adds: true };
+            });
+    }
+    /** A search named a key the View does not have: it goes in at the end of its group, and stays. */
+    addFieldFromSearch(id) {
+        const view = this.getActiveView(this.currentTab);
+        if (!view || !id || this.isCurrentViewReadOnly() || this.findColumnById(view.columns || [], id)) return;
+        const use = this.viewUse(view.name);
+        if (use.locked) {
+            showFooterNotification('warning', `${view.name} is used in ${use.text}, so its columns stay.`, { source: 'view-locked', duration: 5000 });
+            return;
+        }
+        const records = this.getRawDataForCurrentTab() || [];
+        this.addLeafToView(id, view, records.find(r => r && typeof r === 'object'));
+        this._tableKey = '';
+        this.extractAndRender(this.currentTab, null, { keepScroll: true });
+        if (this.currentTab === 'success' || this.currentTab === 'errors') debouncedSaveSettings();
     }
     setAsRowButton(path) {
         const b = document.createElement('button');
@@ -3093,8 +3131,9 @@ class DynamicReportManager {
             this._tableKey = key;
             table.columns = this.tableColumns(columns);
             table.layout = this.tableLayout();
+            table.searchFields = this.fieldsToAdd(view, readOnly || locked);
         }
-        else if (redraw) table.redrawHeads();
+        else if (redraw) { table.redrawHeads(); table.searchFields = this.fieldsToAdd(view, readOnly || locked); }
         table.rows = data || [];
         if (!options.keepScroll) {
             const scroller = table.querySelector('.dbmn-table-scroll');

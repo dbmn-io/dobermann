@@ -1300,3 +1300,21 @@ describe('Search: the columns a search filters, and taking a column\'s terms out
         expect(withoutColumns('@environment=uat', [{ id: 'env', name: 'Environment', aliases: ['env'] }])).to.equal('');
     });
 });
+
+// James, 2026-11-23: "@ search which returns column that is hidden, should ADD the column… stay"
+describe('Search: a term finished, and the @ list saying what a search adds', () => {
+    it('a term is finished once it has its operator, or a space or a comma after its name', () => {
+        expect(columnTerms('@sku @qty=1 @bin, @st').map((t: { name: string; op: string; done: boolean }) => [t.name, t.op, t.done])).to.deep.equal([
+            ['sku', '', true], ['qty', '=', true], ['bin', '', true], ['st', '', false]
+        ]);
+    });
+
+    it('a hidden column a search adds says "adds it"; one only searched says "not shown"', () => {
+        const { columnSuggestions: suggest } = require('../../../webviews/shared/search-matcher.js');
+        const list = suggest('@', ['sku', 'notes', 'body'], null, null, ['notes', 'body'], null, ['notes']);
+        const label = (text: string) => (list.find((s: { text: string }) => s.text === text) || {}).label;
+        expect(label('@notes')).to.match(/· adds it$/);
+        expect(label('@body')).to.match(/· not shown$/);
+        expect(label('@sku')).to.not.match(/adds it|not shown/);
+    });
+});

@@ -1535,11 +1535,15 @@ test('a column searched but not shown is told apart: its own colour in the box, 
     await page.locator('#t thead th').nth(1).hover();
     await page.locator('#t thead th').nth(1).locator('.col-hide-btn').click();
     const box = page.locator('#t .search-input');
-    await box.fill('@customer=Kettle*');
+    // Still being typed, a column not shown is told apart (finished, a search for it shows it: James, 2026-11-23)
+    await box.fill('@customer');
     await expect(page.locator('#t .search-tok-col-hidden')).toHaveText('@customer');
-    await expect(page.locator('#t .dbmn-table-reads')).toContainText('customer (text, not shown) is Kettle*');
-    // shown again (from the heading menu's list of removed columns): the box follows at once
-    await page.evaluate(() => { const t = document.getElementById('t'); t.layout = Object.assign({}, t.layout, { hidden: [] }); });
+    // A field the screen searches but never shows: told apart, and said so under the box
+    await box.fill('@body=SO-1*');
+    await expect(page.locator('#t .search-tok-col-hidden')).toHaveText('@body');
+    await expect(page.locator('#t .dbmn-table-reads')).toContainText('not shown');
+    // A finished term for the hidden column shows it: the box follows at once
+    await box.fill('@customer=Kettle*');
     await expect(page.locator('#t .search-tok-col-name')).toHaveText('@customer');
     await expect(page.locator('#t .dbmn-table-reads')).not.toContainText('not shown');
     await box.fill('@order_no=1');
@@ -1728,4 +1732,48 @@ test('filtered: a screen that runs its own search names the columns; the funnel\
     await page.evaluate(() => { t.filtered = null; });
     await expect(page.locator('#t thead th[data-col="qty"] .dbmn-col-funnel')).toBeVisible();
     expect(await page.locator('#t thead .dbmn-col-funnel').count()).toBe(1);
+});
+
+test('a finished @name for a column not shown shows it again, at the end, and it stays', async ({ page }) => {
+    // James, 2026-11-23: "@ search which returns column that is hidden, should ADD the column… stay"
+    await page.setContent(tablePage());
+    await page.evaluate(() => { window.told = []; t.addEventListener('dbmn-table-layout', e => window.told.push(e.detail.change)); });
+    await page.locator('#t thead th[data-col="customer"] .col-hide-btn').click();
+    expect(await names(page)).toEqual(['order_no', 'qty', 'notes']);
+    const box = page.locator('#t .search-input');
+    // The @ list says what a search for it does
+    await box.fill('@cust');
+    await expect(page.locator('#t .column-suggest-option', { hasText: '@customer' })).toContainText('adds it');
+    // Still being typed: nothing yet
+    await box.fill('@customer');
+    expect(await names(page)).toEqual(['order_no', 'qty', 'notes']);
+    // Its operator (or a space) finishes it: the column comes back at the end, filtered
+    await box.fill('@customer~mill');
+    await expect.poll(() => names(page)).toEqual(['order_no', 'qty', 'notes', 'customer']);
+    await expect(page.locator('#t .dbmn-table-count')).toHaveText('1,000 of 3,000 rows');
+    await expect(page.locator('#t thead th[data-col="customer"] .dbmn-col-funnel')).toBeVisible();
+    expect(await page.evaluate(() => window.told)).toContain('shown');
+    // And it stays when the search is cleared
+    await box.fill('');
+    expect(await names(page)).toEqual(['order_no', 'qty', 'notes', 'customer']);
+});
+
+test('a finished @name for a field the screen adds asks the screen, once', async ({ page }) => {
+    await page.setContent(tablePage());
+    await page.evaluate(() => {
+        window.asked = [];
+        t.addEventListener('dbmn-table-add-column', e => window.asked.push(e.detail));
+        t.searchFields = [{ id: 'bin', name: 'bin', adds: true }, { id: 'body', name: 'body' }];
+    });
+    const box = page.locator('#t .search-input');
+    await box.fill('@bi');
+    await expect(page.locator('#t .column-suggest-option', { hasText: '@bin' })).toContainText('adds it');
+    await box.fill('@bin');
+    expect(await page.evaluate(() => window.asked)).toEqual([]);
+    await box.fill('@bin=A-01');
+    await box.fill('@bin=A-012');
+    expect(await page.evaluate(() => window.asked)).toEqual([{ id: 'bin', name: 'bin' }]);
+    // A field only searched (no `adds`) is never asked for
+    await box.fill('@body~x ');
+    expect(await page.evaluate(() => window.asked)).toHaveLength(1);
 });

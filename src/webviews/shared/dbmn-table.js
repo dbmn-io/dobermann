@@ -305,6 +305,8 @@
             if (this.hasAttribute('selectable')) this._all.unshift(this._pickColumn());
             this._keyCounts = null;
             this._columns = this._all.slice();
+            // (the fields a search has asked the screen to add: asked again once the columns change)
+            this._asked = new Set();
             this._sort = null;
             this._widths = {};
             this._set = {};
@@ -469,6 +471,8 @@
                 // (every column searched, shown or not, and the screen's hidden fields: `@` suggests them all)
                 headings: () => this._searchColumns().map(c => c.name),
                 hidden: () => this._unseenNames(),
+                // (of those, the ones a search for adds: the table's own hidden columns, and the fields the screen adds)
+                adds: () => this._addable().map(c => c.name),
                 // `@column.` lists the keys inside that column's nested data (of the rows in hand)
                 keys: (heading, path) => matcher.nestedKeysFor(this._source ? this._inHand() : this._rows, this._all.map(c => ({ id: c.id, name: c.name || c.id })), heading, path, (row, id) => row[id])
             });
@@ -1030,6 +1034,56 @@
             // (as if typed: the table searches again, and the screen's own box listeners hear it)
             input.dispatchEvent(new Event('input', { bubbles: true }));
         }
+        /**
+         * What a search for adds (James, 2026-11-23: "@ search which returns column that is hidden,
+         * should ADD the column… stay"): the table's own columns not shown, and the screen's
+         * fields marked `adds` (a record's keys the Console's View does not have yet).
+         */
+        _addable() {
+            const shown = new Set(this._columns.map(c => c.id));
+            const asSearched = c => ({ id: c.id, name: c.name || c.id, ...(Array.isArray(c.aliases) && c.aliases.length ? { aliases: c.aliases } : {}) });
+            const hidden = this._all.filter(c => !own(c.id) && !shown.has(c.id)).map(asSearched);
+            const fields = (this._fields || []).filter(f => f.adds && !this._all.some(c => c.id === f.id)).map(asSearched);
+            return hidden.concat(fields);
+        }
+        /**
+         * A finished @name term (its operator typed, or a space after it) naming one column not
+         * shown shows it, at the end, and it stays; naming one of the screen's `adds` fields asks the
+         * screen to add it (`dbmn-table-add-column`, { id, name }). A term that names a column
+         * shown is that column's; one naming several is left for the @ list to settle.
+         */
+        _addNamed() {
+            const input = this._box();
+            const matcher = window.SearchMatcher;
+            if (!input || !input.value.trim() || !matcher || !matcher.columnTerms || Array.isArray(this._filtered)) return;
+            const addable = this._addable();
+            if (!addable.length) return;
+            const asSearched = c => ({ id: c.id, name: c.name || c.id, ...(Array.isArray(c.aliases) && c.aliases.length ? { aliases: c.aliases } : {}) });
+            const shown = this._columns.filter(c => !own(c.id)).map(asSearched);
+            const named = matcher.columnTerms(input.value).filter(t => t.done)
+                .map(t => matcher.columnsIn(input.value.slice(t.start, t.end), shown.concat(addable)));
+            const ids = new Set(shown.map(c => c.id));
+            const showing = [];
+            named.forEach(found => {
+                if (found.length !== 1 || ids.has(found[0])) return;
+                const column = this._all.find(c => c.id === found[0]);
+                if (column) {
+                    this._columns.push(column);
+                    ids.add(column.id);
+                    showing.push(column.id);
+                    return;
+                }
+                if (this._asked.has(found[0])) return;
+                this._asked.add(found[0]);
+                const field = (this._fields || []).find(f => f.id === found[0]);
+                this.dispatchEvent(new CustomEvent('dbmn-table-add-column', { bubbles: true, detail: { id: found[0], name: field ? field.name || field.id : found[0] } }));
+            });
+            if (!showing.length) return;
+            this._heads();
+            this._render(true);
+            // (told as the user's own change: a screen that keeps the layout keeps it shown)
+            this._tell('shown', { id: showing[0], ids: showing });
+        }
 
         _heads() {
             const head = window.ColumnHead;
@@ -1515,6 +1569,7 @@
             this._colour(mirror, text, columns);
             const reads = this._reading(text, columns);
             if (input === this._input) { this._reads.textContent = reads; this._reads.hidden = !reads; }
+            this._addNamed();
             this._refunnel();
             this.dispatchEvent(new CustomEvent('dbmn-table-search', { bubbles: true, detail: { text: text.trim(), reads } }));
             if (this._source) {
