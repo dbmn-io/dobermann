@@ -17,7 +17,7 @@ import { localEngineHost, remoteEngineHost, serveEngine, type EnginePort } from 
 import * as XLSX from 'xlsx';
 import { queryWorkbook, resultWorkbook, splitSheet, statusWords } from '../../../services/query/query-export';
 import { QuerySession } from '../reference/query-engine';
-import { buildQuery, resultsKey, runHeld, fromKeptCompare, countAlike, sampleQueries, pagedCounts, readStatusPage, eachPage, loadViewInto, pagedTotals, readPage, runOnEngine, runPaged, TooManyOnEngine, compareKeyExprs, compareQuery, fnExpr, fnSampleQueries, formulaExpr, labelExpr, loadLookupTable, loadView, queryWithColumns, recordQuery, resultRows, onSqliteLine, runCompareOnEngine, whyNotOnEngine } from '../../../services/query/query-new-engine';
+import { buildQuery, resultsKey, runHeld, fromKeptCompare, countAlike, sampleQueries, pagedCounts, readStatusPage, eachPage, loadViewInto, pagedTotals, readPage, runOnEngine, runPaged, TooManyOnEngine, compareKeyExprs, compareQuery, fnExpr, fnSampleQueries, formulaExpr, labelExpr, loadLookupTable, loadView, queryWithColumns, recordQuery, resultRows, runCompareOnEngine } from '../../../services/query/query-new-engine';
 import { parseFormula, FORMULA_FUNCTIONS } from '../../../services/query/formula';
 import type { Query, Value } from '../../../services/engine/engine-types';
 import { compareKeySql, resultColumns } from '../reference/query-sql';
@@ -134,17 +134,8 @@ describe('Query compare on the new engine', () => {
         assert.deepStrictEqual([c1.keys.manyToOne, c1.rows.manyToOne, c1.leftRows - c1.leftMatched], [1, 2, 1]);
     });
 
-    it('a query stays on SQLite, and says why, when it is more than a compare', () => {
-        const spec = runsSpec();
-        assert.strictEqual(whyNotOnEngine(spec), undefined);
-        assert.strictEqual(whyNotOnEngine({ ...spec, joins: [] }), 'it is not a compare');
-        assert.strictEqual(whyNotOnEngine({ ...spec, joins: [...spec.joins, { view: 'x', kind: 'left', on: [] }] }), 'it has a join besides the compare');
-        assert.strictEqual(whyNotOnEngine({ ...spec, calc: [{ name: 'd', expr: '1' }] }), 'it has a calculated column');
-        assert.strictEqual(whyNotOnEngine({ ...spec, distinct: true }), 'Distinct is on');
-        // (Translate values runs on the engine: its lookup table is loaded into it)
-        assert.strictEqual(whyNotOnEngine({ ...spec, select: [{ view: 'bl', column: 'sku', fns: [{ fn: 'translate', table: 't', from: 'a', to: 'b' }] }] }), undefined);
-        assert.strictEqual(onSqliteLine('it has a calculated column'), 'New compare engine (testing): this query runs on the old engine, because it has a calculated column.');
-        assert.deepStrictEqual(compareQuery(spec).layout.places, ['bl', 'c1', 'c2']);
+    it('a compare query\'s places: the Baseline, then each run', () => {
+        assert.deepStrictEqual(compareQuery(runsSpec()).layout.places, ['bl', 'c1', 'c2']);
     });
 
     it('each column function gives what SQLite gives, but for the engine\'s listed differences', async () => {

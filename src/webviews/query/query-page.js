@@ -2740,13 +2740,7 @@
                 break;
             // Saved searches, as the host kept them after a save, a rename or a delete
             case 'query.searches': if (saved) saved.searches = m.searches || []; break;
-            case 'query.state': {
-                // ("New compare engine (testing)": how long the page takes to draw what the engine gave)
-                const drawn = performance.now();
-                applyState(m);
-                if (m.onEngine) requestAnimationFrame(() => console.log(`[query-engine] page drew the step in ${Math.round(performance.now() - drawn)} ms (${m.total} rows)`));
-                break;
-            }
+            case 'query.state': applyState(m); break;
             // The host's counting: its stage as it starts one, or stopped (since: null)
             case 'query.joinCounts': ui.joinCountsWhy = m.counts ? '' : (m.why || ''); joinCountsIn(m.counts); break;
             case 'query.counting':

@@ -1846,7 +1846,6 @@ export class QueryController {
             search: query.search ?? '', sort: query.sort ?? null, totals: !!query.totals,
             widths: query.widths ?? {},
             total: now.total ?? 0, preview: now.preview ?? [], error: now.error ?? '',
-            onEngine: true,
             // (a compare's figures of a sample, until Results has worked out the whole: the step says so)
             sample: now.sample ?? null
         });

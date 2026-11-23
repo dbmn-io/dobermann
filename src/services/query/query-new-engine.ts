@@ -20,24 +20,6 @@ import { comparedGroups, type RelationKind, type RowStatus, type StatusCounts, t
 import { parseFormula } from './formula';
 import { CALC_VIEW, type ColumnRef, type QueryFn, type QueryJoinStats, type QueryKey, type QuerySpec } from './query-types';
 
-/** Why a query runs on SQLite even with the setting on, in a few words; undefined when it runs on the engine. */
-export function whyNotOnEngine(spec: QuerySpec): string | undefined {
-    const compare = queryCompare(spec.joins, spec.views[0]?.id);
-    if (!compare) return 'it is not a compare';
-    if (spec.joins.some(j => j.kind !== 'compare')) return 'it has a join besides the compare';
-    if ((spec.calc ?? []).length || spec.select.some(c => c.view === CALC_VIEW)) return 'it has a calculated column';
-    if (spec.distinct) return 'Distinct is on';
-    const keys = compareKeys(spec);
-    if (!keys.length || keys.some(k => !k.parts.length || k.parts.some(p => !p.column))) return 'its key is not picked yet';
-    if (keys.some(k => k.parts.length > 1 && k.fns?.length)) return 'a key joins columns with a function on the whole';
-    return undefined;
-}
-
-/** One line for the Join step when the setting is on but the query runs on SQLite. */
-export function onSqliteLine(why: string): string {
-    return `New compare engine (testing): this query runs on the old engine, because ${why}.`;
-}
-
 /** The compare's views, the Baseline first, and each one's key: one QueryKey per pair (+ AND). */
 function compareKeysByView(spec: QuerySpec): { view: string; keys: QueryKey[] }[] {
     const joins = spec.joins.filter(j => j.kind === 'compare');
@@ -548,14 +530,6 @@ export function keyExpr(key: QueryKey): Expr {
         joined = { fn: 'IF', args: [known, { fn: 'CONCAT', args: pieces }] };
     }
     return (key.fns ?? []).reduce<Expr>((x, f) => fnExpr(x, f), joined);
-}
-
-/** Why a query can't run on the engine yet (whatever its kind), or undefined. */
-export function whyNotQueryOnEngine(spec: QuerySpec): string | undefined {
-    if (!spec.views.length) return 'it has no views';
-    if ((spec.calc ?? []).some(c => !c.formula)) return 'it has a calculated column written as SQL';
-    if (spec.joins.some(j => !j.on.length || j.on.some(p => !p.left.parts.length || !p.right.parts.length))) return 'a join has no key yet';
-    return undefined;
 }
 
 /**
