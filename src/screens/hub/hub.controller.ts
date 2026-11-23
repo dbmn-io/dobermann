@@ -230,7 +230,8 @@ export class HubController {
             }
             // Lookup tables (Reporting): a new one opens to be filled; Query's Translate values opens one by id
             case 'newLookup':
-                await this.newLookup();
+                // (its name and columns, from the New lookup table dialog; none from an older page: code and value)
+                await this.newLookup(str('name') ?? 'Lookup table', Array.isArray(msg.columns) ? (msg.columns as unknown[]).map(String) : undefined);
                 break;
             case 'openLookup':
             case 'lookup.open':
@@ -1242,10 +1243,16 @@ export class HubController {
     }
 
     /** Reporting's New lookup table: a key and a value column, opened to be filled. */
-    private async newLookup(): Promise<void> {
+    private async newLookup(name: string, columns?: string[]): Promise<void> {
         const store = await this.lookups();
         if (!store) return;
-        const table = await store.create('Lookup table');
+        let table;
+        try {
+            table = await store.create(name, columns);
+        } catch (error) {
+            this.ports.toast.warn(error instanceof Error ? error.message : String(error));
+            return;
+        }
         await this.broadcastState();
         await this.openLookupTab(table.id);
     }

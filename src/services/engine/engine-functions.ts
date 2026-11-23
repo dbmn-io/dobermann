@@ -10,8 +10,7 @@
 import type { FunctionName } from './engine-types';
 import {
     arithmetic, asText, castInteger, chars, compareValues, isNumber, makeNumber,
-    num, readNumberCounted, Real, sameValue, textAsNumber, truthy, type V
-} from './engine-values';
+    num, readNumberCounted, Real, sameValue, textAsNumber, truthy, type V, lookupTwice } from './engine-values';
 
 
 /** A loaded table a function reads (TRANSLATE): its column names and rows, as the engine holds them. */
@@ -173,7 +172,31 @@ function numberFn(x: V): V {
     return readNumberCounted(x);
 }
 
-/** Translate values: the first row of the table whose `from` column holds the value (as text) gives its `to` column; not found, the value. */
+/** Each lookup table's From columns as indexes, built on first use: a value (as text) to its row, and how many rows hold it. */
+const LOOKUP_INDEXES = new WeakMap<LookupSource, Map<number, Map<string, { row: number; rows: number }>>>();
+function lookupIndex(table: LookupSource, fromAt: number): Map<string, { row: number; rows: number }> {
+    let byColumn = LOOKUP_INDEXES.get(table);
+    if (!byColumn) { byColumn = new Map(); LOOKUP_INDEXES.set(table, byColumn); }
+    let index = byColumn.get(fromAt);
+    if (!index) {
+        index = new Map();
+        for (let r = 0; r < table.rowCount; r++) {
+            const v = table.value(r, fromAt);
+            if (typeof v !== 'string') continue;
+            const had = index.get(v);
+            if (had) had.rows++; else index.set(v, { row: r, rows: 1 });
+        }
+        byColumn.set(fromAt, index);
+    }
+    return index;
+}
+
+/**
+ * Translate values (James, 2026-11-23: "we can lookup any column and return any other column"): the row of the table
+ * whose `from` column holds the value (as text) gives its `to` column. Not found, the value as it was ("keep
+ * original"); held by two or more rows, the value as it was too, and counted (lookupTwice): nothing is guessed.
+ * A row found whose To cell is blank keeps the value as it was too.
+ */
 function translate(x: V, tableName: V, from: V, to: V, ctx: FunctionContext): V {
     if (x === null) return null;
     const table = ctx.table(String(tableName ?? ''));
@@ -182,14 +205,16 @@ function translate(x: V, tableName: V, from: V, to: V, ctx: FunctionContext): V 
     const toAt = table.columns.indexOf(String(to ?? ''));
     if (fromAt < 0 || toAt < 0) return x;
     const key = text(x);
-    for (let r = 0; r < table.rowCount; r++) {
-        const v = table.value(r, fromAt);
-        if (typeof v === 'string' && v === key) {
-            const found = table.value(r, toAt);
-            return found === null ? x : found;
-        }
+    if (key === null) return x;
+    const hit = lookupIndex(table, fromAt).get(key);
+    if (!hit) return x;
+    if (hit.rows > 1) {
+        if (lookupTwice.on) lookupTwice.count++;
+        return x;
     }
-    return x;
+    // (a row found with its To cell blank: the value as it was, not blanked; lookup-tables.ts lookupValue's rule)
+    const found = table.value(hit.row, toAt);
+    return found === null || found === '' ? x : found;
 }
 
 /** Work out one function on its arguments' values. */

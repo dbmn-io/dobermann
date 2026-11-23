@@ -19,49 +19,51 @@ const fresh = () => {
 };
 
 describe('Lookup tables', () => {
-    it('a new table: a key and a value column, no rows, kept with the queries; a second is named apart', async () => {
+    it('a new table: its name and its columns, one to five, all equal; no rows; a name taken is refused, in words', async () => {
         const { state, store } = fresh();
-        const units = await store.create('Units');
-        assert.deepStrictEqual(units.columns, [{ id: 'c1', name: 'code', key: true }, { id: 'c2', name: 'value' }]);
+        const units = await store.create('Units', ['ERP', 'WMS', 'Finance']);
+        assert.deepStrictEqual(units.columns, [{ id: 'c1', name: 'ERP' }, { id: 'c2', name: 'WMS' }, { id: 'c3', name: 'Finance' }]);
         assert.deepStrictEqual(units.rows, []);
         assert.ok(units.id.startsWith('lkp-'));
         assert.strictEqual((state.get<unknown[]>(LOOKUP_TABLES_KEY) || []).length, 1);
-        const again = await store.create('units');
-        assert.strictEqual(again.name, 'units 2');
-        assert.deepStrictEqual((await store.list()).map(t => [t.name, t.rows]), [['Units', 0], ['units 2', 0]]);
+        await assert.rejects(store.create('units', ['a', 'b']), /There's a lookup table called units already/);
+        await assert.rejects(store.create('Wide', ['a', 'b', 'c', 'd', 'e', 'f']), /up to 5 columns/);
+        await assert.rejects(store.create('Twins', ['WMS', 'wms']), /Two columns are called wms/);
+        await assert.rejects(store.create('Long', ['a'.repeat(21)]), /up to 20 characters/);
+        assert.deepStrictEqual((await store.list()).map(t => [t.name, t.rows]), [['Units', 0]]);
+        // (no names given, as an older page asks: code and value)
+        assert.deepStrictEqual((await store.create('Plain')).columns.map(c => c.name), ['code', 'value']);
     });
 
-    it('many columns (ERP, WMS, finance…): saved and read back by id, values as text', async () => {
+    it('several columns: saved and read back by id, values as text; the same value in two rows is fine (no key)', async () => {
         const { store } = fresh();
-        const table = await store.create('Units');
-        const columns = [{ id: 'erp', name: 'ERP unit', key: true }, { id: 'wms', name: 'WMS unit' }, { id: 'fin', name: 'Finance unit' }, { id: 'note', name: 'Note' }];
-        await store.save({ ...table, columns, rows: [{ erp: 'EA', wms: 'EACH', fin: 'UNIT', note: '' }, { erp: 'CS', wms: 'CASE', fin: 12 as unknown as string, note: 'twelve' }] });
+        const table = await store.create('Units', ['ERP unit', 'WMS unit', 'Finance unit']);
+        const columns = [{ id: 'c1', name: 'ERP unit' }, { id: 'c2', name: 'WMS unit' }, { id: 'c3', name: 'Finance unit' }];
+        await store.save({ ...table, columns, rows: [{ c1: 'EA', c2: 'EACH', c3: 'UNIT' }, { c1: 'CS', c2: 'CASE', c3: 12 as unknown as string }, { c1: 'EA', c2: 'EACH2', c3: '' }] });
         const read = await store.get(table.id);
-        assert.deepStrictEqual(read?.columns.map(c => c.name), ['ERP unit', 'WMS unit', 'Finance unit', 'Note']);
-        assert.deepStrictEqual(read?.rows[1], { erp: 'CS', wms: 'CASE', fin: '12', note: 'twelve' });
+        assert.deepStrictEqual(read?.rows[1], { c1: 'CS', c2: 'CASE', c3: '12' });
+        assert.strictEqual(read?.rows.length, 3);
         const [summary] = await store.list();
-        assert.deepStrictEqual([summary.rows, summary.columns.length, summary.updatedAt], [2, 4, NOW]);
+        assert.deepStrictEqual([summary.rows, summary.columns.length, summary.updatedAt], [3, 3, NOW]);
     });
 
-    it('up to the column limit; a key one value per row, and every row has one', async () => {
+    it('up to five columns, each named once (any case), up to 20 characters; a file\'s old key mark is read without it', async () => {
         const many = Array.from({ length: LOOKUP_MAX_COLUMNS + 1 }, (_, i) => ({ id: `c${i}`, name: `col ${i}` }));
-        assert.match(lookupTableProblem({ name: 'Wide', columns: many, rows: [] }), /up to 50 columns/);
+        assert.match(lookupTableProblem({ name: 'Wide', columns: many, rows: [] }), /up to 5 columns/);
         assert.strictEqual(lookupTableProblem({ name: 'Wide', columns: many.slice(0, LOOKUP_MAX_COLUMNS), rows: [] }), '');
-        const columns = [{ id: 'k', name: 'code', key: true }, { id: 'v', name: 'value' }];
-        assert.match(lookupTableProblem({ name: 'T', columns, rows: [{ k: 'A', v: '1' }, { k: 'A', v: '2' }] }), /code A is in two rows/);
-        assert.match(lookupTableProblem({ name: 'T', columns, rows: [{ k: '', v: '1' }] }), /Every row needs a code/);
         assert.match(lookupTableProblem({ name: 'T', columns: [{ id: 'a', name: 'x' }, { id: 'b', name: 'X' }], rows: [] }), /Two columns are called X/);
-
         const { store } = fresh();
-        const table = await store.create('T');
-        await assert.rejects(store.save({ ...table, columns, rows: [{ k: 'A', v: '1' }, { k: 'A', v: '2' }] }), /a key is in one row only/);
-        assert.deepStrictEqual((await store.get(table.id))?.rows, [], 'a table that can\'t be kept is not changed');
+        const table = await store.create('T', ['code', 'value']);
+        await assert.rejects(store.save({ ...table, columns: [...table.columns, ...many.slice(0, 4)] }), /up to 5 columns/);
+        assert.deepStrictEqual((await store.get(table.id))?.columns.length, 2, 'a table that can\'t be kept is not changed');
+        await store.save({ ...table, columns: [{ id: 'c1', name: 'code', key: true } as never, { id: 'c2', name: 'value' }] });
+        assert.deepStrictEqual((await store.get(table.id))?.columns, [{ id: 'c1', name: 'code' }, { id: 'c2', name: 'value' }]);
     });
 
     it('a column renamed keeps its id (a saved query\'s from and to keep working)', async () => {
         const { store } = fresh();
         const table = await store.create('Units');
-        await store.save({ ...table, columns: [{ id: 'c1', name: 'ERP unit', key: true }, { id: 'c2', name: 'WMS unit' }] });
+        await store.save({ ...table, columns: [{ id: 'c1', name: 'ERP unit' }, { id: 'c2', name: 'WMS unit' }] });
         assert.deepStrictEqual((await store.get(table.id))?.columns.map(c => c.id), ['c1', 'c2']);
     });
 

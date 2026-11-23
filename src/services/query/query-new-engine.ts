@@ -451,11 +451,16 @@ export async function runOnEngine(engineIn: QueryEngine | EngineHost, spec: Quer
 const now = (): number => (typeof performance !== 'undefined' ? performance.now() : Date.now());
 
 /** Results' columns (by number) with rows where text read as a number wasn't one, and how many rows (James, 2026-11-21: blank, plus a count). */
-export type NotNumbers = { column: number; rows: number }[];
+/**
+ * Results' columns' counts from the engine's count pass: text that wasn't a number (left blank), and with `kind: 'twice'`
+ * values a lookup table holds in two rows (left as they were, Translate values).
+ */
+export type NotNumbers = { column: number; rows: number; kind?: 'twice' }[];
 
 /** The functions that read text as a number (engine-values.ts readNumberCounted). */
 const READS_NUMBERS = new Set<string>(['+', '-', '*', '/', 'NEG', 'ROUND', 'ABS', 'FLOOR', 'CEIL', 'NUMBER', 'NUMERIC']);
-const readsNumbers = (e: Expr): boolean => 'fn' in e && (READS_NUMBERS.has(e.fn) || e.args.some(readsNumbers));
+// (and Translate values, whose values a lookup table may hold twice: counted in the same pass)
+const readsNumbers = (e: Expr): boolean => 'fn' in e && (READS_NUMBERS.has(e.fn) || e.fn === 'TRANSLATE' || e.args.some(readsNumbers));
 
 /** Results' columns (c0, c1…) whose value reads text as a number somewhere: the ones worth counting. */
 function readsNumbersColumns(query: Query): string[] {
@@ -466,7 +471,11 @@ function readsNumbersColumns(query: Query): string[] {
 /** The run's counts for Results' columns, by column number. */
 function notNumbersOf(noted: Record<string, Record<string, number>> | undefined, query: Query): NotNumbers {
     const step = query.result ?? '';
-    return Object.entries(noted?.[step] ?? {}).filter(([name]) => /^c\d+$/.test(name)).map(([name, rows]) => ({ column: Number(name.slice(1)), rows }));
+    return Object.entries(noted?.[step] ?? {}).flatMap(([name, rows]) => {
+        const twice = /^twice:c(\d+)$/.exec(name);
+        if (twice) return [{ column: Number(twice[1]), rows, kind: 'twice' as const }];
+        return /^c\d+$/.test(name) ? [{ column: Number(name.slice(1)), rows }] : [];
+    });
 }
 
 /**

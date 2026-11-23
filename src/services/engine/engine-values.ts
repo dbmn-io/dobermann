@@ -119,6 +119,12 @@ export function readNumber(v: V): number | Real | null {
  */
 export const notNumbers = { on: false, count: 0 };
 
+/**
+ * Translate values meeting a value its lookup table holds in two or more rows of the From column: the value is left as
+ * it was (James, 2026-11-23: guess nothing) and counted while `on`, as notNumbers is (engine.ts countNotNumbers).
+ */
+export const lookupTwice = { on: false, count: 0 };
+
 /** readNumber, counting text that isn't a number (notNumbers): arithmetic, Round, Abs, Floor, Ceil, NUMBER. */
 export function readNumberCounted(v: V): number | Real | null {
     const n = readNumber(v);

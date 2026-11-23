@@ -16,7 +16,7 @@ import {
     FUNCTIONS, ROW_LIMIT, type CompareStats, type Engine, type Expr, type FunctionName, type JoinKind, type JoinStats, type Problem,
     type Query, type ResultId, type RowTests, type RunOptions, type Value, type RunOutcome, type Step, type StatsWindow, type Table, type TableWindow
 } from './engine-types';
-import { compareValues, fromValue, isNumber, keyPart, keyReader, notNumbers, num, readNumber, Real, toValue, truthy, type V } from './engine-values';
+import { compareValues, fromValue, isNumber, keyPart, keyReader, lookupTwice, notNumbers, num, readNumber, Real, toValue, truthy, type V } from './engine-values';
 
 /** A column of a step's rows: its name, and the inputs it can be named by (`{ column, of }`). */
 interface Col {
@@ -116,10 +116,15 @@ export class QueryEngine implements Engine {
     /** Each result's compare and join steps' statistics, by step name (a join's with its values, for windows). */
     private readonly stepStats = new Map<ResultId, Map<string, CompareStats | JoinFacts>>();
     private nextResult = 1;
+    /** One view of each loaded table for the functions, kept while the table is (Translate's index is built on it once). */
+    private readonly sources = new WeakMap<object, LookupSource>();
     private readonly ctx: FunctionContext = {
         table: name => {
             const t = this.tables.get(name);
-            return t ? ({ columns: t.columns, rowCount: t.rowCount, value: (r, c) => t.value(r, c) } as LookupSource) : undefined;
+            if (!t) return undefined;
+            let source = this.sources.get(t);
+            if (!source) { source = { columns: t.columns, rowCount: t.rowCount, value: (r, c) => t.value(r, c) }; this.sources.set(t, source); }
+            return source;
         }
     };
 
@@ -370,14 +375,20 @@ export class QueryEngine implements Engine {
             const c = rel.cols.findIndex(x => x.name === column);
             if (c < 0) continue;
             let rows = 0;
+            // (and the rows whose value a lookup table holds twice: left as they were, counted as `twice:<column>`)
+            let twice = 0;
             for (let r = 0; r < rel.rowCount; r++) {
                 if (r && r % SLICE === 0) await slice('Checking numbers', r, rel.rowCount);
                 notNumbers.on = true;
                 notNumbers.count = 0;
-                try { rel.value(r, c); } finally { notNumbers.on = false; }
+                lookupTwice.on = true;
+                lookupTwice.count = 0;
+                try { rel.value(r, c); } finally { notNumbers.on = false; lookupTwice.on = false; }
                 if (notNumbers.count) rows++;
+                if (lookupTwice.count) twice++;
             }
             if (rows) counted[column] = rows;
+            if (twice) counted[`twice:${column}`] = twice;
         }
         if (Object.keys(counted).length) give(counted);
     }

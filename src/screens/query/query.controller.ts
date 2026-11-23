@@ -65,7 +65,7 @@ export interface QueryPorts extends ComparePorts {
     /** Open a lookup table in its own tab (from Translate values in the functions dialog). */
     openLookup?(id: string): Promise<void>;
     /** A new lookup table, empty, opened in its own tab ("+ New lookup table…" in Translate values' table picker). */
-    newLookup?(): Promise<void>;
+    newLookup?(name?: string, columns?: string[]): Promise<void>;
     /** Where the new engine runs: a worker of its own (the web app), or this thread when left out. */
     engineHost?(): EngineHost;
 }
@@ -509,7 +509,7 @@ export class QueryController {
                 });
                 case 'query.record': return await this.record(Number(message.index), Array.isArray(message.hidden) ? (message.hidden as string[]).map(String) : []);
                 case 'query.newLookup': {
-                    if (this.ports.newLookup) await this.ports.newLookup();
+                    if (this.ports.newLookup) await this.ports.newLookup(typeof message.name === 'string' ? message.name : undefined, Array.isArray(message.columns) ? (message.columns as unknown[]).map(String) : undefined);
                     return;
                 }
                 case 'query.openLookup': {

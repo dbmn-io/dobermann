@@ -1050,7 +1050,11 @@
             // A lookup table opens in its own tab, from Reporting
             onOpenLookup: id => post({ type: 'query.openLookup', id }),
             // "+ New lookup table…": a new table in its own tab, as Reporting's + New lookup table makes
-            onNewLookup: () => post({ type: 'query.newLookup' }),
+            // (its name and columns from the shared dialog, shared/lookup-new.js, when the page has it; else the host's default)
+            onNewLookup: () => {
+                if (!window.LookupNew) { post({ type: 'query.newLookup' }); return; }
+                window.LookupNew.ask({ taken: lookupTables().map(t => t.name) }).then(made => { if (made) post({ type: 'query.newLookup', name: made.name, columns: made.columns }); });
+            },
             sample: list => new Promise(resolve => {
                 const seq = ++asked;
                 waiting.set(seq, resolve);
@@ -2353,11 +2357,16 @@
         $('queryDistinctLabel').classList.toggle('hidden', !repeats && !m.distinct);
         $('queryDistinctText').textContent = !repeats ? 'Distinct' : m.distinct ? `Distinct: ${count(repeats)} repeated ${repeats === 1 ? 'row' : 'rows'} folded` : `Distinct: fold ${count(repeats)} repeated ${repeats === 1 ? 'row' : 'rows'}`;
         // Text read as a number that wasn't one is left blank, and said: how many rows, in which column (James, 2026-11-21)
-        const notNumbers = (m.notNumbers || []).filter(x => (m.resultColumns || [])[x.column]);
-        $('queryNotNumbers').classList.toggle('hidden', !notNumbers.length);
-        $('queryNotNumbers').textContent = notNumbers.length
-            ? `Text that isn't a number was left blank: ${notNumbers.map(x => `${count(x.rows)} ${x.rows === 1 ? 'row' : 'rows'} in ${m.resultColumns[x.column].column}`).join(', ')}.`
-            : '';
+        const counted = (m.notNumbers || []).filter(x => (m.resultColumns || [])[x.column]);
+        const rowsIn = list => list.map(x => `${count(x.rows)} ${x.rows === 1 ? 'row' : 'rows'} in ${m.resultColumns[x.column].column}`).join(', ');
+        const notNumbers = counted.filter(x => !x.kind);
+        // (Translate values meeting a value its lookup table holds in two rows: left as it was, nothing guessed)
+        const twice = counted.filter(x => x.kind === 'twice');
+        $('queryNotNumbers').classList.toggle('hidden', !counted.length);
+        $('queryNotNumbers').textContent = [
+            notNumbers.length ? `Text that isn't a number was left blank: ${rowsIn(notNumbers)}.` : '',
+            twice.length ? `In the lookup table twice, so left as they were: ${rowsIn(twice)}.` : ''
+        ].filter(Boolean).join(' ');
     }
 
     function applyState(m) {

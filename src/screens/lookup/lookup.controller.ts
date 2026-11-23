@@ -86,7 +86,7 @@ export class LookupController {
             const saved = await this.ports.store.save({
                 id: kept.id,
                 name: kept.name,
-                columns: columns.map(c => ({ id: String(c.id), name: String(c.name ?? c.id), ...(c.key ? { key: true } : {}) })),
+                columns: columns.map(c => ({ id: String(c.id), name: String(c.name ?? c.id) })),
                 rows: rows.map(row => {
                     const out: Record<string, string> = {};
                     columns.forEach(c => { const v = row[c.id]; out[c.id] = v === null || v === undefined ? '' : String(v); });

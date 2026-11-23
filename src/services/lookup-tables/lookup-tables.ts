@@ -26,19 +26,24 @@ import { freeName as freeFileName, safeFileName } from '../query/query-folder';
 
 export const LOOKUP_TABLES_KEY = 'lookupTables';
 
-/** The most columns a lookup table can have. */
-export const LOOKUP_MAX_COLUMNS = 50;
+/** The most columns a lookup table can have (James, 2026-11-23: up to five, all equal). */
+export const LOOKUP_MAX_COLUMNS = 5;
 /** The most rows a lookup table can have. */
 export const LOOKUP_MAX_ROWS = 1000;
 /** A lookup table's name: as long as a report's. */
 export const LOOKUP_NAME_MAX = 30;
+/** A column's name. */
+export const LOOKUP_COLUMN_NAME_MAX = 20;
 
+/**
+ * A column. Every column is equal (James, 2026-11-23: "all equal. we can lookup any column and return any
+ * other column"): Translate values looks a value up in any one and gives the same row's value in any other.
+ * (A file from before, with `key: true` on a column, is read without it.)
+ */
 export interface LookupColumn {
     /** Never changes: what a query's function saves. */
     id: string;
     name: string;
-    /** The key: its values one per row. */
-    key?: boolean;
 }
 
 export interface LookupTable {
@@ -106,6 +111,33 @@ function listenersOf(state: object): Set<(change: LookupChange) => void> {
     return set;
 }
 
+/** What looking a value up gives (lookupValue): the To column's value, nothing, or more than one row. */
+export type LookupAnswer = { kind: 'found'; value: string } | { kind: 'missing' } | { kind: 'twice'; rows: number };
+
+/** A table's column by its id, or by its name (any case). */
+export function lookupColumn(table: Pick<LookupTable, 'columns'>, ref: string): LookupColumn | undefined {
+    const want = String(ref ?? '');
+    return table.columns.find(c => c.id === want) ?? table.columns.find(c => c.name.toLowerCase() === want.toLowerCase());
+}
+
+/**
+ * One value looked up, by the rule Query's Translate values follows in the engine (engine-functions.ts translate;
+ * lookup-value tests hold the two to it): the rows whose `from` column holds `value` exactly, as text (no trimming,
+ * letter case counts). One row: its `to` column's value (`to` left out: the value itself, "is it in the column").
+ * None: missing. Two or more: twice, nothing guessed (James, 2026-11-23). Run Batch's `lu` template function reads
+ * tables the same way. Translate keeps the original value for missing and twice, and for a found To that is blank.
+ */
+export function lookupValue(table: Pick<LookupTable, 'columns' | 'rows'>, from: string, value: string, to?: string): LookupAnswer {
+    const fromColumn = lookupColumn(table, from);
+    const toColumn = to === undefined ? fromColumn : lookupColumn(table, to);
+    if (!fromColumn || !toColumn) return { kind: 'missing' };
+    const text = String(value ?? '');
+    const rows = table.rows.filter(r => (r[fromColumn.id] ?? '') === text);
+    if (!rows.length) return { kind: 'missing' };
+    if (rows.length > 1) return { kind: 'twice', rows: rows.length };
+    return { kind: 'found', value: rows[0][toColumn.id] ?? '' };
+}
+
 /** Why a table can't be kept as it is, or '' when it can. */
 export function lookupTableProblem(table: Pick<LookupTable, 'name' | 'columns' | 'rows'>): string {
     const name = String(table.name || '').trim();
@@ -113,6 +145,8 @@ export function lookupTableProblem(table: Pick<LookupTable, 'name' | 'columns' |
     if (name.length > LOOKUP_NAME_MAX) return `A name is up to ${LOOKUP_NAME_MAX} characters.`;
     if (!table.columns.length) return 'A lookup table needs a column.';
     if (table.columns.length > LOOKUP_MAX_COLUMNS) return `A lookup table has up to ${LOOKUP_MAX_COLUMNS} columns.`;
+    const tooLong = table.columns.find(c => String(c.name || '').trim().length > LOOKUP_COLUMN_NAME_MAX);
+    if (tooLong) return `A column's name is up to ${LOOKUP_COLUMN_NAME_MAX} characters.`;
     if (table.rows.length > LOOKUP_MAX_ROWS) return `A lookup table has up to ${LOOKUP_MAX_ROWS.toLocaleString('en-AU')} rows.`;
     const names = new Set<string>();
     for (const column of table.columns) {
@@ -121,21 +155,7 @@ export function lookupTableProblem(table: Pick<LookupTable, 'name' | 'columns' |
         if (names.has(n)) return `Two columns are called ${column.name}.`;
         names.add(n);
     }
-    for (const column of table.columns.filter(c => c.key)) {
-        const seen = new Set<string>();
-        for (const row of table.rows) {
-            const value = String(row[column.id] ?? '').trim();
-            if (!value) return `Every row needs a ${column.name}: it is the key.`;
-            if (seen.has(value)) return `${column.name} ${value} is in two rows: a key is in one row only.`;
-            seen.add(value);
-        }
-    }
     return '';
-}
-
-/** A new table's columns: a key and a value, as most lookups are. */
-export function starterColumns(): LookupColumn[] {
-    return [{ id: 'c1', name: 'code', key: true }, { id: 'c2', name: 'value' }];
 }
 
 export class LookupTablesStore implements LookupTablesReader {
@@ -238,10 +258,25 @@ export class LookupTablesStore implements LookupTablesReader {
         return (await this.readAll()).find(t => t.id === id);
     }
 
-    /** A new table, empty but for a key and a value column, called `name` (made unique). */
-    async create(name: string): Promise<LookupTable> {
+    /** A table by its name, any letter case (Run Batch's `lu` names its table). */
+    async findByName(name: string): Promise<LookupTable | undefined> {
+        const want = String(name ?? '').trim().toLowerCase();
+        return (await this.readAll()).find(t => t.name.toLowerCase() === want);
+    }
+
+    /**
+     * A new table, no rows yet, called `name` with the columns named (one to five, all equal). Refused in words when
+     * it can't be: the dialog checks first, the store only refuses (another table of that name, two columns alike…).
+     * Without names, the two of a first table: code and value.
+     */
+    async create(name: string, columnNames: string[] = ['code', 'value']): Promise<LookupTable> {
         const tables = await this.readAll();
-        const table: LookupTable = { id: newId(tables), name: freeName(tables, name || 'Lookup'), columns: starterColumns(), rows: [], updatedAt: this.now() };
+        const trimmed = String(name ?? '').trim();
+        if (tables.some(t => t.name.toLowerCase() === trimmed.toLowerCase())) throw new Error(`There's a lookup table called ${trimmed} already.`);
+        const columns = columnNames.map((n, i) => ({ id: `c${i + 1}`, name: String(n ?? '').trim() }));
+        const table: LookupTable = { id: newId(tables), name: trimmed, columns, rows: [], updatedAt: this.now() };
+        const problem = lookupTableProblem(table);
+        if (problem) throw new Error(problem);
         await this.writeOne(table);
         this.tell({ kind: 'saved', id: table.id });
         return table;
@@ -304,7 +339,7 @@ function clean(raw: unknown): LookupTable | undefined {
     if (typeof t.id !== 'string' || !Array.isArray(t.columns) || !Array.isArray(t.rows)) return undefined;
     const columns: LookupColumn[] = (t.columns as unknown[])
         .filter((c): c is Record<string, unknown> => !!c && typeof c === 'object' && typeof (c as Record<string, unknown>).id === 'string')
-        .map(c => ({ id: String(c.id), name: String(c.name ?? c.id).trim(), ...(c.key === true ? { key: true } : {}) }));
+        .map(c => ({ id: String(c.id), name: String(c.name ?? c.id).trim() }));
     const ids = columns.map(c => c.id);
     const rows = (t.rows as unknown[])
         .filter((r): r is Record<string, unknown> => !!r && typeof r === 'object')

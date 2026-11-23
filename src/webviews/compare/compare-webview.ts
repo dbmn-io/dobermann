@@ -73,7 +73,7 @@ export class CompareWebview extends WebviewBase {
                 compared: () => config.onCompared?.()
             }
         };
-        this.controller = new QueryController(this.session, { ...ports, systemName: async id => (await container.resolve<{ getSystem(id: string): Promise<{ name: string } | undefined> }>(ServiceTokens.SystemManager).getSystem(id))?.name, openRunBatch: async (endpoint, chain) => { await vscode.commands.executeCommand('dbmn.runBatch', { endpoint, chain }); }, queryFiles: createVsCodeQueryFiles(), lookups: new LookupTablesStore(vsCodeLookupFolder()), openLookup: async id => { await vscode.commands.executeCommand('dbmn.openLookupTable', id); }, newLookup: async () => { const made = await new LookupTablesStore(vsCodeLookupFolder()).create('Lookup table'); await vscode.commands.executeCommand('dbmn.openLookupTable', made.id); } }, { queryId: config.compareId, start: config.start });
+        this.controller = new QueryController(this.session, { ...ports, systemName: async id => (await container.resolve<{ getSystem(id: string): Promise<{ name: string } | undefined> }>(ServiceTokens.SystemManager).getSystem(id))?.name, openRunBatch: async (endpoint, chain) => { await vscode.commands.executeCommand('dbmn.runBatch', { endpoint, chain }); }, queryFiles: createVsCodeQueryFiles(), lookups: new LookupTablesStore(vsCodeLookupFolder()), openLookup: async id => { await vscode.commands.executeCommand('dbmn.openLookupTable', id); }, newLookup: async (name, columns) => { const made = await new LookupTablesStore(vsCodeLookupFolder()).create(name ?? 'Lookup table', columns); await vscode.commands.executeCommand('dbmn.openLookupTable', made.id); } }, { queryId: config.compareId, start: config.start });
     }
 
     getWebviewType(): string {

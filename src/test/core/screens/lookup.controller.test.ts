@@ -38,12 +38,12 @@ describe('Lookup table screen (controller)', () => {
         const load = last('lookup.load') as { table: { id: string; columns: unknown[] }; limits: { columns: number; rows: number } };
         expect(load.table.id).to.equal(table.id);
         expect(load.table.columns).to.have.length(2);
-        expect(load.limits).to.deep.equal({ columns: 50, rows: 1000 });
+        expect(load.limits).to.deep.equal({ columns: 5, rows: 1000 });
     });
 
     it('the page\'s columns and rows are kept under the table\'s own name; the page hears it', async () => {
         const { controller, store, table, last } = await setUp();
-        const columns = [{ id: 'erp', name: 'ERP unit', key: true }, { id: 'wms', name: 'WMS unit' }, { id: 'fin', name: 'Finance unit' }];
+        const columns = [{ id: 'erp', name: 'ERP unit' }, { id: 'wms', name: 'WMS unit' }, { id: 'fin', name: 'Finance unit' }];
         await controller.handleMessage({ type: 'lookup.save', seq: 3, table: { columns, rows: [{ erp: 'EA', wms: 'EACH', fin: 'UNIT' }, { erp: 'CS', wms: 'CASE', fin: 12 }] } });
         expect(last('lookup.saved')).to.include({ seq: 3, rows: 2 });
         const kept = await store.get(table.id);
@@ -53,8 +53,9 @@ describe('Lookup table screen (controller)', () => {
 
     it('what can\'t be kept is not, and the page hears why', async () => {
         const { controller, store, table, last } = await setUp();
-        await controller.handleMessage({ type: 'lookup.save', seq: 4, table: { columns: [{ id: 'k', name: 'code', key: true }], rows: [{ k: 'A' }, { k: 'A' }] } });
-        expect(String(last('lookup.notSaved')?.reason)).to.match(/a key is in one row only/);
+        const six = Array.from({ length: 6 }, (_, i) => ({ id: `c${i}`, name: `col ${i}` }));
+        await controller.handleMessage({ type: 'lookup.save', seq: 4, table: { columns: six, rows: [] } });
+        expect(String(last('lookup.notSaved')?.reason)).to.match(/up to 5 columns/);
         expect((await store.get(table.id))?.rows).to.deep.equal([]);
     });
 
@@ -83,7 +84,7 @@ describe('Lookup table screen (controller)', () => {
 
     it('its own save is not news: the page is not sent the table back', async () => {
         const { controller, posted } = await setUp();
-        await controller.handleMessage({ type: 'lookup.save', seq: 6, table: { columns: [{ id: 'c1', name: 'code', key: true }, { id: 'c2', name: 'value' }], rows: [{ c1: 'EA', c2: 'each' }] } });
+        await controller.handleMessage({ type: 'lookup.save', seq: 6, table: { columns: [{ id: 'c1', name: 'code' }, { id: 'c2', name: 'value' }], rows: [{ c1: 'EA', c2: 'each' }] } });
         expect(posted.map(m => m.type)).to.deep.equal(['lookup.saved']);
     });
 });
