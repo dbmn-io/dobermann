@@ -1515,7 +1515,7 @@ export class TemplateParser {
             const { formatOnly, modifiers } = extractModifiersFromFormat(formatModifier, dataType);
 
             // A broken list or lookup (or an old lu) never falls back: a code sent unchecked is worse than a row that stops
-            const luError = modifiers.errors.find(e => /^(list needs|lookup needs|lu is now)/.test(e));
+            const luError = modifiers.errors.find(e => /^(list needs|lookup needs|lu is now|Put the text in quotes|ifblank needs)/.test(e));
             if (luError) return { success: false, error: luError };
 
             // If there are parse errors, log and fall back to simple conversion

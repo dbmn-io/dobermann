@@ -1138,6 +1138,17 @@ body.is-footer-peek .webview-footer:focus-within::before {
    on the right drops to a second line */
 dbmn-footer:has(> .footer-button-container-overflow) { flex-wrap: nowrap; }
 dbmn-footer > dbmn-status { flex: none; }
+/* Run API and Run Batch: one pair, on one line, at any width (James, 2026-11-23: "These Run Batch / Run API should
+   never do this"). The other buttons give way into More first; this pair never wraps or shrinks */
+dbmn-actions .execution-button-group,
+.footer-button-container-overflow .execution-button-group {
+    display: flex;
+    flex: none;
+    flex-wrap: nowrap;
+    gap: 8px;
+    align-items: center;
+}
+.execution-button-group .btn { white-space: nowrap; }
 
 /* Push the overflow More button to the far right of the footer button row.
    The arm-of-flex idiom: margin-left: auto on a flex child consumes all remaining

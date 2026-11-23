@@ -253,14 +253,14 @@ test('list and lookup types: a value not in the lookup table is a row to fix, sa
     await expect(page.locator('#csvNextBtn')).toHaveText('Next');
     await expect(page.locator('.grid-hint')).toHaveText(/^Showing the 2 rows that need fixing, of 4\./);
     await expect(body(page).locator('td.grid-row-num')).toHaveText(['2', '4']);
-    await expect(td(page, 0, 1)).toHaveAttribute('title', /uom DZ isn't in UOM's TMS column/);
-    await expect(td(page, 1, 2)).toHaveAttribute('title', /code XX isn't in UOM's WMS column/);
+    await expect(td(page, 0, 1)).toHaveAttribute('title', /^uom is a lookup in UOM: DZ isn't in its TMS column$/);
+    await expect(td(page, 1, 2)).toHaveAttribute('title', /^code is a list from UOM: XX isn't in its WMS column$/);
     await expect(td(page, 1, 1)).not.toHaveClass(/grid-cell-error/);
     // CA is in TMS twice: the first row's WMS (CS), said in a note on the cell, not a row to fix
     expect(await page.evaluate(() => (window.state.gridCellNotes.get(2) || []).map(n => n.note))).toEqual(['CA · in TMS twice, first row used (CS)']);
     // The heading: underlined, its valid values on hover
     await expect(page.locator('#validateGrid thead th').nth(1)).toHaveClass(/grid-header-has-validation/);
-    await expect(page.locator('#validateGrid thead th').nth(1)).toHaveAttribute('title', /^uom: one of EA, SE, CA\n/);
+    await expect(page.locator('#validateGrid thead th').nth(1)).toHaveAttribute('title', /^uom: a lookup in UOM: TMS → WMS\. One of EA, SE, CA\n/);
     // A cell opened to fix: its box offers the valid values (typing filters them); picking one fixes the row
     await td(page, 0, 1).click();
     const box = td(page, 0, 1).locator('input.dbmn-cell-input');
@@ -272,8 +272,8 @@ test('list and lookup types: a value not in the lookup table is a row to fix, sa
 });
 
 test('ifblank: a blank (or spaces only) is not a row to fix: it becomes the text; with notrim, spaces stay', async ({ page }) => {
-    // James, 2026-11-23: "{{note | ifblank:none}}"
-    const IB = JSON.stringify({ items: [{ sku: '{{sku:string|3-10}}', note: '{{note | ifblank:none}}', uom: '{{uom:list|uom:wms|ifblank:EA}}' }] });
+    // James, 2026-11-23: "{{note | ifblank:'none'}}" (the text in single quotes)
+    const IB = JSON.stringify({ items: [{ sku: '{{sku:string|3-10}}', note: "{{note | ifblank:'none'}}", uom: "{{uom:list|uom:wms|ifblank:'EA'}}" }] });
     await page.setContent(gridPage(IB));
     await page.evaluate(() => DTDataEntryGrid.setLookupTables([{ id: 'lkp-uom', name: 'UOM', columns: [{ id: 'c1', name: 'WMS' }], rows: [{ c1: 'EA' }] }]));
     await page.evaluate(rows => {
@@ -283,7 +283,7 @@ test('ifblank: a blank (or spaces only) is not a row to fix: it becomes the text
     await expect(page.locator('#csvNextBtn')).toHaveText('Next');
     // Only row 3 (DZ) is to fix: the blank notes and the blank uom (→ EA, in UOM) are fine
     await expect(page.locator('.grid-hint')).toHaveText(/^Showing the 1 row that needs? fixing, of 3\./);
-    await expect(td(page, 0, 3)).toHaveAttribute('title', /uom DZ isn't in UOM's WMS column/);
+    await expect(td(page, 0, 3)).toHaveAttribute('title', /uom is a list from UOM: DZ isn't in its WMS column/);
 });
 
 test('list of a one-column table needs no column named; once the table has two, Validate says which to name', async ({ page }) => {
@@ -296,10 +296,10 @@ test('list of a one-column table needs no column named; once the table has two, 
         DTDataEntryGrid.populateGridFromMappedData({ headers: ['site'], rows }, vars);
     }, [['DC01'], ['DC09']]);
     await expect(page.locator('#csvNextBtn')).toHaveText('Next');
-    await expect(td(page, 0, 1)).toHaveAttribute('title', /site DC09 isn't in Sites's site column/);
+    await expect(td(page, 0, 1)).toHaveAttribute('title', /^site is a list from Sites: DC09 isn't in its site column$/);
     // The table gains a second column: the shorthand is said to need one named, never guessed
     await page.evaluate(() => DTDataEntryGrid.setLookupTables([{ id: 's', name: 'Sites', columns: [{ id: 'c', name: 'site' }, { id: 'd', name: 'region' }], rows: [{ c: 'DC01', d: 'N' }] }]));
     await expect(page.locator('.grid-hint')).toHaveText(/^Showing the 2 rows that need fixing, of 2\./);
-    await expect(td(page, 0, 1)).toHaveAttribute('title', /Sites has more than one column: say which, e\.g\. sites:site/);
+    await expect(td(page, 0, 1)).toHaveAttribute('title', /is a list from Sites: it has more than one column: say which, e\.g\. sites:site/);
 });
 

@@ -3789,6 +3789,8 @@
                 mods = parseModifiersForGrid(variable.formatModifier, targetType);
             }
             const hasValidation = mods && mods.hints && mods.hints.length > 0;
+            // A list or lookup is sent as text, but is said as what it is (James, 2026-11-23: "I don't think this screen knows the type")
+            const shownType = mods && mods.listKind ? mods.listKind : targetType;
             const isOptional = mods && (mods.isOptional || mods.isNullable);
             const hintsText = hasValidation ? mods.hints.join(', ') : '';
 
@@ -3801,7 +3803,7 @@
                 <td class="map-variable-cell">
                     <div class="map-variable-line">
                         <span class="${varNameClass}" ${varNameTitle ? `title="${varNameTitle}"` : ''}>${variable.name}${optionalIndicator}</span>
-                        <span class="variable-type data-type-${targetType}">${targetType}</span>
+                        <span class="variable-type data-type-${shownType}">${shownType}</span>
                     </div>
                     ${alsoInText ? `<div class="variable-sources">Also in: ${escapeHtml(alsoInText)}</div>` : ''}
                     ${hintsText ? `<div class="variable-modifiers">${hintsText}</div>` : ''}

@@ -649,7 +649,7 @@
         }
 
         // User variables: {{VAR}} or {{VAR:type}} or {{VAR:type|modifier}} or {{VAR:type:format|modifier}}
-        // {{note | ifblank:none}}: a pipe before any colon, a text value and its modifiers
+        // {{note | ifblank:'none'}}: a pipe before any colon, a text value and its modifiers
         const namePipe = innerContent.indexOf('|');
         const nameColon = innerContent.indexOf(':');
         if (namePipe > 0 && (nameColon === -1 || namePipe < nameColon)) {
@@ -766,8 +766,11 @@
         for (const raw of modifierStr.split('|').map(x => x.trim()).filter(Boolean)) {
             const low = raw.toLowerCase();
             if (low.indexOf('ifblank:') === 0) {
-                if (!raw.slice(8).trim()) return { valid: false, error: 'ifblank needs the text a blank becomes: ifblank:none' };
-                continue;
+                // The text in single quotes, and only in them (James, 2026-11-23): ifblank:'none'
+                const text = raw.slice(8).trim();
+                if (/^'.*'$/.test(text)) continue;
+                const bare = text.replace(/^["'](.*)["']$/, '$1').replace(/^["']|["']$/g, '');
+                return { valid: false, error: bare ? `Put the text in quotes: ifblank:'${bare}'` : "ifblank needs the text a blank becomes, in quotes: ifblank:'none'" };
             }
             if (low.indexOf('lu:') === 0) return { valid: false, error: 'lu is now a type: {{name:list|table:column}} or {{name:lookup|table:from>to}}' };
             rest.push(raw);
@@ -1701,11 +1704,13 @@
     function getStringModifierSuggestions(range) {
         return [
             {
-                label: 'ifblank:',
+                label: "ifblank:''",
                 kind: monaco.languages.CompletionItemKind.Keyword,
-                insertText: 'ifblank:',
+                // (the caret between the quotes, ready for the text)
+                insertText: "ifblank:'$1'",
+                insertTextRules: (monaco.languages.CompletionItemInsertTextRule || {}).InsertAsSnippet,
                 detail: 'What a blank becomes',
-                documentation: 'ifblank:none sends "none" for a blank value, or one of spaces only (notrim keeps spaces)',
+                documentation: "ifblank:'none' sends none for a blank value, or one of spaces only (notrim keeps spaces). The text goes in single quotes.",
                 range: range
             },
             {

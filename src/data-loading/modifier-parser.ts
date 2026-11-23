@@ -79,9 +79,14 @@ export function parseModifiers(modifierString: string, dataType: DataType): Pars
             continue;
         }
 
-        // `ifblank:text`: what a blank becomes (any type; quotes around the text are taken off)
+        // `ifblank:'text'`: what a blank becomes (any type). The text is in single quotes, and only in them
+        // (James, 2026-11-23: "it should be in quotes… don't allow just random text outside of the string";
+        // single, as a double quote would end a JSON body's string)
         if (partLower.startsWith('ifblank:')) {
-            result.ifBlank = part.slice('ifblank:'.length).trim().replace(/^(['"])(.*)\1$/, '$2');
+            const text = part.slice('ifblank:'.length).trim();
+            const quoted = /^'(.*)'$/.exec(text);
+            if (quoted) result.ifBlank = quoted[1];
+            else result.errors.push(ifBlankUnquoted(text));
             continue;
         }
 
@@ -117,6 +122,12 @@ export function parseModifiers(modifierString: string, dataType: DataType): Pars
 
 /** What `lu` is now (it was never in a release). */
 export const LU_REPLACED = 'lu is now a type: {{name:list|table:column}} checks a value is in a column, {{name:lookup|table:from>to}} sends another';
+
+/** What's said of an ifblank whose text isn't in single quotes: how to write it. */
+export function ifBlankUnquoted(text: string): string {
+    const bare = String(text || '').trim().replace(/^["'](.*)["']$/, '$1').replace(/^["']|["']$/g, '');
+    return bare ? `Put the text in quotes: ifblank:'${bare}'` : "ifblank needs the text a blank becomes, in quotes: ifblank:'none'";
+}
 
 /**
  * `list:table[:column]` or `lookup:table:from>to` as a lookup modifier, or what is wrong with it.

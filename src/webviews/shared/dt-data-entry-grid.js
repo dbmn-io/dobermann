@@ -49,7 +49,8 @@
             toUpper: false,         // String: convert to uppercase
             toLower: false,         // String: convert to lowercase
             dateMath: null,         // Date: date math expression (e.g., "+2d")
-            ifBlank: null,          // ifblank:text - what a blank becomes (so a blank is fine)
+            ifBlank: null,          // ifblank:'text' - what a blank becomes (so a blank is fine)
+            problem: null,          // the template written so it can't be used (an unquoted ifblank): every row says it
             lookups: [],            // the list / lookup types' table: { table, from, to? } (from '' = its one column)
             hints: []               // Human-readable hints for display
         };
@@ -62,12 +63,18 @@
 
         // `list` and `lookup` types (James, 2026-11-23): the first part is the table and its columns
         // ({{uom:list|uom:wms}}, {{uom:list|uom}}, {{uom:lookup|uom:tms>wms}}); the rest are modifiers
-        if ((dataType === 'list' || dataType === 'lookup') && parts.length) {
+        // (the host reads a JSON body's {{uom:lookup|uom:tms>wms}} as a string with `lookup:uom:tms>wms` first: the same)
+        var kind = dataType === 'list' || dataType === 'lookup' ? dataType : null;
+        var tagged = !kind && parts.length ? /^(list|lookup):(.*)$/i.exec(parts[0]) : null;
+        if (tagged) { kind = tagged[1].toLowerCase(); parts[0] = tagged[2]; }
+        if (kind && parts.length) {
             var spec = parts.shift().split(':');
             var cols = spec.slice(1).join(':').split('>');
-            var lu = { table: (spec[0] || '').trim(), from: (cols[0] || '').trim(), to: dataType === 'lookup' && cols.length > 1 ? (cols[1] || '').trim() : undefined };
+            var lu = { kind: kind, table: (spec[0] || '').trim(), from: (cols[0] || '').trim(), to: kind === 'lookup' && cols.length > 1 ? (cols[1] || '').trim() : undefined };
             result.lookups.push(lu);
-            result.hints.push(lu.to !== undefined ? lu.from + ' → ' + lu.to + ' in ' + lu.table : 'one of ' + lu.table + (lu.from ? "'s " + lu.from : ''));
+            result.listKind = kind;
+            // Said as what it is (James, 2026-11-23: "is this a list or a lookup we're doing here?")
+            result.hints.push(lu.to !== undefined ? 'a lookup in ' + lu.table + ': ' + lu.from + ' → ' + lu.to : 'a list from ' + lu.table + (lu.from ? "'s " + lu.from : ''));
         }
 
         for (const part of parts) {
@@ -80,8 +87,16 @@
                 continue;
             }
             if (partLower.indexOf('ifblank:') === 0) {
-                result.ifBlank = part.slice(8).trim().replace(/^(['"])(.*)\1$/, '$2');
-                result.hints.push('blank → ' + result.ifBlank);
+                // The text in single quotes, and only in them (as modifier-parser.ts): else every row says how to write it
+                var text = part.slice(8).trim();
+                var quoted = /^'(.*)'$/.exec(text);
+                if (quoted) {
+                    result.ifBlank = quoted[1];
+                    result.hints.push("a blank becomes '" + result.ifBlank + "'");
+                } else {
+                    var bare = text.replace(/^["'](.*)["']$/, '$1').replace(/^["']|["']$/g, '');
+                    result.problem = bare ? "Put the text in quotes: ifblank:'" + bare + "'" : "ifblank needs the text a blank becomes, in quotes: ifblank:'none'";
+                }
                 continue;
             }
             if (partLower === 'null') {
@@ -752,7 +767,14 @@
                     if (mods.lookups && mods.lookups.length) {
                         const valid = validValues(mods.lookups[0]);
                         th.classList.add('grid-header-has-validation');
-                        th.title = `${v.name}: one of ${valid.slice(0, 30).join(', ')}${valid.length > 30 ? `… and ${valid.length - 30} more` : ''}${valid.length ? '' : '(no values yet)'}\nClick a cell to pick one; typing filters them`;
+                        const lu = mods.lookups[0];
+                        // (the table's own names when it's there: UOM, TMS → WMS; else as the template wrote them)
+                        const t = lookupTables.filter(x => String(x.name).trim().toLowerCase() === String(lu.table).trim().toLowerCase())[0];
+                        const col = ref => { const c = t && ref && window.LookupValue ? window.LookupValue.lookupColumn(t, ref) : null; return c ? c.name : ref; };
+                        const tableName = t ? t.name : lu.table;
+                        const what = (lu.kind || (lu.to !== undefined ? 'lookup' : 'list')) === 'lookup'
+                            ? `a lookup in ${tableName}: ${col(lu.from)} → ${col(lu.to)}` : `a list from ${tableName}${lu.from ? `'s ${col(lu.from)}` : ''}`;
+                        th.title = `${v.name}: ${what}. One of ${valid.slice(0, 30).join(', ')}${valid.length > 30 ? `… and ${valid.length - 30} more` : ''}${valid.length ? '' : '(no values yet)'}\nClick a cell to pick one; typing filters them`;
                     }
                     if (isOptionalVar(v)) {
                         const opt = document.createElement('span');
@@ -1820,20 +1842,24 @@
         return Array.from(seen);
     }
     function lookupInTables(lu, value) {
+        // Said as what it is: "uom is a lookup in UOM: DZ isn't in its TMS column" (James, 2026-11-23: "is this a list
+        // or a lookup we're doing here?"); the cell's hover and the summary put the variable's name in front
+        var kind = (lu.kind || (lu.to !== undefined ? 'lookup' : 'list')) === 'lookup' ? 'is a lookup in ' : 'is a list from ';
         var table = lookupTables.filter(function (t) { return String(t.name).trim().toLowerCase() === String(lu.table).trim().toLowerCase(); })[0];
-        if (!table) return { error: "there's no lookup table called " + lu.table };
+        if (!table) return { error: kind + lu.table + ": there's no lookup table called " + lu.table };
+        var say = kind + table.name + ': ';
         // (`list|uom`: a table of one column; with more, said, never guessed)
-        if (!lu.from && table.columns.length !== 1) return { error: table.name + ' has more than one column: say which, e.g. ' + lu.table + ':' + String((table.columns[0] || { name: 'column' }).name).toLowerCase() };
+        if (!lu.from && table.columns.length !== 1) return { error: say + 'it has more than one column: say which, e.g. ' + lu.table + ':' + String((table.columns[0] || { name: 'column' }).name).toLowerCase() };
         var rule = window.LookupValue;   // shared/lookup-value.js: the rule the run itself uses
         var from = lu.from ? rule.lookupColumn(table, lu.from) : table.columns[0];
-        if (!from) return { error: table.name + ' has no column called ' + lu.from };
+        if (!from) return { error: say + 'it has no column called ' + lu.from };
         var to = lu.to === undefined ? null : rule.lookupColumn(table, lu.to);
-        if (lu.to !== undefined && !to) return { error: table.name + ' has no column called ' + lu.to };
-        if (!value) return { error: 'needs a value from ' + table.name + "'s " + from.name + ' column' };
+        if (lu.to !== undefined && !to) return { error: say + 'it has no column called ' + lu.to };
+        if (!value) return { error: say + 'needs a value from its ' + from.name + ' column' };
         var answer = rule.lookupValue(table, from.id, value, to ? to.id : undefined);
-        if (answer.kind === 'missing') return { error: value + " isn't in " + table.name + "'s " + from.name + ' column' };
+        if (answer.kind === 'missing') return { error: say + value + " isn't in its " + from.name + ' column' };
         if (!to) return { value: value };   // (list: in the list is in the list, however often)
-        if (answer.value === '') return { error: value + "'s " + to.name + ' in ' + table.name + ' is blank' };
+        if (answer.value === '') return { error: say + value + "'s " + to.name + ' is blank' };
         // In the From column more than once: the first row's, said, not to fix (the manager for James, 2026-11-23:
         // "if we're looking up, we pick the first one")
         if (answer.rows > 1) return { value: answer.value, note: value + ' · in ' + from.name + ' ' + (answer.rows === 2 ? 'twice' : answer.rows + ' times') + ', first row used (' + answer.value + ')' };
@@ -1853,6 +1879,10 @@
             var mods = variable.modifiers;
             var dataType = variable.dataType;
             var value = rowData[colIndex] || '';
+            if (mods.problem) {
+                rowErrors.push({ row: rowIndex, col: colIndex, variable: variable.name, value: value, error: '— ' + mods.problem });
+                return;
+            }
 
             // ifblank: a blank is what it becomes (checked from there on, as the run fills it)
             if ((!value || (!mods.noTrim && value.trim() === '')) && mods.ifBlank !== null && mods.ifBlank !== undefined) value = mods.ifBlank;

@@ -238,7 +238,7 @@ export class ParameterCollectionService implements IParameterCollectionService {
         while ((match = variablePattern.exec(template)) !== null) {
             const fullVariable = match[1].trim();
             
-            // Extract variable name (everything before optional :type, or a pipe's modifiers: {{note | ifblank:none}})
+            // Extract variable name (everything before optional :type, or a pipe's modifiers: {{note | ifblank:'none'}})
             const variableName = fullVariable.split(/[:|]/)[0].trim();
             
             // Skip auto-generated variables (check the full variable string)
@@ -331,7 +331,7 @@ export class ParameterCollectionService implements IParameterCollectionService {
             // preserve anything else as the batch-style formatModifier so the
             // Run API modal can derive validation from `|>0`, `|int`, `|3-50`, etc.
             const colonIdx = fullVariable.indexOf(':');
-            // A pipe before any colon: {{note | ifblank:none}}, a text value and its modifiers
+            // A pipe before any colon: {{note | ifblank:'none'}}, a text value and its modifiers
             const namePipeIdx = fullVariable.indexOf('|');
             const pipeFirst = namePipeIdx > 0 && (colonIdx === -1 || namePipeIdx < colonIdx);
             const variableName = pipeFirst ? fullVariable.substring(0, namePipeIdx).trim()
@@ -911,6 +911,13 @@ export class ParameterCollectionService implements IParameterCollectionService {
             const parsed = modifierChain
                 ? parseModifiers(modifierChain, dataType)
                 : parseModifiers('', dataType);
+
+            // An ifblank whose text isn't in quotes: said on the field, as the editor and Validate say it
+            const quoteError = parsed.errors.find(e => /^(Put the text in quotes|ifblank needs)/.test(e));
+            if (quoteError) {
+                errors[variable.name] = quoteError;
+                continue;
+            }
 
             // Batch prep treats every mapping as isRequired: true by default
             // (csv-column-mapper.ts). The template opts out per-variable only

@@ -599,3 +599,29 @@ test('a working line at 1500, 1100 and 900px and a phone: never wider than its p
         }
     }
 });
+
+test('the endpoint editor\'s Run API and Run Batch stay on one line, side by side, at a narrow width', async ({ page }) => {
+    // James, 2026-11-23 evening test: they wrapped onto two lines beside Save Endpoint and Copy to Share
+    const html = `<!doctype html><html><head><style>body{margin:0;padding-top:200px;font:13px sans-serif;width:560px}
+.btn{padding:7px 16px;font-size:13px;line-height:18px;min-width:88px}
+${read('shared/atomic.css')}${read('shared/core.css')}${read('shared/dbmn-footer.css')}</style>
+<script>${read('shared/icons.js')}</script><script>${read('shared/dbmn-footer.js')}</script></head><body>
+<dbmn-footer>
+  <dbmn-actions class="footer-button-container-overflow">
+    <button class="btn" id="copy">Copy to Share</button>
+    <button class="btn btn-primary" id="save">Save Endpoint</button>
+    <div class="execution-button-group"><button class="btn btn-primary" id="runApi">Run API</button><button class="btn btn-secondary" id="runBatch">Run Batch</button></div>
+  </dbmn-actions>
+  <dbmn-status>Saved</dbmn-status>
+</dbmn-footer></body></html>`;
+    await page.setContent(html);
+    const api = await page.locator('#runApi').boundingBox();
+    const batch = await page.locator('#runBatch').boundingBox();
+    // Side by side: one line, Run Batch to the right of Run API
+    expect(Math.abs(api.y - batch.y)).toBeLessThan(2);
+    expect(batch.x).toBeGreaterThan(api.x + api.width - 1);
+    // ...and each label on one line (no button grown to two lines' height)
+    expect(api.height).toBeLessThan(40);
+    expect(batch.height).toBeLessThan(40);
+});
+

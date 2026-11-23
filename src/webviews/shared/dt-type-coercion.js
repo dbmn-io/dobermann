@@ -298,7 +298,9 @@
         }
         const isOptional = mods?.isOptional || false;
         const isNullable = mods?.isNullable || false;
-        const hasEmptyBehaviorModifier = isOptional || isNullable;
+        // (ifblank fills a blank with its text: a blank is never sent as null, so it's not warned of)
+        const fillsBlank = mods?.ifBlank !== null && mods?.ifBlank !== undefined;
+        const hasEmptyBehaviorModifier = isOptional || isNullable || fillsBlank;
 
         // GitHub Issue #175: Filter out "Empty value" warnings for fields with |opt or |null modifiers
         // These are intentional behaviors, not problems
