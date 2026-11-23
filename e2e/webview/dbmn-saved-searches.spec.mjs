@@ -153,3 +153,17 @@ test('at most 50 kept: the 51st is not offered; the menu fits beside the box', a
     expect(menu.y).toBeGreaterThan(btn.y + btn.height);
     expect(menu.x).toBeGreaterThanOrEqual(0);
 });
+
+test('compact (inside a tight toolbar\'s box): the star and the caret, the name in the hover text', async ({ page: p }) => {
+    await p.setContent(page(false));
+    await p.evaluate(() => { const s = document.getElementById('s'); s.setAttribute('compact', ''); s.searches = [{ name: 'Late orders', text: '@status=late' }]; });
+    await p.locator('#box').fill('@status=late');
+    const button = p.locator('#s .dbmn-saved-btn');
+    await expect(button.locator('.dbmn-saved-label')).toBeHidden();
+    await expect(button).toHaveAttribute('title', 'Saved search: Late orders');
+    await expect(button).toHaveAttribute('aria-label', 'Saved search: Late orders');
+    expect((await button.boundingBox()).width).toBeLessThan(40);
+    // The menu still works
+    await button.click();
+    await expect(p.locator('#s .dbmn-saved-note')).toHaveText('Saved as Late orders');
+});

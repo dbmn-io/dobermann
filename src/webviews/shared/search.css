@@ -84,6 +84,9 @@
 /* <dbmn-saved-searches> (dbmn-saved-searches.js): a search box's saved searches, a ★ drop-down beside the box */
 .dbmn-saved-searches { position: relative; display: inline-flex; flex: 0 0 auto; }
 .dbmn-saved-searches[hidden] { display: none; }
+/* compact: inside the box's right end (Query's toolbar): the star and the caret, no border, the name on hover */
+.dbmn-saved-searches[compact] .dbmn-saved-label { display: none; }
+.dbmn-saved-searches[compact] .dbmn-saved-btn { gap: 2px; height: 22px; padding: 0 4px; border-color: transparent; }
 .dbmn-saved-btn {
     display: inline-flex; align-items: center; gap: 5px;
     max-width: 200px; height: 26px; padding: 0 8px;

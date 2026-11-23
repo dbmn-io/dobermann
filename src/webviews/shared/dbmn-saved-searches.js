@@ -10,6 +10,8 @@
  * as typing it adds it; a saved search never takes a column away.
  *
  *   <dbmn-saved-searches id="saved"></dbmn-saved-searches>      placed beside the search box
+ *   <dbmn-saved-searches compact>             inside the box's right end, where a toolbar is tight (Query): the
+ *                                             star and the caret only, the saved search's name in the hover text
  *   saved.input = $('querySearch');           // the box it follows (its typing; refresh() after setting it from script)
  *   saved.searches = [{ name: 'Late orders', text: '@status=late' }];   // the screen's list, kept where its table is kept
  *   saved.addEventListener('dbmn-saved-change', e => …e.detail.searches…);   // after a save, rename or delete:
@@ -150,6 +152,8 @@
             this._button.append(star, label, caret);
             this._button.classList.toggle('is-saved', !!now);
             this._button.title = now ? `Saved search: ${now.name}` : 'Saved searches: save this search, or pick one';
+            // (compact: the name isn't shown, so it is the button's name for a screen reader)
+            this._button.setAttribute('aria-label', now ? `Saved search: ${now.name}` : 'Saved searches');
         }
 
         _drawMenu() {
