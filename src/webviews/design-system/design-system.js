@@ -197,6 +197,7 @@
         ['Lanes', 'One grid every line shares: a gutter, a lane per view split into its runs, an end column; spreadsheet cells', S, 'Design system; Query next', 'shared/dbmn-lanes.css, shared/dbmn-lanes.js'],
         ['<dbmn-map>', 'Which column in each source is which, a line at a time: key, functions, how many agree', C, 'Design system; Run Batch next', 'shared/dbmn-map.js'],
         ['DbmnFunctions', 'Functions on a column, ticked in order, tried on its values before and after', M, 'Design system; Query and Run Batch next', 'shared/dbmn-functions.js'],
+        ['LookupNew', 'New lookup table: a name, then up to 5 columns, each named differently, all equal', M, 'Hub (Reporting), Query (the functions\' table picker)', 'shared/lookup-new.js'],
         ['DbmnToast', 'Messages in the corner', M, 'Every screen', 'shared/dbmn-toast.js'],
         ['DbmnContextMenu', 'A right-click menu, or a menu under a button; an item may carry a picture and a quiet second line; a summary of what it is about may come first', M, 'Hub lists, tables; Query\'s join kind and slots', 'shared/dbmn-context-menu.js'],
         ['Join picture', 'Which rows a join keeps: two circles, the kept parts filled; Compare is the scale', M, 'Design system; Query\'s Join next', 'shared/relation-glyph.js (RelationGlyph.join)'],
@@ -249,7 +250,7 @@
         ['Edit Environment', 'Footer and status', ON, 'dbmn-footer, dbmn-status', ''],
         ['Design system', 'Table', ON, 'dbmn-table', ''],
         ['Logs', 'Footer and log', ON, 'dbmn-footer, dbmn-log', ''],
-        ['Lookup table', 'Footer and table', ON, 'dbmn-footer, dbmn-status, dbmn-table editable (add-row, row-delete, edit-columns, a key column)', ''],
+        ['Lookup table', 'Footer and table', ON, 'dbmn-footer, dbmn-status, dbmn-table editable (add-row, row-delete, edit-columns, every column unique)', ''],
         ['Query', 'Table', ON, 'dbmn-table, its rows asked for as they scroll; a compare\'s Status column and its marks in each cell', ''],
         ['Console', 'Table', ON, 'dbmn-table for Completed, Errors and Input: Set as Row beside a list of records, each column moving among its own object\'s', 'Logs, Request and Raw draw their own'],
         ['Hub', 'Banner, menu, list, tabs', WAIT, 'Its own markup and styles', 'Described and split into components as each is next worked on']
@@ -723,6 +724,11 @@
         'ds:next': () => { if (current < STEPS.length) go(current + 1); },
         'ds:run': run,
         'ds:theme': () => { const button = hubThemeButton(); if (button) button.click(); },
+        // (Regions is taken here, so the dialog says so; what it makes goes in a toast)
+        'ds:newLookup': async () => {
+            const made = window.LookupNew ? await window.LookupNew.ask({ taken: ['Regions'] }) : null;
+            if (made && window.DbmnToast) window.DbmnToast.success(`${made.name}: ${made.columns.join(', ')}`);
+        },
         'ds:functions': openFunctionsDemo,
         'ds:confirm': () => {
             window.DbmnModal.confirm({ title: 'Delete the query?', body: 'Only the report is deleted: the data in History stays.', confirmLabel: 'Delete', confirmVariant: 'danger' })

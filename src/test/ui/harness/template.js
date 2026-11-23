@@ -107,6 +107,7 @@
             ICONS_JS_URI: asset(base, 'shared/icons.js'),
             BADGES_JS_URI: asset(base, 'shared/badges.js'),
             DBMN_MODAL_JS_URI: asset(base, 'shared/dbmn-modal.js'),
+            LOOKUP_NEW_JS_URI: asset(base, 'shared/lookup-new.js'),
             ROW_PASTE_JS_URI: asset(base, 'shared/row-paste.js'),
             DBMN_TOAST_JS_URI: asset(base, 'shared/dbmn-toast.js'),
             DBMN_CLIPBOARD_JS_URI: asset(base, 'shared/dbmn-clipboard.js'),

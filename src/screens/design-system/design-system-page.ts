@@ -321,6 +321,7 @@ Icons.icon('check')                                   the SVG as text</code></pr
             <button type="button" class="btn btn-secondary" data-click="ds:alert">Alert</button>
             <button type="button" class="btn btn-secondary" data-click="ds:form">Form dialog</button>
             <button type="button" class="btn btn-secondary" data-click="ds:choice">Choice dialog</button>
+            <button type="button" class="btn btn-secondary" data-click="ds:newLookup">New lookup table</button>
             <button type="button" class="btn btn-secondary" data-click="ds:toast" data-arg="info">Toast</button>
             <button type="button" class="btn btn-secondary" data-click="ds:toast" data-arg="success">Success</button>
             <button type="button" class="btn btn-secondary" data-click="ds:toast" data-arg="warn">Warning</button>
@@ -594,6 +595,7 @@ log.addEventListener('dbmn-log-open', e =&gt; …e.detail.open…);   // a line'
     ${script('shared/help-mode.js')}
     ${script('shared/dbmn-modal.js')}
     ${script('shared/dbmn-functions.js')}
+    ${script('shared/lookup-new.js')}
     ${script('shared/dbmn-map.js')}
     ${script('shared/dbmn-lanes.js')}
     ${script('shared/dbmn-context-menu.js')}

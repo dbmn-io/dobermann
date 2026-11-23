@@ -5,8 +5,11 @@
  * after each change (no Save button: a query that uses the table reads it as it is now).
  *
  * The table's own pieces do the editing (shared/dbmn-table.js: add-row, row-delete,
- * edit-columns, a key column); this says which column is the key, pastes a block from a
- * spreadsheet as rows (adding them), and says in the footer whether what shows is kept, or why not.
+ * edit-columns; Tab past the end starts a row). Every column is equal (James, 2026-11-23: "all
+ * equal. we can lookup any column and return any other column"): a value repeated in a column is
+ * amber, as a lookup there would find two rows, and nothing is refused for it. This keeps the
+ * columns to five, each named differently, pastes a block from a spreadsheet as rows (adding
+ * them), and says in the footer whether what shows is kept, or why not.
  */
 (function () {
     'use strict';
@@ -15,44 +18,38 @@
     const $ = id => document.getElementById(id);
     const table = $('lookupTable');
     const status = $('lookupStatus');
-    const keyPick = $('lookupKey');
     const count = n => Number(n || 0).toLocaleString();
     const plural = (n, word) => `${count(n)} ${word}${n === 1 ? '' : 's'}`;
 
     /** What the controller said: the limits, whether the table is gone, the save asked for last. */
-    const ui = { limits: { columns: 50, rows: 1000 }, gone: false, seq: 0, timer: null };
+    const ui = { limits: { columns: 5, rows: 1000 }, gone: false, seq: 0, timer: null };
+    /** A column's longest name (as the store keeps it). */
+    const COLUMN_MAX = 20;
 
     function say(text, tone) {
         status.textContent = text;
         if (tone) status.setAttribute('tone', tone); else status.removeAttribute('tone');
     }
 
-    /** The data columns (not the row numbers), as kept: id, name, key. */
+    /** The data columns (not the row numbers), as kept: id and name, all equal. */
     function columnsNow() {
-        return table.columns.map(c => ({ id: c.id, name: c.name || c.id, ...(c.key ? { key: true } : {}) }));
+        return table.columns.map(c => ({ id: c.id, name: c.name || c.id }));
     }
-
-    /** The key picker: each column, or none. */
-    function drawKeyPick() {
-        const columns = table.columns;
-        const key = columns.find(c => c.key);
-        keyPick.replaceChildren(...[{ id: '', name: 'No key' }, ...columns].map(c => {
-            const option = document.createElement('option');
-            option.value = c.id;
-            option.textContent = c.name || c.id;
-            return option;
-        }));
-        keyPick.value = key ? key.id : '';
+    /** A column as the table shows it: a value repeated in it is amber (a lookup there finds two rows). */
+    const asShown = c => ({ id: c.id, name: c.name || c.id, unique: true });
+    /** Why a column can't be called `name` (another has it, or it's too long), or ''. */
+    function badName(name, id) {
+        const clean = String(name || '').trim();
+        if (!clean) return 'A column needs a name.';
+        if (clean.length > COLUMN_MAX) return `A column's name is up to ${COLUMN_MAX} characters.`;
+        const other = table.columns.find(c => c.id !== id && String(c.name || c.id).trim().toLowerCase() === clean.toLowerCase());
+        return other ? `Another column is called ${other.name || other.id}.` : '';
     }
-
     /** Why what shows can't be kept yet, or ''. */
     function problem() {
         if (table.columns.length > ui.limits.columns) return `A lookup table has up to ${count(ui.limits.columns)} columns.`;
         if (table.rows.length > ui.limits.rows) return `A lookup table has up to ${count(ui.limits.rows)} rows.`;
-        const problems = table.keyProblems;
-        if (!problems.length) return '';
-        const rows = new Set(problems.map(p => p.row)).size;
-        return `${plural(rows, 'row')} to fix before it is kept: a key is in one row only, and every row needs one.`;
+        return '';
     }
 
     /** A change: kept a moment later, once it can be (several changes in a row are kept once). */
@@ -74,9 +71,8 @@
         ui.gone = false;
         table.hidden = false;
         $('lookupGone').hidden = true;
-        table.columns = kept.columns.map(c => ({ id: c.id, name: c.name, ...(c.key ? { key: true } : {}) }));
+        table.columns = kept.columns.map(asShown);
         table.rows = kept.rows.map(row => Object.assign({}, row));
-        drawKeyPick();
         const why = problem();
         say(why ? `Not kept: ${why}` : `${plural(kept.rows.length, 'row')} · kept`, why ? 'warn' : '');
     }
@@ -86,7 +82,6 @@
         clearTimeout(ui.timer);
         table.hidden = true;
         $('lookupGone').hidden = false;
-        keyPick.disabled = true;
         say('Deleted', 'warn');
     }
 
@@ -95,13 +90,17 @@
     table.addEventListener('dbmn-table-edit', () => setTimeout(changed, 0));
     table.addEventListener('dbmn-table-rows', changed);
     table.addEventListener('dbmn-table-columns', event => {
-        // (a column added past the limit: refused, and said why)
-        if (event.detail.kind === 'add' && table.columns.length >= ui.limits.columns) {
+        const d = event.detail;
+        // (a column added past the limit, or named as another is: refused, and said why)
+        if (d.kind === 'add' && table.columns.length >= ui.limits.columns) {
             event.preventDefault();
             say(`A lookup table has up to ${count(ui.limits.columns)} columns.`, 'warn');
             return;
         }
-        setTimeout(() => { drawKeyPick(); changed(); }, 0);
+        const why = d.kind === 'add' || d.kind === 'rename' ? badName(d.name, d.kind === 'rename' ? d.id : null) : '';
+        if (why) { event.preventDefault(); say(why, 'warn'); return; }
+        // (a new column is as equal as the rest: its repeats amber too)
+        setTimeout(() => { if (d.kind === 'add') { table.columns = table.columns.map(asShown); } changed(); }, 0);
     });
 
     /** A block from a spreadsheet: across from the cell, and down, adding rows as it needs them. */
@@ -138,16 +137,6 @@
         if (changes.length) table.write(changes, 'paste');
         if (left) say(`${plural(left, 'value')} had no column or row to go in.`, 'warn');
         changed();
-    });
-
-    window.DbmnActions.register({
-        'lookup:key': () => {
-            const id = keyPick.value;
-            table.columns.forEach(c => { c.key = c.id === id; });
-            table.redrawHeads();
-            table.rows = table.rows;   // (the key's marks drawn again)
-            changed();
-        }
     });
 
     window.addEventListener('message', event => {

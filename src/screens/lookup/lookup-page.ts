@@ -38,12 +38,7 @@ export function buildLookupPage(asset: AssetUrl, config: { name: string }): stri
     </main>
 
     <dbmn-footer class="lookup-footer">
-        <dbmn-actions>
-            <label class="lookup-key" title="The key: each of its values in one row only. A query looks values up in any column, key or not.">
-                <span>Key</span>
-                <select id="lookupKey" data-change="lookup:key"></select>
-            </label>
-        </dbmn-actions>
+        <dbmn-actions></dbmn-actions>
         <dbmn-status id="lookupStatus"></dbmn-status>
     </dbmn-footer>
 

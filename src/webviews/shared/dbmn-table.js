@@ -101,6 +101,10 @@
  *                   column's values from every row. Needs DbmnModal (the name, the confirm).
  *   { id, key: true }   a key: a key on its heading; a value in two rows, or none, is amber with
  *                   the reason on hover. orders.keyProblems: [{ row, id, value, kind: 'duplicate' | 'missing' }]
+ *   { id, unique: true }  each value in one row: a repeat is amber with the reason on hover (a
+ *                   blank is fine; nothing is refused). A lookup table's columns.
+ *   With `add-row`, Tab past the last cell, or Enter on the last row, starts a new row (from a
+ *   row with something in it), so a table goes in without the mouse.
  *
  * ── A live list: following the newest rows ──
  *   <dbmn-table follow="top">        the newest rows are at the top (follow="bottom": at the bottom)
@@ -1450,7 +1454,7 @@
                     }
                 }
                 if (typeof column.cell === 'function') column.cell(td, value, row);
-                if (column.key) this._markKey(td, column, value);
+                if (column.key || column.unique) this._markKey(td, column, value);
                 if (td.classList.contains('cell-expandable')) expandIcon(td);
                 tr.append(td);
             });
@@ -2239,7 +2243,11 @@
             const length = this._length();
             for (let guard = 0; guard < cols.length * 2 + 2; guard++) {
                 c += dir;
-                if (c >= cols.length) { if (index >= length - 1) { c = cols.length - 1; break; } index += 1; c = 0; }
+                if (c >= cols.length) {
+                    // Past the last cell of the last row: a new row (`add-row`), so a table goes in without the mouse
+                    if (index >= length - 1) { if (this._addAtEnd(index)) return; c = cols.length - 1; break; }
+                    index += 1; c = 0;
+                }
                 if (c < 0) { if (index <= 0) { c = 0; break; } index -= 1; c = cols.length - 1; }
                 if (this._canEdit(cols[c], this._rowAt(index))) break;
             }
@@ -2310,6 +2318,7 @@
         _move(rows, cols) {
             const a = this._active;
             if (!a) return;
+            if (rows > 0 && cols === 0 && a.index >= this._length() - 1 && this._addAtEnd(a.index)) return;
             const at = this._columns.findIndex(c => c.id === a.id);
             const col = this._columns[Math.max(0, Math.min(this._columns.length - 1, at + cols))];
             this._select(a.index + rows, col ? col.id : a.id);
@@ -2681,6 +2690,17 @@
             this._refresh();
             this.dispatchEvent(new CustomEvent('dbmn-table-rows', { bubbles: true, detail: { kind, row, index, rows: this._rows } }));
         },
+        /**
+         * Tab or Enter past the end of the last row (`add-row`): a new row, its first cell held to
+         * type in. Only from a row with something in it, so Enter on an empty last row adds no more.
+         */
+        _addAtEnd(index) {
+            if (!this.hasAttribute('add-row') || !this._editable()) return false;
+            const row = this._rowAt(index);
+            if (!row || !this._columns.some(c => !own(c.id) && textOf(row[c.id]).trim())) return false;
+            this._addRow();
+            return true;
+        },
         /** `add-row`: an empty row at the end, its first cell open for typing. dbmn-table-add-row first (cancelable; detail.row may be filled). */
         _addRow() {
             if (!this._editable()) return;
@@ -2815,6 +2835,15 @@
         _markKey(td, column, value) {
             const text = textOf(value).trim();
             const name = column.name || column.id;
+            // `unique`: each value in one row, a repeat amber; a blank is fine (a key needs a value)
+            if (column.unique && !column.key) {
+                const n = text ? this._keyCount(column.id, value) : 0;
+                if (n > 1) {
+                    td.classList.add('dbmn-cell-key-duplicate');
+                    td.title = `${text} is in ${name} ${n} times: a lookup in ${name} finds more than one row`;
+                }
+                return;
+            }
             if (!text) {
                 td.classList.add('dbmn-cell-key-missing');
                 td.title = `${name} is the key: it needs a value`;

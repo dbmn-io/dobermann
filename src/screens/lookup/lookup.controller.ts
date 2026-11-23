@@ -4,7 +4,7 @@
  * A lookup table's screen (src/services/lookup-tables): its rows and columns in the design
  * system's editable table, kept as they are typed. There is no Save button: edits are shared
  * live (a query that uses the table reads it as it is now), so each change is kept a moment after
- * it is made, once the table can be kept (a key one value per row, every row with one).
+ * it is made (every column equal: a value repeated in a column is marked, not refused).
  *
  * The page (src/webviews/lookup/lookup-page.js) does the editing and says what it holds; this
  * keeps it, and tells the page when the table changes elsewhere (renamed from the Hub's list,
@@ -86,6 +86,7 @@ export class LookupController {
             const saved = await this.ports.store.save({
                 id: kept.id,
                 name: kept.name,
+                // (every column equal: no key, James 2026-11-23)
                 columns: columns.map(c => ({ id: String(c.id), name: String(c.name ?? c.id) })),
                 rows: rows.map(row => {
                     const out: Record<string, string> = {};

@@ -183,7 +183,7 @@
                 '</button>' +
             '</div>';
         addRow.querySelector('#newQueryBtn').addEventListener('click', () => host && host.postMessage({ type: 'newQuery' }));
-        addRow.querySelector('#newLookupBtn').addEventListener('click', () => host && host.postMessage({ type: 'newLookup' }));
+        addRow.querySelector('#newLookupBtn').addEventListener('click', newLookup);
         addRow.querySelector('#importQueryBtn').addEventListener('click', () => importQuery());
         list.hidden = all.length === 0;
         list.replaceChildren(addRow, ...shown.map(c => {
@@ -377,12 +377,20 @@
         if (m && m.type === 'queryCopy' && typeof m.text === 'string') copied(String(m.name || 'the query'), m.text);
     });
 
+    /** New lookup table: its name and columns asked first (shared/lookup-new.js), then made by the host. */
+    async function newLookup() {
+        if (!host) return;
+        const taken = ((host.getState && host.getState()) || {}).lookupTables || [];
+        const made = window.LookupNew ? await window.LookupNew.ask({ taken: taken.map(t => t.name) }) : { name: '', columns: [] };
+        if (made) host.postMessage({ type: 'newLookup', name: made.name, columns: made.columns });
+    }
+
     function init(h) {
         host = h;
         const add = document.getElementById('newQueryEmpty');
         if (add) add.addEventListener('click', () => host && host.postMessage({ type: 'newQuery' }));
         const addLookup = document.getElementById('newLookupEmpty');
-        if (addLookup) addLookup.addEventListener('click', () => host && host.postMessage({ type: 'newLookup' }));
+        if (addLookup) addLookup.addEventListener('click', newLookup);
         const select = document.getElementById('compareSelectMode');
         if (select) select.addEventListener('change', () => { selectMode = select.checked; if (!selectMode) selectedIds.clear(); render(); });
         const bulk = document.getElementById('compareBulkDelete');

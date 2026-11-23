@@ -162,6 +162,7 @@ export function buildHubPage(
         DEV_BACKEND_PILL: devBackend.DEV_BACKEND_PILL,
         DEV_BACKEND_NOTE: devBackend.DEV_BACKEND_NOTE,
         DBMN_MODAL_JS_URI: asset('shared/dbmn-modal.js'),
+        LOOKUP_NEW_JS_URI: asset('shared/lookup-new.js'),
         ROW_PASTE_JS_URI: asset('shared/row-paste.js'),
         DBMN_TOAST_JS_URI: asset('shared/dbmn-toast.js'),
         DBMN_CLIPBOARD_JS_URI: asset('shared/dbmn-clipboard.js'),

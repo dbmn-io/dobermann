@@ -1388,7 +1388,8 @@ test('add-row and row-delete: a row added opens for typing; a row\'s bin deletes
     expect(await rowsNow(page)).toHaveLength(5);
     await expect(td(page, 4, 1).locator('input.dbmn-cell-input')).toBeFocused();
     await page.keyboard.type('QLD');
-    await page.keyboard.press('Enter');
+    // (kept by moving up: Enter on the last row would start another row, as Tab past its end does)
+    await page.keyboard.press('ArrowUp');
     expect((await rowsNow(page))[4]).toEqual({ code: 'QLD', name: '', region: '' });
     // The bin on row 2 (its number turns into it on hover)
     await page.locator('#t .dbmn-table-body tr').nth(1).hover();
