@@ -6,7 +6,7 @@
  * Views go through on export and import keeps them, and refuses what the component never makes.
  */
 import { expect } from 'chai';
-import { ConsoleViewSchema } from '../../../data-loading/zod-schemas';
+import { ConsoleViewSchema, ConsoleViewsSchema } from '../../../data-loading/zod-schemas';
 
 const view = { name: 'Orders', rowBasis: 'root', columns: [{ id: 'sku', source: 'current' as const }] };
 
@@ -25,5 +25,17 @@ describe('Console View saved searches', () => {
         expect(ConsoleViewSchema.safeParse({ ...view, searches: [{ name: 'x'.repeat(31), text: 'x' }] }).success).to.equal(false);
         const many = Array.from({ length: 51 }, (_v, i) => ({ name: `S${i}`, text: `t${i}` }));
         expect(ConsoleViewSchema.safeParse({ ...view, searches: many }).success).to.equal(false);
+    });
+});
+
+describe('The Input tab\'s saved searches (its Views are made, not kept)', () => {
+    const tabs = { success: { activeView: '', views: [] }, errors: { activeView: '', views: [] } };
+    it('are kept with the endpoint\'s Views, as `input`, in a tab\'s shape', () => {
+        const searches = [{ name: 'Errors', text: '@Result=Error' }];
+        const parsed = ConsoleViewsSchema.parse({ ...tabs, input: { activeView: '', views: [], searches } });
+        expect(parsed.input?.searches).to.deep.equal(searches);
+    });
+    it('Views saved before them are as before', () => {
+        expect(ConsoleViewsSchema.parse(tabs).input).to.equal(undefined);
     });
 });

@@ -43,15 +43,17 @@ describe('Excel export: what each sheet is extracted with', () => {
         expect(success.visibleColumnIds, 'column choice still applies').to.deep.equal(fromCompleted.visibleColumnIds);
     });
 
-    it('the Input sheet is never searched or column-filtered, even when exported from the Input tab', () => {
-        const [input] = excelSheetExtractions({ ...fromCompleted, tab: 'input' });
-        expect(input).to.deep.equal({ sheetName: 'Input', tab: 'input', visibleColumnIds: null, overridePath: undefined, searchTerm: undefined, view: undefined, inputStatusFilter: undefined });
+    it('exported from the Input tab, the Input sheet keeps its search (@Result=Error: the rows to send back), never its columns', () => {
+        const [input, success] = excelSheetExtractions({ ...fromCompleted, tab: 'input', searchTerm: '@Result=Error' });
+        expect(input).to.deep.equal({ sheetName: 'Input', tab: 'input', visibleColumnIds: null, overridePath: undefined, searchTerm: '@Result=Error', view: undefined, inputStatusFilter: undefined });
+        expect(success.searchTerm, 'the other sheets whole').to.equal(undefined);
+        // exported from another tab, Input is whole
+        expect(excelSheetExtractions({ ...fromCompleted, tab: 'success', searchTerm: '@Result=Error' })[0].searchTerm).to.equal(undefined);
     });
 
     it('the Input sheet keeps the Input tab\'s Result filter (Issue #304)', () => {
         const [input, success] = excelSheetExtractions({ ...fromCompleted, tab: 'input', inputStatusFilter: 'error' });
         expect(input.inputStatusFilter).to.equal('error');
-        expect(input.searchTerm, 'still never searched').to.equal(undefined);
         expect(success.inputStatusFilter).to.equal(undefined);
         // "All" filters nothing, and another tab's export leaves Input whole.
         expect(excelSheetExtractions({ ...fromCompleted, tab: 'input', inputStatusFilter: 'all' })[0].inputStatusFilter).to.equal(undefined);

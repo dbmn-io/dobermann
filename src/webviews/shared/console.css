@@ -307,29 +307,6 @@
     min-width: 0;
 }
 
-/* Issue #304: Input tab — rows by the status of the transaction that sent them */
-.input-status-filter {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    flex-shrink: 0;
-    font-size: 13px;
-    color: var(--vscode-foreground);
-}
-
-.input-status-filter.hidden {
-    display: none;
-}
-
-.input-status-filter select {
-    padding: 4px 8px;
-    font-size: 13px;
-    background: var(--vscode-input-background);
-    color: var(--vscode-input-foreground);
-    border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
-    border-radius: 4px;
-}
-
 /* GitHub Issue #261: Search input with syntax-highlighting overlay.
    The mirror <div> sits behind the <input>, rendering coloured spans;
    the input has transparent text so the mirror shows through. */

@@ -322,12 +322,12 @@ class DynamicReportManager {
         const inputData = this.rawData?.inputData || [];
         const rowStatus = this.getInputRowStatus();
         this._inputRowStatus = rowStatus;
-        this.updateInputStatusFilter(rowStatus);
         if (!rowStatus) return inputData;
 
+        // (every row, its Result in a column: a status is searched in the box, @Result=Error; the Result drop-down
+        // beside the box went, James 2026-11-24: "I think that's kind of legacy… let's add the star in")
         const colId = window.InputRowStatus.columnId(inputData[0]);
-        const filter = this.inputStatusFilter || 'all';
-        const { records, indices } = window.InputRowStatus.annotate(inputData, rowStatus.status, filter, colId);
+        const { records, indices } = window.InputRowStatus.annotate(inputData, rowStatus.status, 'all', colId);
         const raw = this.rawTabHandler;
         const txById = new Map(raw.getTransactions().map(t => [raw.execIdFor(t), t]));
         records.forEach((rec, j) => {
@@ -344,28 +344,6 @@ class DynamicReportManager {
         const colId = window.InputRowStatus.columnId(inputData[0]);
         if (view.columns.some(c => c.id === colId)) return view;
         return { ...view, columns: [{ id: colId, source: 'current' }, ...view.columns] };
-    }
-
-    /** Issue #304: show and fill the Input Result filter (counts per status). */
-    updateInputStatusFilter(rowStatus) {
-        const wrap = document.getElementById('input-status-filter-wrap');
-        const select = document.getElementById('input-status-filter');
-        if (!wrap || !select) return;
-        const show = this.currentTab === 'input' && !!rowStatus;
-        wrap.classList.toggle('hidden', !show);
-        if (!show) return;
-        const counts = window.InputRowStatus.counts(rowStatus.status);
-        const current = this.inputStatusFilter || 'all';
-        select.innerHTML = ['all'].concat(window.InputRowStatus.STATUSES).map(st =>
-            `<option value="${st}"${st === current ? ' selected' : ''}>${window.InputRowStatus.LABELS[st]} (${counts[st].toLocaleString()})</option>`
-        ).join('');
-        if (!select._dbmnBound) {
-            select._dbmnBound = true;
-            select.addEventListener('change', () => {
-                this.inputStatusFilter = select.value;
-                this.extractAndRender('input');
-            });
-        }
     }
 
     /** Issue #304: statuses moved (results, summaries) — redraw Input if showing. */
@@ -2366,11 +2344,6 @@ class DynamicReportManager {
         // When switching to data tabs from logs, restore table structure
         this.restoreTableStructure();
 
-        // Issue #304: the Result filter belongs to the Input tab
-        if (tabName !== 'input') {
-            document.getElementById('input-status-filter-wrap')?.classList.add('hidden');
-        }
-
         // Issue #248: Input tab now shows the View dropdown too — read-only
         // pre-canned views (Mapped Columns / All Columns), no editor.
         const rootSelector = document.querySelector('.view-selector');
@@ -2431,10 +2404,20 @@ class DynamicReportManager {
     }
 
 
-    /** The View whose saved searches the box offers: a Completed or Error tab's (the Input tab's Views are made, not kept). */
+    /**
+     * Where the box's saved searches are kept: a Completed or Error tab's View; the Input tab's Views are made, not
+     * kept, so its own list beside them, saved with the endpoint's Views as `input.searches` (James, 2026-11-24: the
+     * star on the Input tab too, "to keep it consistent"). Each has `searches`, read and set.
+     */
     savedSearchesView() {
         const tab = this.currentTab;
-        return tab === 'success' || tab === 'errors' ? this.getActiveView(tab) : null;
+        if (tab === 'success' || tab === 'errors') return this.getActiveView(tab);
+        if (tab !== 'input' || !this.userSettings) return null;
+        const settings = this.userSettings;
+        return {
+            get searches() { return Array.isArray(settings.inputSearches) ? settings.inputSearches : []; },
+            set searches(list) { settings.inputSearches = list; }
+        };
     }
     /** The ★ beside the box: the shown tab's View's saved searches, or none where there is no View to keep them. */
     showSavedSearches() {
@@ -2475,13 +2458,6 @@ class DynamicReportManager {
             }
 
             if (rawDataForTab.length === 0) {
-                // Issue #304: an Input status with no rows is a filter
-                // result, not missing data — keep the filter reachable.
-                if (tabName === 'input' && this._inputRowStatus && this.inputStatusFilter && this.inputStatusFilter !== 'all') {
-                    this.renderTable([], []);
-                    this.updateStats(0, 0);
-                    return;
-                }
                 this.showEmptyState('No data available for this tab');
                 return;
             }
@@ -4008,8 +3984,6 @@ class DynamicReportManager {
                 currentPath: exportCurrentPath,
                 // Filter-aware export: only export rows matching the active search
                 searchTerm: activeSearchTerm || undefined,
-                // Issue #304: Input rows filtered by transaction status
-                inputStatusFilter: this.currentTab === 'input' ? (this.inputStatusFilter || 'all') : undefined,
                 // Issue #229: Active view spec
                 view: exportViewPayload,
                 options: {
@@ -4094,8 +4068,6 @@ class DynamicReportManager {
                 currentPath: currentPath,
                 // Filter-aware export: only export rows matching the active search
                 searchTerm: activeSearchTerm || undefined,
-                // Issue #304: Input rows filtered by transaction status
-                inputStatusFilter: this.currentTab === 'input' ? (this.inputStatusFilter || 'all') : undefined,
                 // Issue #229: Active view spec (rowBasis + columns)
                 view: viewPayload,
                 options: {

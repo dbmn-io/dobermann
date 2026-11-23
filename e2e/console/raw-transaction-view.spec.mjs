@@ -103,7 +103,7 @@ test('a batch: Status and Show sit in the Raw bar, no filter modal', async ({ pa
     expect(pageErrors, 'uncaught errors in the page').toEqual([]);
 });
 
-test('Input tab: filter rows by their transaction\'s status, and right-click to the transaction', async ({ page }) => {
+test('Input tab: rows searched by their transaction\'s Result in the box (no drop-down), and right-click to the transaction', async ({ page }) => {
     const pageErrors = await openConsole(page, { reportType: 'batch', batchId: 'batch-1', endpoint: 'POST https://api.test/inventory' });
     // Three transactions of two rows each; the last two rows were never sent.
     await page.evaluate(rs => window.dynamicReportManager.initialize({
@@ -112,8 +112,9 @@ test('Input tab: filter rows by their transaction\'s status, and right-click to 
     }), [response(1, 'completed', { ok: 1 }), response(2, 'error', { message: 'uom_check' }), response(3, 'running', null)]);
 
     await page.locator('.tab-item[data-tab="input"]').click();
-    const filter = page.locator('#input-status-filter');
-    await expect(page.locator('#input-status-filter-wrap'), 'hidden until the row ranges load').toHaveClass(/hidden/);
+    // The Result drop-down beside the box is gone (James, 2026-11-24: "kind of legacy"): the box searches @Result
+    await expect(page.locator('#input-status-filter, #input-status-filter-wrap')).toHaveCount(0);
+    const box = page.locator('#search-input');
 
     await expect.poll(() => posted(page, 'console.get_raw_tab_data').then(p => p.length)).toBe(1);
     await send(page, envelope('console.raw_tab_data_response', {
@@ -123,21 +124,20 @@ test('Input tab: filter rows by their transaction\'s status, and right-click to 
         }))
     }));
 
-    await expect(page.locator('#input-status-filter-wrap')).not.toHaveClass(/hidden/);
-    await expect(filter.locator('option')).toHaveText(['All (8)', 'Completed (2)', 'Error (2)', 'Running (2)', 'Cancelled (0)', 'Not processed (2)']);
     await expect(page.locator('#console-table thead th').first()).toHaveText('Result');
     await expect(page.locator('#console-table .dbmn-table-body > tr.data-row')).toHaveCount(8);
 
-    await filter.selectOption('error');
+    await box.fill('@Result=Error');
     const rows = page.locator('#console-table .dbmn-table-body > tr.data-row');
     await expect(rows).toHaveCount(2);
     await expect(rows.nth(0).locator('td').nth(0)).toHaveText('Error');
     await expect(rows.nth(0).locator('td').nth(1)).toHaveText('C');
 
-    // The filter goes with the export
+    // The search goes with the export, and no status filter of its own
     await page.evaluate(() => window.dynamicReportManager.exportCurrentTab('excel'));
     const exports = await posted(page, 'console.export_data');
-    expect(exports.at(-1).payload.inputStatusFilter).toBe('error');
+    expect(exports.at(-1).payload.searchTerm).toBe('@Result=Error');
+    expect(exports.at(-1).payload.inputStatusFilter).toBeUndefined();
 
     // Right-click an Input row → its transaction
     await rows.nth(0).locator('td').first().click({ button: 'right' });
@@ -146,8 +146,24 @@ test('Input tab: filter rows by their transaction\'s status, and right-click to 
     await expect(page.locator('.dbmn-modal-transaction .dbmn-modal-title')).toHaveText('Transaction #002');
     await page.keyboard.press('Escape');
 
-    await filter.selectOption('not_processed');
+    await box.fill('@Result="Not processed"');
     await expect(rows).toHaveCount(2);
+
+    // The Input tab has the star in its box, as every tab: a search saved there is kept with the endpoint's Views
+    await page.evaluate(() => { window.consoleSettings.currentEndpointId = 'endpoint-1'; });
+    const star = page.locator('#console-saved');
+    await expect(star).toBeVisible();
+    await star.locator('.dbmn-saved-btn').click();
+    await star.locator('.dbmn-saved-add').click();
+    await star.locator('.dbmn-saved-name-input').fill('Never sent');
+    await star.locator('.dbmn-saved-name-input').press('Enter');
+    await expect(star.locator('.dbmn-saved-btn')).toHaveClass(/is-saved/);
+    await expect.poll(async () => {
+        const saves = await posted(page, 'console.save_settings');
+        const last = saves.at(-1);
+        return last && last.payload && last.payload.settings && last.payload.settings.input;
+    }).toEqual({ activeView: '', views: [], searches: [{ name: 'Never sent', text: '@Result="Not processed"' }] });
+    await page.keyboard.press('Escape');
     await rows.nth(0).locator('td').first().click({ button: 'right' });
     await expect(page.locator('.raw-context-menu'), 'a row never sent has no transaction').toHaveCount(0);
     expect(pageErrors, 'uncaught errors in the page').toEqual([]);

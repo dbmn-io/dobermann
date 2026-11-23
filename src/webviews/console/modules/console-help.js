@@ -21,7 +21,6 @@
         // Toolbar
         { selector: '#view-path-btn', help: 'named-views#the-views-dropdown' },
         { selector: '#report-toolbar .search-container', help: 'console#search' },
-        { selector: '#input-status-filter-wrap', help: 'console#input-status' },
         { selector: '#copy-btn', help: 'console#copy' },
         { selector: '#export-btn', help: 'console#export' },
         { selector: '#chain-btn', help: 'chain' },

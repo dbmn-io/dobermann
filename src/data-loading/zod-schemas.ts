@@ -191,7 +191,11 @@ export const TabViewSettingsSchema = z.object({
 
 export const ConsoleViewsSchema = z.object({
     success: TabViewSettingsSchema,
-    errors: TabViewSettingsSchema
+    errors: TabViewSettingsSchema,
+    // The Input tab's saved searches (its Views are made, not kept): in a tab's shape, views always empty
+    input: TabViewSettingsSchema.extend({
+        searches: z.array(z.object({ name: z.string().min(1).max(30), text: z.string().min(1) })).max(50).optional()
+    }).optional()
 });
 
 /**

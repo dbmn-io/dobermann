@@ -71,6 +71,10 @@ class ConsoleSettings {
                 : validViews[0].name;
             window.dynamicReportManager.userSettings[tab] = { activeView, views: validViews };
         });
+        // The Input tab's saved searches
+        const inputSearches = settings.input && Array.isArray(settings.input.searches) ? settings.input.searches : [];
+        window.dynamicReportManager.userSettings.inputSearches = inputSearches;
+        if (window.dynamicReportManager.currentTab === 'input' && window.dynamicReportManager.showSavedSearches) window.dynamicReportManager.showSavedSearches();
 
         // If settings land after the first render, re-render the current tab
         // once so the saved view (if any) takes effect. No path correction, no
@@ -108,6 +112,8 @@ class ConsoleSettings {
                     settingsToSave[tab] = { activeView: '', views: [] };
                 }
             });
+            // The Input tab's saved searches (its Views are made, not kept): in the same shape as a tab's settings
+            if (Array.isArray(settings.inputSearches)) settingsToSave.input = { activeView: '', views: [], searches: settings.inputSearches };
         }
 
         if (settingsToSave) {

@@ -47,18 +47,21 @@ const SHEETS: ReadonlyArray<{ sheetName: SheetExtraction['sheetName']; tab: Cons
 
 export function excelSheetExtractions(payload: ExportRequestPayload): SheetExtraction[] {
     return SHEETS.map(({ sheetName, tab }) => {
-        // Input is the raw CSV: never column-filtered, never searched — but
-        // exported from the Input tab it keeps that tab's Result filter
-        // (Issue #304: "Error" → Excel is the list of rows to send back).
+        // Input is the raw CSV: never column-filtered — but exported from the
+        // Input tab it keeps that tab's search (Issue #304: `@Result=Error` →
+        // Excel is the list of rows to send back; the search box replaced the
+        // Result drop-down, James 2026-11-24). An old inputStatusFilter still
+        // narrows it the same way.
         const current = tab !== 'input' && payload.tab === tab;
-        const inputStatusFilter = tab === 'input' && payload.tab === 'input' && payload.inputStatusFilter
+        const fromInput = tab === 'input' && payload.tab === 'input';
+        const inputStatusFilter = fromInput && payload.inputStatusFilter
             && payload.inputStatusFilter !== 'all' ? payload.inputStatusFilter : undefined;
         return {
             sheetName,
             tab,
             visibleColumnIds: current && payload.visibleColumnIds ? payload.visibleColumnIds : null,
             overridePath: current && payload.currentPath ? payload.currentPath : undefined,
-            searchTerm: current && payload.searchTerm && payload.searchTerm.trim() !== '' ? payload.searchTerm : undefined,
+            searchTerm: (current || fromInput) && payload.searchTerm && payload.searchTerm.trim() !== '' ? payload.searchTerm : undefined,
             view: current ? payload.view : undefined,
             inputStatusFilter
         };
