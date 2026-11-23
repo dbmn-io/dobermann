@@ -2226,6 +2226,8 @@
         ui.shownExact = m.shown === m.total ? `${count(m.total)} rows` : `${count(m.shown)} of ${count(m.total)} rows`;
         ui.arrived = true;
         renderBar();
+        // A column a search just added: scrolled into view and lit (dbmn-table reveal), once it is drawn
+        if (ui.revealNext && m.offset === 0) revealAdded();
         // A compare's counts (every control's): its headings are drawn again when they change
         if (m.offset === 0 && m.counts) {
             const was = columnsKey();
@@ -2524,9 +2526,22 @@
         const add = adds.columnsToAdd(names, report, known, (ui.state.compare && ui.state.compare.views) || []);
         if (!add.length) return false;
         const select = (ui.state.columns || []).map(c => Object.assign({ view: c.view, column: c.column }, c.fns && c.fns.length ? { fns: c.fns } : {}, c.group ? { group: c.group } : {})).concat(add);
-        setBusy(`Adding ${[...new Set(add.map(c => c.column))].join(', ')}…`);
+        const named = [...new Set(add.map(c => c.column))].join(', ');
+        setBusy(`Adding ${named}…`);
         post({ type: 'query.setSelect', select });
+        // The new column brought into view once Results has it (James, 2026-11-23: "JUST bring the new column into focus..
+        // so scroll to right"; no Undo: the Delete key on its heading takes it out)
+        ui.revealNext = add[0];
         return true;
+    }
+    /** The column a search added, scrolled into view sideways and lit (the table's reveal); compact, its compared column's. */
+    function revealAdded() {
+        const c = ui.revealNext;
+        const ids = (table.columns || []).map(t => t.id);
+        const id = c && c.group && ids.includes(`compact:${c.group}`) ? `compact:${c.group}` : c ? colId(c) : '';
+        if (!id || !ids.includes(id)) return;
+        ui.revealNext = null;
+        if (typeof table.reveal === 'function') requestAnimationFrame(() => table.reveal(id));
     }
     function searchHeadings() {
         const columns = resultCols();
