@@ -36,7 +36,10 @@
         return table.columns.map(c => ({ id: c.id, name: c.name || c.id }));
     }
     /** A column as the table shows it: a value repeated in it is amber (a lookup there finds two rows). */
-    const asShown = c => ({ id: c.id, name: c.name || c.id, unique: true });
+    // Not sortable: the order shown is the order kept, and a value in a column twice translates to
+    // the first row's (the manager for James, 2026-11-23: "if we're looking up, we pick the first
+    // one"); a row is moved up or down instead (row-move: Alt+↑ / Alt+↓, right-click)
+    const asShown = c => ({ id: c.id, name: c.name || c.id, unique: true, sortable: false });
     /** Why a column can't be called `name` (another has it, or it's too long), or ''. */
     function badName(name, id) {
         const clean = String(name || '').trim();

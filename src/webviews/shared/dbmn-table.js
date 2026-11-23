@@ -95,6 +95,11 @@
  *                   (dbmn-table-delete-row { row, index } first: cancelable)
  *                   Ctrl+Z puts a deleted row back and takes an added one away. After any of
  *                   these: dbmn-table-rows { kind: 'add' | 'delete', row, index, rows }
+ *   `row-move`      a row moves: Alt+↑ / Alt+↓ on its held cell, or a right-click's Move up / Move down /
+ *                   Move to top (dbmn-table-move-row { row, from, to } first: cancelable). Among the rows
+ *                   shown: with a search on, a row passes the shown row above or below it. Not while a
+ *                   column sorts the rows (the order shown is not the order kept). Ctrl+Z puts it back.
+ *                   After: dbmn-table-rows { kind: 'move', row, index, rows }
  *   `edit-columns`  a column's heading menu: Rename column…, Add a column after, Delete column
  *                   (dbmn-table-columns { kind: 'rename' | 'add' | 'delete', id, name, old?, after? }
  *                   first: cancelable; on add the screen may set detail.id). Delete takes the
@@ -2038,7 +2043,9 @@
             if (!row) return;
             if (type === 'dbmn-table-row-menu') event.preventDefault();
             // (`event`: the click itself, for a menu at the pointer)
-            this.dispatchEvent(new CustomEvent(type, { bubbles: true, detail: { row, index, event } }));
+            const told = new CustomEvent(type, { bubbles: true, cancelable: true, detail: { row, index, event } });
+            // `row-move`: a right-click's own menu, unless the screen shows its own (preventDefault)
+            if (this.dispatchEvent(told) && type === 'dbmn-table-row-menu' && this.hasAttribute('row-move')) this._rowMenu(event, row);
         },
 
         /** The rows shown that have records open, in order, each with how much taller it is: [{ index, state… }]. */
@@ -2339,6 +2346,12 @@
                 return;
             }
             if (mod) return;   // (copy and paste come as their own events)
+            // `row-move`: Alt+↑ / Alt+↓ moves the held cell's row, the cell held with it
+            if (event.altKey && (k === 'ArrowUp' || k === 'ArrowDown') && this.hasAttribute('row-move')) {
+                event.preventDefault();
+                this._moveRow(this._rowAt(a.index), k === 'ArrowUp' ? -1 : 1);
+                return;
+            }
             const moves = { ArrowDown: [1, 0], ArrowUp: [-1, 0], ArrowRight: [0, 1], ArrowLeft: [0, -1], PageDown: [page, 0], PageUp: [-page, 0] };
             if (moves[k]) { event.preventDefault(); this._move(...moves[k]); return; }
             if (k === 'Tab') { event.preventDefault(); this._tab(event.shiftKey ? -1 : 1); return; }
@@ -2431,6 +2444,13 @@
                     this._undoKey(k === 'y' || k === 'Y' || event.shiftKey);
                     const back = this._active;
                     if (back) this._select(back.index, back.id);
+                    return;
+                }
+                // `row-move`: Alt+↑ / Alt+↓ while typing keeps what was typed, then moves the row
+                if (event.altKey && !mod && (k === 'ArrowUp' || k === 'ArrowDown') && this.hasAttribute('row-move')) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    finish(true, () => this._moveRow(row, k === 'ArrowUp' ? -1 : 1));
                     return;
                 }
                 const page = Math.max(1, Math.floor(this._scroll.clientHeight / this._rowH) - 1);
@@ -2733,6 +2753,15 @@
         },
         /** Undo (back) or redo of a row added or deleted. */
         _rowsAgain(entry, back) {
+            if (entry.rows === 'move') {
+                const at = this._rows.indexOf(entry.row);
+                if (at < 0) return;
+                this._rows.splice(at, 1);
+                this._rows.splice(back ? entry.from : entry.to, 0, entry.row);
+                this._rowsChanged('move', entry.row, back ? entry.from : entry.to);
+                this._holdRow(entry.row);
+                return;
+            }
             const remove = (entry.rows === 'add') === back;
             if (remove) {
                 const at = this._rows.indexOf(entry.row);
@@ -2742,6 +2771,65 @@
                 this._rows.splice(Math.min(entry.at, this._rows.length), 0, entry.row);
                 this._rowsChanged('add', entry.row, entry.at);
             }
+        },
+
+        /** Rows may move now: `row-move` on an editable table, and no column sorting them. */
+        _rowsMove() { return this.hasAttribute('row-move') && this._editable() && !this._sort; },
+        /**
+         * `row-move`: `row` up (-1) or down (1) past the row shown beside it, or to the top ('top').
+         * In the kept order it takes that row's place (with a search on, the rows not shown between
+         * stay where they are). dbmn-table-move-row first (cancelable). True when it moved.
+         */
+        _moveRow(row, step) {
+            if (!row || !this._rowsMove()) return false;
+            const from = this._rows.indexOf(row);
+            if (from < 0) return false;
+            let to;
+            if (step === 'top') {
+                if (from === 0) return false;
+                to = 0;
+            } else {
+                const beside = this._view[this._placeOf(row) + step];
+                if (beside === undefined) return false;
+                to = beside;
+            }
+            this._editInit();
+            if (this._editing) this._editing.finish(true, null, true);
+            const asked = new CustomEvent('dbmn-table-move-row', { bubbles: true, cancelable: true, detail: { row, from, to } });
+            if (!this.dispatchEvent(asked)) return false;
+            // (up: before the row passed; down: after it, which is `to` once the row is out)
+            this._rows.splice(from, 1);
+            this._rows.splice(to, 0, row);
+            this._undo.push({ rows: 'move', row, from, to });
+            this._redo = [];
+            this._rowsChanged('move', row, to);
+            this._holdRow(row);
+            return true;
+        },
+        /** The row's cell held again where it now is (the column held before, else its first). */
+        _holdRow(row) {
+            const at = this._placeOf(row);
+            if (at < 0) return;
+            const id = (this._active && this._columns.some(c => c.id === this._active.id)) ? this._active.id
+                : (this._columns.find(c => !own(c.id)) || {}).id;
+            if (id) this._select(at, id);
+        },
+        /** `row-move`: a right-click on a row: Move up, Move down, Move to top (and Delete row with `row-delete`). */
+        _rowMenu(event, row) {
+            if (!window.DbmnContextMenu || !this._editable()) return;
+            const place = this._placeOf(row);
+            const sorted = !!this._sort;
+            const why = sorted ? 'Not while a column sorts the rows: take the sort off first' : '';
+            const items = [
+                { id: 'up', label: 'Move up', icon: 'arrow-up', disabled: sorted || place <= 0, title: why || 'Alt+↑' },
+                { id: 'down', label: 'Move down', icon: 'arrow-down', disabled: sorted || place < 0 || place >= this._view.length - 1, title: why || 'Alt+↓' },
+                { id: 'top', label: 'Move to top', icon: 'arrow-up-to-line', disabled: sorted || this._rows.indexOf(row) === 0, title: why }
+            ];
+            if (this.hasAttribute('row-delete')) items.push({ separator: true }, { id: 'delete', label: 'Delete row', icon: 'trash-2', danger: true });
+            window.DbmnContextMenu.show(event, items, id => {
+                if (id === 'delete') this._deleteRow(row);
+                else this._moveRow(row, id === 'top' ? 'top' : id === 'up' ? -1 : 1);
+            });
         },
 
         /** `edit-columns`: a column's heading menu renames it, adds one after it, or deletes it. */
@@ -2840,7 +2928,8 @@
                 const n = text ? this._keyCount(column.id, value) : 0;
                 if (n > 1) {
                     td.classList.add('dbmn-cell-key-duplicate');
-                    td.title = `${text} is in ${name} ${n} times: a lookup in ${name} finds more than one row`;
+                    // (a lookup takes the first of them, top to bottom: the manager for James, 2026-11-23)
+                    td.title = `${text} is in ${name} ${n} times: a lookup in ${name} uses the first, top to bottom` + (this.hasAttribute('row-move') ? ' (Alt+↑ moves a row up)' : '');
                 }
                 return;
             }

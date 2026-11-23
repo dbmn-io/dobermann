@@ -33,7 +33,7 @@ ${STYLES.map(read).join('\n')} body{width:900px}</style>
 <script>window.posted = []; window.acquireVsCodeApi = () => ({ postMessage: m => window.posted.push(m) });</script>
 ${SCRIPTS.map(rel => `<script>${read(rel)}</script>`).join('\n')}</head><body class="lookup-body">
 <main class="lookup-page">
-    <dbmn-table id="lookupTable" label="Units" editable add-row row-delete edit-columns searchable></dbmn-table>
+    <dbmn-table id="lookupTable" label="Units" editable add-row row-delete row-move edit-columns searchable></dbmn-table>
     <p class="lookup-gone" id="lookupGone" hidden>This lookup table has been deleted.</p>
 </main>
 <dbmn-footer class="lookup-footer">
@@ -79,10 +79,50 @@ test('a value twice in a column is amber, in any column, with why; it is kept al
     await p.keyboard.type('EACH');
     await p.keyboard.press('ArrowUp')   // (kept by moving up: Enter on the last row starts a new one);
     await expect(td(p, 0, 2)).toHaveClass(/dbmn-cell-key-duplicate/);
-    await expect(td(p, 1, 2)).toHaveAttribute('title', 'EACH is in WMS unit 2 times: a lookup in WMS unit finds more than one row');
+    await expect(td(p, 1, 2)).toHaveAttribute('title', 'EACH is in WMS unit 2 times: a lookup in WMS unit uses the first, top to bottom (Alt+↑ moves a row up)');
     await expect(td(p, 0, 1)).not.toHaveClass(/dbmn-cell-key-duplicate/);
     await expect.poll(() => saves(p).then(s => s.length)).toBe(1);
     expect((await saves(p))[0].table.rows.map(r => r.c2)).toEqual(['EACH', 'EACH']);
+});
+
+test('rows move: Alt+↑ / Alt+↓ and a right-click, kept; Ctrl+Z puts it back; no sort, so the order shown is the order used', async ({ page: p }) => {
+    // The manager for James, 2026-11-23: a value twice translates to the first row's, so a row must move up
+    await open(p);
+    await send(p, { type: 'lookup.load', table: { ...TABLE, rows: [{ c1: 'EA', c2: 'EACH' }, { c1: 'CS', c2: 'CASE' }, { c1: 'PL', c2: 'PALLET' }] }, limits: { columns: 5, rows: 1000 } });
+    await expect(p.locator('#lookupTable .dbmn-table-body tr')).toHaveCount(3);
+    const order = () => p.locator('#lookupTable .dbmn-table-body tr').evaluateAll(trs => trs.map(tr => tr.querySelectorAll('td')[1].textContent));
+    const lastSaved = async () => { const s = await saves(p); return s.length ? s[s.length - 1].table.rows.map(r => r.c1) : []; };
+    // No sort on a heading
+    await expect(p.locator('#lookupTable thead .col-sort-btn')).toHaveCount(0);
+    // Alt+↑ on PL's cell: above CS, the cell still held on it
+    await td(p, 2, 2).click();
+    await p.keyboard.press('Escape');                        // (out of typing: the cell stays held)
+    await td(p, 2, 2).click();
+    await p.keyboard.press('Escape');
+    await p.keyboard.press('Alt+ArrowUp');
+    await expect.poll(order).toEqual(['EA', 'PL', 'CS']);
+    await expect.poll(lastSaved).toEqual(['EA', 'PL', 'CS']);
+    await p.keyboard.press('Alt+ArrowDown');
+    await expect.poll(order).toEqual(['EA', 'CS', 'PL']);
+    // Right-click CS: Move to top
+    await td(p, 1, 1).click({ button: 'right' });
+    const menu = p.locator('.dbmn-context-menu');
+    await expect(menu).toContainText('Move up');
+    await expect(menu.locator('[data-action="up"]')).not.toHaveAttribute('aria-disabled', 'true');
+    await menu.locator('[data-action="top"]').click();
+    await expect.poll(order).toEqual(['CS', 'EA', 'PL']);
+    await expect.poll(lastSaved).toEqual(['CS', 'EA', 'PL']);
+    // The top row can't go up
+    await td(p, 0, 1).click({ button: 'right' });
+    await expect(menu.locator('[data-action="up"]')).toHaveAttribute('aria-disabled', 'true');
+    await expect(menu.locator('[data-action="top"]')).toHaveAttribute('aria-disabled', 'true');
+    await p.keyboard.press('Escape');
+    // Ctrl+Z: back where it was
+    await td(p, 2, 2).click();
+    await p.keyboard.press('Escape');
+    await p.keyboard.press('Control+z');
+    await expect.poll(order).toEqual(['EA', 'CS', 'PL']);
+    await expect.poll(lastSaved).toEqual(['EA', 'CS', 'PL']);
 });
 
 test('typed in fast: Tab to the next cell; past the last, and Enter on the last row, a new row', async ({ page: p }) => {

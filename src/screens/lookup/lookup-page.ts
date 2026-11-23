@@ -33,7 +33,7 @@ export function buildLookupPage(asset: AssetUrl, config: { name: string }): stri
     </div>
 
     <main class="lookup-page">
-        <dbmn-table id="lookupTable" label="${title}" editable add-row row-delete edit-columns searchable></dbmn-table>
+        <dbmn-table id="lookupTable" label="${title}" editable add-row row-delete row-move edit-columns searchable></dbmn-table>
         <p class="lookup-gone" id="lookupGone" hidden>This lookup table has been deleted.</p>
     </main>
 
