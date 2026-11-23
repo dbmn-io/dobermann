@@ -1099,20 +1099,27 @@ button.compare-result-btn {
     color: var(--vscode-editor-background);
 }
 
-/* Compact: a value that differs in a pill naming who holds it, in the first one's colour */
+/* Compact: a value that differs in a pill naming who holds it, in the first one's colour. Snug inside,
+   with clear room outside: the shared (or Baseline) value, then a gap, then each pill (James, 2026-11-23:
+   "inside the pill is too big and the gap between the value and the different value is way too small") */
 .compare-pill {
     display: inline-flex;
     align-items: center;
-    gap: 5px;
-    margin: 1px 6px 1px 0;
-    padding: 0 8px 0 2px;
+    gap: 4px;
+    margin: 1px 8px 1px 0;
+    padding: 0 5px 0 2px;
     border: 1px solid var(--compare-c);
     border-radius: 10px;
     background: color-mix(in srgb, var(--compare-c) 20%, transparent);
 }
 
 .compare-pill.is-bare {
-    padding-left: 8px;
+    padding: 0 5px;
+}
+
+/* The value the others are told apart from (two results: the Baseline's), before the pills */
+.compare-compact-plain {
+    margin-right: 10px;
 }
 
 .compare-pill-who {
