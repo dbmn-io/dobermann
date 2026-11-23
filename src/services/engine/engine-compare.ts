@@ -212,11 +212,70 @@ const UNSEEN = /[\s\u00a0\u1680\u180e\u2000-\u200f\u2028-\u202f\u205f\u2060\u300
 const HAS_UNSEEN = /[\s\u00a0\u1680\u180e\u2000-\u200f\u2028-\u202f\u205f\u2060\u3000\ufeff\u0000-\u001f\u007f]/;
 
 /** Two values that read the same once blank is null and the unseen characters are taken out. */
-function looksAlike(a: V, b: V): boolean {
+export function looksAlike(a: V, b: V): boolean {
     const blank = (x: V) => x === null || x === undefined || x === '';
     // (the usual difference, two values with nothing unseen in them, decided without making new text)
     if (blank(a) !== blank(b) && (blank(a) ? !HAS_UNSEEN.test(String(b)) : !HAS_UNSEEN.test(String(a)))) return false;
     if (!blank(a) && !blank(b) && !HAS_UNSEEN.test(String(a)) && !HAS_UNSEEN.test(String(b))) return false;
     const seen = (x: V): string => (blank(x) ? '' : String(x)).replace(UNSEEN, '');
     return seen(a) === seen(b);
+}
+
+/** An unseen character's name: "space", "tab"… */
+function unseenName(ch: string): string {
+    switch (ch) {
+        case ' ': return 'space';
+        case '\t': return 'tab';
+        case '\n': case '\r': return 'line break';
+        case '\u00a0': return 'non-breaking space';
+        case '\u200b': return 'zero-width space';
+        case '\ufeff': return 'byte-order mark';
+        default: return `hidden character (U+${ch.charCodeAt(0).toString(16).toUpperCase().padStart(4, '0')})`;
+    }
+}
+const article = (name: string): string => (/^[aeiou]/.test(name) ? 'an ' : 'a ') + name;
+const plural = (name: string): string => name.replace(/^(\w[\w-]*?)( \(|$)/, (m, w: string, rest: string) => `${w}${/s$/.test(w) ? 'es' : 's'}${rest}`);
+
+/** Each unseen character of a value with where it is: before the first character you can see, after the last, or between. */
+function unseenIn(text: string): { name: string; where: string }[] {
+    const chars = Array.from(text);
+    const seen = chars.map((c, i) => ({ c, i })).filter(x => !HAS_UNSEEN.test(x.c));
+    const first = seen.length ? seen[0].i : chars.length, last = seen.length ? seen[seen.length - 1].i : -1;
+    return chars.map((c, i) => ({ c, i })).filter(x => HAS_UNSEEN.test(x.c))
+        .map(x => ({ name: unseenName(x.c), where: x.i < first ? 'at the start' : x.i > last ? 'at the end' : 'in the middle' }));
+}
+
+/** A list of unseen characters in words: "a space at the end", "2 spaces in the middle and a tab at the end". */
+function saidList(list: { name: string; where: string }[], withWhere = true): string {
+    const counts = new Map<string, { name: string; where: string; n: number }>();
+    for (const x of list) {
+        const key = withWhere ? `${x.name}\n${x.where}` : x.name;
+        const had = counts.get(key);
+        if (had) had.n++; else counts.set(key, { ...x, n: 1 });
+    }
+    return [...counts.values()].map(x => `${x.n === 1 ? article(x.name) : `${x.n} ${plural(x.name)}`}${withWhere ? ` ${x.where}` : ''}`).join(' and ');
+}
+
+/**
+ * Words for a difference that is only characters you can't see (looksAlike), for the Columns step's hover (James,
+ * 2026-11-23: kennelB's "Biscuit " showed amber with no clue why): "differs only by a space at the end"; '' when the
+ * values are the same, or differ in what you can see.
+ */
+export function unseenSaid(a: V, b: V): string {
+    const text = (x: V): string => (x === null || x === undefined ? '' : String(x));
+    const ta = text(a), tb = text(b);
+    if (ta === tb || !looksAlike(a, b)) return '';
+    if (!ta || !tb) {
+        const other = unseenIn(ta || tb);
+        return `differs only by ${other.every(x => x.name === 'space') ? 'spaces' : saidList(other, false)}, against blank`;
+    }
+    // What each has that the other doesn't (a character in the same place in both is no difference)
+    const take = (from: { name: string; where: string }[], out: { name: string; where: string }[]) => {
+        const left = [...out];
+        return from.filter(x => { const at = left.findIndex(y => y.name === x.name && y.where === x.where); if (at < 0) return true; left.splice(at, 1); return false; });
+    };
+    const ua = unseenIn(ta), ub = unseenIn(tb);
+    const onlyA = take(ua, ub), onlyB = take(ub, ua);
+    const more = onlyB.length ? onlyB : onlyA, less = onlyB.length ? onlyA : [];
+    return `differs only by ${saidList(more)}${less.length ? `, against ${saidList(less, false)}` : ''}`;
 }

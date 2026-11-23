@@ -33,7 +33,7 @@ import { columnTypes, spread, TYPE_SAMPLE, type ColumnType } from '../../service
 import { CALC_VIEW, QUERY_JOIN_KINDS } from '../../services/query/query-types';
 import { comparableRuns, type RequestTemplates, type RunHeaderValue } from '../../services/compare/compare-runs';
 import { alignCompareJoins, groupCompare, isCompare, MAX_COMPARE_VIEWS, queryCompare, runJoin, sameShape, type CompareViewShape } from '../../services/query/query-compare';
-import { columnCellDiffs, comparedGroups, otherFilters, passes, rowStatus, statusCounts, statusMenuCounts, type RowStatus, type StatusCounts, type StatusFilter } from '../../services/query/query-status';
+import { columnCellDiffs, columnCellHidden, comparedGroups, otherFilters, passes, rowStatus, statusCounts, statusMenuCounts, type RowStatus, type StatusCounts, type StatusFilter } from '../../services/query/query-status';
 import { resultWorkbook } from '../../services/query/query-export';
 import { asColumnValue, lookupsIn } from '../../services/column-functions/column-functions';
 import { lookupValue, type LookupTablesReader, type LookupTableSummary } from '../../services/lookup-tables/lookup-tables';
@@ -1529,7 +1529,7 @@ export class QueryController {
         let resultTypes: ColumnType[] = [];
         let sampleRow: { view: string; column: string; value: string }[] = [];
         // Each report column on that record, after its functions, and whether it differs (Columns)
-        let columnCells: { value: string; differs: boolean }[] = [];
+        let columnCells: { value: string; differs: boolean; hidden?: string }[] = [];
         let duplicates = 0;
         let notNumbers: NotNumbers = [];
         let sample: SampleFacts | undefined;
@@ -1748,7 +1748,7 @@ export class QueryController {
      * after its functions, with whether it differs from its compared column's first cell in slot
      * order (columnCellDiffs): what Join and Columns show under each name.
      */
-    private async engineSample(spec: QuerySpec, columns: ColumnRef[]): Promise<{ row: { view: string; column: string; value: string }[]; cells: { value: string; differs: boolean }[] }> {
+    private async engineSample(spec: QuerySpec, columns: ColumnRef[]): Promise<{ row: { view: string; column: string; value: string }[]; cells: { value: string; differs: boolean; hidden?: string }[] }> {
         const raw = allColumns(spec).filter(c => c.view !== CALC_VIEW);
         const shown = columns.map((c, i) => ({ c, i })).filter(x => x.c.view !== CALC_VIEW && spec.views.some(v => v.id === x.c.view));
         const { everyView, any } = sampleQueries(spec, raw, shown.map(x => ({ view: x.c.view, column: x.c.column, ...(x.c.fns?.length ? { fns: x.c.fns } : {}) })));
@@ -1758,12 +1758,15 @@ export class QueryController {
         const values = columns.map(() => '');
         shown.forEach((x, k) => { values[x.i] = text(got[raw.length + k]); });
         const order = this.query?.sources.map(src => src.id) ?? [];
-        const differs = columnCellDiffs(columns, values, view => { const at = order.indexOf(view); return at < 0 ? order.length : at; });
-        return { row: raw.map((c, i) => ({ view: c.view, column: c.column, value: text(got[i]) })), cells: values.map((value, i) => ({ value, differs: differs[i] })) };
+        const placeOf = (view: string) => { const at = order.indexOf(view); return at < 0 ? order.length : at; };
+        const differs = columnCellDiffs(columns, values, placeOf);
+        // (a cell that differs only by characters you can't see: the words for it, and the page marks them)
+        const hidden = columnCellHidden(columns, values, placeOf);
+        return { row: raw.map((c, i) => ({ view: c.view, column: c.column, value: text(got[i]) })), cells: values.map((value, i) => ({ value, differs: differs[i], ...(differs[i] && hidden[i] ? { hidden: hidden[i] } : {}) })) };
     }
 
     /** Everything the steps show. `reading`: a view was just added and its rows are still being read. */
-    private postState(now: { reading?: boolean; counting?: string; waiting?: string[]; stats?: Map<string, QueryJoinStats | null>; columns?: ColumnRef[]; resultColumns?: ColumnRef[]; resultTypes?: ColumnType[]; sampleRow?: { view: string; column: string; value: string }[]; columnCells?: { value: string; differs: boolean }[]; duplicates?: number; notNumbers?: NotNumbers; total?: number; preview?: unknown[][]; error?: string; sample?: SampleFacts }): void {
+    private postState(now: { reading?: boolean; counting?: string; waiting?: string[]; stats?: Map<string, QueryJoinStats | null>; columns?: ColumnRef[]; resultColumns?: ColumnRef[]; resultTypes?: ColumnType[]; sampleRow?: { view: string; column: string; value: string }[]; columnCells?: { value: string; differs: boolean; hidden?: string }[]; duplicates?: number; notNumbers?: NotNumbers; total?: number; preview?: unknown[][]; error?: string; sample?: SampleFacts }): void {
         const query = this.query;
         if (!query) return;
         const tables = tableNames(query.sources.map(s => ({ id: s.id, name: s.name, columns: [] })));

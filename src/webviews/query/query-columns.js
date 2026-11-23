@@ -253,7 +253,9 @@
             cell.dataset.entry = String(index);
             const v = view(entry.view);
             const who = v ? (runOf(v) ? `${runOf(v)} · ${v.name}` : v.name) : '';
-            cell.title = `${who} · ${entry.column}${value !== '' ? `: ${value}` : ''}${(entry.fns || []).length ? ` · ${(entry.fns || []).length} function${entry.fns.length === 1 ? '' : 's'}` : ''}. Right-click for its functions, or to take it out`;
+            // (a cell that differs only by characters you can't see says how, the host's words: James, 2026-11-23, "YES!")
+            const hidden = differs && said && said.hidden ? said.hidden : '';
+            cell.title = `${who} · ${entry.column}${hidden ? `: ${hidden}` : value !== '' ? `: ${value}` : ''}${(entry.fns || []).length ? ` · ${(entry.fns || []).length} function${entry.fns.length === 1 ? '' : 's'}` : ''}. Right-click for its functions, or to take it out`;
             // Columns of different names compared under one (James, 2026-11-22): each cell says its column, in grey over
             // its value, and a click on it changes the column; the row is taller for it
             if (mixedRow(row, list)) {
@@ -264,7 +266,10 @@
                 cell.classList.add('has-colname');
                 cell.append(named);
             }
-            cell.append(el('span', 'dbmn-cell-value', value === '' ? ' ' : value), fxButton(entry, list));
+            const shown = el('span', 'dbmn-cell-value', value === '' ? ' ' : value);
+            // (and its characters marked, as Results' ¶ marks them: the design system's DbmnTable.showSpecial)
+            if (hidden && window.DbmnTable && window.DbmnTable.showSpecial) shown.replaceChildren(window.DbmnTable.showSpecial(value));
+            cell.append(shown, fxButton(entry, list));
             cell.addEventListener('contextmenu', e => {
                 e.preventDefault();
                 window.DbmnContextMenu.show(e, [

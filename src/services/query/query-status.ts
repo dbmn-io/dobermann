@@ -14,6 +14,7 @@
  */
 import { CALC_VIEW } from './query-types';
 import type { ColumnRef } from './query-types';
+import { unseenSaid } from '../engine/engine-compare';
 
 export type RelationKind = 'oneToOne' | 'oneToMany' | 'onlyBase' | 'onlyOther';
 export const RELATION_KINDS: readonly RelationKind[] = ['oneToOne', 'oneToMany', 'onlyBase', 'onlyOther'];
@@ -189,6 +190,22 @@ export function statusCounts(statuses: RowStatus[], indices: number[]): StatusCo
  * order (the Baseline's when it is in the column), not the first one added. `values[i]` is
  * column i's value after its functions; `placeOf` a view's place in the slots.
  */
+/**
+ * Each Columns cell that differs from its compared column's first cell only by characters you can't see: the words for it
+ * (unseenSaid, "differs only by a space at the end"), '' otherwise. The page marks those characters (James, 2026-11-23: "YES!").
+ */
+export function columnCellHidden(columns: ColumnRef[], values: string[], placeOf: (view: string) => number): string[] {
+    const out = columns.map(() => '');
+    const groups = new Map<string, number[]>();
+    columns.forEach((c, i) => { if (c.group) groups.set(c.group, [...(groups.get(c.group) ?? []), i]); });
+    for (const cells of groups.values()) {
+        if (cells.length < 2) continue;
+        const base = cells.slice().sort((a, b) => placeOf(columns[a].view) - placeOf(columns[b].view) || a - b)[0];
+        for (const i of cells) if (i !== base) out[i] = unseenSaid(values[base], values[i]);
+    }
+    return out;
+}
+
 export function columnCellDiffs(columns: ColumnRef[], values: string[], placeOf: (view: string) => number): boolean[] {
     const out = columns.map(() => false);
     const groups = new Map<string, number[]>();

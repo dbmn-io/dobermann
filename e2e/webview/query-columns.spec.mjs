@@ -90,12 +90,15 @@ ${SCRIPTS.map(rel => `<script>${read(rel)}</script>`).join('\n')}</head><body>
       window.posted.push(m);
       if (m.type === 'query.setSelect') {
           // As the host works out Columns' cells: each value, amber where it differs from its column's first cell in slot order
-          const samples = ${JSON.stringify(SAMPLE)};
+          const samples = ${JSON.stringify(state.samples || SAMPLE)};
           const value = c => (samples[c.view] || {})[c.column] || '';
           const columnCells = m.select.map(c => {
               if (!c.group) return { value: value(c), differs: false };
               const mates = m.select.filter(x => x.group === c.group).sort((a, b) => viewAt(a.view) - viewAt(b.view));
-              return { value: value(c), differs: mates.length > 1 && value(c) !== value(mates[0]) };
+              const differs = mates.length > 1 && value(c) !== value(mates[0]);
+              // (the host says how a cell differs only by unseen characters: here, a stand-in for its rule, only trailing spaces)
+              const hidden = differs && value(c).trimEnd() === value(mates[0]).trimEnd() ? 'differs only by a space at the end' : '';
+              return Object.assign({ value: value(c), differs }, hidden ? { hidden } : {});
           });
           ui.state = Object.assign({}, ui.state, { columns: m.select, columnCells });
           setTimeout(() => step.render(), 0);
@@ -225,6 +228,30 @@ test('a compared row: a cell that differs from the first cell in slot order is a
     await expect(row.locator('[data-view="s1"]')).not.toHaveClass(/is-diff/);
     const colours = await row.evaluate(r => ['s1', 's2'].map(v => getComputedStyle(r.querySelector(`[data-view="${v}"] .dbmn-cell-value`)).color));
     expect(colours[1]).not.toBe(colours[0]);
+});
+
+test('a compared cell that differs only by a space you can\'t see: marked as Results marks it, and its hover says why; a real difference stays plain', async ({ page: p }) => {
+    // (James, 2026-11-23, kennel demo: kennelB's "Biscuit " was amber with no clue why; "YES!" to marking it)
+    const samples = { ...SAMPLE, s2: { ...SAMPLE.s2, description: 'Kibble 10 kg ' } };
+    const state = { ...STATE, samples, views: STATE.views.map(v => (v.id === 's2' ? { ...v, columns: v.columns.map(c => (c.name === 'description' ? { ...c, sample: 'Kibble 10 kg ' } : c)) } : v)) };
+    await p.setContent(page(state));
+    // (the marks' script and look, as the Query page loads them)
+    await p.addScriptTag({ content: read('shared/dbmn-table.js') });
+    await p.addStyleTag({ content: read('shared/dbmn-table.css') });
+    await rowNamed(p, 'description').locator('.query-free-compare').click();
+    const cell = p.locator('#queryColumns .query-rep-row.is-compared [data-view="s2"]');
+    await expect(cell).toHaveClass(/is-diff/);
+    await expect(cell).toHaveAttribute('title', /Stock · description: differs only by a space at the end\./);
+    // (every space marked, as Results' ¶ marks them: the two between the words and the one at the end)
+    await expect(cell.locator('.dbmn-cell-value .dbmn-sc')).toHaveCount(3);
+    await cell.screenshot({ path: join(ROOT, '.dev-local', 'query-columns-hidden-cell.png') });
+    await expect(cell.locator('.dbmn-cell-value')).toContainText('Kibble 10 kg');
+    // (BL's own cell, and a real difference (C1's 52 against 54): no marks)
+    await expect(p.locator('#queryColumns .query-rep-row.is-compared [data-view="s1"] .dbmn-sc')).toHaveCount(0);
+    await rowNamed(p, 'quantityOnHand').locator('.query-free-compare').click();
+    const qty = p.locator('#queryColumns .query-rep-row.is-compared').filter({ hasText: '52' }).locator('[data-view="s2"]');
+    await expect(qty.locator('.dbmn-sc')).toHaveCount(0);
+    await expect(qty).toHaveAttribute('title', /quantityOnHand: 52\./);
 });
 
 test('one view, no join, no key: every column taken out leaves the step empty, sends nothing (never "every column"), and says it is empty; a column put back ends it', async ({ page: p }) => {
