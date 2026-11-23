@@ -2431,7 +2431,23 @@ class DynamicReportManager {
     }
 
 
+    /** The View whose saved searches the box offers: a Completed or Error tab's (the Input tab's Views are made, not kept). */
+    savedSearchesView() {
+        const tab = this.currentTab;
+        return tab === 'success' || tab === 'errors' ? this.getActiveView(tab) : null;
+    }
+    /** The ★ beside the box: the shown tab's View's saved searches, or none where there is no View to keep them. */
+    showSavedSearches() {
+        const saved = document.getElementById('console-saved');
+        if (!saved) return;
+        const view = this.savedSearchesView();
+        saved.hidden = !view;
+        if (view) saved.searches = Array.isArray(view.searches) ? view.searches : [];
+        else saved.close();
+    }
+
     extractAndRender(tabName, rowBasisOverride = null, options = {}) {
+        this.showSavedSearches();
         try {
             // FIX #110: Clear WeakMap at start of extraction to prevent stale references
             this.parentChildMap = new WeakMap();
@@ -2996,6 +3012,20 @@ class DynamicReportManager {
             table.addEventListener('dbmn-table-layout', event => this.tableChanged(event.detail || {}));
             // A search for a key the View does not have yet adds it (James, 2026-11-23)
             table.addEventListener('dbmn-table-add-column', event => this.addFieldFromSearch(event.detail.id));
+            // The tab's saved searches, kept with its View (James, 2026-11-23: "that saved search should be
+            // everywhere where we have a search box… console, compare"). Picking one fills the box and
+            // searches as typed, so an @key the View doesn't have is added as typing it adds it.
+            const saved = document.getElementById('console-saved');
+            if (saved) {
+                saved.input = document.getElementById('search-input');
+                saved.addEventListener('dbmn-saved-change', event => {
+                    const view = this.savedSearchesView();
+                    if (!view) return;
+                    view.searches = (event.detail && event.detail.searches) || [];
+                    saved.searches = view.searches;
+                    debouncedSaveSettings();
+                });
+            }
             table.addEventListener('dbmn-table-shown', event => this.tableShown(event.detail || {}));
             // A column let go outside its own object's columns: say where it can go
             table.addEventListener('dbmn-table-outside', event => this.columnLeftItsLevel(event.detail.id));

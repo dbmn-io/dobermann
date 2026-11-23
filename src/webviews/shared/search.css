@@ -80,3 +80,81 @@
    the default mirror background, acting as the visible separator. */
 .search-tok-grp-0   { background: rgba(86, 156, 214, 0.10); }
 .search-tok-grp-1   { background: rgba(206, 145, 120, 0.12); }
+
+/* <dbmn-saved-searches> (dbmn-saved-searches.js): a search box's saved searches, a ★ drop-down beside the box */
+.dbmn-saved-searches { position: relative; display: inline-flex; flex: 0 0 auto; }
+.dbmn-saved-searches[hidden] { display: none; }
+.dbmn-saved-btn {
+    display: inline-flex; align-items: center; gap: 5px;
+    max-width: 200px; height: 26px; padding: 0 8px;
+    background: transparent; color: var(--dbmn-foreground);
+    border: 1px solid var(--dbmn-input-border, var(--dbmn-panel-border)); border-radius: var(--dbmn-radius, 4px);
+    font: inherit; font-size: 12px; cursor: pointer; white-space: nowrap;
+}
+.dbmn-saved-btn:hover, .dbmn-saved-btn[aria-expanded="true"] { background: var(--dbmn-toolbar-hoverBackground, var(--dbmn-hover)); }
+.dbmn-saved-btn:focus-visible { outline: 1px solid var(--dbmn-focusBorder); outline-offset: 1px; }
+.dbmn-saved-star { color: var(--dbmn-descriptionForeground); }
+.dbmn-saved-btn.is-saved .dbmn-saved-star { color: var(--dbmn-charts-yellow); }
+.dbmn-saved-label { overflow: hidden; text-overflow: ellipsis; }
+.dbmn-saved-caret { display: inline-flex; color: var(--dbmn-descriptionForeground); }
+.dbmn-saved-caret svg { width: 12px; height: 12px; }
+
+.dbmn-saved-menu {
+    position: absolute; top: calc(100% + 4px); right: 0; z-index: 40;
+    width: 320px; max-width: calc(100vw - 32px); max-height: 360px; overflow-y: auto;
+    background: var(--dbmn-menu-background, var(--dbmn-editorWidget-background));
+    color: var(--dbmn-menu-foreground, var(--dbmn-foreground));
+    border: 1px solid var(--dbmn-menu-border, var(--dbmn-widget-border)); border-radius: var(--dbmn-radius, 4px);
+    box-shadow: 0 4px 12px var(--dbmn-widget-shadow, rgba(0, 0, 0, 0.25));
+    font-size: 12px;
+}
+.dbmn-saved-menu[hidden] { display: none; }
+.dbmn-saved-top { padding: 6px; border-bottom: 1px solid var(--dbmn-panel-border); }
+.dbmn-saved-add {
+    width: 100%; padding: 5px 8px; text-align: left;
+    background: transparent; color: var(--dbmn-textLink-foreground); border: none; border-radius: 3px;
+    font: inherit; cursor: pointer;
+}
+.dbmn-saved-add:hover:not(:disabled) { background: var(--dbmn-list-hoverBackground); }
+.dbmn-saved-add:disabled { color: var(--dbmn-descriptionForeground); cursor: default; }
+.dbmn-saved-note, .dbmn-saved-empty { padding: 2px 8px 4px; color: var(--dbmn-descriptionForeground); }
+.dbmn-saved-empty { padding: 10px 14px; }
+.dbmn-saved-list { padding: 4px 0; }
+.dbmn-saved-row { display: flex; align-items: center; gap: 2px; padding: 0 6px; }
+.dbmn-saved-row.is-current .dbmn-saved-name::before { content: '★ '; color: var(--dbmn-charts-yellow); }
+.dbmn-saved-row.is-deleting { gap: 6px; padding: 5px 8px; }
+.dbmn-saved-pick {
+    flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 1px;
+    padding: 5px 8px; text-align: left;
+    background: transparent; color: inherit; border: none; border-radius: 3px; font: inherit; cursor: pointer;
+}
+.dbmn-saved-pick:hover, .dbmn-saved-icon:hover { background: var(--dbmn-list-hoverBackground); }
+.dbmn-saved-pick:focus-visible, .dbmn-saved-icon:focus-visible, .dbmn-saved-add:focus-visible, .dbmn-saved-confirm:focus-visible { outline: 1px solid var(--dbmn-focusBorder); outline-offset: -1px; }
+.dbmn-saved-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dbmn-saved-text {
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    color: var(--dbmn-descriptionForeground); font-family: var(--dbmn-editor-font-family, monospace); font-size: 11px;
+}
+.dbmn-saved-icon {
+    flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
+    width: 24px; height: 24px; padding: 0;
+    background: transparent; color: var(--dbmn-descriptionForeground); border: none; border-radius: 3px; cursor: pointer;
+}
+.dbmn-saved-icon svg { width: 13px; height: 13px; }
+.dbmn-saved-ask { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dbmn-saved-form { flex: 1 1 auto; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 4px 2px; }
+.dbmn-saved-name-input {
+    flex: 1 1 140px; min-width: 0; height: 24px; padding: 0 6px;
+    background: var(--dbmn-input-background); color: var(--dbmn-input-foreground);
+    border: 1px solid var(--dbmn-input-border, var(--dbmn-panel-border)); border-radius: 3px; font: inherit;
+}
+.dbmn-saved-name-input:focus { outline: 1px solid var(--dbmn-focusBorder); outline-offset: -1px; }
+.dbmn-saved-confirm {
+    flex: 0 0 auto; height: 24px; padding: 0 10px;
+    background: transparent; color: var(--dbmn-foreground);
+    border: 1px solid var(--dbmn-button-border, var(--dbmn-panel-border)); border-radius: 3px; font: inherit; cursor: pointer;
+}
+.dbmn-saved-confirm.is-primary { background: var(--dbmn-button-background); color: var(--dbmn-button-foreground); border-color: transparent; }
+.dbmn-saved-confirm.is-danger { color: var(--dbmn-errorForeground); border-color: var(--dbmn-errorForeground); }
+.dbmn-saved-problem { flex: 1 0 100%; color: var(--dbmn-errorForeground); }
+.dbmn-saved-problem:empty { display: none; }

@@ -216,6 +216,7 @@
         ['Buttons', '.btn, .btn-primary, .btn-secondary, .btn-danger', S, 'Every screen', 'shared/buttons.css'],
         ['Toggle button', '.dbmn-toggle: an icon that is on or off (aria-pressed); its name in the hover text', S, 'Query (Results: Totals, hidden characters, Filter), Design system', 'shared/buttons.css'],
         ['<dbmn-name>', 'A report\'s name on its screen, renamed in place', C, 'Query', 'shared/dbmn-name.js'],
+        ['<dbmn-saved-searches>', 'A search box\'s saved searches: a ★ drop-down beside the box', C, 'Query (Results), Console (Completed, Error)', 'shared/dbmn-saved-searches.js'],
         ['Rename dialog', 'Right-click → Rename in the Hub\'s lists: reports, endpoints, environments, runs', M, 'Hub lists', 'hub/hub-tabs.js (askRename)'],
         ['Tabs in a screen', 'A screen\'s own tabs (Environment, Console)', S, 'Environment, Console', 'shared/tabs.css'],
 
@@ -798,6 +799,12 @@
     drawMoving();
     drawIcons();
     $('dsName').addEventListener('dbmn-name-change', event => { $('dsNameNote').textContent = `Asked to be called ${event.detail.name}`; });
+    // Saved searches: this page keeps them for as long as it is open
+    const saved = $('dsSaved');
+    saved.input = $('dsSavedBox');
+    saved.searches = [{ name: 'Late orders', text: '@status=late' }, { name: 'Big orders', text: '@qty>40' }];
+    saved.addEventListener('dbmn-saved-change', event => { saved.searches = event.detail.searches; $('dsSavedNote').textContent = `${event.detail.searches.length} saved`; });
+    saved.addEventListener('dbmn-saved-pick', event => { $('dsSavedNote').textContent = `Searching ${event.detail.name}`; });
     drawTable();
     drawNested();
     drawMap();
