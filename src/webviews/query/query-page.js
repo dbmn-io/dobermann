@@ -2030,7 +2030,7 @@
             clearTimeout(searchTimer);
             $('querySearch').value = '';
             ui.search = '';
-            window.SearchMatcher.renderHighlight($('querySearchMirror'), '', searchHeadings());
+            window.SearchMatcher.renderHighlight($('querySearchMirror'), '', searchHeadings(), notInReport());
             renderReads();
         },
         redraw: () => { grid.key = ''; drawTable(); loadRows(true); },
@@ -2297,6 +2297,12 @@
             const i = at(detail.id);
             const columns = resultCols().filter(c => !gone.has(colId(c)));
             if (!columns.length || columns.length === resultCols().length) return;
+            // Its search terms go with it, now: Results' columns change here before the host's state comes, so the
+            // check there (applyState) would see nothing gone; and with its term gone it isn't added straight back
+            if (ui.search && window.QuerySearchAdds && window.SearchMatcher.withoutColumns) {
+                const next = window.QuerySearchAdds.searchAfterRemoval(ui.search, searchCols(resultCols().filter(c => gone.has(colId(c)))), searchCols(columns), window.SearchMatcher.withoutColumns);
+                if (next !== ui.search) setSearch(next, false);
+            }
             const sorted = sortOf();
             ui.state.resultColumns = columns;
             ui.sort = sorted && sorted.id !== detail.id ? { column: at(sorted.id), dir: sorted.dir } : null;
@@ -2396,7 +2402,7 @@
             ui.totals = !!m.totals;
             $('querySearch').value = ui.search;
             // (a column name that Results does not have shows in red, as in every table's search)
-            window.SearchMatcher.renderHighlight($('querySearchMirror'), ui.search, searchHeadings());
+            window.SearchMatcher.renderHighlight($('querySearchMirror'), ui.search, searchHeadings(), notInReport());
             renderReads();
             $('queryTotals').setAttribute('aria-pressed', String(ui.totals));
             // (a search kept from last time lights Filter)
@@ -2478,17 +2484,56 @@
         clearTimeout(searchTimer);
         ui.search = text;
         $('querySearch').value = text;
-        window.SearchMatcher.renderHighlight($('querySearchMirror'), text, searchHeadings());
+        window.SearchMatcher.renderHighlight($('querySearchMirror'), text, searchHeadings(), notInReport());
         renderReads();
         compareResults.renderTools();
         if (reload) loadRows();
+    }
+    /**
+     * The views' columns not in the report, as the search can name them (James, 2026-11-23): each by its name, and by
+     * its view's alias (C1.qty). Offered by `@` and drawn as known names, marked as not in the report yet; a search
+     * naming one adds it (addFromSearch).
+     */
+    function notInReport() {
+        if (!ui.state) return [];
+        const inReport = new Set(resultCols().map(c => `${c.view}\n${c.column}`));
+        const names = new Set(resultCols().map(c => c.column));
+        const out = [];
+        views().filter(v => !v.off).forEach(v => (v.columns || []).forEach(c => {
+            if (inReport.has(`${v.id}\n${c.name}`)) return;
+            if (!names.has(c.name)) out.push(c.name);
+            out.push(`${aliasOf(v)}.${c.name}`);
+        }));
+        return [...new Set(out)];
+    }
+    /**
+     * A search naming a view's column that isn't in the report adds it, and it stays (James, 2026-11-23: "@qty adds it
+     * as a compare column. @c1.qty adds as report column", "a. Stay.", "e. just run. dont offer stop"): the report's
+     * columns set as the Columns step sets them (query-search-adds.js says which), and the query runs again with the
+     * normal working line; the search then finds the column. True when it did.
+     */
+    function addFromSearch() {
+        const adds = window.QuerySearchAdds, matcher = window.SearchMatcher;
+        if (!adds || !matcher || !matcher.columnTerms || !ui.state || !ui.search) return false;
+        // (a term once it is finished, as search-matcher says: an operator, or a space or comma after the name; so typing
+        // @qt on the way to @qty adds nothing. A matcher without `done` counts every term as finished)
+        const names = matcher.columnTerms(ui.search).filter(t => t.done !== false).map(t => t.name);
+        if (!names.length) return false;
+        const report = (ui.state.columns || []).map(c => ({ view: c.view, column: c.column, group: c.group }));
+        const known = views().filter(v => !v.off).map(v => ({ id: v.id, alias: aliasOf(v), columns: (v.columns || []).map(c => c.name) }));
+        const add = adds.columnsToAdd(names, report, known, (ui.state.compare && ui.state.compare.views) || []);
+        if (!add.length) return false;
+        const select = (ui.state.columns || []).map(c => Object.assign({ view: c.view, column: c.column }, c.fns && c.fns.length ? { fns: c.fns } : {}, c.group ? { group: c.group } : {})).concat(add);
+        setBusy(`Adding ${[...new Set(add.map(c => c.column))].join(', ')}…`);
+        post({ type: 'query.setSelect', select });
+        return true;
     }
     function searchHeadings() {
         const columns = resultCols();
         const names = columns.map(c => c.column);
         const inViews = new Set(columns.map(c => c.view).filter(id => view(id)));
         const aliased = inViews.size > 1 ? columns.filter(c => view(c.view)).map(c => `${aliasOf(view(c.view))}.${c.column}`) : [];
-        return [...new Set([...names, ...aliased])];
+        return [...new Set([...names, ...aliased, ...notInReport()])];
     }
     /** What kind of values the column a heading names holds (the host says: number, yes or no, date, text). */
     function searchType(heading) {
@@ -2498,19 +2543,19 @@
     }
     /** The search in words, under Results' tools: "Reading this as: poDate (date) after 12 Nov 2026". */
     function renderReads() {
-        if ($('querySearch').value) window.SearchMatcher.renderHighlight($('querySearchMirror'), $('querySearch').value, searchHeadings());
+        if ($('querySearch').value) window.SearchMatcher.renderHighlight($('querySearchMirror'), $('querySearch').value, searchHeadings(), notInReport());
         const says = ui.step === 4 && window.SearchMatcher.describeSearch ? window.SearchMatcher.describeSearch($('querySearch').value, searchHeadings(), searchType) : '';
         // (how the search is read: on the box's hover, not a line under it; James, 2026-11-22)
         $('queryReads').classList.add('hidden');
         $('querySearch').title = says ? `Reading this as: ${says.replace(/^Reading this as:\s*/i, '')}` : 'Search rows, or @column=value';
     }
     // `@` lists the columns, each with its kind, then the operators and values that fit it
-    window.SearchMatcher.attachColumnSuggest({ input: $('querySearch'), headings: searchHeadings, types: searchType });
+    window.SearchMatcher.attachColumnSuggest({ input: $('querySearch'), headings: searchHeadings, types: searchType, hidden: notInReport, adds: notInReport });
     $('querySearch').addEventListener('input', () => {
         renderReads();
-        window.SearchMatcher.renderHighlight($('querySearchMirror'), $('querySearch').value, searchHeadings());
+        window.SearchMatcher.renderHighlight($('querySearchMirror'), $('querySearch').value, searchHeadings(), notInReport());
         clearTimeout(searchTimer);
-        searchTimer = setTimeout(() => { ui.search = $('querySearch').value; compareResults.renderTools(); loadRows(); }, 200);
+        searchTimer = setTimeout(() => { ui.search = $('querySearch').value; compareResults.renderTools(); if (!addFromSearch()) loadRows(); }, 200);
     });
     // The query's name, at the top left (shared/dbmn-name.js): a click renames it. The controller checks
     // the name and answers with the one it kept (query.named), refused or not

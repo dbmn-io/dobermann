@@ -165,6 +165,7 @@ export function buildQueryPage(asset: AssetUrl, config: { queryId: string; name:
     <!-- The Console's Chain dialog, as it is: Chain here posts the same messages -->
     ${script('console/modules/console-chain.js')}
     <script src="${asset('query/query-columns.js')}"></script>
+    <script src="${asset('query/query-search-adds.js')}"></script>
     <script src="${asset('query/query-calc.js')}"></script>
     <script src="${asset('query/query-compare-results.js')}"></script>
     <script src="${asset('query/query-page.js')}" data-query-id="${attr(config.queryId)}"></script>
