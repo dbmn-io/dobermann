@@ -49,14 +49,14 @@ describe('Query: Translate values\' "+ Add" (a value not in the lookup table)', 
         return { controller, lookups, uom, seen, sample };
     }
 
-    it('the sample: each value before and after; DZ not in TMS; BX in it twice (left as it was)', async () => {
+    it('the sample: each value before and after; DZ not in TMS; BX in it twice (the first row\'s)', async () => {
         const { sample, uom, controller } = await setUp();
         const got = await sample(1);
         assert.deepStrictEqual(got.lookup, { table: uom.id, from: 'c1', to: 'c2' });
         const by = new Map(got.rows.map(r => [String(r.before), r]));
         assert.deepStrictEqual(by.get('EA'), { before: 'EA', after: 'EACH' });
         assert.deepStrictEqual(by.get('DZ'), { before: 'DZ', after: 'DZ', missing: true });
-        assert.deepStrictEqual(by.get('BX'), { before: 'BX', after: 'BX', twice: true });
+        assert.deepStrictEqual(by.get('BX'), { before: 'BX', after: 'BOX', twice: true });
         controller.dispose();
     });
 

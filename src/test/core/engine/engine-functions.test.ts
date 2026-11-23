@@ -427,8 +427,8 @@ _rg AS (SELECT ${ks.join(', ')}, COUNT(*) AS n FROM _r WHERE ${ks.map(k => `${k}
         assert.match(said({ steps: [{ join: 'inner', left: 't', right: 't', on: [] }] })[0], /at least one pair of key columns/);
     });
 
-    it('Translate values: any column to any other; not found, the value as it was; in two rows, as it was too, and counted', async () => {
-        // (James, 2026-11-23: "all equal. we can lookup any column and return any other column", "keep original"; guess nothing)
+    it('Translate values: any column to any other; not found, the value as it was; in two rows, the first row\'s, and counted', async () => {
+        // (James, 2026-11-23: "all equal. we can lookup any column and return any other column", "keep original"; twice: the first row wins)
         const e = new QueryEngine();
         e.load('units', { columns: ['erp', 'wms', 'fin'], rows: [['EA', 'each', 'UNIT'], ['1', 'one', 'ONE'], ['EA', 'second', 'X'], ['BX', null, 'BOX']] });
         e.load('t', { columns: ['u'], rows: [['EA'], [1], ['CS'], [null], ['BX']] });
@@ -436,8 +436,8 @@ _rg AS (SELECT ${ks.join(', ')}, COUNT(*) AS n FROM _r WHERE ${ks.map(k => `${k}
         const out = await e.run({ steps: [{ from: 't' }, { select: 'step 1', columns: [{ name: 'x', value: tr('erp', 'wms') }, { name: 'y', value: tr('erp', 'fin') }] }] }, { countNotNumbers: ['x', 'y'] });
         assert.ok('result' in out);
         const rows = e.read(out.result, 0, 9).rows;
-        assert.deepStrictEqual(rows.map(r => r[0]), ['EA', 'one', 'CS', null, 'BX'], 'EA is in two rows: left as it was; BX\'s wms is blank: as it was');
-        assert.deepStrictEqual(rows.map(r => r[1]), ['EA', 'ONE', 'CS', null, 'BOX'], 'erp to fin, the same rules');
+        assert.deepStrictEqual(rows.map(r => r[0]), ['each', 'one', 'CS', null, 'BX'], 'EA is in two rows: the first\'s; BX\'s wms is blank: as it was');
+        assert.deepStrictEqual(rows.map(r => r[1]), ['UNIT', 'ONE', 'CS', null, 'BOX'], 'erp to fin, the same rules');
         assert.deepStrictEqual(Object.values(out.notNumbers ?? {}).map(n => [n['twice:x'], n['twice:y']]), [[1, 1]], 'the row whose value is in the table twice, counted for each column');
         // The other way round: wms to erp
         const back = await e.run({ steps: [{ from: 't' }, { select: 'step 1', columns: [{ name: 'z', value: { fn: 'TRANSLATE', args: [{ value: 'one' }, { value: 'units' }, { value: 'wms' }, { value: 'erp' }] } }] }] });

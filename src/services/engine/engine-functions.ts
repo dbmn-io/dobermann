@@ -194,8 +194,9 @@ function lookupIndex(table: LookupSource, fromAt: number): Map<string, { row: nu
 /**
  * Translate values (James, 2026-11-23: "we can lookup any column and return any other column"): the row of the table
  * whose `from` column holds the value (as text) gives its `to` column. Not found, the value as it was ("keep
- * original"); held by two or more rows, the value as it was too, and counted (lookupTwice): nothing is guessed.
- * A row found whose To cell is blank keeps the value as it was too.
+ * original"); held by two or more rows, the first row's (top to bottom as the table keeps them: the first row wins,
+ * 2026-11-23), and counted (lookupTwice) so it is said. A row found whose To cell is blank keeps the value as it was.
+ * shared/lookup-value.js lookupValue is the same rule (lookup-value tests hold the two to it).
  */
 function translate(x: V, tableName: V, from: V, to: V, ctx: FunctionContext): V {
     if (x === null) return null;
@@ -208,10 +209,8 @@ function translate(x: V, tableName: V, from: V, to: V, ctx: FunctionContext): V 
     if (key === null) return x;
     const hit = lookupIndex(table, fromAt).get(key);
     if (!hit) return x;
-    if (hit.rows > 1) {
-        if (lookupTwice.on) lookupTwice.count++;
-        return x;
-    }
+    // (in two rows or more: the first's, counted, so the line above Results says so)
+    if (hit.rows > 1 && lookupTwice.on) lookupTwice.count++;
     // (a row found with its To cell blank: the value as it was, not blanked; lookup-tables.ts lookupValue's rule)
     const found = table.value(hit.row, toAt);
     return found === null || found === '' ? x : found;

@@ -2374,12 +2374,12 @@
         const counted = (m.notNumbers || []).filter(x => x.name || (m.resultColumns || [])[x.column]);
         const rowsIn = list => list.map(x => `${count(x.rows)} ${x.rows === 1 ? 'row' : 'rows'} in ${x.name || m.resultColumns[x.column].column}`).join(', ');
         const notNumbers = counted.filter(x => !x.kind);
-        // (Translate values meeting a value its lookup table holds in two rows: left as it was, nothing guessed)
+        // (Translate values meeting a value its lookup table holds in two rows: the first row's used, and said)
         const twice = counted.filter(x => x.kind === 'twice');
         $('queryNotNumbers').classList.toggle('hidden', !counted.length);
         $('queryNotNumbers').textContent = [
             notNumbers.length ? `Text that isn't a number was left blank: ${rowsIn(notNumbers)}.` : '',
-            twice.length ? `In the lookup table twice, so left as they were: ${rowsIn(twice)}.` : ''
+            twice.length ? `In the lookup table twice, so the first row's was used: ${rowsIn(twice)}.` : ''
         ].filter(Boolean).join(' ');
     }
 

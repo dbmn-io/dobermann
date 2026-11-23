@@ -1097,7 +1097,7 @@ export class QueryController {
         const lookup = last && last.fn === 'translate' ? await this.ports.lookups?.get(last.table) : undefined;
         if (last && last.fn === 'translate' && lookup && message.column && !error) {
             // Translate values (James, 2026-11-23, the mock's step 3): the column's values before and after, up to 50, each
-            // said missing when not in the From column, or twice, by the rule Translate keeps (lookupValue), on the value
+            // said missing when not in the From column, or twice (the first row's used), by the rule Translate keeps (lookupValue), on the value
             // as it comes to Translate (after the functions before it)
             try {
                 const all = fnSampleQueries(message.view, message.column, fns, '').few;
@@ -1109,8 +1109,10 @@ export class QueryController {
                     const looked = fed === null || fed === undefined ? '' : String(fed);
                     const answer = lookupValue(lookup, last.from, looked, last.to);
                     // (`looked`: the value Translate looked up, and what "+ Add" adds, when a function before it changed it)
-                    const as = answer.kind !== 'found' && looked !== String(r[0] ?? '') ? { looked } : {};
-                    return { before: r[0], after: r[1], ...(answer.kind === 'missing' ? { missing: true } : {}), ...(answer.kind === 'twice' ? { twice: true } : {}), ...as };
+                    // (in the table twice: `after` is the first row's, as Translate gives it; the line says it was the first)
+                    const twice = answer.kind === 'found' && (answer.rows ?? 0) > 1;
+                    const as = (answer.kind === 'missing' || twice) && looked !== String(r[0] ?? '') ? { looked } : {};
+                    return { before: r[0], after: r[1], ...(answer.kind === 'missing' ? { missing: true } : {}), ...(twice ? { twice: true } : {}), ...as };
                 });
                 this.post({ type: 'query.fnSample', seq: message.seq, rows: lines, lookup: { table: last.table, from: last.from, to: last.to } });
                 return;

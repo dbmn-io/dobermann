@@ -23,6 +23,9 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { IKeyValueStore } from '../../platform/interfaces/key-value-store.interface';
 import { freeName as freeFileName, safeFileName } from '../query/query-folder';
+import * as lookupValueScript from '../../webviews/shared/lookup-value.js';
+import type { LookupAnswer as SharedAnswer } from '../../webviews/shared/lookup-value.js';
+import { sharedScript } from '../../utils/shared-script';
 
 export const LOOKUP_TABLES_KEY = 'lookupTables';
 
@@ -113,32 +116,19 @@ function listenersOf(state: object): Set<(change: LookupChange) => void> {
     return set;
 }
 
-/** What looking a value up gives (lookupValue): the To column's value, nothing, or more than one row. */
-export type LookupAnswer = { kind: 'found'; value: string } | { kind: 'missing' } | { kind: 'twice'; rows: number };
-
-/** A table's column by its id, or by its name (any case). */
-export function lookupColumn(table: Pick<LookupTable, 'columns'>, ref: string): LookupColumn | undefined {
-    const want = String(ref ?? '');
-    return table.columns.find(c => c.id === want) ?? table.columns.find(c => c.name.toLowerCase() === want.toLowerCase());
-}
-
 /**
- * One value looked up, by the rule Query's Translate values follows in the engine (engine-functions.ts translate;
- * lookup-value tests hold the two to it): the rows whose `from` column holds `value` exactly, as text (no trimming,
- * letter case counts). One row: its `to` column's value (`to` left out: the value itself, "is it in the column").
- * None: missing. Two or more: twice, nothing guessed (James, 2026-11-23). Run Batch's `lu` template function reads
- * tables the same way. Translate keeps the original value for missing and twice, and for a found To that is blank.
+ * Looking a value up: one rule, in the shared script the pages load too (shared/lookup-value.js): found (the first
+ * matching row's To value, top to bottom as the table keeps them; `rows` when more than one matched) or missing.
  */
-export function lookupValue(table: Pick<LookupTable, 'columns' | 'rows'>, from: string, value: string, to?: string): LookupAnswer {
-    const fromColumn = lookupColumn(table, from);
-    const toColumn = to === undefined ? fromColumn : lookupColumn(table, to);
-    if (!fromColumn || !toColumn) return { kind: 'missing' };
-    const text = String(value ?? '');
-    const rows = table.rows.filter(r => (r[fromColumn.id] ?? '') === text);
-    if (!rows.length) return { kind: 'missing' };
-    if (rows.length > 1) return { kind: 'twice', rows: rows.length };
-    return { kind: 'found', value: rows[0][toColumn.id] ?? '' };
-}
+export type LookupAnswer = SharedAnswer;
+const shared = sharedScript<{
+    lookupColumn(table: Pick<LookupTable, 'columns'>, ref: string): LookupColumn | undefined;
+    lookupValue(table: Pick<LookupTable, 'columns' | 'rows'>, from: string, value: string, to?: string): LookupAnswer;
+}>(lookupValueScript, 'LookupValue');
+/** A table's column by its id, or by its name (any case). */
+export const lookupColumn = shared.lookupColumn;
+/** One value looked up, by the rule Translate values, its dialog and Run Batch's lookups all follow. */
+export const lookupValue = shared.lookupValue;
 
 /** Why a table can't be kept as it is, or '' when it can. */
 export function lookupTableProblem(table: Pick<LookupTable, 'name' | 'columns' | 'rows'>): string {

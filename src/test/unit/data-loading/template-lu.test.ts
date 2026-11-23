@@ -2,8 +2,8 @@
 // Copyright (C) 2026 Flexion Tech Pty Ltd
 /**
  * `lu` in a request template (James, 2026-11-23): `{{uom | lu:uom:tms>wms}}` looks the value up in
- * lookup table uom (TMS in, WMS out); `{{uom | lu:uom:wms}}` checks it is in WMS. Blank, not there,
- * there twice, or a blank To: a failure, said in words.
+ * lookup table uom (TMS in, WMS out); `{{uom | lu:uom:wms}}` checks it is in WMS. Blank, not there, or
+ * a blank To: a failure, said in words. There twice: the first row's (one rule with Translate values).
  */
 import { expect } from 'chai';
 import { extractVariablesFromJsonTemplate } from '../../../data-loading/json-template-parser';
@@ -41,12 +41,12 @@ describe('Template lu: a value looked up in a lookup table', () => {
         expect(applyLookup('EA', { type: 'lookup', table: 'uom', from: 'wms' })).to.deep.equal({ success: true, value: 'EA' });
     });
 
-    it('fails, in words: blank, not there, there twice, a blank To, no such table or column', () => {
+    it('fails, in words: blank, not there, a blank To, no such table or column; there twice, the first row\'s', () => {
         const error = (value: string, from: string, to?: string, table = 'uom') => applyLookup(value, { type: 'lookup', table, from, to }).error;
         expect(error('', 'tms', 'wms')).to.equal("needs a value from UOM's TMS column");
         expect(error('DZ', 'tms', 'wms')).to.equal("DZ isn't in UOM's TMS column");
         expect(error('ea', 'wms')).to.equal("ea isn't in UOM's WMS column", 'case counts, as in Translate values');
-        expect(error('CA', 'tms', 'wms')).to.equal("CA is in UOM's TMS column 2 times");
+        expect(applyLookup('CA', { type: 'lookup', table: 'uom', from: 'tms', to: 'wms' })).to.deep.equal({ success: true, value: 'CS' });
         expect(error('Case', 'erp', 'oms')).to.equal("Case's OMS in UOM is blank");
         expect(error('EA', 'tms', 'wms', 'units')).to.equal("there's no lookup table called units");
         expect(error('EA', 'nope', 'wms')).to.equal('UOM has no column called nope');

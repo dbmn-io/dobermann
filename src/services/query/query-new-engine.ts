@@ -470,8 +470,8 @@ function readsNumbersColumns(query: Query): string[] {
 
 /**
  * A join key's Translate values meeting a value its lookup table holds in two rows (James, 2026-11-23, the mock's step 6:
- * "yes ok"): the key is left as it was, so its row may not match. Counted per key column for the line above Results
- * ("In the lookup table twice, so left as they were: N rows in <column>"), as Results' own columns are (NotNumbers,
+ * "yes ok"): the first row's value is used (the first row wins, 2026-11-23), and said. Counted per key column for the line above Results
+ * ("In the lookup table twice, so the first row's was used: N rows in <column>"), as Results' own columns are (NotNumbers,
  * kind 'twice', by name). One small run over each side whose key translates (the lookup tables already loaded).
  */
 export async function joinKeysTwice(engineIn: QueryEngine | EngineHost, spec: QuerySpec): Promise<{ view: string; name: string; rows: number }[]> {

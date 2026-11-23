@@ -2,8 +2,8 @@
 // Copyright (C) 2026 Flexion Tech Pty Ltd
 /**
  * A join key translated with a lookup table that holds the value twice (James, 2026-11-23, the mock's step 6: "yes ok"):
- * the key is left as it was, so the row may not match; how many rows is counted for the line above Results, "In the
- * lookup table twice, so left as they were: N rows in <column>", as Results' own columns are.
+ * the first row's value is used (the first row wins, 2026-11-23); how many rows is counted for the line above Results,
+ * "In the lookup table twice, so the first row's was used: N rows in <column>", as Results' own columns are.
  *   npm run test:core
  */
 import * as assert from 'assert';

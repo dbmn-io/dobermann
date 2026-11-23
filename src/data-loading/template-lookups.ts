@@ -62,7 +62,7 @@ export function applyLookup(value: string, mod: LookupModifier, list: LookupTabl
     if (value === '' || value === undefined || value === null) return { success: false, error: `needs a value from ${table.name}'s ${from.name} column` };
     const answer = lookupValue(table, from.id, value, to ? to.id : undefined);
     if (answer.kind === 'missing') return { success: false, error: `${value} isn't in ${table.name}'s ${from.name} column` };
-    if (answer.kind === 'twice') return { success: false, error: `${value} is in ${table.name}'s ${from.name} column ${answer.rows} times` };
+    // (in two rows or more: the first row's, as Translate values does; the first row wins, 2026-11-23)
     if (to && answer.value === '') return { success: false, error: `${value}'s ${to.name} in ${table.name} is blank` };
     return { success: true, value: answer.value };
 }
