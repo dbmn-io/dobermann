@@ -17,6 +17,8 @@ import { RunBatchController } from '../../../screens/run-batch/run-batch.control
 import type { RunBatchPorts } from '../../../screens/run-batch/run-batch.ports';
 import { ScreenSession } from '../../../screens/screen-session';
 import { BulkLoadResult, bulkLoadFailure } from '../../../webviews/run-batch/bulk-load-result';
+import { FormatConverterService } from '../../../services/format-converter/format-converter.service';
+import * as XLSX from 'xlsx';
 
 type Message = Record<string, unknown>;
 const settle = () => new Promise(resolve => setTimeout(resolve, 20));
@@ -94,5 +96,52 @@ describe('RunBatchController — Review is told whether the environment is produ
     it('by the type, as Execute\'s confirmation decides it (the name does not say "prod")', async () => {
         expect((await environmentData('production'))?.isProduction).to.equal(true);
         expect((await environmentData('development'))?.isProduction).to.equal(false);
+    });
+});
+
+describe('RunBatchController — a problem the page reports is never dropped', () => {
+    it('showError and showWarning become toasts', async () => {
+        const context = memoryStoreContext();
+        const endpoints = new APIEndpointManager(context);
+        const endpoint = await endpoints.addEndpoint({ name: 'Stock', method: 'POST', path: '/stock', body: '{"s":"{{s}}"}' });
+        const said: string[] = [];
+        const session = new ScreenSession({ post: () => undefined }, { openExternal: () => undefined });
+        const toast = { info: (m: string) => said.push(`info ${m}`), warn: (m: string) => said.push(`warn ${m}`), error: (m: string) => said.push(`error ${m}`) };
+        const controller = new RunBatchController(session, { endpoints, environments: new EnvironmentManager(context), toast } as unknown as RunBatchPorts,
+            { context: 'runBatch', endpointId: endpoint.id, endpointName: endpoint.name, endpoint } as never);
+        await controller.handleMessage({ type: 'showError', message: "DBMN couldn't read stock.xlsx" } as never);
+        await controller.handleMessage({ type: 'showWarning', message: 'Careful' } as never);
+        expect(said).to.deep.equal(["error DBMN couldn't read stock.xlsx", 'warn Careful']);
+    });
+});
+
+describe('RunBatchController — what a file is, as Source is told it', () => {
+    async function detect(fileName: string, fileData: ArrayBuffer) {
+        const context = memoryStoreContext();
+        const endpoints = new APIEndpointManager(context);
+        const endpoint = await endpoints.addEndpoint({ name: 'Stock', method: 'POST', path: '/stock', body: '{"s":"{{s}}"}' });
+        const posted: Message[] = [];
+        const session = new ScreenSession({ post: m => posted.push(m) }, { openExternal: () => undefined });
+        const controller = new RunBatchController(session, { endpoints, environments: new EnvironmentManager(context), formatConverter: new FormatConverterService() } as unknown as RunBatchPorts,
+            { context: 'runBatch', endpointId: endpoint.id, endpointName: endpoint.name, endpoint } as never);
+        await controller.handleMessage({ type: 'detectFileFormat', fileName, fileData, fileSize: fileData.byteLength } as never);
+        return posted.find(m => m.type === 'formatDetected') as Message;
+    }
+    const bytes = (text: string) => new TextEncoder().encode(text).buffer as ArrayBuffer;
+
+    it('text renamed .xlsx is not an Excel file (the spreadsheet library would read it as a sheet of text)', async () => {
+        const answer = await detect('renamed-text.xlsx', bytes('this is not a spreadsheet, just text renamed .xlsx'));
+        expect(String(answer.error)).to.match(/Not an Excel workbook/);
+    });
+
+    it('a workbook whose first sheet is empty: that sheet is reported as having no rows, the next as usable', async () => {
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([]), 'Empty');
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['sku'], ['A1']]), 'Data');
+        const answer = await detect('first-sheet-empty.xlsx', XLSX.write(wb, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer);
+        expect(answer.error).to.equal(undefined);
+        const [empty, data] = (answer.metadata as { sheetDetails: Array<{ name: string; rowCount: number; validationStatus: string }> }).sheetDetails;
+        expect({ name: empty.name, rows: empty.rowCount <= 1, status: empty.validationStatus }).to.deep.equal({ name: 'Empty', rows: true, status: 'error' });
+        expect({ name: data.name, status: data.validationStatus }).to.deep.equal({ name: 'Data', status: 'valid' });
     });
 });

@@ -56,7 +56,7 @@ export interface RunBatchConfig extends WebviewConfig {
 
 export interface RunBatchMessage extends WebviewMessage {
     type: 'processCSVFile' | 'validateColumnMappings' | 'executeBatch' | 'closeWebview' | 'requestTemplateLookups' |
-    'showSuccessMessage' | 'showErrorMessage' | 'requestEndpointConfig' | 'executeBulkLoadCommand' |
+    'showSuccessMessage' | 'showErrorMessage' | 'showError' | 'showWarning' | 'requestEndpointConfig' | 'executeBulkLoadCommand' |
     'getEndpointTemplate' | 'generateJsonPreview' | 'generateBulkJson' | 'verifyCSV' |
     'getCurrentEnvironment' |
     'validateWorkspaceForBatch' | 'openFileDialog' | 'detectFileFormat' | 'convertFileFormat' |
@@ -279,6 +279,15 @@ export class RunBatchController {
                 if (message.message) {
                     this.ports.toast.info(message.message);
                 }
+                break;
+
+            // Never dropped: a problem the page reports is shown (a file it couldn't read said
+            // nothing before: no case took 'showError')
+            case 'showError':
+                if (message.message) this.ports.toast.error(message.message);
+                break;
+            case 'showWarning':
+                if (message.message) this.ports.toast.warn(message.message);
                 break;
 
         }
@@ -1039,6 +1048,11 @@ export class RunBatchController {
                 buffer = new TextEncoder().encode(message.fileData);
             } else {
                 throw new Error('Unsupported file data format');
+            }
+            // An .xlsx is a zip. Anything else under that name (text renamed .xlsx) would be read
+            // by the spreadsheet library as a sheet of its text: say it isn't Excel instead.
+            if (/\.xlsx$/i.test(message.fileName || '') && !(buffer[0] === 0x50 && buffer[1] === 0x4b)) {
+                throw new Error('Not an Excel workbook (an .xlsx file is a zip)');
             }
             const perfT2 = performance.now();
             const result = await formatConverter.detectFormat(message.fileName || 'unknown', buffer);

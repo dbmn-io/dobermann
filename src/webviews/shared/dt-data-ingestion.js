@@ -104,7 +104,73 @@
         }, 1500); // Show completion state for 1.5 seconds
     }
 
-    function handleProgressError(dropzone, errorMessage) {
+    // =========================================================================
+    // A file that can't be read says so (James, 2026-11-24: "something comes up on screen and then
+    // it disappears… no error message"). Every read failure on Source comes here: the reason in
+    // plain words, in the footer, until the user dismisses it or picks another file. Source stays,
+    // and the same file can be picked again.
+    // =========================================================================
+
+    const READ_FAILURE_TOAST = 'run-batch-file-read';
+    const SHEET_FAILURE_TOAST = 'run-batch-sheet';
+    const SUPPORTED_EXTENSIONS = ['.csv', '.xlsx', '.xls', '.tsv', '.txt'];
+    const CHOOSE = 'choose a CSV, Excel, TSV or text file';
+
+    const isSupportedFile = name => SUPPORTED_EXTENSIONS.some(ext => String(name || '').toLowerCase().endsWith(ext));
+    const isExcelName = name => /\.(xlsx|xls)$/i.test(String(name || ''));
+    const fileNameNow = () => window.currentCSVFileName || 'The file';
+
+    /** The words for each way a file can't be used (the same whether it was chosen or dropped). */
+    const READ_FAILURES = {
+        notATable: name => `${name} isn't a table: ${CHOOSE}.`,
+        unreadable: name => isExcelName(name) ? `${name} isn't an Excel file DBMN can read.` : `${name} isn't a table DBMN can read: ${CHOOSE}.`,
+        empty: name => `${name} is empty.`,
+        headerOnly: name => `${name} has a header and no rows.`,
+        rows: (name, reason) => `DBMN couldn't read the rows in ${name}: ${reason}`
+    };
+
+    /**
+     * Said, in the footer, until dismissed or another file is picked; the file is let go (as
+     * Clear does), so Import Data is off and the same file can be picked again; Source stays.
+     */
+    function fileReadFailed(text, detail) {
+        if (detail) console.warn('[Run Batch] ' + detail);
+        if (window.DTAutoAdvance) window.DTAutoAdvance.cancel();
+        csvState.isProcessing = false;
+        csvState.conversionInProgress = false;
+        csvState.rawFileData = null;
+        csvState.sheetDetails = null;
+        csvState.selectedSheetIndex = 0;
+        csvState.filterChoice = null;
+        if (window.DTDataEntryGrid && window.DTDataEntryGrid.clearFileAndShowGrid) {
+            window.DTDataEntryGrid.clearFileAndShowGrid();
+        } else {
+            const input = document.getElementById('csvModalFileInput');
+            if (input) input.value = '';
+        }
+        if (window.DbmnToast) {
+            window.DbmnToast.show('error', text, { persistent: true, source: READ_FAILURE_TOAST });
+        } else if (window.CSVHandler && window.CSVHandler.showModalNotification) {
+            window.CSVHandler.showModalNotification('error', text, { persistent: true });
+        }
+    }
+
+    /** A failure while the drop zone shows the file being read: the zone comes back first. */
+    function failRead(text, detail) {
+        const dropzone = csvState.isProcessing ? document.getElementById('csvDropzone') : null;
+        if (dropzone) handleProgressError(dropzone, text, detail);
+        else fileReadFailed(text, detail);
+    }
+
+    /** A new file, or one that read: an earlier failure no longer applies. */
+    function clearReadFailure() {
+        if (window.DbmnToast && window.DbmnToast.clear) {
+            window.DbmnToast.clear(READ_FAILURE_TOAST);
+            window.DbmnToast.clear(SHEET_FAILURE_TOAST);
+        }
+    }
+
+    function handleProgressError(dropzone, errorMessage, detail) {
         // Show error state briefly, then restore
         dropzone.classList.remove('processing', 'processing-complete');
 
@@ -116,13 +182,7 @@
                 dropzone.innerHTML = csvState.originalDropzoneContent;
                 csvState.originalDropzoneContent = null;
             }
-            csvState.isProcessing = false;
-
-            // Show error message
-            getVscode().postMessage({
-                type: 'showError',
-                message: errorMessage
-            });
+            fileReadFailed(errorMessage, detail);
         }, 500);
     }
 
@@ -134,17 +194,9 @@
         const file = event.target.files[0];
         if (!file) return;
 
-        // Get supported extensions for validation
-        const supportedExtensions = ['.csv', '.xlsx', '.xls', '.tsv', '.txt'];
-        const fileName = file.name.toLowerCase();
-        const isSupported = supportedExtensions.some(ext => fileName.endsWith(ext));
-
-        if (!isSupported) {
-            const supportedList = supportedExtensions.join(', ');
-            getVscode().postMessage({
-                type: 'showError',
-                message: `Please select a supported file format: ${supportedList}`
-            });
+        clearReadFailure();
+        if (!isSupportedFile(file.name)) {
+            fileReadFailed(READ_FAILURES.notATable(file.name));
             return;
         }
 
@@ -277,9 +329,7 @@
             if (dropzone) {
                 handleProgressError(dropzone, message);
             } else {
-                if (window.CSVHandler && window.CSVHandler.showCSVError) {
-                    window.CSVHandler.showCSVError(message);
-                }
+                fileReadFailed(message);
             }
         };
 
@@ -327,15 +377,15 @@
     function handleCSVDrop(event) {
         event.preventDefault();
         event.stopPropagation();
+        // A drop ends the drag: no dragleave follows it, so the highlight goes here
+        const zone = document.getElementById('csvDropzone');
+        if (zone) zone.classList.remove('drag-over');
 
         const files = event.dataTransfer.files;
         if (files.length > 0) {
             const file = files[0];
-            const supportedExtensions = ['.csv', '.xlsx', '.xls', '.tsv', '.txt'];
-            const fileName = file.name.toLowerCase();
-            const isSupported = supportedExtensions.some(ext => fileName.endsWith(ext));
-
-            if (isSupported) {
+            if (isSupportedFile(file.name)) {
+                clearReadFailure();
                 csvState.currentFile = file;
                 // Track source information for batch naming
                 csvState.sourceType = 'file';
@@ -368,10 +418,8 @@
                     processMultiFormatFile(file);
                 }
             } else {
-                const supportedList = supportedExtensions.join(', ');
-                if (window.CSVHandler && window.CSVHandler.showCSVError) {
-                    window.CSVHandler.showCSVError(`Please drop a supported file format: ${supportedList}`);
-                }
+                clearReadFailure();
+                fileReadFailed(READ_FAILURES.notATable(file.name));
             }
         }
     }
@@ -409,19 +457,23 @@
             updateFileProgress(75, 'Fetching file...');
         }
 
-        if (message.error) {
-            if (csvState.isProcessing) {
-                const dropzone = document.querySelector('.csv-dropzone');
-                if (dropzone) {
-                    handleProgressError(dropzone, `Format detection failed: ${message.error}`);
-                    return;
-                }
-            }
-            if (window.CSVHandler && window.CSVHandler.showCSVError) {
-                window.CSVHandler.showCSVError(`Format detection failed: ${message.error}`);
-            }
+        // Nothing to import: an empty file, or a header and no rows (a sheet's own check is below)
+        if (window.currentCSVFileSize === 0) {
+            failRead(READ_FAILURES.empty(fileNameNow()), message.error);
             return;
         }
+        if (message.error) {
+            failRead(READ_FAILURES.unreadable(fileNameNow()), `Format detection failed: ${message.error}`);
+            return;
+        }
+        if (message.format !== 'excel' && typeof csvState.rawFileData === 'string') {
+            const lines = csvState.rawFileData.split(/\r?\n/).filter(line => line.trim() !== '');
+            if (lines.length < 2) {
+                failRead((lines.length ? READ_FAILURES.headerOnly : READ_FAILURES.empty)(fileNameNow()));
+                return;
+            }
+        }
+        clearReadFailure();
 
         // Store format information
         csvState.fileFormat = message.format;
@@ -434,9 +486,12 @@
 
         // Initialize selected sheet index for Excel files
         if (message.format === 'excel') {
-            csvState.selectedSheetIndex = 0;
+            // The first sheet that has a table, not one that can't be read (an empty first sheet)
+            const details = message.metadata?.sheetDetails || [];
+            const usable = details.findIndex(sheet => sheet && sheet.validationStatus !== 'error');
+            csvState.selectedSheetIndex = usable > 0 ? usable : 0;
             // Set initial sheet name for batch naming
-            csvState.sourceSheetName = message.metadata?.sheets?.[0] || 'Sheet1';
+            csvState.sourceSheetName = message.metadata?.sheets?.[csvState.selectedSheetIndex] || 'Sheet1';
         }
 
         // Show file details in Step 1 (replace drop zone content)
@@ -598,14 +653,21 @@
         if (sheet.validationStatus === 'error') {
             if (container) container.innerHTML = '';
             csvState.filterChoice = null;
-            if (window.CSVHandler && window.CSVHandler.showModalNotification) {
-                window.CSVHandler.showModalNotification('error', sheet.validationMessage, { persistent: true });
+            // An empty sheet (nothing past its first row) says so; the picker stays for another
+            const text = sheet.rowCount <= 1 && sheet.name
+                ? `Sheet ${sheet.name} has no rows: pick another sheet.`
+                : sheet.validationMessage;
+            if (window.DbmnToast) {
+                window.DbmnToast.show('error', text, { persistent: true, source: SHEET_FAILURE_TOAST });
+            } else if (window.CSVHandler && window.CSVHandler.showModalNotification) {
+                window.CSVHandler.showModalNotification('error', text, { persistent: true });
             }
             if (window.CSVHandler && window.CSVHandler.updateReadButtonState) {
                 window.CSVHandler.updateReadButtonState();
             }
             return;
         }
+        if (window.DbmnToast && window.DbmnToast.clear) window.DbmnToast.clear(SHEET_FAILURE_TOAST);
 
         // Check for hidden rows — show inline radio buttons for filter choice
         if (sheet.filter && sheet.filter.hasHiddenRows) {
@@ -761,9 +823,8 @@
         hideConversionLoadingState();
 
         if (message.error) {
-            if (window.CSVHandler && window.CSVHandler.showCSVError) {
-                window.CSVHandler.showCSVError(`Failed to process file: ${message.error}`);
-            }
+            updateFileProgress(0, '');
+            fileReadFailed(READ_FAILURES.rows(fileNameNow(), `${String(message.error).replace(/^Failed to convert file format:\s*/, '')}.`), `Failed to process file: ${message.error}`);
             return;
         }
 
@@ -875,9 +936,7 @@
             updateFileProgress(0, '');
         }
 
-        if (window.CSVHandler && window.CSVHandler.showCSVError) {
-            window.CSVHandler.showCSVError(`Conversion failed: ${message.error}`);
-        }
+        fileReadFailed(READ_FAILURES.rows(fileNameNow(), `${String(message.error).replace(/^Failed to convert file format:\s*/, '')}.`), `Conversion failed: ${message.error}`);
         csvState.conversionPassed = false;
         if (window.CSVHandler && window.CSVHandler.updateCSVNavigationButtons) {
             window.CSVHandler.updateCSVNavigationButtons();
