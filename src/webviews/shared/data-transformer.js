@@ -4607,22 +4607,19 @@
                     endpointStat.parentElement.insertBefore(item, endpointStat);
                 });
 
+                // The production warning first, so nothing after it can stop it showing. Production
+                // is what the host says (isProduction: production-guard's rule, the one Execute's
+                // confirmation uses), or a name with "prod" in it, as before.
+                const warningElement = document.getElementById('executionWarning');
+                if (warningElement) {
+                    const name = String(message.environment.name || '').toLowerCase();
+                    const isProd = message.isProduction === true || name.includes('prod');
+                    warningElement.classList.toggle('hidden', !isProd);
+                }
+
                 // Populate parallel processing dropdown
                 const parallelConfig = message.environment.parallelProcessing;
                 populateProcessingModeDropdown(parallelConfig);
-
-                // Show warning for production environments
-                const warningElement = document.getElementById('executionWarning');
-                if (warningElement) {
-                    // Check if environment name contains 'prod' or 'production'
-                    const isProd = message.environment.name &&
-                        message.environment.name.toLowerCase().includes('prod');
-                    if (isProd) {
-                        warningElement.classList.remove('hidden');
-                    } else {
-                        warningElement.classList.add('hidden');
-                    }
-                }
             }
         }
 

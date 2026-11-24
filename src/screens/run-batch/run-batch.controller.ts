@@ -23,7 +23,7 @@ import { SupportedFormat } from '../../services/format-converter/format-converte
 import { ICSVSortingService } from '../../services/csv-sorting/csv-sorting.interface';
 import { convertValueBySourceFormat, applySourceFormatConversions } from '../../utils/source-format-converter';
 import { BatchStartFailure, bulkLoadFailure, describeBatchStartFailure, reportBatchStartFailure } from '../../webviews/run-batch/bulk-load-result';
-import { confirmProductionExecution } from '../../services/ui/production-guard.service';
+import { confirmProductionExecution, isProductionEnvironment } from '../../services/ui/production-guard.service';
 import { ensureHeaderVariables } from '../../services/environment/header-variable-check';
 import { countNestedCalls, groupingColumnsForPreview } from '../../webviews/run-batch/nested-call-count';
 import { createDefaultDataLoadingConfig } from '../../data-loading/zod-schemas';
@@ -1007,10 +1007,13 @@ export class RunBatchController {
             const environmentManager = this.ports.environments;
             const activeEnvironment = await environmentManager.getActiveEnvironment();
 
-            // #424: with the variables its header shows, for the confirm step's "Sending To"
+            // #424: with the variables its header shows, for the confirm step's "Sending To".
+            // isProduction by the same rule as Execute's confirmation, so Review's warning and
+            // the confirmation can't disagree.
             this.session.post({
                 type: 'currentEnvironmentData',
                 environment: activeEnvironment,
+                isProduction: isProductionEnvironment(activeEnvironment),
                 headerVariables: activeEnvironment ? await environmentManager.getHeaderVariables(activeEnvironment.id).catch(() => []) : []
             });
         } catch (error) {

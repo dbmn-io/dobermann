@@ -21,6 +21,7 @@ All notable changes to Dobermann are documented here.
 - **The last of the licence code is gone** — The Account page's name and Weekly Usage come from a new account summary instead of the old licence check, and the public backend no longer has licence or trial tables. Older versions keep working.
 
 ### Fixed
+- **Run Batch's Review warns before sending to production** — On an environment typed Production (or with "prod" in its name), Review says "Warning: this is a production environment." under Sending To. Since 0.3.0 that line never appeared. The confirmation before Execute sends was not affected.
 - **A column's name is no longer cut short with room to spare** — A narrow heading hides its sort and remove icons; the space they took now goes to the name.
 - **Runs in the web and desktop apps count towards Weekly Usage** — Until now only VS Code counted them. The usage switch on the Account page covers them too.
 - **Weekly Usage in the web app no longer spins for ever** — The Account page's usage numbers stopped loading once they arrived.

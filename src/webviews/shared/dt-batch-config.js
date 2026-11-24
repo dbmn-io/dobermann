@@ -318,7 +318,6 @@
      */
     function populateProcessingModeDropdown(parallelConfig) {
         const dropdown = document.getElementById('processingModeDropdown');
-        const detailsSpan = document.getElementById('executionConcurrencyDetails');
 
         if (!dropdown) return;
 
@@ -342,13 +341,9 @@
                 option.textContent = String(concurrency);
                 dropdown.appendChild(option);
             });
-
-            // Set details text based on capabilities
-            detailsSpan.textContent = `(this environment allows up to ${maxAllowed})`;
-        } else {
-            // Parallel processing not enabled
-            detailsSpan.textContent = '(this environment allows 1)';
         }
+        // (Review has no hint beside Threads any more: writing one threw, and stopped Review's
+        // production warning from showing.)
 
         // Default to Sequential
         dropdown.value = '1';

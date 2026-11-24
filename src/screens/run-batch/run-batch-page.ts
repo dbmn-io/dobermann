@@ -324,7 +324,7 @@ export function buildRunBatchPage(asset: AssetUrl, batchConfig: { endpointId: st
         <!-- The design system's footer (shared/dbmn-footer.js): what you can do on the left, how far
              along on the right: Source, Map, Validate, Review (batch-stepper.js says what each step
              is). Review ends with Execute, which hands over to the Console: no step of its own.
-             The batch's name is its tab's (the tab's pencil, F2 or a double-click renames it).
+             The batch's name is set on Review (#batchNameInput), and its tab shows it.
              Reading a file and checking rows turn the step they belong to; how far they have got is
              said in the screen, under the steps' content (#batchWorking). -->
         <p id="batchWorking" class="batch-working hidden" role="status" aria-live="polite"></p>

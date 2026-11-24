@@ -72,3 +72,27 @@ describe('RunBatchController — a batch that does not start says why (#396)', (
         expect(h.events).to.deep.equal(['tab closed']);
     });
 });
+
+describe('RunBatchController — Review is told whether the environment is production', () => {
+    const LOCAL_PLAYGROUND = 'http://127.0.0.1:54321/functions/v1/playground';
+    async function environmentData(environmentType: string) {
+        const context = memoryStoreContext();
+        const endpoints = new APIEndpointManager(context);
+        const endpoint = await endpoints.addEndpoint({ name: 'Stock', method: 'POST', path: '/stock', body: '{"s":"{{s}}"}' });
+        const posted: Message[] = [];
+        const session = new ScreenSession({ post: m => posted.push(m) }, { openExternal: () => undefined });
+        const environments = {
+            getActiveEnvironment: async () => ({ id: 'local', name: 'Live', baseUrl: LOCAL_PLAYGROUND, environmentType, variables: {} }),
+            getHeaderVariables: async () => []
+        };
+        const controller = new RunBatchController(session, { endpoints, environments } as unknown as RunBatchPorts,
+            { context: 'runBatch', endpointId: endpoint.id, endpointName: endpoint.name, endpoint } as never);
+        await controller.handleMessage({ type: 'getCurrentEnvironment' } as never);
+        return posted.find(m => m.type === 'currentEnvironmentData');
+    }
+
+    it('by the type, as Execute\'s confirmation decides it (the name does not say "prod")', async () => {
+        expect((await environmentData('production'))?.isProduction).to.equal(true);
+        expect((await environmentData('development'))?.isProduction).to.equal(false);
+    });
+});
