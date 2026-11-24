@@ -48,6 +48,9 @@ All notable changes to Dobermann are documented here.
 - **The Compare screen** — Query took its place (see **Compare is part of Query**), and the **Compare** button on the Console's Completed tab is now the database button. [Docs](https://dbmn.io/docs/query/#from-compare)
 
 ### Fixed
+- **Run Batch sends each date as the day your file means** — A date column is read in its Source format on Map, or in this computer's date order when Auto-detect can't tell, and Map says which. **Behaviour change:** DD/MM/YYYY dates were sent with day and month swapped, other dates a day early east of UTC, and Excel dates as 1905. [Docs](https://dbmn.io/docs/batch-preparation/#source-format-configuration)
+- **A date that can't be read stops on Validate** — A day over 12, a Unix timestamp or an impossible date used to fail when sent. When every date in a column could be day-first or month-first, Map asks you to choose. [Docs](https://dbmn.io/docs/batch-preparation/#source-format-configuration)
+- **Leading zeros are kept** — A number with leading zeros, such as a GTIN, is sent as written, as text. **Behaviour change:** it was sent as a number without them. `active`, `enabled`, `inactive` and `disabled` are now accepted as booleans. [Docs](https://dbmn.io/docs/template-variables/)
 - **A VS Code run opens in the web app** — A run made in VS Code on Windows, or made after the web app had already opened that endpoint's runs, now shows its requests and responses in the web app on the same folder.
 - **Import a query with no reports yet** — Reporting's empty list now has Import a query too, so a query copied elsewhere can be brought in before any report exists.
 - **Pasting an endpoint that lost its line breaks** — An endpoint shared through a chat that joined its lines now pastes with its body read back where it can be, and says so when it can't. A body that kept its line breaks is never changed.

@@ -11,6 +11,7 @@
  *   {{:type}}   → infers name from key with explicit type
  */
 
+import { BOOLEAN_FALSE, BOOLEAN_TRUE } from './boolean-words';
 import { DataType } from './types';
 import {
     extractVariablesFromJsonTemplate,
@@ -114,6 +115,19 @@ export interface ExtendedSequenceManager {
     getNextSequence: (id: string) => Promise<number>;
     /** Get the next sequence for a specific array path (for :global modifier) */
     getNextArraySequence?: (endpointId: string, arrayPath: string) => Promise<number>;
+}
+
+/**
+ * A date value as the calendar day it names, at UTC midnight (so the UTC-written output says that day): YYYY-MM-DD,
+ * YYYYMMDD, or an ISO date-time (its day as written). Null for anything else: never `new Date(text)`.
+ */
+export function calendarDate(value: string): Date | null {
+    const t = String(value ?? '').trim();
+    const m = /^(\d{4})-?(\d{2})-?(\d{2})(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?$/.exec(t);
+    if (!m) return null;
+    const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+    const date = new Date(Date.UTC(y, mo - 1, d));
+    return date.getUTCFullYear() === y && date.getUTCMonth() === mo - 1 && date.getUTCDate() === d ? date : null;
 }
 
 export class TemplateParser {
@@ -1391,11 +1405,13 @@ export class TemplateParser {
                 return isNaN(num) ? null : num;
 
             case 'boolean':
-                const lowerValue = value.toLowerCase();
-                if (['true', 'yes', 'y', '1', 'on'].includes(lowerValue)) {
+                // (the words Map's check accepts: active/enabled and inactive/disabled went through Map and Validate,
+                //  then failed the request, 2026-11-25)
+                const lowerValue = value.trim().toLowerCase();
+                if (BOOLEAN_TRUE.includes(lowerValue)) {
                     return true;
                 }
-                if (['false', 'no', 'n', '0', 'off'].includes(lowerValue)) {
+                if (BOOLEAN_FALSE.includes(lowerValue)) {
                     return false;
                 }
                 return null;
@@ -1404,8 +1420,11 @@ export class TemplateParser {
                 // GitHub Issue #162: date type with format modifiers and timezone conversion
                 // GitHub Issue #175: Apply date math modifiers (+2d, -1w, etc.)
                 try {
-                    let date = new Date(value);
-                    if (isNaN(date.getTime())) {
+                    // A date is a calendar day, read by its parts (2026-11-25): `new Date(text)` read 05/01/2024
+                    // US-style and at the computer's midnight, written out in UTC, so east of UTC a day went
+                    // early and a day over 12 failed. Anything not a day is refused (Validate stops it first)
+                    let date = calendarDate(value);
+                    if (!date) {
                         return null;
                     }
                     // Apply timezone conversion if configured

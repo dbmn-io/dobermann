@@ -1816,7 +1816,8 @@
         const vars = gridVariables();
         const rows = modelRows();
         const kept = rows.filter(row => row.some((cell, col) => {
-            if (isBooleanVar(vars[col])) return /^(true|yes|y|1)$/i.test(String(cell || '').trim());
+            // (ticked: the words the run sends as true; active and enabled with them since 2026-11-25)
+            if (isBooleanVar(vars[col])) return /^(true|yes|y|1|on|active|enabled)$/i.test(String(cell || '').trim());
             return cell && String(cell).trim() !== '';
         }));
         if (kept.length === rows.length) return;
@@ -2063,6 +2064,26 @@
         return { value: answer.value };
     }
 
+    /** Why a date cell can't be sent: the format it was read in (Map's Source), or that its column is day-or-month. */
+    function dateProblem(variableName) {
+        var coercion = window.DTTypeCoercion;
+        var format = csvState.sourceTypes && csvState.sourceTypes[variableName];
+        var decided = csvState.dateFormats && csvState.dateFormats[variableName];
+        if (format === 'auto_date' && decided && decided.mixed) {
+            return 'some dates in this column are day first and some month first: choose DD/MM/YYYY or MM/DD/YYYY on Map';
+        }
+        if (format === 'auto_date' && decided && decided.ambiguous) {
+            return 'day or month first? Every date in this column could be either: choose DD/MM/YYYY or MM/DD/YYYY on Map';
+        }
+        if (format === 'auto_date' && decided && decided.format && coercion) {
+            return 'not a date in ' + coercion.sourceFormatLabel(decided.format) + ' (as Auto-detect read this column)';
+        }
+        if (format && coercion && coercion.DATE_SOURCE_FORMATS.indexOf(format) >= 0) {
+            return 'not a date in ' + coercion.sourceFormatLabel(format) + ' (its Source format on Map)';
+        }
+        return 'not a date: YYYY-MM-DD';
+    }
+
     function validateDataModelRow(rowData, rowIndex) {
         var rowErrors = [];
         if (!csvState.gridTemplateVariables) return rowErrors;
@@ -2121,6 +2142,20 @@
                 }
                 if (mods.maxLength !== null && len > mods.maxLength) {
                     rowErrors.push({ row: rowIndex, col: colIndex, variable: variable.name, value: value, error: 'maximum ' + mods.maxLength + ' characters allowed (got ' + len + ')' });
+                    return;
+                }
+            }
+
+            // Dates (2026-11-25): what is sent is the calendar day, YYYY-MM-DD, read from the file in its Source format
+            // on the way here. One that couldn't be read stops here, saying the format it was read in; never a guess
+            if (dataType === 'date') {
+                var dayMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+                var isDay = !!dayMatch && (function () {
+                    var d = new Date(Date.UTC(+dayMatch[1], +dayMatch[2] - 1, +dayMatch[3]));
+                    return d.getUTCFullYear() === +dayMatch[1] && d.getUTCMonth() === +dayMatch[2] - 1 && d.getUTCDate() === +dayMatch[3];
+                })();
+                if (!isDay) {
+                    rowErrors.push({ row: rowIndex, col: colIndex, variable: variable.name, value: value, error: dateProblem(variable.name) });
                     return;
                 }
             }

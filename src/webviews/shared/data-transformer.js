@@ -2984,9 +2984,11 @@
             const lines = csvDataForExecution.split('\n');
             const headers = parseCSVLine(lines[0]);
 
-            // Build header -> source format map for conversion
+            // GitHub Issue #135: Build header -> source format map for conversion. Not for Validate's grid: its
+            // values were converted on the way there (Step 2 → 3), and a second pass turned an Excel date's 2024-01-05
+            // into 1905-07-16 (2026-11-25)
             const headerFormatMap = {};
-            if (csvState.templateVariables && csvState.sourceTypes) {
+            if (csvState.sourceType !== 'grid' && csvState.templateVariables && csvState.sourceTypes) {
                 csvState.templateVariables.forEach(variable => {
                     if (variable.mappedTo && csvState.sourceTypes[variable.name]) {
                         headerFormatMap[variable.mappedTo] = csvState.sourceTypes[variable.name];
@@ -2994,6 +2996,13 @@
                 });
             }
 
+            // (an Auto-detect date column, decided by all its values, never one: resolveAutoDate)
+            const autoFormats = {};
+            Object.keys(headerFormatMap).filter(h => headerFormatMap[h] === 'auto_date').forEach(h => {
+                const at = headers.indexOf(h);
+                const auto = window.DTTypeCoercion.resolveAutoDate(lines.slice(1).map(l => parseCSVLine(l)[at]));
+                autoFormats[h] = auto.format || 'passthrough';
+            });
             const jsonData = lines.slice(1)
                 .filter(line => line.trim().length > 0)
                 .map(line => {
@@ -3004,7 +3013,7 @@
                         // Apply source format conversion if this column has one
                         const sourceFormat = headerFormatMap[header];
                         if (sourceFormat && sourceFormat !== 'passthrough') {
-                            value = convertValueBySourceFormat(value, sourceFormat);
+                            value = convertValueBySourceFormat(value, sourceFormat === 'auto_date' ? autoFormats[header] : sourceFormat);
                         }
                         obj[header] = value;
                     });
@@ -3177,6 +3186,14 @@
         // Type coercion utilities (exposed for split modules)
         applyModifiersForDisplay,
         computeTargetSample,
+        // A date column Auto-detect read by this computer's date order (Map says so; the walk stops on Map to show it)
+        dateReadBySystem: (variableName) => {
+            const variable = csvState.templateVariables?.find(v => v.name === variableName);
+            if (!variable || String(variable.dataType || '').toLowerCase() !== 'date') return false;
+            const format = csvState.sourceTypes?.[variableName] || getDefaultSourceFormat('date');
+            return format === 'auto_date' && !!autoDateFor(variableName).bySystem;
+        },
+        checkForActualIssues,   // (Map's check, for the what-is-sent test)
 
         // Navigation and UI state (exposed for split modules)
         updateCSVNavigationButtons,
@@ -4043,15 +4060,34 @@
      * @param {string} targetType - The target data type (date, datetime, number, etc.)
      * @returns {string} - The converted value for display
      */
+    /**
+     * An Auto-detect date column decided for Map: by its values (resolveAutoDate), kept until the data or the mapping
+     * changes. { format, ambiguous }.
+     */
+    function autoDateFor(variableName) {
+        const variable = csvState.templateVariables?.find(v => v.name === variableName);
+        const rows = (csvState.currentParsedData && csvState.currentParsedData.rows) || window.currentParsedCsvData || [];
+        const at = variable && variable.mappedTo && csvState.currentHeaders ? csvState.currentHeaders.indexOf(variable.mappedTo) : -1;
+        const key = `${variableName}|${variable ? variable.mappedTo : ''}|${rows.length}`;
+        csvState.autoDateCache = csvState.autoDateCache || {};
+        if (csvState.autoDateCache[key]) return csvState.autoDateCache[key];
+        const values = at >= 0 ? rows.map(r => (Array.isArray(r) ? r[at] : undefined)) : [];
+        const answer = window.DTTypeCoercion.resolveAutoDate(values);
+        csvState.autoDateCache[key] = answer;
+        return answer;
+    }
+
     function computeTargetSample(rawValue, variableName, targetType) {
         if (!rawValue || rawValue === '-' || rawValue === '') {
             return '-';
         }
 
         // Get source format for this variable
-        const sourceFormat = csvState.sourceTypes?.[variableName] || getDefaultSourceFormat(targetType);
+        let sourceFormat = csvState.sourceTypes?.[variableName] || getDefaultSourceFormat(targetType);
+        // (Auto-detect: decided by the column's values, as the run decides it; undecided, the value as it is)
+        if (sourceFormat === 'auto_date') sourceFormat = autoDateFor(variableName).format || 'passthrough';
 
-        // Apply source format conversion first
+        // Apply source format conversion first: what the run will send (a date as its calendar day, YYYY-MM-DD)
         let convertedValue = convertValueBySourceFormat(rawValue, sourceFormat);
 
         // For datetime types only, apply timezone conversion if configured
@@ -4117,9 +4153,8 @@
             let result = num;
 
             // Apply integer enforcement (from isInteger flag set by 'int' modifier)
-            if (mods.isInteger) {
-                result = Math.round(result);
-            }
+            // (int: shown as it is. Validate stops a value with decimals and the run never rounds one, so a rounded
+            //  sample showed what would not be sent; Map's check says it instead, 2026-11-25)
 
             // Apply rounding
             if (mods.roundTo !== null && mods.roundTo !== undefined) {
@@ -4298,7 +4333,9 @@
             const sourceSampleCell = row.querySelector('.source-sample-cell');
             if (!targetSampleCell || !sourceSampleCell) return;
 
-            const rawValue = sourceSampleCell.textContent;
+            // (the sample itself, not the line said under it)
+            const said = sourceSampleCell.querySelector('.issue-text');
+            const rawValue = said ? sourceSampleCell.textContent.slice(0, sourceSampleCell.textContent.length - said.textContent.length) : sourceSampleCell.textContent;
             const targetType = variable.dataType || 'string';
             targetSampleCell.textContent = computeTargetSample(rawValue, variable.name, targetType);
         });
@@ -4370,19 +4407,23 @@
             return;
         }
 
-        // Get the raw sample value from source sample cell for validation
+        // Get the raw sample value from source sample cell for validation (not the line said under it)
+        sourceSampleCell?.querySelector('.issue-text')?.remove();
         const sampleValue = sourceSampleCell ? sourceSampleCell.textContent : '';
         if (!sampleValue || sampleValue === '-') {
             return; // No data to validate
         }
 
         // Check for ACTUAL issues only (not user choices)
-        const issue = checkForActualIssues(sampleValue, sourceFormat, targetType);
+        const issue = checkForActualIssues(sampleValue, sourceFormat, targetType, variableName);
 
         if (issue) {
-            // Show warning with explanation text
-            statusCell.innerHTML = `<span class="status-indicator status-warning" title="${issue.tooltip}">!</span>`;
-            row.classList.add('has-warning');
+            // A note (how a column was read) is said under the sample, without the warning
+            if (!issue.note) {
+                // Show warning with explanation text
+                statusCell.innerHTML = `<span class="status-indicator status-warning" title="${issue.tooltip}">!</span>`;
+                row.classList.add('has-warning');
+            }
 
             // Add issue summary below the sample value
             let issueText = sourceSampleCell.querySelector('.issue-text');
@@ -4392,6 +4433,8 @@
                 sourceSampleCell.appendChild(issueText);
             }
             issueText.textContent = issue.summary;
+            issueText.title = issue.tooltip || '';
+            issueText.classList.toggle('issue-note', !!issue.note);
         }
     }
 
@@ -4401,8 +4444,55 @@
     //                       auto, yyyy-mm-dd, etc. (for dates)
     //                       standard (for booleans)
     //                       passthrough (for strings)
-    function checkForActualIssues(valueStr, sourceFormat, targetType) {
+    function checkForActualIssues(valueStr, sourceFormat, targetType, variableName) {
         const cleanValue = valueStr.replace(/^["']|["']$/g, '').trim();
+
+        // Dates (2026-11-25): a value its format can't read, or an Auto-detect column that could be either day or
+        // month first, is said here: Validate stops those rows, and nothing is guessed
+        if (targetType === 'date' && window.DTTypeCoercion && window.DTTypeCoercion.DATE_SOURCE_FORMATS.includes(sourceFormat)) {
+            if (sourceFormat === 'auto_date') {
+                const auto = autoDateFor(variableName);
+                if (auto.mixed) {
+                    return {
+                        summary: 'Some dates are day first, some month first. Choose DD/MM/YYYY or MM/DD/YYYY',
+                        tooltip: 'This column has a day over 12 in the first place and in the second: it can\'t be read one way. Choose the Source format the file uses: until then Validate stops these rows.'
+                    };
+                }
+                if (auto.ambiguous) {
+                    const yearFirst = auto.system && auto.system.order === 'ymd'
+                        ? ` This computer's date setting (${auto.system.locale}) writes the year first, so it can't say.` : '';
+                    return {
+                        summary: 'Day or month first? Choose DD/MM/YYYY or MM/DD/YYYY',
+                        tooltip: `Every date in this column could be read either way (no day is over 12).${yearFirst} Choose DD/MM/YYYY or MM/DD/YYYY as its Source: until then Validate stops these rows.`
+                    };
+                }
+                if (auto.bySystem) {
+                    // Never silent (the manager for James, 2026-11-25): said on the row, in words, every time
+                    const first = auto.format === 'dd-mm-yyyy' ? 'day' : 'month';
+                    return {
+                        note: true,
+                        summary: `Read ${first} first (this computer's date setting). Choose a format to change it.`,
+                        tooltip: `No day in this column is over 12, so it could be read either way. It is read ${first} first (${window.DTTypeCoercion.sourceFormatLabel(auto.format)}), as this computer's date setting (${auto.bySystem.locale}) writes dates. Choose DD/MM/YYYY or MM/DD/YYYY as its Source to change it.`
+                    };
+                }
+                if (auto.format && window.DTTypeCoercion.readDate(cleanValue, auto.format) === null) {
+                    return { summary: 'Not a date Auto-detect can read', tooltip: `"${cleanValue}" isn't a date in ${window.DTTypeCoercion.sourceFormatLabel(auto.format)}, as the rest of this column is: Validate will stop it.` };
+                }
+            } else if (window.DTTypeCoercion.readDate(cleanValue, sourceFormat) === null) {
+                const label = window.DTTypeCoercion.sourceFormatLabel(sourceFormat);
+                return { summary: `Not a date in ${label}`, tooltip: `"${cleanValue}" isn't a date in ${label}: Validate will stop it. Choose the Source format the file uses.` };
+            }
+        }
+
+        // int: a value with decimals is not a whole number (Validate stops it; nothing is rounded on the way)
+        if (variableName && (targetType === 'number' || targetType === 'integer' || targetType === 'int')) {
+            const variable = csvState.templateVariables?.find(v => v.name === variableName);
+            const mods = variable && (variable.modifiers || (variable.modifierString || variable.formatModifier ? parseModifiersForGrid(variable.modifierString || variable.formatModifier, targetType) : null));
+            const num = Number(cleanValue.replace(/,/g, ''));
+            if (mods && mods.isInteger && cleanValue !== '' && !Number.isNaN(num) && !Number.isInteger(num)) {
+                return { summary: 'Not a whole number', tooltip: `"${cleanValue}" has decimals, and this variable takes whole numbers (int): Validate will stop it.` };
+            }
+        }
         const numberFormats = ['standard', 'cobol', 'scientific', 'currency'];
 
         // Issue 1: Precision loss when converting large numbers with standard format
@@ -4541,6 +4631,12 @@
         if (message.type === 'currentEnvironmentData') {
             // Store environment data for parallel processing configuration and timezone
             csvState.currentEnvironment = message.environment;
+            // The order this computer writes dates in (host: date-order.ts): Auto-detect's answer for a column that
+            // could be either. Decided columns are decided again with it
+            if (message.dateOrder && JSON.stringify(message.dateOrder) !== JSON.stringify(csvState.systemDateOrder || null)) {
+                csvState.systemDateOrder = message.dateOrder;
+                csvState.autoDateCache = {};
+            }
 
             // GitHub Issue #162: Update target timezone display in Step 2 if visible
             const targetTimezoneDisplay = document.getElementById('targetTimezoneDisplay');

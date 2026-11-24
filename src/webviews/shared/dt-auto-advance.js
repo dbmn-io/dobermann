@@ -70,6 +70,8 @@
         if (!s || !h || !h.areAllRequiredVariablesMapped || !h.areAllRequiredVariablesMapped()) return false;
         if (s.coercionErrors && s.coercionErrors.length > 0) return false;
         const mapped = (s.templateVariables || []).filter(isUserVariable).filter(v => v.mappedTo);
+        // A date column read by this computer's date order is said on Map: the walk stops there so it is seen
+        if (h.dateReadBySystem && mapped.some(v => h.dateReadBySystem(v.name))) return false;
         return mapped.every(v => isConfident(v, s));
     }
 

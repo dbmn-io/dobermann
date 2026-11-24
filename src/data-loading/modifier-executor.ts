@@ -12,6 +12,7 @@
  * 4. Validate - Apply validation modifiers (>0, 3-50, int)
  */
 
+import { BOOLEAN_FALSE, BOOLEAN_TRUE } from './boolean-words';
 import { DataType } from './types';
 import {
     Modifier,
@@ -143,10 +144,10 @@ function convertToType(value: string, dataType: DataType): ModifierResult {
 
         case 'boolean':
             const lowerValue = value.toLowerCase();
-            if (['true', 'yes', 'y', '1', 'on'].includes(lowerValue)) {
+            if (BOOLEAN_TRUE.includes(lowerValue)) {
                 return { success: true, value: true };
             }
-            if (['false', 'no', 'n', '0', 'off'].includes(lowerValue)) {
+            if (BOOLEAN_FALSE.includes(lowerValue)) {
                 return { success: true, value: false };
             }
             return {

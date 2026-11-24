@@ -50,6 +50,15 @@ describe('Run Batch skip-ahead (DTAutoAdvance, #247)', () => {
         expect(next).to.equal(1);
     });
 
+    it('a date column read by this computer\'s date order stops on Step 2, so Map\'s line is seen', async () => {
+        state.templateVariables = [{ name: 'shipDate', mappedTo: 'shipDate' }];
+        w.CSVHandler.dateReadBySystem = (name: string) => name === 'shipDate';
+        w.DTAutoAdvance.begin();
+        w.DTAutoAdvance.afterMapping();
+        await tick();
+        expect(next).to.equal(0);
+    });
+
     it('a partial-name guess stops on Step 2', async () => {
         state.templateVariables = [{ name: 'qty', mappedTo: 'orderedQty' }];
         w.DTAutoAdvance.begin();

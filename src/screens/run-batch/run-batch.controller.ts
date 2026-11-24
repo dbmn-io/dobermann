@@ -9,6 +9,7 @@
  */
 
 import type { APIEndpointConfig } from '../../apiConfigManager';
+import { systemDateOrder } from '../../data-loading/date-order';
 import { executeSummary, threadChoices } from './execute-summary';
 import { cleanExecuteChoices, type ExecuteChoices } from './execute-choices';
 import { cleanReviewHandoff, type ReviewHandoff } from './review-handoff';
@@ -1176,6 +1177,8 @@ export class RunBatchController {
                 type: 'currentEnvironmentData',
                 environment: activeEnvironment,
                 isProduction: isProductionEnvironment(activeEnvironment),
+                // The order this computer writes dates in: Auto-detect reads a column that could be either by it
+                dateOrder: systemDateOrder(),
                 headerVariables: activeEnvironment ? await environmentManager.getHeaderVariables(activeEnvironment.id).catch(() => []) : []
             });
         } catch (error) {

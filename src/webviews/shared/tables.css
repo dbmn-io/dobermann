@@ -1728,6 +1728,12 @@ body .map-layout .variable-type[class*="data-type-"] {
     white-space: normal;
 }
 
+/* How a column was read (a date column by this computer's date order): said, not a warning */
+.sample-cell .issue-text.issue-note,
+.enhanced-mapping .sample-cell .issue-text.issue-note {
+    color: var(--vscode-descriptionForeground);
+}
+
 /* Status: a single glyph, details in the tooltip */
 .map-layout .status-cell {
     padding: 6px 0;

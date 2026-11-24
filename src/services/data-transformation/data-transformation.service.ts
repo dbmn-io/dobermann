@@ -10,6 +10,7 @@
  * - Comprehensive error handling and logging
  */
 
+import { BOOLEAN_FALSE, BOOLEAN_TRUE } from '../../data-loading/boolean-words';
 import { 
     IDataTransformationService,
     ValueTransformationResult,
@@ -46,6 +47,13 @@ export class DataTransformationService implements IDataTransformationService {
             const trimmedValue = value.trim();
             let transformedValue = '';
             let metadata: any = {};
+
+            // Leading zeros are an identifier (a GTIN, a GLN), kept as written whatever the column was detected as
+            // (an unsigned 00012345600012 reads as COBOL): the request's own #218 rule, which this ran ahead of at
+            // Execute, so the number 12345600012 was sent (2026-11-25). A signed COBOL value (+000099.99) still converts
+            if (targetType === DetectedDataType.NUMBER && /^0\d+/.test(trimmedValue)) {
+                return { originalValue: value, transformedValue: trimmedValue, success: true, sourceType, targetType };
+            }
 
             switch (sourceType) {
                 case DetectedDataType.COBOL_NUMBER:
@@ -400,8 +408,8 @@ export class DataTransformationService implements IDataTransformationService {
     ): Promise<{ value: string }> {
         
         const lowerValue = value.toLowerCase();
-        const trueValues = options.booleanMapping?.trueValues || ['true', 'yes', 'y', '1', 'on'];
-        const falseValues = options.booleanMapping?.falseValues || ['false', 'no', 'n', '0', 'off'];
+        const trueValues = options.booleanMapping?.trueValues || BOOLEAN_TRUE;
+        const falseValues = options.booleanMapping?.falseValues || BOOLEAN_FALSE;
 
         const isTrue = trueValues.includes(lowerValue);
         const isFalse = falseValues.includes(lowerValue);

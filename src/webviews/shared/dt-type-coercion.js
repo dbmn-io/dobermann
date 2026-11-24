@@ -163,9 +163,11 @@
 
                     const headers = parseCSVLine(lines[0]); // Use proper parser for headers too!
 
-                    // GitHub Issue #135: Build header -> source format map for conversion
+                    // GitHub Issue #135: Build header -> source format map for conversion. Not for Validate's grid: its
+                    // values were converted on the way there (Step 2 → 3), and a second pass turned an Excel date's 2024-01-05
+                    // into 1905-07-16 (2026-11-25)
                     const headerFormatMap = {};
-                    if (csvState.templateVariables && csvState.sourceTypes) {
+                    if (csvState.sourceType !== 'grid' && csvState.templateVariables && csvState.sourceTypes) {
                         csvState.templateVariables.forEach(variable => {
                             if (variable.mappedTo && csvState.sourceTypes[variable.name]) {
                                 headerFormatMap[variable.mappedTo] = csvState.sourceTypes[variable.name];
@@ -173,6 +175,13 @@
                         });
                     }
 
+                    // (an Auto-detect date column, decided by all its values, never one: resolveAutoDate)
+                    const autoFormats = {};
+                    Object.keys(headerFormatMap).filter(h => headerFormatMap[h] === 'auto_date').forEach(h => {
+                        const at = headers.indexOf(h);
+                        const auto = window.DTTypeCoercion.resolveAutoDate(lines.slice(1).map(l => parseCSVLine(l)[at]));
+                        autoFormats[h] = auto.format || 'passthrough';
+                    });
                     const jsonData = lines.slice(1)
                         .map(line => {
                             const values = parseCSVLine(line); // Preserves "000123" correctly
@@ -182,7 +191,7 @@
                                 // Apply source format conversion if this column has one
                                 const sourceFormat = headerFormatMap[header];
                                 if (sourceFormat && sourceFormat !== 'passthrough') {
-                                    value = convertValueBySourceFormat(value, sourceFormat);
+                                    value = convertValueBySourceFormat(value, sourceFormat === 'auto_date' ? autoFormats[header] : sourceFormat);
                                 }
                                 obj[header] = value;
                             });
@@ -750,26 +759,41 @@
      * Step 2 validates and previews conversions — Step 3 should show converted values.
      * Uses the frontend convertValueBySourceFormat() for each mapped column.
      */
+    /**
+     * Column index → the Source format its values are converted in, for the non-string columns. An Auto-detect date
+     * column is decided by all its rows here (resolveAutoDate); one that can't be decided is not converted, and
+     * csvState.dateFormats says so for Map and Validate ({ format, ambiguous } by variable).
+     */
+    function columnFormats(headers, rows, templateVars) {
+        const formats = new Map();
+        csvState.dateFormats = csvState.dateFormats || {};
+        templateVars.forEach(v => {
+            if (!v.mappedTo) return;
+            const dataType = v.dataType || 'string';
+            if (dataType === 'string') return; // STRING never gets converted
+            let sourceFormat = csvState.sourceTypes[v.name] || getDefaultSourceFormat(dataType);
+            if (sourceFormat === 'passthrough') return; // No conversion needed
+            const colIdx = headers.indexOf(v.mappedTo);
+            if (colIdx < 0) return;
+            if (sourceFormat === 'auto_date') {
+                const auto = resolveAutoDate(rows.map(r => r[colIdx]));
+                csvState.dateFormats[v.name] = auto;
+                if (!auto.format) return;   // (left as they are: Validate stops them)
+                sourceFormat = auto.format;
+            } else if (DATE_SOURCE_FORMATS.includes(sourceFormat)) {
+                csvState.dateFormats[v.name] = { format: sourceFormat, ambiguous: false };
+            }
+            formats.set(colIdx, sourceFormat);
+        });
+        return formats;
+    }
+
     function applySourceFormatToRows(headers, rows, templateVars) {
         if (!rows || rows.length === 0 || !templateVars || !csvState.sourceTypes) {
             return rows;
         }
 
-        // Build column-index → {sourceFormat, dataType} map for non-string columns
-        const columnConversions = new Map();
-        templateVars.forEach(v => {
-            if (!v.mappedTo) return;
-            const dataType = v.dataType || 'string';
-            if (dataType === 'string') return; // STRING never gets converted
-
-            const sourceFormat = csvState.sourceTypes[v.name] || getDefaultSourceFormat(dataType);
-            if (sourceFormat === 'passthrough') return; // No conversion needed
-
-            const colIdx = headers.indexOf(v.mappedTo);
-            if (colIdx >= 0) {
-                columnConversions.set(colIdx, sourceFormat);
-            }
-        });
+        const columnConversions = columnFormats(headers, rows, templateVars);
 
         if (columnConversions.size === 0) return rows;
 
@@ -799,19 +823,8 @@
             return;
         }
 
-        // Build column-index → sourceFormat map (same as sync version)
-        var columnConversions = new Map();
-        templateVars.forEach(function (v) {
-            if (!v.mappedTo) return;
-            var dataType = v.dataType || 'string';
-            if (dataType === 'string') return;
-            var sourceFormat = csvState.sourceTypes[v.name] || getDefaultSourceFormat(dataType);
-            if (sourceFormat === 'passthrough') return;
-            var colIdx = headers.indexOf(v.mappedTo);
-            if (colIdx >= 0) {
-                columnConversions.set(colIdx, sourceFormat);
-            }
-        });
+        // (the same as the sync version: an Auto-detect date column decided by all its rows)
+        var columnConversions = columnFormats(headers, rows, templateVars);
 
         if (columnConversions.size === 0) {
             if (onProgress) onProgress(rows.length, rows.length);
@@ -1231,6 +1244,122 @@
         }
     }
 
+    // =========================================================================
+    // Dates (2026-11-25): a date is sent as the calendar day the file means, YYYY-MM-DD, read by its parts in the
+    // column's Source format. Before this, only Excel Serial was converted: every other date went as the file's text
+    // and the host read it with `new Date`, US-style and in the computer's timezone (05/01/2024 went as 1 May, or
+    // 30 April in Australia; 25/01/2024 failed the request). A date that can't be read in its format is left as it
+    // is, so Validate stops it, naming the format; nothing is guessed.
+    // =========================================================================
+
+    const DATE_SOURCE_FORMATS = ['auto_date', 'yyyy-mm-dd', 'mm-dd-yyyy', 'dd-mm-yyyy', 'unix_timestamp', 'iso_8601', 'excel_serial'];
+    const pad2 = n => String(n).padStart(2, '0');
+
+    /** YYYY-MM-DD for a real calendar day, else null (31/02 is not a day). */
+    function calendarDay(y, m, d) {
+        y = Number(y); m = Number(m); d = Number(d);
+        if (!(y >= 1 && m >= 1 && m <= 12 && d >= 1 && d <= 31)) return null;
+        const day = new Date(Date.UTC(y, m - 1, d));
+        if (day.getUTCFullYear() !== y || day.getUTCMonth() !== m - 1 || day.getUTCDate() !== d) return null;
+        return `${String(y).padStart(4, '0')}-${pad2(m)}-${pad2(d)}`;
+    }
+    const ISO_DAY = /^(\d{4})-(\d{2})-(\d{2})$/;
+    const ISO_ANY = /^(\d{4})-(\d{2})-(\d{2})(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?$/;
+    const SLASHED = /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/;
+
+    /**
+     * A date read in one Source format: YYYY-MM-DD, or null when it isn't one in that format. A value already
+     * YYYY-MM-DD is that day in every format (so converting twice changes nothing: Validate's grid holds them so).
+     */
+    function readDate(text, format) {
+        const t = String(text == null ? '' : text).trim();
+        if (!t) return null;
+        const iso = ISO_DAY.exec(t);
+        if (iso) return calendarDay(iso[1], iso[2], iso[3]);
+        let m;
+        switch (format) {
+            case 'yyyy-mm-dd':
+                m = /^(\d{4})[/.](\d{1,2})[/.](\d{1,2})$/.exec(t);
+                return m ? calendarDay(m[1], m[2], m[3]) : null;
+            case 'iso_8601':
+                // (the day as written: a time and a zone after it don't move it)
+                m = ISO_ANY.exec(t);
+                return m ? calendarDay(m[1], m[2], m[3]) : null;
+            case 'mm-dd-yyyy':
+                m = SLASHED.exec(t);
+                return m ? calendarDay(m[3], m[1], m[2]) : null;
+            case 'dd-mm-yyyy':
+                m = SLASHED.exec(t);
+                return m ? calendarDay(m[3], m[2], m[1]) : null;
+            case 'unix_timestamp': {
+                // (seconds; 13 digits are milliseconds) the day in UTC, as a timestamp means
+                if (!/^-?\d{9,13}$/.test(t)) return null;
+                const n = Number(t);
+                const at = new Date(t.replace('-', '').length === 13 ? n : n * 1000);
+                return Number.isNaN(at.getTime()) ? null : calendarDay(at.getUTCFullYear(), at.getUTCMonth() + 1, at.getUTCDate());
+            }
+            case 'excel_serial': {
+                const serial = Number(t);
+                if (!/^\d+(\.\d+)?$/.test(t) || !(serial >= 1)) return null;
+                // Excel's epoch quirk: serial <= 60 uses 25567, > 60 uses 25569
+                const at = new Date((Math.floor(serial) - (serial <= 60 ? 25567 : 25569)) * 86400000);
+                return calendarDay(at.getUTCFullYear(), at.getUTCMonth() + 1, at.getUTCDate());
+            }
+            default:
+                return null;
+        }
+    }
+
+    /**
+     * Auto-detect, decided by the whole column, never by one value: ISO days → 'iso_8601'; slashed days where some first
+     * part is over 12 → 'dd-mm-yyyy', some second part over 12 → 'mm-dd-yyyy'; Unix timestamps → 'unix_timestamp'.
+     * Every one could be either: this computer's date order decides (James, 2026-11-25: "read it from the system
+     * preferences"; the host's date-order.ts, sent as csvState.systemDateOrder), and the answer says so (bySystem: Map
+     * shows it on the row). A computer whose order is year first, or no order known yet: { ambiguous: true } (Map asks,
+     * Validate stops them). Days over 12 in both places: { ambiguous: true, mixed: true }. Values it can't read are left
+     * to Validate. Returns { format, ambiguous, bySystem?, mixed?, system? }.
+     * options.useSystemOrder false: one value on its own, read only when it can't be read two ways.
+     */
+    function resolveAutoDate(values, options) {
+        const vals = (values || []).map(v => String(v == null ? '' : v).trim()).filter(Boolean);
+        if (!vals.length) return { format: 'iso_8601', ambiguous: false };
+        if (vals.every(v => ISO_ANY.test(v))) return { format: 'iso_8601', ambiguous: false };
+        if (vals.every(v => /^-?\d{9,13}$/.test(v))) return { format: 'unix_timestamp', ambiguous: false };
+        let dayFirst = false, monthFirst = false, slashed = 0;
+        vals.forEach(v => {
+            const m = SLASHED.exec(v);
+            if (!m) return;
+            slashed++;
+            if (Number(m[1]) > 12) dayFirst = true;
+            if (Number(m[2]) > 12) monthFirst = true;
+        });
+        if (!slashed) return { format: 'iso_8601', ambiguous: false };
+        if (dayFirst && monthFirst) return { format: null, ambiguous: true, mixed: true };
+        if (dayFirst) return { format: 'dd-mm-yyyy', ambiguous: false };
+        if (monthFirst) return { format: 'mm-dd-yyyy', ambiguous: false };
+        const system = options && options.useSystemOrder === false ? null : (csvState && csvState.systemDateOrder) || null;
+        if (system && (system.order === 'dmy' || system.order === 'mdy')) {
+            return { format: system.order === 'dmy' ? 'dd-mm-yyyy' : 'mm-dd-yyyy', ambiguous: false, bySystem: system };
+        }
+        return { format: null, ambiguous: true, system: system };
+    }
+
+    /** A date Source format's label, as Map's drop-down says it. */
+    function sourceFormatLabel(format) {
+        const option = SOURCE_FORMAT_OPTIONS.find(o => o.value === format);
+        return option ? option.label : String(format || '');
+    }
+
+    /** A column's values in its Source format: an Auto-detect date column decided by all of them first. */
+    function convertColumnValues(values, sourceFormat) {
+        if (sourceFormat === 'auto_date') {
+            const auto = resolveAutoDate(values);
+            if (!auto.format) return values.slice();
+            return values.map(v => convertValueBySourceFormat(v, auto.format));
+        }
+        return values.map(v => convertValueBySourceFormat(v, sourceFormat));
+    }
+
     /**
      * GitHub Issue #135: Convert value based on source format
      * Applies source format transformation in frontend before sending to backend
@@ -1263,22 +1392,31 @@
                 return isNaN(sciNum) ? value : sciNum.toString();
 
             case 'standard':
+                // Leading zeros are an identifier (a GTIN, a GLN), kept as written: the host's #218 rule, which the
+                // page's parseFloat ran ahead of (00012345600012 went as the number 12345600012)
+                if (/^0\d+/.test(trimmed)) return trimmed;
                 // Standard number - remove thousand separators
                 const cleanedStandard = trimmed.replace(/,/g, '');
                 const stdNum = parseFloat(cleanedStandard);
                 return isNaN(stdNum) ? value : stdNum.toString();
 
-            case 'excel_serial':
-                // GitHub Issue #162: Excel serial date (days since 1899-12-30)
-                // Convert to ISO date string (YYYY-MM-DD)
-                const serialNum = parseFloat(trimmed);
-                if (!isNaN(serialNum) && serialNum >= 1) {
-                    // Excel's epoch quirk: serial <= 60 uses 25567, > 60 uses 25569
-                    const daysOffset = serialNum <= 60 ? 25567 : 25569;
-                    const date = new Date((serialNum - daysOffset) * 86400000);
-                    return date.toISOString().split('T')[0];
-                }
-                return value;
+            case 'yyyy-mm-dd':
+            case 'mm-dd-yyyy':
+            case 'dd-mm-yyyy':
+            case 'unix_timestamp':
+            case 'iso_8601':
+            case 'excel_serial': {
+                // Dates: the calendar day, YYYY-MM-DD; one this format can't read is left for Validate to stop
+                const day = readDate(trimmed, sourceFormat);
+                return day === null ? value : day;
+            }
+
+            case 'auto_date': {
+                // (one value alone: only what can't be read two ways; a column is decided whole, convertColumnValues)
+                const auto = resolveAutoDate([trimmed], { useSystemOrder: false });
+                const day = auto.format ? readDate(trimmed, auto.format) : null;
+                return day === null ? value : day;
+            }
 
             case 'passthrough':
             default:
@@ -1418,6 +1556,12 @@
 
         // GitHub Issue #223: Batched source format conversion
         applySourceFormatToRows: applySourceFormatToRows,
+        // Dates (2026-11-25): read by their parts in a Source format; Auto-detect decided by the column
+        readDate: readDate,
+        resolveAutoDate: resolveAutoDate,
+        convertColumnValues: convertColumnValues,
+        sourceFormatLabel: sourceFormatLabel,
+        DATE_SOURCE_FORMATS: DATE_SOURCE_FORMATS,
         applySourceFormatToRowsBatched: applySourceFormatToRowsBatchedImpl
     };
 })();
