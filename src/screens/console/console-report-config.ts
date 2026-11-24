@@ -42,7 +42,7 @@ interface ConsoleReportConfigLike {
 }
 
 /** The run's environment: by id, or by name for records that kept only the name. */
-async function environmentOf(environments: BuildConsoleReportConfigOptions['environments'], id: unknown, name: unknown): Promise<EnvironmentConfig | undefined> {
+export async function environmentOf(environments: BuildConsoleReportConfigOptions['environments'], id: unknown, name: unknown): Promise<EnvironmentConfig | undefined> {
     const byId = id ? await environments.getEnvironment(id as string).catch(() => undefined) : undefined;
     if (byId) return byId;
     const wanted = (id || name) as string | undefined;
@@ -143,7 +143,8 @@ export async function buildConsoleReportConfig(
                     const match = rowsText.match(/(\d+)\((\d+)\)/);
                     if (match) {
                         expectedTransactions = parseInt(match[1]);
-                        recordsCount = parseInt(match[2]);
+                        // (the lines counted with the file's header line: the rows are one fewer, run-details.ts rowsTotal)
+                        recordsCount = Math.max(0, parseInt(match[2]) - 1);
                     } else {
                         const n = parseInt(rowsText);
                         expectedTransactions = n;

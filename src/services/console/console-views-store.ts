@@ -71,6 +71,13 @@ export class ConsoleViewsStore {
         return `orphan:${endpointId}`;
     }
 
+    private async withRequestViewsKept(scopeKey: string, views: unknown): Promise<unknown> {
+        if (!views || typeof views !== 'object' || 'requests' in (views as object)) return views;
+        const registry = await this.getOrMigrateRegistry();
+        const before = registry.scopes[scopeKey] as Record<string, unknown> | undefined;
+        return before && typeof before === 'object' && before.requests ? { ...(views as object), requests: before.requests } : views;
+    }
+
     private async writeViewsToRegistry(scopeKey: string, views: unknown): Promise<void> {
         const registry = await this.getOrMigrateRegistry();
         registry.scopes[scopeKey] = views;
@@ -84,7 +91,32 @@ export class ConsoleViewsStore {
      *    On hit, materialize into the registry so future loads stay canonical.
      * Returns null when neither has anything; caller synthesises a Root view.
      */
+    /** The data tabs' Views (and Query's reading of them): the Requests tab's are not among them. */
     async load(endpointId: string): Promise<Record<string, unknown> | null> {
+        const all = await this.loadAll(endpointId);
+        if (!all) return null;
+        const { requests: _requests, ...tabs } = all;
+        return Object.keys(tabs).length ? tabs : null;
+    }
+
+    /** The Requests tab's saved Views (#468), as request-views.ts keeps them. */
+    async loadRequestViews(endpointId: string): Promise<unknown[]> {
+        const all = await this.loadAll(endpointId);
+        const requests = all?.requests as { views?: unknown[] } | undefined;
+        return Array.isArray(requests?.views) ? requests!.views! : [];
+    }
+
+    /** Keep the Requests tab's Views; the data tabs' stay as they are. Mirrored to the endpoint as save() does. */
+    async saveRequestViews(endpointId: string, views: unknown[]): Promise<void> {
+        const scopeKey = await this.resolveScopeKey(endpointId);
+        const registry = await this.getOrMigrateRegistry();
+        const before = (registry.scopes[scopeKey] && typeof registry.scopes[scopeKey] === 'object' ? registry.scopes[scopeKey] : {}) as Record<string, unknown>;
+        const next = { ...before, requests: { views } };
+        await this.writeViewsToRegistry(scopeKey, next);
+        await this.mirror(endpointId, next);
+    }
+
+    private async loadAll(endpointId: string): Promise<Record<string, unknown> | null> {
         const scopeKey = await this.resolveScopeKey(endpointId);
         const registry = await this.getOrMigrateRegistry();
         const fromRegistry = registry.scopes[scopeKey];
@@ -117,8 +149,15 @@ export class ConsoleViewsStore {
      */
     async save(endpointId: string, views: unknown): Promise<void> {
         const scopeKey = await this.resolveScopeKey(endpointId);
+        // The Requests tab's Views (#466/#468) are saved on their own (request-views.ts): a save of
+        // the data tabs' Views (or Compare's), which never carries them, keeps them
+        views = await this.withRequestViewsKept(scopeKey, views);
         await this.writeViewsToRegistry(scopeKey, views);
+        await this.mirror(endpointId, views);
+    }
 
+    /** The endpoint carries a copy, so an export takes its Views along (an endpoint deleted: the registry is enough). */
+    private async mirror(endpointId: string, views: unknown): Promise<void> {
         const endpointManager = this.deps.endpoints;
         if (!endpointManager) return;
         try {

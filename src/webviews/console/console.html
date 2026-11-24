@@ -43,6 +43,10 @@
     <script src="{{DBMN_FOOTER_URI}}"></script>
     <script src="{{DBMN_TABLE_URI}}"></script>
     <script src="{{DBMN_SAVED_SEARCHES_URI}}"></script>
+    <script src="{{DBMN_NAME_URI}}"></script>
+    <script src="{{DBMN_RUN_HEADING_URI}}"></script>
+    <script src="{{DBMN_RUN_DETAILS_URI}}"></script>
+    <script src="{{CONSOLE_RUN_HEADING_URI}}"></script>
     <script src="{{REQUEST_PREVIEW_URI}}"></script>
     <script src="{{EDITOR_WINDOW_CONTROLS_SCRIPT}}"></script>
 </head>
@@ -53,7 +57,10 @@
         <button type="button" class="editor-window-btn icon" data-window-action="maximize" data-icon="maximize-2" title="Maximise" aria-label="Maximise"></button>
         <button type="button" class="editor-window-btn icon" data-window-action="close" data-icon="x" title="Close" aria-label="Close"></button>
     </div>
-    <h2 id="report-title" class="report-title {{TITLE_STATUS_CLASS}} flex justify-between align-center gap-10">
+    <!-- The run's one line (shared/dbmn-run-heading.js, #464): the environment, the run's name (renamed in place), ⓘ, its tabs.
+         The old title below stays, hidden, while the run's state still reads from it (it moves to the footer's box, #465) -->
+    <dbmn-run-heading id="run-heading" class="dbmn-band"></dbmn-run-heading>
+    <h2 id="report-title" hidden class="report-title {{TITLE_STATUS_CLASS}} flex justify-between align-center gap-10">
         <span style="display: flex; align-items: center; gap: 12px;">
             <span>{{ENVIRONMENT}}: <span id="report-title-name">{{BATCH_NAME}}</span></span>
             <!-- #344: the environment runs in DBMN for VS Code; shown only where VS Code is reached from (the web app) -->
@@ -93,7 +100,7 @@
     <div id="report-container">
         <!-- Tab Navigation -->
         <!-- (the tabs and the toolbar in the screen band, core.css .dbmn-band, James 2026-11-24; the rows keep their own width) -->
-        <div class="report-tabs dbmn-band" id="report-tabs">
+        <div class="report-tabs dbmn-band" id="report-tabs" hidden>
             <!-- Tabs will be dynamically created based on available data -->
         </div>
 

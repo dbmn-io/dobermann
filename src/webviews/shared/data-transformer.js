@@ -3066,8 +3066,10 @@
                 };
             }
 
-            // Call internal VS Code command for bulk execution (bypasses endpoint-manager execute logic)
-            getVscode().postMessage(executionMessage);
+            // Call internal VS Code command for bulk execution (bypasses endpoint-manager execute logic),
+            // through the one Execute confirmation (#470: run-batch-confirm.js) when the page has it
+            if (window.RunBatchConfirm) window.RunBatchConfirm.send(executionMessage, m => getVscode().postMessage(m));
+            else getVscode().postMessage(executionMessage);
         },
         copyJsonPreview: () => {
             // GitHub Issue #204: Copy details text if in details mode

@@ -6,6 +6,7 @@
  * through a ScreenSession and to the host through ConsolePorts.
  */
 
+import type { ReviewHandoff } from '../run-batch/review-handoff';
 import { ConsoleStatusUpdate } from '../../platform/interfaces/execution-progress-sink.interface';
 import { MissedStatusBuffer } from '../../webviews/console/missed-status-buffer';
 import * as fs from 'fs';
@@ -124,6 +125,12 @@ import * as searchMatcherScript from '../../webviews/shared/search-matcher.js';
 import * as inputRowStatusScript from '../../webviews/shared/input-row-status.js';
 import * as consoleErrorReasonScript from '../../webviews/shared/console-error-reason.js';
 import { sharedScript } from '../../utils/shared-script';
+import { StoredRunRequests } from './requests/stored-run-requests';
+import { RequestViews } from './requests/request-views';
+import { checkRunName, isBatch as isBatchRun, runDetails, runFigures, type RunRecord } from './run-details';
+import { environmentOf } from './console-report-config';
+import { rowCount } from './requests/request-rows';
+import type { RequestPageQuery } from './requests/request-rows';
 const { createConsoleTableBuilder } = sharedScript<typeof consoleTableBuilderScript>(consoleTableBuilderScript, 'ConsoleTableBuilder');
 // GitHub Issue #227: Import shared search matcher for multi-term, wildcard, and negation search
 const { parseSearchExpression, matchesRow } = sharedScript<typeof searchMatcherScript>(searchMatcherScript, 'SearchMatcher');
@@ -274,6 +281,21 @@ export class ConsoleController {
     async handle(message: Record<string, unknown>): Promise<void> {
         if (await this.session.handleShared(message)) return;
         if (!message.type) return;
+        // The Requests tab's table (#466): its fields at the top, as Query's table sends them
+        if (typeof message.type === 'string' && message.type.startsWith('console.requests.')) {
+            await this.handleRequests(message);
+            return;
+        }
+        // The shared View editor's Views (#468): the Requests tab's, fields at the top
+        if (message.type === 'console.views.list' || message.type === 'console.views.save' || message.type === 'console.views.delete') {
+            await this.handleViews(message);
+            return;
+        }
+        // The run's name, renamed in place on the name line (#464): fields at the top, as Query's
+        if (message.type === 'console.rename') {
+            await this.renameRun(message.name);
+            return;
+        }
         const response = await this.processMessage({
             correlationId: (message.correlationId as string) || this.generateReportCorrelationId(),
             type: message.type as string,
@@ -292,9 +314,20 @@ export class ConsoleController {
      * (e.g. from createEmbedded) sends to a listener-less window and
      * leaves the UI stuck on the loading spinner.
      */
+    /**
+     * #470: this Console takes a Run Batch tab's place: it opens where Review was. Told to the page first thing on
+     * ready, before any data, as `console.carryOn` { payload: ReviewHandoff } (tab 'requests', search, scrollTop,
+     * selected, sort, widths), so the Requests table is drawn there from its first page.
+     */
+    carryOn(review: ReviewHandoff): void {
+        this.review = review;
+    }
+    private review: ReviewHandoff | undefined;
+
     async onReady(): Promise<void> {
         if (!this.currentConfig) return;
         this.mark('page ready');
+        if (this.review) await this.post({ type: 'console.carryOn', payload: this.review });
         // Register for live updates FIRST so any progress_update / status_update
         // that fires during the (potentially slow) loadInitialData lands in
         // activeConsoles and reaches the iframe. Without this, the engine's
@@ -305,6 +338,8 @@ export class ConsoleController {
         } catch (err) {
             console.error('[Console] attachLiveUpdates failed:', err);
         }
+        // ⓘ's details and the footer's figures (#464, #465): beside the tables, not after them
+        void this.tellRun(true);
         try {
             await this.loadInitialData(this.currentConfig);
         } catch (err) {
@@ -1958,6 +1993,38 @@ export class ConsoleController {
         return exportResponse;
     }
 
+    /**
+     * console.views.list / .save / .delete for a tab, answered with console.views { tab, views }
+     * (and the id given a new View, or why a save was refused, which is said in a toast too).
+     * The Requests tab's only, for now: the data tabs keep their own messages until they move.
+     */
+    private async handleViews(message: Record<string, unknown>): Promise<void> {
+        const tab = String(message.tab ?? '');
+        const endpointId = this.currentConfig?.endpointId;
+        if (tab !== 'requests' || !endpointId) {
+            await this.post({ type: 'console.views', tab, views: [], error: tab !== 'requests' ? `Views for ${tab || 'that tab'} are not kept here yet` : 'This run has no endpoint to keep Views with' });
+            return;
+        }
+        const views = new RequestViews(this.viewsStore);
+        try {
+            if (message.type === 'console.views.list') {
+                await this.post({ type: 'console.views', tab, views: await views.list(endpointId) });
+            } else if (message.type === 'console.views.save') {
+                const answer = await views.save(endpointId, (message.view ?? {}) as Record<string, unknown>);
+                if (answer.refused) this.ports.toast.warn(answer.refused);
+                await this.post({ type: 'console.views', tab, ...answer });
+            } else {
+                const answer = await views.remove(endpointId, String(message.id ?? ''));
+                if (answer.refused) this.ports.toast.warn(answer.refused);
+                await this.post({ type: 'console.views', tab, ...answer });
+            }
+        } catch (error) {
+            this.logError(`[Console] Views: ${String(message.type)} failed`, error instanceof Error ? error : new Error(String(error)));
+            this.ports.toast.error(`View not saved: ${error instanceof Error ? error.message : String(error)}`);
+            await this.post({ type: 'console.views', tab, views: await views.list(endpointId).catch(() => []), error: error instanceof Error ? error.message : String(error) });
+        }
+    }
+
     /** Issue #229 / #237 / #298: the endpoint's saved Views, shared with Compare. */
     private get viewsStore(): ConsoleViewsStore {
         this._viewsStore ??= new ConsoleViewsStore({ state: this.ports.state, endpoints: this.ports.endpoints, log: m => this.log(m) });
@@ -2402,6 +2469,7 @@ export class ConsoleController {
                     }
                 });
                 this.log(`[Settings] issue#312 batch ${batchId} renamed to "${name}"`);
+                void this.tellRun(false);
                 return createResponseMessage(message.correlationId, true, { success: true });
             }
 
@@ -2412,12 +2480,14 @@ export class ConsoleController {
                 if (typeof payload.stopOnFirstError !== 'boolean') throw new Error('stopOnFirstError is required');
                 await engine.updateBatchErrorMode(batchId, { stopOnFirstError: payload.stopOnFirstError });
                 this.log(`[Settings] issue#312 batch ${batchId} stopOnFirstError=${payload.stopOnFirstError}`);
+                void this.tellRun(false);
                 return createResponseMessage(message.correlationId, true, { success: true });
             }
 
             if (typeof payload.concurrency !== 'number') throw new Error('concurrency is required');
             const result = await engine.updateBatchConcurrency(batchId, payload.concurrency);
             this.log(`[Settings] issue#312 batch ${batchId} concurrency → ${payload.concurrency}: ${JSON.stringify(result)}`);
+            void this.tellRun(false);
             if (!result.success) {
                 this.ports.toast.warn(result.message || 'Processing mode not changed');
                 // Snap the dropdown back to what the batch really runs with
@@ -4690,6 +4760,224 @@ export class ConsoleController {
         }
     }
 
+    // =========================================================================
+    // The Requests tab (#466): a row per request, paged on the host (requests/stored-run-requests.ts)
+    // =========================================================================
+
+    private requestsSource?: StoredRunRequests;
+    /** The tab's counts, told at most every REQUESTS_COUNTS_MS while a run goes (cheap: a count by status). */
+    private requestsCountsTimer?: ReturnType<typeof setTimeout>;
+    /** The table's reload, told no more often than its last page costs allows (requestsReloadDelay). */
+    private requestsReloadTimer?: ReturnType<typeof setTimeout>;
+    /** Whether the Requests tab is the one on screen (console.requests.shown); off screen, the table isn't reloaded. */
+    private requestsShown = true;
+    /** Changes the table missed while off screen: told at once when it is shown again. */
+    private requestsStale = false;
+    /** How long the last page took to make (ms): a live run's reloads are paced by it. */
+    private lastRequestsPageMs = 0;
+    static readonly REQUESTS_COUNTS_MS = 250;
+    static readonly REQUESTS_RELOAD_MIN_MS = 250;
+    static readonly REQUESTS_RELOAD_MAX_MS = 1000;
+
+    /**
+     * How long a live run waits before the table reloads again: four times what its last page cost,
+     * never under 250 ms nor over a second. At 5,000 requests a page costs ~95 ms after a change;
+     * reloading every 250 ms took ~40% of the web app's page thread (manager, 2026-11-24: too much).
+     */
+    static requestsReloadDelay(lastPageMs: number): number {
+        return Math.min(ConsoleController.REQUESTS_RELOAD_MAX_MS, Math.max(ConsoleController.REQUESTS_RELOAD_MIN_MS, Math.round(4 * lastPageMs)));
+    }
+
+    /** This run's requests; made the first time the tab asks. */
+    private requests(): StoredRunRequests | undefined {
+        if (this.requestsSource) return this.requestsSource;
+        const config = this.currentConfig;
+        const metadata = this.ports.metadata;
+        const runId = config?.type === 'batch' ? config.batchId : config?.executionId;
+        if (!config || !runId || !metadata) return undefined;
+        this.requestsSource = new StoredRunRequests({
+            // (a batch's requests through the lean query: a whole record each was ~200 ms for 5,000)
+            requests: async () => config.type === 'batch'
+                ? await (metadata.getBatchMemberRequestRows ? metadata.getBatchMemberRequestRows(runId) : metadata.getBatchMemberExecutions(runId))
+                : [await metadata.getExecution(runId)].filter((r): r is NonNullable<typeof r> => !!r),
+            files: { exists: runFileExists, read: readRunFile },
+            countByStatus: config.type === 'batch' && metadata.countBatchMembersByStatus ? () => metadata.countBatchMembersByStatus(runId) : undefined
+        });
+        return this.requestsSource;
+    }
+
+    /** console.requests.page / .columns / .detail, each answered with the `seq` it came with. */
+    private async handleRequests(message: Record<string, unknown>): Promise<void> {
+        const seq = message.seq;
+        const source = this.requests();
+        try {
+            if (!source) throw new Error('This Console has no run');
+            switch (message.type) {
+                case 'console.requests.page': {
+                    const started = Date.now();
+                    const page = await source.page(message as unknown as RequestPageQuery);
+                    this.lastRequestsPageMs = Date.now() - started;
+                    await this.post({ type: 'console.requests.rows', seq, ...page });
+                    return;
+                }
+                case 'console.requests.shown':
+                    // The tab on screen or not: off screen the table isn't reloaded; shown, it catches up at once
+                    this.requestsShown = message.shown !== false;
+                    if (this.requestsShown && this.requestsStale) {
+                        this.requestsStale = false;
+                        this.tellRequestsReload(true);
+                    }
+                    return;
+                case 'console.requests.columns':
+                    await this.post({ type: 'console.requests.columnTree', seq, tree: await source.columnTree() });
+                    return;
+                case 'console.requests.detail':
+                    await this.post({ type: 'console.requests.detail', seq, detail: await source.detail(String(message.id ?? '')) ?? null });
+                    return;
+            }
+        } catch (error) {
+            this.logError(`[Console] Requests: ${String(message.type)} failed`, error instanceof Error ? error : new Error(String(error)));
+            await this.post({ type: message.type === 'console.requests.page' ? 'console.requests.rows' : String(message.type), seq, rows: [], total: 0, of: 0, error: error instanceof Error ? error.message : String(error) });
+        }
+    }
+
+    /**
+     * A request ran or changed. The tab's counts follow every REQUESTS_COUNTS_MS; the table is told
+     * to ask again (keeping its place) only while it is on screen, paced by what its pages cost.
+     */
+    requestsChanged(): void {
+        if (!this.requestsSource) return;   // the tab hasn't asked yet: nothing to tell
+        this.requestsSource.changed();
+        if (!this.requestsCountsTimer) {
+            this.requestsCountsTimer = setTimeout(() => {
+                this.requestsCountsTimer = undefined;
+                const source = this.requestsSource;
+                if (!source) return;
+                void source.counts().then(({ total, counts }) => this.post({ type: 'console.requests.counts', total, counts })).catch(() => undefined);
+            }, ConsoleController.REQUESTS_COUNTS_MS);
+        }
+        if (!this.requestsShown) {
+            this.requestsStale = true;
+            return;
+        }
+        this.tellRequestsReload(false);
+    }
+
+    /** console.requests.changed: the table asks again. `now`: at once (it was off screen and missed changes). */
+    private tellRequestsReload(now: boolean): void {
+        if (this.requestsReloadTimer) {
+            if (!now) return;
+            clearTimeout(this.requestsReloadTimer);
+        }
+        this.requestsReloadTimer = setTimeout(() => {
+            this.requestsReloadTimer = undefined;
+            const source = this.requestsSource;
+            if (!source) return;
+            void source.counts().then(({ total, counts }) => this.post({ type: 'console.requests.changed', total, counts })).catch(() => undefined);
+        }, now ? 0 : ConsoleController.requestsReloadDelay(this.lastRequestsPageMs));
+    }
+
+    // =========================================================================
+    // The run on the new top and footer (#464, #465): ⓘ's details, the status box's figures, the rename
+    // =========================================================================
+
+    /** The engine's last estimate while the run goes (its progress_update). */
+    private lastProgress?: { estimatedEndTime?: number | null };
+    private figuresTimer?: ReturnType<typeof setTimeout>;
+    /** A live run's figures are told at most this often (a count by status: cheap). */
+    static readonly FIGURES_MS = 250;
+
+    private runIdOfConsole(): string | undefined {
+        const config = this.currentConfig;
+        return config?.type === 'batch' ? config.batchId || config.executionId : config?.executionId || config?.batchId;
+    }
+
+    private async runRecord(): Promise<RunRecord | undefined> {
+        const id = this.runIdOfConsole();
+        if (!id || !this.ports.metadata) return undefined;
+        return (await this.ports.metadata.getExecution(id) as unknown as RunRecord | null) ?? undefined;
+    }
+
+    /**
+     * Tell the page the run as it is now: its details, and its figures. `full`: the figures that
+     * read every request (rows sent, reprocessed): on opening and when the run's state changes.
+     */
+    async tellRun(full: boolean): Promise<void> {
+        try {
+            const run = await this.runRecord();
+            if (!run) return;
+            const environment = this.ports.environments ? await environmentOf(this.ports.environments, run.environmentId, run.environment) : undefined;
+            const endpoint = run.endpointId && this.ports.endpoints ? await this.ports.endpoints.getEndpoint(run.endpointId).catch(() => undefined) : undefined;
+            let requestPath: string | undefined;
+            if (isBatchRun(run) && this.ports.metadata.getBatchMemberLogRows) {
+                requestPath = (await this.ports.metadata.getBatchMemberLogRows(run.id, 0, 1))[0]?.endpointPath;
+            }
+            await this.post({ type: 'console.details', details: runDetails({ run, environment, endpointExists: !!endpoint, requestPath }) });
+            await this.tellFigures(run, environment, full);
+        } catch (error) {
+            this.logError('[Console] the run\'s details could not be told', error instanceof Error ? error : new Error(String(error)));
+        }
+    }
+
+    private async tellFigures(run: RunRecord, environment: Awaited<ReturnType<typeof environmentOf>>, full: boolean): Promise<void> {
+        const metadata = this.ports.metadata;
+        const batch = isBatchRun(run);
+        const counts = batch ? await metadata.countBatchMembersByStatus(run.id) : { [run.status]: 1 };
+        let rowsSent: number | null = null;
+        let reprocessed: number | null = null;
+        if (full && batch) {
+            // (every request's few fields: the lean query; once, not while the run goes)
+            const requests = metadata.getBatchMemberRequestRows ? await metadata.getBatchMemberRequestRows(run.id) : await metadata.getBatchMemberExecutions(run.id);
+            const notDone = new Set(['ready', 'pending', 'queued', 'running']);
+            rowsSent = requests.reduce((n, r) => n + (notDone.has(r.status) ? 0 : rowCount(r.rows)), 0);
+            reprocessed = requests.filter(r => ((r as { reprocessCount?: number }).reprocessCount ?? 0) > 0).length;
+        } else if (full) {
+            rowsSent = ['completed', 'error', 'failed', 'test_failed'].includes(run.status) ? 1 : 0;
+            reprocessed = 0;
+        }
+        await this.post({ type: 'console.figures', figures: runFigures({ run, environment, counts, rowsSent, reprocessed, progress: this.lastProgress, now: Date.now() }) });
+    }
+
+    /** The run moved on: its figures follow (at most every FIGURES_MS); `full` (its state changed): all of it, at once. */
+    runChanged(full = false): void {
+        if (full) {
+            if (this.figuresTimer) clearTimeout(this.figuresTimer);
+            this.figuresTimer = undefined;
+            void this.tellRun(true);
+            return;
+        }
+        if (this.figuresTimer) return;
+        this.figuresTimer = setTimeout(() => {
+            this.figuresTimer = undefined;
+            void this.runRecord().then(run => (run ? this.tellFigures(run, undefined, false) : undefined)).catch(() => undefined);
+        }, ConsoleController.FIGURES_MS);
+    }
+
+    /**
+     * console.rename: the run's own name (batchConfiguration.name, where History, Logs and the
+     * Console read it; a single run keeps it there too). Answered with the name kept (console.named);
+     * refused, the old one comes back. History and the Hub's tab follow from the run's change event.
+     */
+    private async renameRun(name: unknown): Promise<void> {
+        const run = await this.runRecord();
+        if (!run) return;
+        const current = run.batchConfiguration?.name?.trim() || '';
+        const checked = checkRunName(name, current || run.endpointName || '');
+        if ('refused' in checked) {
+            if (checked.refused) this.ports.toast.warn(checked.refused);
+            await this.post({ type: 'console.named', name: current || run.endpointName || run.id });
+            return;
+        }
+        const metadata = this.ports.metadata;
+        const full = await metadata.getExecution(run.id);
+        await metadata.updateExecution(run.id, {
+            batchConfiguration: { stopOnFirstError: false, errorTolerance: false, maxErrors: 0, ...(full?.batchConfiguration ?? {}), name: checked.name }
+        } as never);
+        this.log(`[Console] run ${run.id} renamed to "${checked.name}"`);
+        await this.post({ type: 'console.named', name: checked.name });
+        void this.tellRun(false);
+    }
+
     /**
      * GitHub Issue #166: Handle RAW transaction content request
      * Reads request/response files from disk and returns JSON content
@@ -5045,6 +5333,8 @@ export class ConsoleController {
         }
         // A live update supersedes anything buffered before this Console registered.
         ConsoleController.missedStatusUpdates.take(executionId);
+        // The run's state changed: its details and figures, all of them (#464, #465)
+        reportManager.runChanged(true);
 
         if (reportManager) {
             try {
@@ -5153,6 +5443,8 @@ export class ConsoleController {
                 target: 'webview',
                 payload: { executionIds, status, batchId, memberIndices, memberEndpointInfo }
             });
+            consoleManager.requestsChanged();
+            consoleManager.runChanged();
         }
     }
 
@@ -5169,6 +5461,8 @@ export class ConsoleController {
         const reportManager = ConsoleController.activeConsoles.get(batchId);
 
         if (reportManager) {
+            reportManager.requestsChanged();
+            reportManager.runChanged();
             try {
                 await reportManager.post({
                     type: 'batch_member_result_update',
@@ -5415,6 +5709,8 @@ export class ConsoleController {
         const reportManager = ConsoleController.activeConsoles.get(executionId);
 
         if (reportManager) {
+            reportManager.lastProgress = { estimatedEndTime: progressUpdate.estimatedEndTime };
+            reportManager.runChanged();
             try {
                 await reportManager.post({
                     type: 'progress_update',
@@ -5444,6 +5740,7 @@ export class ConsoleController {
         const reportManager = ConsoleController.activeConsoles.get(batchId);
 
         if (reportManager) {
+            void reportManager.tellRun(false);
             try {
                 await reportManager.post({
                     type: 'concurrency_updated',
@@ -5488,6 +5785,13 @@ export class ConsoleController {
      */
     dispose(): void {
         // No more live updates for this Console
+        if (this.figuresTimer) clearTimeout(this.figuresTimer);
+        this.figuresTimer = undefined;
+        if (this.requestsCountsTimer) clearTimeout(this.requestsCountsTimer);
+        if (this.requestsReloadTimer) clearTimeout(this.requestsReloadTimer);
+        this.requestsCountsTimer = undefined;
+        this.requestsReloadTimer = undefined;
+        this.requestsSource = undefined;
         for (const [id, controller] of ConsoleController.activeConsoles) {
             if (controller === this) ConsoleController.activeConsoles.delete(id);
         }

@@ -3,7 +3,7 @@
 import { APIEndpointConfig } from '../../data-loading/types';
 import { ExecutionOptions } from './execution.interface';
 import { ExecutionMetadata, ExecutionStatus, StatusHelpers } from '../../storage/execution-metadata';
-import type { BatchMemberLogRow } from '../storage/execution-storage.interface';
+import type { BatchMemberLogRow, BatchMemberRequestRow } from '../storage/execution-storage.interface';
 import { 
     IExecutionMetadataService, 
     ExecutionTableOptions, 
@@ -49,6 +49,7 @@ export interface ExecutionMetadataServiceDependencies {
         countBatchMembersByStatus?: (batchId: string) => Promise<Record<string, number>>;
         getBatchMemberFiles?: (batchId: string) => Promise<Array<{ id: string; status: string; responseFile?: string; createdAt: Date; errorMessage?: string; testStatus?: string }>>;
         getBatchMemberLogRows?: (batchId: string, offset: number, limit: number) => Promise<BatchMemberLogRow[]>;
+        getBatchMemberRequestRows?: (batchId: string) => Promise<BatchMemberRequestRow[]>;
         getActiveQueue: () => Promise<ExecutionMetadata[]>;
         getAllTransactions: () => Promise<ExecutionMetadata[]>;
         // GitHub Issue #67 - Bulk update method to prevent file corruption
@@ -570,6 +571,14 @@ export class ExecutionMetadataService implements IExecutionMetadataService {
             return this.dependencies.executionMetadataManager.getBatchMemberLogRows(batchId, offset, limit);
         }
         return (await this.getBatchMemberExecutions(batchId)).slice(offset, offset + limit);
+    }
+
+    /** #466: a batch's requests for the Requests tab (whole records where the store has no lean query). */
+    async getBatchMemberRequestRows(batchId: string): Promise<BatchMemberRequestRow[]> {
+        if (this.dependencies.executionMetadataManager?.getBatchMemberRequestRows) {
+            return this.dependencies.executionMetadataManager.getBatchMemberRequestRows(batchId);
+        }
+        return (await this.getBatchMemberExecutions(batchId)) as BatchMemberRequestRow[];
     }
 
     async getBatchMemberFiles(batchId: string): Promise<Array<{ id: string; status: string; responseFile?: string; createdAt: Date; errorMessage?: string; testStatus?: string }>> {

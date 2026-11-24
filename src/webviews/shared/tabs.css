@@ -123,3 +123,36 @@
 .report-tabs.is-compact {
     overflow: hidden;
 }
+
+/* <dbmn-run-heading> (dbmn-run-heading.js): a run's one line, the environment link, its name, ⓘ, its tabs.
+   Colour only where it means something: a count is tinted only with a tone; a count that changes pulses once */
+dbmn-run-heading { display: flex; align-items: flex-end; gap: 16px; min-height: 36px; flex-wrap: wrap; position: relative; padding: 4px 10px 0; box-sizing: border-box; }
+/* (its tabs sit on a line, as the tab strips do: the open one on the page's background, joined to what is below) */
+dbmn-run-heading::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 1px; background: var(--dbmn-panel-border); }
+.dbmn-run-tab { flex-shrink: 0; white-space: nowrap; position: relative; z-index: 1; margin-bottom: 0; }
+.dbmn-run-title { padding-bottom: 6px; }
+.dbmn-run-title { display: flex; align-items: center; gap: 6px; align-self: center; min-width: 0; font-size: 14px; font-weight: 600; }
+.dbmn-run-env {
+    padding: 0; border: none; background: none; font: inherit; color: var(--dbmn-textLink-foreground); cursor: pointer;
+    text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--dbmn-textLink-foreground) 40%, transparent); text-underline-offset: 3px;
+}
+.dbmn-run-env:hover, .dbmn-run-env:focus-visible { text-decoration-color: currentColor; }
+.dbmn-run-sep { color: var(--dbmn-descriptionForeground); margin-left: -4px; }
+.dbmn-run-info {
+    display: inline-flex; padding: 2px; border: none; border-radius: 3px; background: none;
+    color: var(--dbmn-descriptionForeground); line-height: 0; cursor: pointer;
+}
+.dbmn-run-info:hover, .dbmn-run-info:focus-visible { color: var(--dbmn-foreground); background: var(--dbmn-toolbar-hoverBackground, var(--dbmn-list-hoverBackground)); }
+.dbmn-run-info svg { width: 14px; height: 14px; }
+.dbmn-run-marks { display: inline-flex; align-items: center; gap: 6px; }
+.dbmn-run-marks:empty { display: none; }
+.dbmn-run-tabs { display: flex; gap: 2px; align-self: flex-end; }
+.dbmn-run-tab { padding: 6px 12px; font-size: 12.5px; }
+/* (counts win over console.css's per-tab badge colours: colour only on Completed and Error, James 2026-11-24) */
+dbmn-run-heading .tab-count.dbmn-run-count[data-tab] { background: color-mix(in srgb, var(--dbmn-foreground) 22%, transparent); color: var(--dbmn-foreground); }
+dbmn-run-heading .tab-count.dbmn-run-count.is-ok[data-tab] { background: var(--dbmn-charts-green, #3fa35c); color: #fff; }
+dbmn-run-heading .tab-count.dbmn-run-count.is-error[data-tab] { background: var(--dbmn-charts-red, #f14c4c); color: #fff; }
+.dbmn-run-count.is-changed { animation: dbmn-run-count-pulse 0.4s ease-out; }
+@keyframes dbmn-run-count-pulse { from { transform: scale(1.25); } to { transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) { .dbmn-run-count.is-changed { animation: none; } }
+.dbmn-run-tab[hidden] { display: none; }

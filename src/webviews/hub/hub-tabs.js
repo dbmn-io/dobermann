@@ -177,6 +177,37 @@ const state = {
         return tab;
     }
 
+    /**
+     * #470: the batch's Console takes its Run Batch tab's place: its slot in the strip, and the focus if that tab had it
+     * (a queued batch starting while the user is elsewhere stays in the background). The Run Batch page stays on
+     * screen until the Console's page is drawn (__embeddedReady__), then goes: no gap, no flash, no jump. The tab
+     * strip's snapshot then holds the Console in that place, so a reload mid-run comes back as the Console.
+     */
+    const swaps = new Map();   // new tab id → { from, shown }
+    function swapTab(fromId, spec) {
+        const idx = findIndex(fromId);
+        const from = state.tabs[idx];
+        const tab = { id: spec.id, type: spec.type, refId: spec.refId, name: spec.name || spec.refId, preview: false, dirty: false };
+        state.tabs.splice(idx, 1, tab);
+        if (state.previewTabId === fromId) state.previewTabId = null;
+        const shown = state.activeTabId === fromId;
+        if (shown) state.activeTabId = tab.id;
+        swaps.set(tab.id, { from: from.id, shown });
+        // (a Console that never says it is ready still takes over, after a while)
+        const late = setTimeout(() => finishSwap(tab.id), 15000);
+        if (late && late.unref) late.unref();
+        emit();
+        return tab;
+    }
+    /** The new page is drawn: the old one goes. */
+    function finishSwap(id) {
+        const swap = swaps.get(id);
+        if (!swap) return;
+        swaps.delete(id);
+        unmountEmbeddedTab(swap.from);
+        applyActiveBody();
+    }
+
     function focusTab(id) {
         if (!findTab(id)) return;
         state.activeTabId = id;
@@ -751,13 +782,15 @@ const state = {
 
         iframeRegistry.set(tabId, iframe);
 
-        const tab = openOrFocusTab({
+        // #470: a tab taking another's place (a batch's Console, its Run Batch tab): the same slot in the strip
+        const tabSpec = {
             id: tabId,
             type: spec.tabType || (tabId.split(':')[0] || 'endpoint'),
             refId: spec.refId,
             name: spec.name,
             preview: !!spec.preview
-        });
+        };
+        const tab = spec.replaces && findTab(spec.replaces) ? swapTab(spec.replaces, tabSpec) : openOrFocusTab(tabSpec);
         stamp('openOrFocusTab returned');
 
         if (tab && spec.status) {
@@ -898,8 +931,11 @@ const state = {
         const bodies = document.getElementById('hubTabBodies');
         if (!bodies) return;
         const activeId = state.activeTabId;
+        // (#470: while a Console is being drawn in its Run Batch tab's place, that Run Batch page stays on screen)
+        const swap = swaps.get(activeId);
+        const shownId = swap && swap.shown ? swap.from : activeId;
         bodies.querySelectorAll('.hub-tab-body').forEach(function (el) {
-            el.classList.toggle('is-active', el.getAttribute('data-tab-body-id') === activeId);
+            el.classList.toggle('is-active', el.getAttribute('data-tab-body-id') === shownId);
         });
     }
 
@@ -946,6 +982,8 @@ const state = {
         // both in the UI (loader stays) and in the console (timeline).
         if (data.payload && data.payload.type === '__embeddedReady__') {
             removeLoader(data.tabId);
+            // (#470: a Console drawn in its Run Batch tab's place: the Run Batch page goes now)
+            if (swaps.has(data.tabId)) finishSwap(data.tabId);
         }
         // A screen that names its own tab (Run Batch: the batch it is about to run). Its name stands
         // from then on: the host's name for the tab (the endpoint's) no longer replaces it
@@ -1044,7 +1082,9 @@ const state = {
                     name: message.name,
                     preview: !!message.preview,
                     status: message.status,
-                    html: message.html
+                    html: message.html,
+                    // #470: the tab whose place it takes (a batch's Console, its Run Batch tab)
+                    replaces: message.replaces
                 });
                 return true;
             case 'focusEmbeddedTab': {
@@ -1369,6 +1409,7 @@ const state = {
         openPageTab: mountPageTab,
         setQueries,
         // Exposed for unit tests in pure JSDOM contexts.
-        _makeTabId: makeTabId
+        _makeTabId: makeTabId,
+        _swapTab: swapTab
     };
 })();

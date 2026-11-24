@@ -531,7 +531,7 @@ export class HubWebviewManager extends WebviewBase {
                 const config = { context: 'runBatch' as const, endpointId: endpoint.id, endpointName: endpoint.name, endpoint, chain };
                 const manager = new RunBatchWebview(this.context, container, config);
                 const { html } = await manager.createWebviewEmbedded(config as WebviewConfig, bridge);
-                return { ...embed(manager, bridge, html), applyChain: c => manager.applyChain(c) };
+                return { ...embed(manager, bridge, html), applyChain: c => manager.applyChain(c), handoff: () => manager.handoff() };
             },
             compare: async ({ compareId, endpointName, start }, channel) => {
                 const container = this.dobermannInstance?.serviceContainer;
@@ -593,6 +593,8 @@ export class HubWebviewManager extends WebviewBase {
                 const summary = (reportConfig.executionSummary as Record<string, unknown> | undefined) || {};
                 return {
                     ...embed(manager as unknown as WebviewBase, bridge, html, () => { void manager.onEmbeddedReady(); }),
+                    // #470: in a Run Batch tab's place, it opens where Review was
+                    carryOn: review => manager.carryOn(review),
                     // The endpoint's name beats "Batch Console - 2026-…"
                     // #445: a named batch by its own name
                     name: (summary.batchName as string | undefined) || (summary.endpointName as string | undefined) || (summary.endpointPath as string | undefined)

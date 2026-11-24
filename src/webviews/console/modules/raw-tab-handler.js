@@ -3353,9 +3353,13 @@ class RawTabHandler {
         // Focus without scrolling — a scroll closes the menu.
         menu.querySelector('button')?.focus({ preventScroll: true });
 
+        // (a scroll that began before the menu opened, the row brought into view for the right-click, arrives a frame
+        // later: only a scroll after that closes it)
+        const opened = performance.now();
         const close = (e) => {
             if (e.type === 'keydown' && e.key !== 'Escape') return;
             if (e.type === 'mousedown' && menu.contains(e.target)) return;
+            if (e.type === 'scroll' && performance.now() - opened < 200) return;
             this.closeTransactionMenu();
         };
         this._menuCloser = close;

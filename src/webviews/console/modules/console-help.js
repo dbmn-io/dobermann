@@ -10,14 +10,15 @@
     if (!window.HelpMode) return;
     window.HelpMode.register([
         // Header
-        { selector: '#status-badge', help: 'console#execution-summary' },   // not the title row: the help button lives there
+        // The run heading (#464): the run's details (ⓘ) where Settings was
+        { selector: '#run-heading .dbmn-run-info', help: 'console#settings-tab' },
+        { selector: '#run-heading dbmn-name', help: 'console#execution-summary' },
         // Tabs
         { selector: '.tab-item[data-tab="links"]', help: 'chain#links-tab' },
         { selector: '.tab-item[data-tab="input"]', help: 'console#input-tab' },
         { selector: '.tab-item[data-tab="raw"]', help: 'console#raw-tab' },
         { selector: '.tab-item[data-tab="success"]', help: 'console#completed-tab' },
         { selector: '.tab-item[data-tab="errors"]', help: 'console#error-tab' },
-        { selector: '.tab-item[data-tab="info"]', help: 'console#settings-tab' },
         // Toolbar
         { selector: '#view-path-btn', help: 'named-views#the-views-dropdown' },
         { selector: '#report-toolbar .search-container', help: 'console#search' },

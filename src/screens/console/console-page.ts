@@ -21,6 +21,7 @@ const SCRIPTS: Record<string, string> = {
     PROGRESS_HANDLER_URI: 'console/modules/progress-handler.js',
     BATCH_ACTIONS_URI: 'console/modules/batch-actions.js',
     CONSOLE_CHAIN_URI: 'console/modules/console-chain.js', // GitHub Issue #247
+    CONSOLE_RUN_HEADING_URI: 'console/modules/console-run-heading.js', // #464: the run heading's wiring
     HELP_MODE_URI: 'shared/help-mode.js',
     BUTTON_CONTRAST_URI: 'shared/button-contrast.js',
     CONSOLE_HELP_URI: 'console/modules/console-help.js',
@@ -32,6 +33,9 @@ const SCRIPTS: Record<string, string> = {
     DBMN_FOOTER_URI: 'shared/dbmn-footer.js',
     DBMN_TABLE_URI: 'shared/dbmn-table.js',
     DBMN_SAVED_SEARCHES_URI: 'shared/dbmn-saved-searches.js',
+    DBMN_NAME_URI: 'shared/dbmn-name.js',
+    DBMN_RUN_HEADING_URI: 'shared/dbmn-run-heading.js',
+    DBMN_RUN_DETAILS_URI: 'shared/dbmn-run-details.js',
     REQUEST_PREVIEW_URI: 'shared/request-preview.js', // the request card's INPUT section, shared with Run Batch's Review
     EDITOR_WINDOW_CONTROLS_SCRIPT: 'shared/editor-window-controls.js',
     DBMN_TOAST_URI: 'shared/dbmn-toast.js',
@@ -54,7 +58,7 @@ const SCRIPTS: Record<string, string> = {
 };
 
 /** The Raw tab's transaction card is shared with Run Batch Step 4 (GitHub Issue #308). */
-const STYLES = ['atomic', 'core', 'modals', 'tables', 'tabs', 'toast', 'console', 'search', 'transaction-card', 'column-drag', 'column-head', 'dbmn-footer', 'dbmn-table'];
+const STYLES = ['atomic', 'core', 'modals', 'tables', 'tabs', 'toast', 'console', 'search', 'transaction-card', 'column-drag', 'column-head', 'dbmn-footer', 'dbmn-table', 'dbmn-name'];
 
 function base64Utf8(text: string): string {
     const bytes = new TextEncoder().encode(text);

@@ -204,6 +204,26 @@ describe('HubController', () => {
         expect(last()?.status).to.equal('partial');
     });
 
+    it('#464: a run renamed (on its Console, or anywhere) renames its open Console tab, and only that tab', async () => {
+        let fire: (execution: unknown) => void = () => undefined;
+        const executions = {
+            metadata: {
+                getAllTransactions: async () => [],
+                onExecutionChanged: { event: (listener: (execution: unknown) => void) => { fire = listener; return { dispose: () => undefined }; } }
+            }
+        } as unknown as HubPorts['executions'];
+        const page = (): HubTab => ({ html: '<p>tab</p>', handle: async () => undefined, dispose: () => undefined });
+        const h = hub({ executions, tabs: { endpoint: async () => page(), environment: async () => page(), console: async () => ({ ...page(), name: 'Put stock' }) } });
+        await h.controller.handle({ type: 'ready' });
+        await h.controller.openConsoleTab('B', true);
+        fire({ id: 'B', endpointName: 'Put stock', status: 'running' });
+        expect(h.of('embeddedTabName'), 'the same name: nothing to say').to.have.length(0);
+        fire({ id: 'B', endpointName: 'Put stock', batchConfiguration: { name: 'Monday stock' } });
+        fire({ id: 'B', endpointName: 'Put stock', batchConfiguration: { name: 'Monday stock' } });
+        fire({ id: 'm-1', endpointName: 'Put stock', batchConfiguration: { name: 'Someone else' } });
+        expect(h.of('embeddedTabName')).to.deep.equal([{ type: 'embeddedTabName', tabId: 'console:B', name: 'Monday stock' }]);
+    });
+
     it('#437: a batch starting on its own leaves an open Console where it is; asked for, it is brought forward', async () => {
         const page = (): HubTab => ({ html: '<p>tab</p>', handle: async () => undefined, dispose: () => undefined });
         const h = hub({ tabs: { endpoint: async () => page(), environment: async () => page(), console: async () => ({ ...page(), name: 'Batch B' }) } });
@@ -214,6 +234,44 @@ describe('HubController', () => {
         expect(h.of('focusEmbeddedTab'), 'not brought forward').to.have.length(0);
         await h.controller.openConsoleTab('B', true);
         expect(h.of('focusEmbeddedTab')[0]).to.include({ tabId: 'console:B' });
+    });
+
+    it('#470: a batch that starts takes its Run Batch tab\'s place: one tab, the Console in the same slot, Run Batch gone', async () => {
+        const disposed: string[] = [];
+        const page = (kind: string): HubTab => ({ html: `<p>${kind}</p>`, handle: async () => undefined, dispose: () => { disposed.push(kind); } });
+        // What Review showed at Execute goes to the Console, so it opens on the same Requests, search, scroll and pick
+        const review = { tab: 'requests' as const, search: 'WOOF', scrollTop: 240, selected: 7 };
+        let carried: unknown;
+        const h = hub({ tabs: {
+            endpoint: async () => page('endpoint'), environment: async () => page('environment'),
+            batch: async () => ({ ...page('batch'), handoff: () => review }),
+            console: async () => ({ ...page('console'), name: 'Items 24 Nov', endpointId: endpoint.id, carryOn: (r: unknown) => { carried = r; } })
+        } });
+        const endpoint = await h.endpoints.addEndpoint({ name: 'Items', method: 'POST', path: '/items', body: '{"id":"{{id}}"}' });
+        await h.controller.handle({ type: 'openBatchAsTab', endpointId: endpoint.id });
+        expect(h.of('mountEmbeddedTab').map(m => m.tabId)).to.deep.equal([`batch:${endpoint.id}`]);
+
+        // The engine opens the run's Console once the batch has really started (not brought forward: #437)
+        await h.controller.openConsoleTab('B1', true, false);
+        const mounted = h.of('mountEmbeddedTab').at(-1)!;
+        expect(mounted).to.include({ tabId: 'console:B1', tabType: 'batchConsole', name: 'Items 24 Nov', replaces: `batch:${endpoint.id}` });
+        // The page swaps in place: no separate close of the Run Batch tab (that would drop its slot first)
+        expect(h.of('closeEmbeddedTabFromHost'), 'no close: the page swaps').to.have.length(0);
+        expect(disposed, 'the Run Batch screen is disposed').to.deep.equal(['batch']);
+        expect(carried, 'the Console opens where Review was').to.deep.equal(review);
+
+        // No way back: Run Batch for that endpoint again is a fresh one, a new tab, not the old screen
+        await h.controller.handle({ type: 'openBatchAsTab', endpointId: endpoint.id });
+        expect(h.of('mountEmbeddedTab').at(-1)).to.include({ tabId: `batch:${endpoint.id}`, tabType: 'batch' });
+        expect(h.of('mountEmbeddedTab').at(-1)).to.not.have.property('replaces');
+    });
+
+    it('#470: a Console with no Run Batch tab open for its endpoint opens as its own tab, as before', async () => {
+        const page = (): HubTab => ({ html: '<p>tab</p>', handle: async () => undefined, dispose: () => undefined });
+        const h = hub({ tabs: { endpoint: async () => page(), environment: async () => page(), console: async () => ({ ...page(), name: 'Run', endpointId: 'ep-gone' }) } });
+        await h.controller.openConsoleTab('B2', true, false);
+        expect(h.of('mountEmbeddedTab')).to.have.length(1);
+        expect(h.of('mountEmbeddedTab')[0]).to.not.have.property('replaces');
     });
 
     it('History: Resume asks what the Console\'s Resume asks, and resumes with the answer (#335)', async () => {

@@ -54,6 +54,7 @@ interface HubTabs {
     setStatus: (id: string, status: string, progress?: { done: number; total: number }) => void;
     reorderTab: (id: string, newIndex: number) => void;
     _makeTabId: (type: string, refId: string) => string;
+    _swapTab: (fromId: string, spec: TabSpec & { id: string }) => Tab;
 }
 
 describe('HubTabs — tab state reducer (R1-2)', () => {
@@ -266,6 +267,29 @@ describe('HubTabs — tab state reducer (R1-2)', () => {
             (HubTabs as unknown as { handleHostMessage: (m: unknown) => boolean }).handleHostMessage({ type: 'setTabStatus', tabId: tab.id, status: 'running', progress: { done: 3, total: 10 } });
             expect(applied).to.deep.equal([['batch-9', { done: 3, total: 10 }]]);
             delete w.window.HubActivity;
+        });
+    });
+
+    describe('#470: a batch\'s Console takes its Run Batch tab\'s place', () => {
+        it('the same slot in the strip, the Run Batch tab gone, and the focus when it had it', () => {
+            HubTabs.openOrFocusTab({ type: 'endpoint', refId: 'ep-1', name: 'Items' });
+            HubTabs.openOrFocusTab({ id: 'batch:ep-1', type: 'batch', refId: 'ep-1', name: 'Run Batch: Items' });
+            HubTabs.openOrFocusTab({ type: 'endpoint', refId: 'ep-2', name: 'Stock' });
+            HubTabs.focusTab('batch:ep-1');
+            HubTabs._swapTab('batch:ep-1', { id: 'console:B1', type: 'console', refId: 'B1', name: 'Items 24 Nov' });
+            const s = HubTabs.getState();
+            expect(s.tabs.map(t => t.id)).to.deep.equal(['endpoint:ep-1', 'console:B1', 'endpoint:ep-2']);
+            expect(s.tabs[1]).to.include({ name: 'Items 24 Nov', type: 'console', preview: false, dirty: false });
+            expect(s.activeTabId).to.equal('console:B1');
+        });
+
+        it('a queued batch starting while another tab is shown: the Console in the slot, the user left where they are', () => {
+            HubTabs.openOrFocusTab({ id: 'batch:ep-1', type: 'batch', refId: 'ep-1', name: 'Run Batch: Items' });
+            HubTabs.openOrFocusTab({ type: 'endpoint', refId: 'ep-2', name: 'Stock' });
+            HubTabs._swapTab('batch:ep-1', { id: 'console:B2', type: 'console', refId: 'B2', name: 'Items' });
+            const s = HubTabs.getState();
+            expect(s.tabs.map(t => t.id)).to.deep.equal(['console:B2', 'endpoint:ep-2']);
+            expect(s.activeTabId).to.equal('endpoint:ep-2');
         });
     });
 });

@@ -8,6 +8,10 @@
  * Extends WebviewBase for consistent lifecycle management.
  */
 
+import type { APIEndpointConfig } from '../../apiConfigManager';
+import { executeSummary, threadChoices } from './execute-summary';
+import { cleanExecuteChoices, type ExecuteChoices } from './execute-choices';
+import { cleanReviewHandoff, type ReviewHandoff } from './review-handoff';
 import { ChainHandoff } from '../../services/chain/chain-types';
 import type { ScreenSession } from '../screen-session';
 import type { RunBatchPorts } from './run-batch.ports';
@@ -23,7 +27,7 @@ import { SupportedFormat } from '../../services/format-converter/format-converte
 import { ICSVSortingService } from '../../services/csv-sorting/csv-sorting.interface';
 import { convertValueBySourceFormat, applySourceFormatConversions } from '../../utils/source-format-converter';
 import { BatchStartFailure, bulkLoadFailure, describeBatchStartFailure, reportBatchStartFailure } from '../../webviews/run-batch/bulk-load-result';
-import { confirmProductionExecution, isProductionEnvironment } from '../../services/ui/production-guard.service';
+import { applyProductionChoice, confirmProductionExecution, isProductionEnvironment, productionGuardFor } from '../../services/ui/production-guard.service';
 import { ensureHeaderVariables } from '../../services/environment/header-variable-check';
 import { countNestedCalls, groupingColumnsForPreview } from '../../webviews/run-batch/nested-call-count';
 import { createDefaultDataLoadingConfig } from '../../data-loading/zod-schemas';
@@ -71,7 +75,9 @@ export interface RunBatchMessage extends WebviewMessage {
     // Shared window controls (min/max/close cluster)
     'windowMaximize' |
     // GitHub Issue #247: "Chained from …" link
-    'openChainSource';
+    'openChainSource' |
+    // #470: Execute pressed on Review: its confirmation's data, answered as runBatch.executeConfirm
+    'runBatch.executeAsk';
 
     // CSV file upload
     fileData?: string;
@@ -92,6 +98,10 @@ export interface RunBatchMessage extends WebviewMessage {
     templateRenames?: Record<string, string>;
     /** GitHub Issue #247: set on Execute while Step 1 still holds the chained rows. */
     chainSourceExecutionId?: string;
+    /** #470: what Review showed at Execute (ReviewHandoff), for the Console that takes this tab's place. */
+    review?: unknown;
+    /** #470: the choices made in Execute's confirmation (absent: an older page, which confirms by the modals). */
+    confirm?: ExecuteChoices;
     /** Every row, sent when parsedData is only a preview sample — "Total API calls" counts these. */
     countData?: {
         headers: string[];
@@ -218,6 +228,11 @@ export class RunBatchController {
                 await this.handleExecuteBulkLoadCommand(message);
                 break;
 
+            // #470: Execute pressed on Review: what its confirmation says and offers
+            case 'runBatch.executeAsk':
+                await this.handleExecuteAsk();
+                break;
+
             case 'generateBulkJson':
                 await this.handleGenerateBulkJson(message);
                 break;
@@ -328,6 +343,66 @@ export class RunBatchController {
         this.postChainPreload();
     }
 
+    /**
+     * #470: Execute's confirmation. The page asks (`runBatch.executeAsk`, no payload) when Execute is pressed on
+     * Review; the header variables are asked for first if one is missing (#424), so the window shows what will be
+     * sent. The answer:
+     *   { type: 'runBatch.executeConfirm', summary: ExecuteSummary }     (execute-summary.ts: rows, requests,
+     *       rowsPerRequest, method, url, environment { name, production, headers [{ name, value }] },
+     *       errorHandling { value, options }, threads { value, options }, guard: ProductionGuard | null, sentence)
+     *   { type: 'runBatch.executeConfirm', error: string }               (no active environment, Review not drawn)
+     *   { type: 'resetExecuteButton' }                                    (the header prompt was cancelled)
+     * The window's Execute then sends executeBulkLoadCommand as today, plus
+     *   confirm: { errorHandling: 'continue' | 'stop', threads: number, production?: { minutes: 0 | 15 | 30 | 60 } }
+     *   review:  ReviewHandoff (review-handoff.ts), what Review showed, for the Console that takes the tab's place.
+     * `production` is the guard's answer, sent only when summary.guard was shown (its Warning frequency as minutes).
+     */
+    private async handleExecuteAsk(): Promise<void> {
+        const environments = this.ports.environments;
+        const environment = await environments.getActiveEnvironment();
+        if (!environment) {
+            this.session.post({ type: 'runBatch.executeConfirm', error: 'No active environment: pick one in the header, then Execute.' });
+            return;
+        }
+        if (!(await ensureHeaderVariables(environment, environments, { modal: () => this.session, toast: this.ports.toast }))) {
+            this.session.post({ type: 'resetExecuteButton' });
+            return;
+        }
+        const headers = await environments.getHeaderVariables(environment.id).catch(() => []);
+        try {
+            // (Error handling as chosen last on this tab, else as the endpoint keeps it: Review's choice is saved there)
+            const saved = this.endpointConfig?.dataLoadingConfig?.errorHandling?.mode === 'stopOnFirst';
+            const current = { stopOnFirstError: this.choices.stopOnFirstError ?? saved, threads: this.choices.threads };
+            // The run as it will be sent (2026-11-24: the window said 1,000 requests over a Review of 100, the plan it read
+            // a step behind a Rows per request just changed): planned again now from Review's rows, with the endpoint as
+            // the run reads it (the page saved Rows per request to it before asking), never from the last plan drawn
+            const plan = await this.planAsRun();
+            const summary = executeSummary({ plan, environment, headers: headers.map(h => ({ name: h.name, value: h.value })), current });
+            this.session.post({ type: 'runBatch.executeConfirm', summary });
+        } catch (error) {
+            this.session.post({ type: 'runBatch.executeConfirm', error: error instanceof Error ? error.message : String(error) });
+        }
+    }
+    private lastPlan: BatchPlan | undefined;
+    /** What Review planned from (its rows, the message, the environment): the confirmation plans the run again from it. */
+    private lastPlanArgs: { source: { headers: string[]; rows: string[][] }; message: RunBatchMessage; environment: { baseUrl?: string } | undefined; variables: Record<string, string> } | undefined;
+    /** The run's plan now: Review's rows with the endpoint as stored (its Rows per request as the run will use it). */
+    private async planAsRun(): Promise<BatchPlan | undefined> {
+        const args = this.lastPlanArgs;
+        if (!args) return this.lastPlan;
+        const stored = await this.ports.endpoints.getEndpoint(this.endpointId).catch(() => undefined);
+        const plan = await this.buildPlanForPreview(args.source, args.message, args.environment, args.variables, stored || this.endpointConfig);
+        this.lastPlanArgs = args;
+        return plan;
+    }
+    private choices: { stopOnFirstError?: boolean; threads?: number } = {};
+
+    /** #470: what Review showed when Execute was last pressed (the Hub hands it to the run's Console). */
+    handoff(): ReviewHandoff | undefined {
+        return this.review;
+    }
+    private review: ReviewHandoff | undefined;
+
     private postChainPreload(): void {
         if (!this.chain) return;
         this.session.post({
@@ -363,6 +438,7 @@ export class RunBatchController {
             if (!message.endpointId || !message.jsonData || message.jsonData.length === 0) {
                 throw new Error('Missing required batch execution data');
             }
+            this.review = cleanReviewHandoff(message.review);
 
             // GitHub Issue #273: guard batch execution against a production environment.
             // This is the final "Execute" step, so it's the right place to confirm.
@@ -371,7 +447,20 @@ export class RunBatchController {
             const environmentManager = this.ports.environments;
             const activeEnvironment = await environmentManager.getActiveEnvironment();
 
-            if (activeEnvironment && !(await confirmProductionExecution(activeEnvironment, 'Run Batch', this.session))) {
+            // #470: the confirmation window (runBatch.executeConfirm) carries the production guard; its answer comes back
+            // here. Production still asking with no yes from the window is refused, never run. An older page with no
+            // window confirms by the modal, as before
+            const confirm = message.confirm ? cleanExecuteChoices(message.confirm, activeEnvironment ? threadChoices(activeEnvironment) : [1]) : undefined;
+            if (confirm) {
+                const guard = productionGuardFor(activeEnvironment, 'Run Batch');
+                if (guard && guard.ask && confirm.productionMinutes === undefined) {
+                    this.ports.toast.warn(`Not run: ${guard.environment} is production and the confirmation was not given.`);
+                    this.session.post({ type: 'resetExecuteButton' });
+                    return;
+                }
+                if (activeEnvironment && guard && confirm.productionMinutes !== undefined) applyProductionChoice(activeEnvironment, confirm.productionMinutes);
+                this.choices = { stopOnFirstError: confirm.stopOnFirstError, threads: confirm.threads };
+            } else if (activeEnvironment && !(await confirmProductionExecution(activeEnvironment, 'Run Batch', this.session))) {
                 // User cancelled — restore the Execute button (mid "Processing…") and abort.
                 this.session.post({ type: 'resetExecuteButton' });
                 return;
@@ -446,7 +535,8 @@ export class RunBatchController {
                 sourceType: message.sourceType || 'file',
                 sourceFileName: message.sourceFileName,
                 sourceSheetName: message.sourceSheetName,
-                parallelProcessing: message.parallelProcessing || { enabled: false, maxConcurrency: 1 },
+                parallelProcessing: confirm ? { enabled: confirm.threads > 1, maxConcurrency: confirm.threads } : (message.parallelProcessing || { enabled: false, maxConcurrency: 1 }),
+                ...(confirm ? { stopOnFirstError: confirm.stopOnFirstError } : {}),
                 repeatableQueryParam: message.repeatableQueryParam,
                 columnTypes: message.columnTypes,
                 // GitHub Issue #247: linked only while Step 1 still holds the chained rows
@@ -516,18 +606,25 @@ export class RunBatchController {
         source: { headers: string[]; rows: string[][] },
         message: RunBatchMessage,
         activeEnvironment: { baseUrl?: string } | undefined,
-        environmentVariables: Record<string, string>
+        environmentVariables: Record<string, string>,
+        /** #470: the endpoint as the run will read it (Execute's confirmation): its saved Rows per request, as the run's */
+        asRun?: APIEndpointConfig
     ): Promise<BatchPlan> {
-        const ui = message.uiArrayConfig;
-        const saved = (this.endpointConfig.dataLoadingConfig?.repeatableArrays || []).find((a: { enabled?: boolean }) => a.enabled);
+        const ui = asRun ? undefined : message.uiArrayConfig;
+        const endpoint = asRun || this.endpointConfig;
+        const enabled = (endpoint.dataLoadingConfig?.repeatableArrays || []).filter((a: { enabled?: boolean }) => a.enabled);
+        const saved = enabled[0];
+        // (as the run reads it: the smallest enabled Rows per request, run-orchestrator getArrayRepetitionConfig)
+        const runReps = enabled.length ? Math.min(...enabled.map((a: { maxRepetitions: number }) => a.maxRepetitions)) : undefined;
+        if (asRun) this.lastPlanArgs = undefined;   // (re-planned from what Review planned, kept below)
         const plan = await planBatch({
-            endpoint: this.endpointConfig,
+            endpoint,
             baseUrl: activeEnvironment?.baseUrl,
             headers: source.headers,
             rows: source.rows,
             mappings: message.mappings || [],
             // Same default as the page (getSavedArrayRepetitionValue): the saved Reps, else 1
-            reps: ui?.maxRepetitions || saved?.maxRepetitions || 1,
+            reps: asRun ? (runReps || 1) : (ui?.maxRepetitions || saved?.maxRepetitions || 1),
             arrayPath: ui?.arrayPath || saved?.arrayPath || null,
             queryParamRepetition: message.queryParamRepetition?.enabled ? message.queryParamRepetition : null,
             environmentVariables
@@ -720,6 +817,9 @@ export class RunBatchController {
                 ? { headers: message.countData.headers, rows: applySourceFormatConversions(message.countData.rows, message.countData.headers, message.mappings || []) }
                 : { headers, rows: dataRows };
             const plan = await this.buildPlanForPreview(planRowsSource, message, activeEnvironment, environmentVariables);
+            // #470: the plan Review shows; Execute's confirmation plans again from the same rows as the run will send them
+            this.lastPlan = plan;
+            this.lastPlanArgs = { source: planRowsSource, message, environment: activeEnvironment, variables: environmentVariables };
             const rawBody = (this.endpointConfig.body || '').trim();
             const bodyText = rawBody ? stripJsonCommentsSafe(rawBody).trim() : '';
             if (!bodyText || bodyText === '{}') {

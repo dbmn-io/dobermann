@@ -7,6 +7,8 @@ import {
     confirmProductionExecution,
     isProductionEnvironment,
     clearProductionSuppression,
+    productionGuardFor,
+    applyProductionChoice,
     ProductionGuardEnv
 } from '../../../../services/ui/production-guard.service';
 import { DbmnModalSpec, DbmnModalResult } from '../../../../services/ui/dbmn-prompts';
@@ -56,8 +58,7 @@ describe('ProductionGuard - GitHub Issue #273', () => {
         expect(proceed).to.equal(true);
         expect(h.showModal.calledOnce).to.equal(true);
         const spec = h.showModal.firstCall.args[0] as DbmnModalSpec;
-        expect(spec.body).to.contain('PRODUCTION');
-        expect(spec.body).to.contain('Prod');
+        expect(spec.body).to.equal('Prod is a production environment.');
     });
 
     it('blocks execution when the user cancels', async () => {
@@ -139,5 +140,58 @@ describe('ProductionGuard - GitHub Issue #273', () => {
         delete (globalThis as Record<string, unknown>).dbmnShowModal;
         const proceed = await confirmProductionExecution(prodEnv, 'Run API');
         expect(proceed).to.equal(true);
+    });
+});
+
+/**
+ * #470: one production guard for Run Batch's Execute window and Run API: the same line and Warning frequency, given
+ * as data for the page's own window (productionGuardFor), the choice applied by the host (applyProductionChoice).
+ */
+describe('ProductionGuard as data - #470', () => {
+    let clock: sinon.SinonFakeTimers;
+    const prodEnv: ProductionGuardEnv = { id: 'env-prod', name: 'Prod', environmentType: 'production' };
+    const devEnv: ProductionGuardEnv = { id: 'env-dev', name: 'Dev', environmentType: 'development' };
+    beforeEach(() => { clock = sinon.useFakeTimers(); clearProductionSuppression(); });
+    afterEach(() => { clock.restore(); clearProductionSuppression(); });
+
+    it('nothing for an environment that is not production', () => {
+        expect(productionGuardFor(devEnv, 'Run Batch')).to.equal(null);
+        expect(productionGuardFor(undefined, 'Run Batch')).to.equal(null);
+    });
+
+    it('production: one line naming it, the Warning frequency choices, and whether it must be asked now', () => {
+        const guard = productionGuardFor(prodEnv, 'Run Batch')!;
+        expect(guard.environment).to.equal('Prod');
+        expect(guard.line, 'James\'s one short line').to.equal('Prod is a production environment.');
+        expect(guard.ask).to.equal(true);
+        expect(guard.frequency.label).to.equal('Warning frequency');
+        expect(guard.frequency.value).to.equal('0');
+        expect(guard.frequency.options.map(o => o.value)).to.deep.equal(['0', '15', '30', '60']);
+        expect(guard.confirmLabel).to.equal('Execute on production');
+    });
+
+    it('the modal Run API shows says the same line as the data (one wording, two windows)', async () => {
+        const showModal = sinon.stub().resolves({ actionId: 'execute', fields: { suppress: '0' } });
+        await confirmProductionExecution(prodEnv, 'Run API', { showModal });
+        const spec = showModal.firstCall.args[0] as DbmnModalSpec;
+        expect(spec.body).to.equal(productionGuardFor(prodEnv, 'Run API')!.line);
+    });
+
+    it('a choice of 15 minutes, applied: not asked again for 15 minutes, by Run Batch or Run API', async () => {
+        applyProductionChoice(prodEnv, 15);
+        expect(productionGuardFor(prodEnv, 'Run Batch')!.ask).to.equal(false);
+        const showModal = sinon.stub();
+        expect(await confirmProductionExecution(prodEnv, 'Run API', { showModal })).to.equal(true);
+        expect(showModal.called).to.equal(false);
+        clock.tick(15 * 60_000 + 1);
+        expect(productionGuardFor(prodEnv, 'Run Batch')!.ask).to.equal(true);
+    });
+
+    it('"every time" (0) and nonsense leave it asking', () => {
+        applyProductionChoice(prodEnv, 0);
+        expect(productionGuardFor(prodEnv, 'Run Batch')!.ask).to.equal(true);
+        applyProductionChoice(prodEnv, Number.NaN);
+        applyProductionChoice(prodEnv, 7);
+        expect(productionGuardFor(prodEnv, 'Run Batch')!.ask, 'only the offered choices count').to.equal(true);
     });
 });

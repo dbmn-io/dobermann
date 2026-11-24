@@ -1690,3 +1690,27 @@ textarea.dbmn-modal-input {
     font-style: italic;
     opacity: 0.7;
 }
+
+/* The production guard's line (dbmn-guard-line.js): Run Batch's Execute window and Run API's dialog alike */
+dbmn-guard-line { display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
+.dbmn-guard-warning {
+    display: flex; gap: 8px; align-items: baseline; padding: 8px 10px; border-radius: var(--dbmn-radius, 4px);
+    border: 1px solid color-mix(in srgb, var(--dbmn-errorForeground) 55%, transparent);
+    background: color-mix(in srgb, var(--dbmn-errorForeground) 12%, transparent);
+    color: var(--dbmn-foreground);
+}
+.dbmn-guard-mark { color: var(--dbmn-errorForeground); }
+.dbmn-guard-frequency { display: grid; grid-template-columns: 130px auto; gap: 12px; align-items: center; justify-content: start; font-size: 13px; }
+.dbmn-guard-frequency-label { color: var(--dbmn-descriptionForeground); }
+.dbmn-guard-select { width: auto; }
+
+/* <dbmn-run-details> (dbmn-run-details.js): where a run went and how it ran, in the window ⓘ opens */
+dbmn-run-details { display: block; min-width: min(560px, 100%); }
+.dbmn-run-details-list { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 16px; margin: 0; }
+.dbmn-run-details-list dt { color: var(--dbmn-descriptionForeground); }
+.dbmn-run-details-list dd { margin: 0; overflow-wrap: anywhere; user-select: text; }
+.dbmn-run-details-pairs dd { font-family: var(--dbmn-editor-font-family, monospace); font-size: 12px; }
+.dbmn-run-details-heading { margin: 14px 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--dbmn-descriptionForeground); }
+.dbmn-run-details-none { margin: 0; color: var(--dbmn-descriptionForeground); }
+.dbmn-run-details-more { margin-top: 14px; padding: 0; border: none; background: none; font: inherit; color: var(--dbmn-textLink-foreground); cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+.dbmn-run-details-prod { margin-left: 8px; padding: 0 6px; border-radius: 8px; font-size: 11px; color: var(--dbmn-editorWarning-foreground); border: 1px solid currentColor; }

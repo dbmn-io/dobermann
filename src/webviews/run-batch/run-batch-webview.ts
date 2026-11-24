@@ -4,6 +4,7 @@
  * Run Batch in VS Code: a Hub tab running the shared RunBatchController (src/screens/run-batch),
  * with VS Code's services as its ports.
  */
+import type { ReviewHandoff } from '../../screens/run-batch/review-handoff';
 import * as vscode from 'vscode';
 import { ChainHandoff } from '../../services/chain/chain-types';
 import { WebviewBase } from '../shared/webview-base';
@@ -79,6 +80,11 @@ export class RunBatchWebview extends WebviewBase {
     /** GitHub Issue #247: chaining into a Run Batch that is already open replaces its Step 1 data. */
     applyChain(chain: ChainHandoff): void {
         this.controller.applyChain(chain);
+    }
+
+    /** #470: Review's view at Execute, for the Console that replaces this tab. */
+    handoff(): ReviewHandoff | undefined {
+        return this.controller.handoff();
     }
 
     dispose(): void {

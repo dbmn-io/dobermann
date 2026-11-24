@@ -4,6 +4,7 @@
  * The Console in VS Code: a Hub tab running the shared ConsoleController (src/screens/console),
  * with VS Code's services, save dialog and editor as its ports.
  */
+import type { ReviewHandoff } from '../../screens/run-batch/review-handoff';
 import * as fs from 'fs';
 import * as vscode from 'vscode';
 import { ServiceAwareWebview, ServiceAwareConfig } from '../../base/service-aware-base';
@@ -62,6 +63,11 @@ export class ConsoleWebviewManager extends ServiceAwareWebview {
     }
 
     /** The Hub: the Console's page is listening. */
+    /** #470: opening in a Run Batch tab's place, where Review was. */
+    carryOn(review: ReviewHandoff): void {
+        this.controller?.carryOn(review);
+    }
+
     async onEmbeddedReady(): Promise<void> {
         await this.controller?.onReady();
     }

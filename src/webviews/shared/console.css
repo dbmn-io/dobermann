@@ -3402,3 +3402,6 @@ html[data-tab-colour="stopped"] .report-title { --title-c: var(--vscode-descript
 .links-table td:not(:last-child) {
     white-space: nowrap;
 }
+
+/* The old title, kept unseen while the run's state still reads from it (#464: the run heading replaces it) */
+#report-title[hidden], #report-tabs[hidden] { display: none !important; }

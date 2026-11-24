@@ -282,3 +282,43 @@ dbmn-table[selectable] .dbmn-table-body tr { cursor: pointer; }
     vertical-align: 1px;
 }
 .dbmn-sc.is-blank::after { content: 'blank'; font-style: italic; }
+
+/* ── A heading's count and filter (dbmn-table.js: the count and filter column options): one look for Query's DIFF
+   counts and Status filter and Validate's invalid counts and Status filter ── */
+.dbmn-head-filter { display: inline-flex; align-items: center; gap: 4px; margin-left: 8px; vertical-align: middle; }
+.dbmn-head-count { border: 1px solid transparent; font: inherit; cursor: pointer; }
+.dbmn-head-count:hover { border-color: var(--dbmn-focusBorder); }
+.dbmn-head-count.is-active { background: var(--dbmn-button-background); color: var(--dbmn-button-foreground); }
+.dbmn-head-btn {
+    margin-left: 6px; padding: 2px; border: 1px solid transparent; border-radius: 3px; background: transparent;
+    color: var(--dbmn-descriptionForeground); line-height: 0; vertical-align: middle; cursor: pointer;
+}
+.dbmn-head-btn:hover, .dbmn-head-btn[aria-expanded="true"] { border-color: var(--dbmn-panel-border); color: var(--dbmn-foreground); }
+.dbmn-head-btn svg { width: 14px; height: 14px; }
+.dbmn-head-funnel {
+    display: inline-flex; margin-left: 4px; padding: 2px; border: none; border-radius: 3px; background: none;
+    color: var(--dbmn-textLink-foreground); line-height: 0; vertical-align: middle; cursor: pointer;
+}
+.dbmn-head-filter .dbmn-head-funnel { margin-left: 0; }
+.dbmn-head-funnel:hover, .dbmn-head-funnel:focus-visible { background: var(--dbmn-toolbar-hoverBackground, color-mix(in srgb, var(--dbmn-foreground) 12%, transparent)); }
+.dbmn-head-funnel svg { width: 12px; height: 12px; }
+/* The filter menu: Show (a tick) and Only (a radio) side by side, then the line's pill or name and its count */
+.dbmn-filter-menu {
+    position: fixed; z-index: 10001; padding: 4px 0;
+    background: var(--dbmn-menu-background, var(--dbmn-editorWidget-background));
+    color: var(--dbmn-menu-foreground, var(--dbmn-foreground));
+    border: 1px solid var(--dbmn-menu-border, var(--dbmn-widget-border, var(--dbmn-panel-border)));
+    border-radius: var(--dbmn-radius, 4px); box-shadow: 0 4px 12px var(--dbmn-widget-shadow, rgba(0, 0, 0, 0.3));
+    font-size: 13px;
+}
+.dbmn-filter-line { display: grid; grid-template-columns: 28px 28px auto 1fr; align-items: center; column-gap: 4px; padding: 2px 12px 2px 8px; }
+.dbmn-filter-heading { padding-bottom: 4px; color: var(--dbmn-descriptionForeground); font-size: 11px; }
+.dbmn-filter-heading span { text-align: center; }
+.dbmn-filter-control { display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: var(--dbmn-radius, 4px); cursor: pointer; transition: background-color 0.1s; }
+.dbmn-filter-control:hover, .dbmn-filter-line:has(.dbmn-filter-name:hover) .dbmn-filter-tick {
+    background: var(--dbmn-toolbar-hoverBackground, var(--dbmn-list-hoverBackground)); box-shadow: inset 0 0 0 1px var(--dbmn-focusBorder);
+}
+.dbmn-filter-line:has(.dbmn-filter-name:hover) .dbmn-filter-name { text-decoration: underline; text-underline-offset: 3px; }
+.dbmn-filter-control input { margin: 0; cursor: pointer; }
+.dbmn-filter-name { margin-left: 8px; cursor: pointer; }
+.dbmn-filter-count { justify-self: end; padding-left: 24px; color: var(--dbmn-descriptionForeground); font-size: 12px; font-variant-numeric: tabular-nums; }

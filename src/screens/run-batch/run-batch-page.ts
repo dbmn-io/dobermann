@@ -379,6 +379,9 @@ export function buildRunBatchPage(asset: AssetUrl, batchConfig: { endpointId: st
     <script src="${batchExplainerUri}"></script>
     <script src="${requestPreviewUri}"></script>
     <script src="${dbmnModalUri}"></script>
+    <!-- #470: the one Execute confirmation, the production guard's line folded in -->
+    <script src="${asset('shared/dbmn-guard-line.js')}"></script>
+    <script src="${asset('run-batch/run-batch-confirm.js')}"></script>
     <script src="${dbmnToastUri}"></script>
     <script src="${dbmnClipboardUri}"></script>
     <script src="${csvHandlerScriptUri}"></script>

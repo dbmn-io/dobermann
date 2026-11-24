@@ -41,7 +41,7 @@ function filledBaseUrlOf(environment: { baseUrl?: string; variables?: Record<str
 /** The preparation service and the batch engine (VS Code: its ServiceBootstrap). */
 export interface RunPipeline {
     getTransactionPreparationService(): ITransactionPreparationService | undefined | null;
-    getBatchExecutionEngine(): { executeRecord(executionId: string): Promise<unknown> } | undefined | null;
+    getBatchExecutionEngine(): { executeRecord(executionId: string): Promise<unknown>; updateBatchErrorMode(batchId: string, config: { stopOnFirstError: boolean }): Promise<void> } | undefined | null;
 }
 
 /** What Run Batch's Execute sends. */
@@ -55,6 +55,8 @@ export interface BulkLoadRequest {
     totalTransactions?: number | null;
     nestingLevel?: number | null;
     chainedFrom?: Omit<ExecutionLinkInput, 'targetExecutionId'>;
+    /** #470: Error handling chosen in Execute's confirmation: stop at the first failed request (else keep going). */
+    stopOnFirstError?: boolean;
     [key: string]: unknown;
 }
 
@@ -614,7 +616,8 @@ export class RunOrchestrator {
         parallelProcessing?: { enabled: boolean; maxConcurrency: number },
         repeatableQueryParam?: { enabled: boolean; paramKey: string; pattern: string; separator: string; maxUrlLength: number; maxPerRequest?: number },
         preCalculatedTransactions?: { totalTransactions: number | null; nestingLevel: number | null },
-        chainedFrom?: Omit<ExecutionLinkInput, 'targetExecutionId'>
+        chainedFrom?: Omit<ExecutionLinkInput, 'targetExecutionId'>,
+        runOptions?: { stopOnFirstError?: boolean }
     ): Promise<void> {
         const environmentManager = this.deps.environments;
         const activeEnvironment = await environmentManager.getActiveEnvironment();
@@ -627,7 +630,7 @@ export class RunOrchestrator {
         const selectedOrganization = activeEnvironment.variables?.org;
         // Create progress notification for the entire batch process (preparation + execution)
         // Preparation phase - no progress bar shown (dedicated prep progress handles this)
-        await this.doExecuteBatchWithCsvData(endpoint, csvData, columnMappings, selectedOrganization, batchName, parallelProcessing, repeatableQueryParam, preCalculatedTransactions, chainedFrom);
+        await this.doExecuteBatchWithCsvData(endpoint, csvData, columnMappings, selectedOrganization, batchName, parallelProcessing, repeatableQueryParam, preCalculatedTransactions, chainedFrom, runOptions);
     }
 
     /**
@@ -645,7 +648,8 @@ export class RunOrchestrator {
         parallelProcessing?: { enabled: boolean; maxConcurrency: number },
         repeatableQueryParam?: { enabled: boolean; paramKey: string; pattern: string; separator: string; maxUrlLength: number; maxPerRequest?: number },
         preCalculatedTransactions?: { totalTransactions: number | null; nestingLevel: number | null },
-        chainedFrom?: Omit<ExecutionLinkInput, 'targetExecutionId'>
+        chainedFrom?: Omit<ExecutionLinkInput, 'targetExecutionId'>,
+        runOptions?: { stopOnFirstError?: boolean }
     ): Promise<void> {
         try {
             // Get Dobermann workspace
@@ -757,6 +761,10 @@ export class RunOrchestrator {
 
             // Execution phase - BatchExecutionEngine will create its own progress bar
             if (!preparationResult.batchId) throw new Error('Transaction preparation returned no batch id');
+            // #470: Error handling as chosen in Execute's confirmation, set before the first request goes, either way. Without
+            // a choice (today's Review) the batch keeps what it was created with: the endpoint's saved mode
+            // (transaction-creator: dataLoadingConfig.errorHandling.mode 'stopOnFirst')
+            if (typeof runOptions?.stopOnFirstError === 'boolean') await batchExecutionEngine.updateBatchErrorMode(preparationResult.batchId, { stopOnFirstError: runOptions.stopOnFirstError });
             const batchState = await batchExecutionEngine.executeRecord(preparationResult.batchId);
 
             // Telemetry (batch runs, API calls, execution time) is now recorded
@@ -777,7 +785,7 @@ export class RunOrchestrator {
      */
     async executeBulkLoad(request: BulkLoadRequest): Promise<BulkLoadResult> {
         try {
-            const { endpointId, jsonData, mappings, batchName, parallelProcessing, repeatableQueryParam, totalTransactions, nestingLevel, chainedFrom } = request;
+            const { endpointId, jsonData, mappings, batchName, parallelProcessing, repeatableQueryParam, totalTransactions, nestingLevel, chainedFrom, stopOnFirstError } = request;
             if (!endpointId || !Array.isArray(jsonData) || jsonData.length === 0) {
                 throw new Error('Invalid bulk load data provided');
             }
@@ -793,7 +801,7 @@ export class RunOrchestrator {
                 .map(m => ({ templateVariable: m.variable, csvColumn: m.column as string, mappingType: 'csvColumn' as const, dataType: 'string' as const }));
             const queryParam = repeatableQueryParam ? { ...repeatableQueryParam, maxPerRequest: repeatableQueryParam.maxPerRequest ?? undefined } : undefined;
             await this.executeBatchWithCsvData(endpoint, csvArray, columnMappings as ColumnMapping[], batchName, parallelProcessing, queryParam,
-                { totalTransactions: totalTransactions ?? null, nestingLevel: nestingLevel ?? null }, chainedFrom);
+                { totalTransactions: totalTransactions ?? null, nestingLevel: nestingLevel ?? null }, chainedFrom, typeof stopOnFirstError === 'boolean' ? { stopOnFirstError } : undefined);
             return { success: true, message: 'Bulk execution started successfully' };
         } catch (error) {
             console.error('❌ Bulk load execution failed:', error);

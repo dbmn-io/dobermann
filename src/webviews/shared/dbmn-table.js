@@ -30,9 +30,17 @@
  *   width: 160              its starting width in px (the screen measured what it needs: a status of
  *                           several tags), never stretched; the user's resize still wins
  *   wrap: true              its cells wrap onto a second line rather than widening it (a status of DIFF and Missing)
- *   group: { id, name, head(th) }   consecutive columns with one group share a heading over theirs (a field,
+ *   group: { id, name, head(th), count }   consecutive columns with one group share a heading over theirs (a field,
  *                           and BL, C1, C2 under it): the group moves and is removed as one, and its
  *                           right edge sizes its columns evenly; each column under it sorts and resizes on its own
+ *   count: { n, on, title } a count pill on the heading (James, 2026-11-24: Query's DIFF counts, Validate's invalid
+ *                           counts, one piece): a click asks for only those rows, again for all, as
+ *                           dbmn-table-count { id, on }; a funnel after it while on. The screen filters
+ *   filter: { label, items: [{ value, label | node(), count, on }] }   the heading's ▾ opens the shared filter menu
+ *                           (a tick per line to show it, Only beside each, its count): each change is
+ *                           dbmn-table-filter { id, values } (null: every line); a funnel after the ▾ while any
+ *                           line is off. A Status column's filter (DIFF / SAME, INVALID / VALID). The screen filters
+ *   table.clearFilters()    every count off and every filter back to all, as those events (a toolbar's funnel)
  *   head(th)                adds what the screen wants to the column's heading (a count, a filter)
  *   sortable: false         no sort for it (a status the screen filters instead)
  *   removable: false        it stays (no x, no Remove): the screen's own column (the Console's Reason)
@@ -406,7 +414,16 @@
             if (window.Icons) window.Icons.setIcon(glass, on ? 'loader' : 'search');
         }
 
-        redrawHeads() { if (this._built) this._heads(); }
+        redrawHeads() {
+            if (!this._built) return;
+            this._heads();
+            // (an open filter menu takes the new counts, under its arrow drawn again)
+            if (this._filterOpen) {
+                const th = this._head && this._head.querySelector(`th[data-col="${CSS.escape(this._filterOpen)}"] .dbmn-head-btn`);
+                if (th) { this._filterAnchor = th; th.setAttribute('aria-expanded', 'true'); }
+                this._drawFilter();
+            }
+        }
         /**
          * A column brought into view, sideways (James, 2026-11-23: a column a search adds is
          * "brought into focus… scroll to right"). `id`: a column, or a key inside one (`data.lines.lot`
@@ -1074,6 +1091,130 @@
             return new Set(matcher.columnsIn(text, this._searchColumns()));
         }
         /** A column's heading funnel: the search filters it; a click takes its terms out of the box. */
+        /* ---------- A heading's count and filter (one piece for Query's DIFF counts and Validate's invalid ones) ---------- */
+
+        _headButton(className, icon, title, onClick) {
+            const b = make('button', className + ' icon');
+            b.type = 'button';
+            b.dataset.icon = icon;
+            if (window.Icons) window.Icons.setIcon(b, icon);
+            b.title = title;
+            b.setAttribute('aria-label', title);
+            // (never the start of a drag, a sort or the heading's menu)
+            ['pointerdown', 'mousedown'].forEach(type => b.addEventListener(type, event => event.stopPropagation()));
+            b.addEventListener('click', event => { event.stopPropagation(); onClick(b); });
+            return b;
+        }
+        _countHead(th, column, name) {
+            const c = column.count;
+            const n = Number(c.n) || 0;
+            if (!n && !c.on) return;
+            const box = make('span', 'dbmn-head-filter');
+            const pill = make('button', 'tab-count dbmn-head-count' + (c.on ? ' is-active' : ''), count(n));
+            pill.type = 'button';
+            pill.title = c.title || (c.on ? `Showing only these rows in ${name}: click for every row` : `${count(n)} in ${name}: click to show only them`);
+            ['pointerdown', 'mousedown'].forEach(type => pill.addEventListener(type, event => event.stopPropagation()));
+            pill.addEventListener('click', event => {
+                event.stopPropagation();
+                this.dispatchEvent(new CustomEvent('dbmn-table-count', { bubbles: true, detail: { id: column.id, on: !c.on } }));
+            });
+            box.append(pill);
+            if (c.on) box.append(this._headButton('dbmn-head-funnel', 'funnel', `Show every row in ${name}`, () =>
+                this.dispatchEvent(new CustomEvent('dbmn-table-count', { bubbles: true, detail: { id: column.id, on: false } }))));
+            (th.querySelector('.column-name') || th).append(box);
+        }
+        _filterHead(th, column, name) {
+            const f = column.filter;
+            const label = f.label || name;
+            const filtering = (f.items || []).some(i => !i.on);
+            // (always shown beside the name, as Query's Status arrow is: not in the actions that show on hover)
+            const box = make('span', 'dbmn-head-filter');
+            const arrow = this._headButton('dbmn-head-btn', 'chevron-down', filtering ? `Filter ${label} (active filter)` : `Filter ${label}`, b => this._openFilter(column.id, b));
+            arrow.setAttribute('aria-haspopup', 'dialog');
+            arrow.setAttribute('aria-expanded', String(this._filterOpen === column.id));
+            box.append(arrow);
+            if (filtering) box.append(this._headButton('dbmn-head-funnel', 'funnel', `Clear the ${label} filter`, () => this._sendFilter(column.id, null)));
+            (th.querySelector('.column-name') || th).after(box);
+        }
+        _sendFilter(id, values) {
+            this.dispatchEvent(new CustomEvent('dbmn-table-filter', { bubbles: true, detail: { id, values } }));
+        }
+        /** The shared filter menu: Show (a tick) and Only (a radio) per line, its label or pill, its count. */
+        _openFilter(id, anchor) {
+            if (this._filterOpen === id) { this._closeFilter(); return; }
+            this._closeFilter();
+            this._filterOpen = id;
+            const menu = this._filterMenu || (this._filterMenu = make('div', 'dbmn-filter-menu'));
+            menu.setAttribute('role', 'dialog');
+            document.body.append(menu);
+            this._filterAnchor = anchor;
+            anchor.setAttribute('aria-expanded', 'true');
+            this._drawFilter();
+            const r = anchor.getBoundingClientRect();
+            menu.style.left = Math.max(4, Math.min(window.innerWidth - menu.offsetWidth - 4, r.left)) + 'px';
+            menu.style.top = (r.bottom + 4) + 'px';
+            this._filterAway = event => {
+                if (event.type === 'keydown' && event.key !== 'Escape') return;
+                if (event.type === 'mousedown' && (menu.contains(event.target) || anchor.contains(event.target))) return;
+                this._closeFilter();
+            };
+            document.addEventListener('mousedown', this._filterAway, true);
+            document.addEventListener('keydown', this._filterAway, true);
+        }
+        _closeFilter() {
+            if (this._filterMenu) this._filterMenu.remove();
+            if (this._filterAnchor) this._filterAnchor.setAttribute('aria-expanded', 'false');
+            if (this._filterAway) { document.removeEventListener('mousedown', this._filterAway, true); document.removeEventListener('keydown', this._filterAway, true); }
+            this._filterOpen = null; this._filterAnchor = null; this._filterAway = null;
+        }
+        _drawFilter() {
+            const column = this._all.find(c => c.id === this._filterOpen);
+            if (!column || !column.filter || !this._filterMenu) { this._closeFilter(); return; }
+            const items = column.filter.items || [];
+            const onCount = items.filter(i => i.on).length;
+            const head = make('div', 'dbmn-filter-line dbmn-filter-heading');
+            head.append(make('span', '', 'Show'), make('span', '', 'Only'));
+            const lines = items.map((item, k) => {
+                const alone = onCount === 1 && item.on;
+                const name = item.label || String(item.value);
+                const row = make('div', 'dbmn-filter-line');
+                const tick = make('label', 'dbmn-filter-control dbmn-filter-tick');
+                tick.title = `Show ${name}`;
+                const box = make('input');
+                box.type = 'checkbox';
+                box.id = `${this._uid || (this._uid = 't' + Math.random().toString(36).slice(2, 8))}-f-${k}`;
+                box.checked = !!item.on;
+                box.addEventListener('change', () => {
+                    const values = items.filter(i => (i === item ? box.checked : i.on)).map(i => i.value);
+                    this._sendFilter(column.id, values.length === items.length ? null : values);
+                });
+                tick.append(box);
+                const only = make('label', 'dbmn-filter-control dbmn-filter-only' + (alone ? ' is-alone' : ''));
+                only.title = alone ? 'Show every line again' : `Only ${name}`;
+                const radio = make('input');
+                radio.type = 'radio';
+                radio.name = `${box.id}-only`;
+                radio.checked = alone;
+                radio.setAttribute('aria-label', only.title);
+                radio.addEventListener('click', () => this._sendFilter(column.id, alone ? null : [item.value]));
+                only.append(radio);
+                const label = make('label', 'dbmn-filter-name');
+                label.htmlFor = box.id;
+                label.title = tick.title;
+                if (typeof item.node === 'function') label.append(item.node()); else label.textContent = name;
+                row.append(tick, only, label, make('span', 'dbmn-filter-count', item.count === undefined ? '' : typeof item.count === 'number' ? count(item.count) : String(item.count)));
+                return row;
+            });
+            this._filterMenu.replaceChildren(head, ...lines);
+        }
+        /** Every count off and every filter back to all (a toolbar's funnel): the screen hears each as its own event. */
+        clearFilters() {
+            this._all.forEach(c => {
+                if (c.count && c.count.on) this.dispatchEvent(new CustomEvent('dbmn-table-count', { bubbles: true, detail: { id: c.id, on: false } }));
+                if (c.filter && (c.filter.items || []).some(i => !i.on)) this._sendFilter(c.id, null);
+            });
+        }
+
         _funnel(column, name) {
             const b = make('button', 'dbmn-col-funnel icon');
             b.type = 'button';
@@ -1203,6 +1344,8 @@
                 content.append(actions);
                 th.append(content);
                 if (head) th.append(head.edge());
+                if (column.filter) this._filterHead(th, column, name);
+                if (column.count) this._countHead(th, column, name);
                 if (typeof column.head === 'function') column.head(th);
                 return th;
             };
@@ -1226,6 +1369,8 @@
                 content.append(label, actions);
                 th.append(content);
                 if (head) th.append(head.edge());
+                // (a group's count: Side by side's field heading over its runs; the event names the group's id)
+                if (g.count) this._countHead(th, g, g.name || g.id);
                 if (typeof g.head === 'function') g.head(th);
                 top.append(th);
                 unit.columns.forEach(({ column }) => {

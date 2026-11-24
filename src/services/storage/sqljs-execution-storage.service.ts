@@ -3,7 +3,7 @@
 import initSqlJs, { Database as SqlJsDatabase } from 'sql.js';
 import * as path from 'path';
 import * as fs from 'fs';
-import { IExecutionStorage, BatchMemberFile, BatchMemberLogRow } from './execution-storage.interface';
+import { IExecutionStorage, BatchMemberFile, BatchMemberLogRow, BatchMemberRequestRow } from './execution-storage.interface';
 import { ExecutionLinkInput, ExecutionLinks, ExecutionLinkEnd } from '../chain/chain-types';
 import {
     ExecutionMetadata,
@@ -1683,6 +1683,41 @@ export class SqlJsExecutionStorage implements IExecutionStorage {
                 startedAt: when(r.started_at), completedAt: when(r.completed_at),
                 httpStatus: r.http_status === null || r.http_status === undefined ? undefined : Number(r.http_status),
                 httpStatusText: text(r.http_status_text), errorMessage: text(r.error_message)
+            });
+        }
+        stmt.free();
+        return rows;
+    }
+
+    /** #466: a batch's requests, only the columns the Requests tab reads (a whole record each was ~200 ms for 5,000). */
+    async getBatchMemberRequestRows(batchId: string): Promise<BatchMemberRequestRow[]> {
+        if (!this.db) throw new Error('Database not initialized');
+        const stmt = this.db.prepare(`
+            SELECT id, status, http_status, http_status_text, run_time, started_at, row_start, rows, endpoint_method, endpoint_path,
+                   request_headers, request_query_params, error_message, reprocess_count, log_path, request_file, response_file
+            FROM executions
+            WHERE batch_id = $batch_id AND execution_type = 'batch_member'
+            ORDER BY created_at ASC, id ASC
+        `);
+        stmt.bind({ $batch_id: batchId });
+        const rows: BatchMemberRequestRow[] = [];
+        const when = (v: unknown) => (v === null || v === undefined || v === '' ? undefined : new Date(typeof v === 'number' ? v : String(v)));
+        const text = (v: unknown) => (v === null || v === undefined || v === '' ? undefined : String(v));
+        const num = (v: unknown) => (v === null || v === undefined || v === '' ? undefined : Number(v));
+        const record = (v: unknown): Record<string, string> | undefined => {
+            if (typeof v !== 'string' || !v) return undefined;
+            try { const parsed = JSON.parse(v); return parsed && typeof parsed === 'object' ? parsed as Record<string, string> : undefined; } catch { return undefined; }
+        };
+        while (stmt.step()) {
+            const r = stmt.getAsObject() as Record<string, unknown>;
+            rows.push({
+                id: String(r.id), status: String(r.status),
+                httpStatus: num(r.http_status), httpStatusText: text(r.http_status_text), runTime: num(r.run_time),
+                startedAt: when(r.started_at), rowStart: num(r.row_start), rows: text(r.rows),
+                endpointMethod: text(r.endpoint_method), endpointPath: text(r.endpoint_path),
+                requestHeaders: record(r.request_headers), requestQueryParams: record(r.request_query_params),
+                errorMessage: text(r.error_message), reprocessCount: num(r.reprocess_count) ?? 0,
+                logPath: text(r.log_path), requestFile: text(r.request_file), responseFile: text(r.response_file)
             });
         }
         stmt.free();

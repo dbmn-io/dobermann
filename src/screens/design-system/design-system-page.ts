@@ -23,7 +23,7 @@ export function buildDesignSystemPage(asset: AssetUrl): string {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Design system</title>
-    ${sharedStyleLinks(asset, ['atomic', 'core', 'buttons', 'modals', 'tables', 'tabs', 'toast', 'console', 'search', 'data-transformer', 'compare', 'column-drag', 'column-head', 'query', 'dbmn-footer', 'dbmn-table', 'dbmn-log', 'dbmn-name', 'dbmn-functions', 'dbmn-map', 'dbmn-lanes'])}
+    ${sharedStyleLinks(asset, ['atomic', 'core', 'buttons', 'modals', 'tables', 'tabs', 'toast', 'console', 'search', 'data-transformer', 'compare', 'column-drag', 'column-head', 'query', 'dbmn-footer', 'dbmn-table', 'transaction-card', 'dbmn-log', 'dbmn-name', 'dbmn-functions', 'dbmn-map', 'dbmn-lanes'])}
     <link rel="stylesheet" href="${asset('design-system/design-system.css')}">
 </head>
 <body class="editor-slide-in ds-page">
@@ -164,6 +164,13 @@ export function buildDesignSystemPage(asset: AssetUrl): string {
 &lt;div class="dbmn-band"&gt; … name line, lanes, controls … &lt;/div&gt;
 &lt;div class="dbmn-lanes is-centred"&gt; … &lt;/div&gt;          lanes grow from the middle
 &lt;dbmn-footer&gt; … &lt;/dbmn-footer&gt;                       carries the band itself: nothing to add</code></pre>
+        <p><b>The toolbar.</b> A screen's controls above its table (switches, icon toggles, the search box) are one group, centred in the band, 16px apart, with no wide gap between them: the search box has a set width (560px) and does not grow into the room. <code>.dbmn-toolbar</code> on the row; <code>--toolbar-search</code> changes the box's width. Query's Results has it; the Console's toolbar is next.</p>
+        <div class="ds-demo dbmn-band"><div class="dbmn-toolbar" id="dsToolbar">
+            <div class="toggle-group" role="group" aria-label="View"><button type="button" class="toggle-btn active" aria-pressed="true">Side by side</button><button type="button" class="toggle-btn" aria-pressed="false">Compact</button></div>
+            <div class="toggle-group" role="group" aria-label="Columns shown"><button type="button" class="toggle-btn active" aria-pressed="true">All columns</button><button type="button" class="toggle-btn" aria-pressed="false">Differences only</button></div>
+            <div class="search-container"><input type="search" class="search-input" placeholder="Search rows" aria-label="Search rows"></div>
+        </div></div>
+        <pre class="ds-code"><code>&lt;div class="dbmn-toolbar"&gt; switches · icons · &lt;div class="search-container"&gt;…&lt;/div&gt; &lt;/div&gt;   centred as one, 16px apart</code></pre>
 
         <h3>Steps</h3>
         <p>Try it: Next walks on and the highlight slides to the step that takes over; a finished step takes you back. On the last step the results are worked out, then the steps shrink away behind a summary of what is on screen. Click the summary for the steps.</p>
@@ -387,6 +394,44 @@ DbmnContextMenu.show(button, [{ id: 'left', label: 'Left join', detail: 'All of 
 SearchMatcher.attachColumnSuggest({ input, headings, hidden, types, values })   the @ list
 SearchMatcher.renderHighlight(mirror, text, headings, hidden)              the box's colours
 &lt;dbmn-table searchable&gt;  or  table.searchWith(input, mirror)              a table does all three</code></pre>
+        <h3>Transaction <span class="ds-chip is-component">Component</span></h3>
+        <p>One request in full, the same window wherever a request is opened: the Console's Requests (View full transaction) and Run Batch's Review, before anything is sent ("Request #…", Response greyed out). Show picks Input, Request and Response; Body / Details and Body / Headers; ⤢ fills the window with a pane; the search marks what it finds in every pane; ↑ ↓ move to the previous or next request. What is shown stays as it was when it moves. The screen gives it the transaction and its input rows, and its code editor if it has one.</p>
+        <div class="ds-demo ds-row"><button type="button" class="btn btn-secondary" id="dsTxWindow">Open as a window</button><button type="button" class="btn btn-secondary" id="dsTxReady">Show a Ready request</button><span class="form-hint" id="dsTxSaid" role="status"></span></div>
+        <div class="ds-demo ds-tx-demo"><dbmn-transaction id="dsTx"></dbmn-transaction></div>
+        <pre class="ds-code"><code>&lt;dbmn-transaction window&gt;&lt;/dbmn-transaction&gt;        window: over the screen; ✕ and Esc close it
+tx.transaction = { id, n: 2, status: 'error', http: 422, timeMs: 96, sent: '20:14:02', rowStart: 201, rowEnd: 400,
+                   reason, method, url, query, requestHeaders, responseHeaders, requestBody, responseBody,
+                   reprocess: true, logs: true, previous: true, next: true };     responseBody undefined: not sent yet
+tx.input = { columns: ['gtin', …], rows: [[…], …] };
+tx.editor = (container, { pane, text, language }) =&gt; ({ search(text) {}, dispose() {} });   optional (Monaco)
+dbmn-transaction-move { by }   -close   -logs { id }   -reprocess { id }   -copied { what, ok }</code></pre>
+
+        <h3>Run details <span class="ds-chip is-component">Component</span></h3>
+        <p>Where a run went and how it ran: what ⓘ on the run heading opens, in a window. The header values by name (no Organization), the run's other variables with secret ones masked by the host, its threads and error handling, and where it was copied or reprocessed from. It only shows: Threads and Stop on next error are changed in the footer's box, the name on the heading.</p>
+        <div class="ds-demo"><dbmn-run-details id="dsRunDetails"></dbmn-run-details></div>
+        <pre class="ds-code"><code>&lt;dbmn-run-details&gt;&lt;/dbmn-run-details&gt;
+el.details = { name, environment: { name, production }, endpoint: { name, method }, url, kind, executionId, started, durationMs,
+               threads: { current, max }, errorHandling, headers: [{ name, value }], variables: [{ name, value }], lineage };</code></pre>
+
+        <h3>Run heading <span class="ds-chip is-component">Component</span></h3>
+        <p>A run's one line at the top of the Console and of Run Batch: the environment as a link, the run's name renamed in place (the same <code>&lt;dbmn-name&gt;</code> as Query's), ⓘ for where it went and how it ran, and its tabs with their counts. It replaces the Console's heading band and its Settings tab. Colour only where it means something: Completed green, Error red, the other counts neutral; a count that changes pulses once. Try it: click the name, or Count up.</p>
+        <div class="ds-demo"><dbmn-run-heading id="dsRunHeading"></dbmn-run-heading>
+            <div class="ds-row"><button type="button" class="btn btn-secondary" id="dsRunCount">Count up</button><span class="form-hint" id="dsRunSaid" role="status"></span></div></div>
+        <pre class="ds-code"><code>&lt;dbmn-run-heading&gt;&lt;/dbmn-run-heading&gt;
+heading.environment = { name: 'DBMN Local' };   heading.name = 'Inventory-Errors 20 Nov 20:14';
+heading.tabs = [{ id: 'input', label: 'Input', count: 1000 }, { id: 'requests', label: 'Requests', count: 5 },
+                { id: 'success', label: 'Completed', count: 4, tone: 'ok' }, { id: 'errors', label: 'Error', count: 1, tone: 'error' }];
+heading.active = 'requests';
+dbmn-run-heading-tab { id }   dbmn-run-heading-info   dbmn-run-heading-environment   dbmn-name-change { name }</code></pre>
+
+        <h3>Production guard line <span class="ds-chip is-component">Component</span></h3>
+        <p>What a window that sends says before it sends to production: one line, and when it asks, the Warning frequency (warn every time, or not again for 15, 30 or 60 minutes). Run Batch's Execute window and Run API's dialog show the same one, from the guard the host works out. While a frequency picked earlier still runs, the line shows and nothing is asked.</p>
+        <div class="ds-demo ds-row"><dbmn-guard-line id="dsGuard" class="ds-guard"></dbmn-guard-line></div>
+        <pre class="ds-code"><code>&lt;dbmn-guard-line&gt;&lt;/dbmn-guard-line&gt;
+line.guard = { environment: 'Acme Prod', line: 'Acme Prod is a production environment.', ask: true,
+               frequency: { label: 'Warning frequency', value: '0', options: [{ value: '0', label: 'Warn me every time' }, …] } };
+line.minutes           what was picked (0: every time), or null when nothing was asked: send { production: { minutes } }</code></pre>
+
         <h3>Saved searches <span class="ds-chip is-component">Component</span></h3>
         <p>A star in the search box at its right end, the same in every screen (James, 2026-11-23: "have it IN to search box as it is in Query", Lucide's star): outlined, filled while the box holds a saved search, its name in the hover. A saved search is the box's text under a name, nothing else. Picking one fills the box and searches as if typed, so an <code>@column</code> the table doesn't show is added, as typing it adds it; it never takes a column away. The button names the saved search the box holds. Each screen keeps its searches where its table is kept: Query's with the query, the Console's with the tab's View, a lookup table's in its file, Logs' and the Hub lists' in their settings. Try it: type a search, then the star › + Save this search.</p>
         <div class="ds-demo ds-row">
@@ -428,6 +473,17 @@ orders.addEventListener('dbmn-table-shown', e =&gt; …e.detail.shown, e.detail.
 
 --table-height: 320px                      on the element: how tall before the rows scroll</code></pre>
         <p class="form-hint">It is made from the shared pieces the three results tables use: <code>search-matcher.js</code>, <code>column-head.js</code>, <code>column-drag.js</code>, <code>virtual-window.js</code> and <code>cell-detail.js</code>. Typing in the search box is never held up: over a few thousand rows the search waits for a pause, then runs a little at a time.</p>
+
+        <h3>A count and a filter on a heading</h3>
+        <p>One piece for Query's DIFF counts and Validate's invalid ones, and for a Status column's filter. A count on a heading shows only its rows; again, every row; a funnel while it's on. A Status column's ▾ opens Show and Only per line with their counts, a funnel while any line is off. The table draws them and says what was clicked; the screen filters (here, the page). Try it: the 2 on qty, then Status ▾ › Only INVALID.</p>
+        <div class="ds-demo">
+            <dbmn-table id="dsCounts" label="Rows to send"></dbmn-table>
+        </div>
+        <pre class="ds-code"><code>{ id: 'qty', name: 'qty', count: { n: 2, on: false } }                 a pill: dbmn-table-count { id, on }
+{ id: 'status', name: 'Status', pinned: true,
+  filter: { label: 'Status', items: [{ value: 'invalid', label: 'INVALID', count: 3, on: true }, …] } }
+                                                                   ▾ menu: dbmn-table-filter { id, values | null }
+table.clearFilters();                                              every count off, every filter back to all</code></pre>
 
         <h3>Rows that stay with the screen</h3>
         <p>A hundred thousand rows the page never holds: the table asks for the 200 it needs as they scroll into view, and a row not in yet is an empty row of the same height. Searching and sorting are the screen's (here, a made-up one that answers after a moment): the table says what was asked and asks again, and a sort's icon is a clock until the rows land. The search box is the screen's own, with the table's column suggestions. What is moved, removed, resized or sorted is told to the screen, to save and give back.</p>
@@ -644,6 +700,10 @@ log.addEventListener('dbmn-log-open', e =&gt; …e.detail.open…);   // a line'
     ${script('shared/dbmn-footer.js')}
     ${script('shared/dbmn-name.js')}
     ${script('shared/dbmn-saved-searches.js')}
+    ${script('shared/dbmn-guard-line.js')}
+    ${script('shared/dbmn-run-heading.js')}
+    ${script('shared/dbmn-transaction.js')}
+    ${script('shared/dbmn-run-details.js')}
     ${script('design-system/design-system.js')}
 </body>
 </html>`;

@@ -22,7 +22,7 @@ async function open(p, width) {
         const box = el => { const b = el.getBoundingClientRect(); return { left: b.left, right: b.right, width: b.width }; };
         const foot = document.querySelector('dbmn-footer');
         const kids = [...foot.children].filter(k => k.getBoundingClientRect().width > 0).map(k => k.getBoundingClientRect());
-        return { tabs: box(document.getElementById('report-tabs')), toolbar: box(document.getElementById('report-toolbar')),
+        return { tabs: box(document.getElementById('run-heading'))   /* (#464: the run heading holds the tabs) */, toolbar: box(document.getElementById('report-toolbar')),
             foot: { left: Math.min(...kids.map(k => k.left)), right: Math.max(...kids.map(k => k.right)) }, page: document.documentElement.scrollWidth };
     });
 }

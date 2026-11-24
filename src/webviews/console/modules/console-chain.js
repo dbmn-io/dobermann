@@ -68,14 +68,22 @@
         return tab;
     }
 
-    /** createDynamicTabs, right after it empties the tab bar: Links goes first. */
+    /** createDynamicTabs, as it starts the run heading's tabs (a list): Links goes first. */
     function decorateTabs(container, switchTo) {
         state.switchTo = switchTo;
         if (!state.requested) requestLinks();
+        if (Array.isArray(container)) { if (linkCount() > 0) container.push({ id: 'links', label: 'Links', count: linkCount() }); return; }
         if (container && linkCount() > 0) container.appendChild(makeTab());
     }
 
     function syncTab() {
+        // (the run heading, <dbmn-run-heading>: Links first while there are links, its count kept)
+        const heading = document.getElementById('run-heading');
+        if (heading && Array.isArray(heading.tabs) && heading.tabs.length) {
+            const others = heading.tabs.filter(t => t.id !== 'links');
+            heading.tabs = linkCount() > 0 ? [{ id: 'links', label: 'Links', count: linkCount() }, ...others] : others;
+            return;
+        }
         const bar = document.getElementById('report-tabs');
         if (!bar) return;
         const existing = bar.querySelector('.tab-item[data-tab="links"]');
@@ -176,7 +184,9 @@
             if (el) el.classList.add('hidden');
             return false;
         }
-        document.querySelectorAll('.tab-item').forEach(t => t.classList.toggle('active', t.dataset.tab === 'links'));
+        const heading = document.getElementById('run-heading');
+        if (heading) heading.active = 'links';
+        else document.querySelectorAll('.tab-item').forEach(t => t.classList.toggle('active', t.dataset.tab === 'links'));
         const toolbar = document.getElementById('report-toolbar');
         if (toolbar) toolbar.style.display = 'none';
         document.getElementById('table-container')?.classList.add('hidden');

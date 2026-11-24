@@ -6,6 +6,7 @@
  * what only a host can do (run, sign in, files, VS Code commands); a host leaves out what it
  * doesn't have.
  */
+import type { ReviewHandoff } from '../run-batch/review-handoff';
 import type { WhatsNew } from '../../services/release-notes/whats-new';
 import type { APIEndpointConfig } from '../../apiConfigManager';
 import type { APIEndpointManager } from '../../apiEndpointManager';
@@ -50,11 +51,15 @@ export interface ConsoleTab extends HubTab {
     status?: string;
     /** The endpoint that ran: its Run Batch tab gives way to the Console. */
     endpointId?: string;
+    /** #470: taking a Run Batch tab's place, it opens where Review was (its Requests tab, search, scroll, pick). */
+    carryOn?(review: ReviewHandoff): void;
 }
 
 export interface BatchTab extends HubTab {
     /** GitHub Issue #247: chain new rows into an open Run Batch. */
     applyChain?(chain: ChainHandoff): void;
+    /** #470: what Review showed when Execute was pressed, for the Console that takes this tab's place. */
+    handoff?(): ReviewHandoff | undefined;
 }
 
 /** Builds the screens the Hub opens as tabs, each wired to the host's services. */

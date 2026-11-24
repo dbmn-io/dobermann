@@ -528,13 +528,28 @@ export class HubController {
         // after the last. (Not 250 ms after the last: a running batch changes every few ms, so
         // History and the header's "2 paused" waited for everything to stop. Found 2026-11-12.)
         // (No disposable; the listener just posts to a page that may be gone.)
-        executions?.metadata.onExecutionChanged.event(() => {
+        executions?.metadata.onExecutionChanged.event(execution => {
+            this.followRunName(execution);
             if (this.transactionsTimer) return;
             this.transactionsTimer = setTimeout(() => {
                 this.transactionsTimer = undefined;
                 void refresh();
             }, 250);
         });
+    }
+
+    /** The names open Console tabs were last given: a run's change renames its tab only when its name changed. */
+    private readonly consoleTabNames = new Map<string, string>();
+
+    /** A run renamed (#464: in place on its Console, or anywhere): its open Console tab says the new name. */
+    private followRunName(execution: { id?: string; batchConfiguration?: { name?: string }; endpointName?: string; endpointPath?: string } | undefined): void {
+        if (!execution?.id) return;
+        const tabId = `console:${execution.id}`;
+        if (!this.tabs.has(tabId)) return;
+        const name = execution.batchConfiguration?.name?.trim() || execution.endpointName || execution.endpointPath;
+        if (!name || this.consoleTabNames.get(tabId) === name) return;
+        this.consoleTabNames.set(tabId, name);
+        this.session.post({ type: 'embeddedTabName', tabId, name });
     }
 
     private announceStartupRecovery(): void {
@@ -1402,7 +1417,7 @@ export class HubController {
         const name = cleanName(raw, 100);
         const metadata = this.ports.executions?.metadata;
         if (!name || !metadata?.updateExecution) return;
-        if (this.openIn('console', id)) { this.ports.toast.info('Its Console is open: rename it in the Console\'s Settings.'); return; }
+        if (this.openIn('console', id)) { this.ports.toast.info('Its Console is open: rename it on the Console, by its name.'); return; }
         try {
             const run = await metadata.getExecution(id);
             if (!run) return;
@@ -1458,10 +1473,17 @@ export class HubController {
                 this.peekProgress(tabId, msg);
                 return true;
             }));
-            if (tab.endpointId && this.tabs.has(`batch:${tab.endpointId}`)) {
-                this.closeTabFromHost(`batch:${tab.endpointId}`);
+            // #470: the endpoint's Run Batch tab becomes the run's Console: the page puts the Console in its place (its
+            // slot and whether it was the one shown) and drops the Run Batch page once the Console is drawn. One tab from
+            // the file to the finished run; the Run Batch screen is gone (no way back to Review for a batch that started)
+            const replaces = tab.endpointId && this.tabs.has(`batch:${tab.endpointId}`) ? `batch:${tab.endpointId}` : undefined;
+            // (and it opens where Review was: the Requests tab, its search, scroll and pick, so the swap shows no jump)
+            if (replaces) {
+                const review = (this.tabs.get(replaces)?.tab as BatchTab | undefined)?.handoff?.();
+                if (review) tab.carryOn?.(review);
             }
             this.tabs.set(tabId, { tab, onReady: tab.ready?.bind(tab) });
+            if (tab.name) this.consoleTabNames.set(tabId, tab.name);
             this.session.post({
                 type: 'mountEmbeddedTab',
                 tabId,
@@ -1469,8 +1491,10 @@ export class HubController {
                 refId: executionId,
                 name: tab.name,
                 status: tab.status,
-                html: tab.html
+                html: tab.html,
+                ...(replaces ? { replaces } : {})
             });
+            if (replaces) this.closeTab(replaces);
         } finally {
             this.opening.delete(tabId);
         }

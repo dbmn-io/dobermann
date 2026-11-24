@@ -38,6 +38,27 @@ export interface BatchMemberLogRow {
     errorMessage?: string;
 }
 
+/** A batch's request as the Console's Requests tab reads it (#466): its figures and file paths, no more. */
+export interface BatchMemberRequestRow {
+    id: string;
+    status: string;
+    httpStatus?: number;
+    httpStatusText?: string;
+    runTime?: number;
+    startedAt?: Date;
+    rowStart?: number;
+    rows?: string;
+    endpointMethod?: string;
+    endpointPath?: string;
+    requestHeaders?: Record<string, string>;
+    requestQueryParams?: Record<string, string>;
+    errorMessage?: string;
+    reprocessCount?: number;
+    logPath?: string;
+    requestFile?: string;
+    responseFile?: string;
+}
+
 export interface IExecutionStorage {
     /**
      * Initialize the storage (create DB, load data, etc.)
@@ -210,6 +231,8 @@ export interface IExecutionStorage {
 
     /** Dobermann issue 7: `limit` of a batch's requests from `offset`, in the order they were made, with only what a log line needs. */
     getBatchMemberLogRows?(batchId: string, offset: number, limit: number): Promise<BatchMemberLogRow[]>;
+    /** #466: every request of a batch, only what the Requests tab reads (no endpoint config, mappings or plans). */
+    getBatchMemberRequestRows?(batchId: string): Promise<BatchMemberRequestRow[]>;
 
     /** GitHub Issue #247: record that one run's rows became another run's input. */
     addExecutionLink(link: ExecutionLinkInput): Promise<string>;

@@ -66,6 +66,39 @@ function suppress(envId: string, minutes: number): void {
     }
 }
 
+/**
+ * #470: the guard as data, for a page's own window (Run Batch's Execute confirmation folds it in; Run API's modal is
+ * built from the same): what to say, and the Warning frequency to offer. Null when the environment is not
+ * production. `ask` is false while a suppression window chosen earlier is still running: the window then says
+ * the line only, with nothing to choose.
+ */
+export interface ProductionGuard {
+    environment: string;
+    line: string;
+    ask: boolean;
+    frequency: { label: string; value: string; options: Array<{ value: string; label: string }> };
+    confirmLabel: string;
+}
+
+export function productionGuardFor(env: ProductionGuardEnv | undefined | null, action: string): ProductionGuard | null {
+    if (!env || !isProductionEnvironment(env)) return null;
+    return {
+        environment: env.name,
+        // (James's one short line, the mock's: the window it sits in says what is about to run)
+        line: `${env.name} is a production environment.`,
+        ask: !isSuppressed(env.id),
+        frequency: { label: 'Warning frequency', value: '0', options: SUPPRESS_OPTIONS.map(o => ({ ...o })) },
+        confirmLabel: 'Execute on production'
+    };
+}
+
+/** #470: the Warning frequency a page's window chose (minutes: 0, 15, 30 or 60), applied for that environment. */
+export function applyProductionChoice(env: ProductionGuardEnv, minutes: number): void {
+    if (!isProductionEnvironment(env)) return;
+    if (!SUPPRESS_OPTIONS.some(o => Number(o.value) === minutes)) return;
+    suppress(env.id, minutes);
+}
+
 /** Clear any active suppression (used by tests / env deletion cleanup). */
 export function clearProductionSuppression(envId?: string): void {
     if (envId) {
@@ -95,8 +128,8 @@ export async function confirmProductionExecution(
     action: string,
     host?: ModalHost
 ): Promise<boolean> {
-    if (!isProductionEnvironment(env)) return true;
-    if (isSuppressed(env.id)) return true;
+    const guard = productionGuardFor(env, action);
+    if (!guard || !guard.ask) return true;
 
     const bridge: Bridge | undefined = host
         ? (spec) => host.showModal(spec)
@@ -109,18 +142,17 @@ export async function confirmProductionExecution(
 
     const result = await bridge({
         title: 'Production environment',
-        body: `You are about to run "${action}" against the PRODUCTION environment "${env.name}".`
-            + ' This sends live requests to production. Continue?',
+        body: guard.line,
         fields: [{
             id: 'suppress',
             type: 'radio',
-            label: 'Warning frequency',
-            value: '0',
-            options: SUPPRESS_OPTIONS
+            label: guard.frequency.label,
+            value: guard.frequency.value,
+            options: guard.frequency.options
         }],
         actions: [
             { id: 'cancel', label: 'Cancel', variant: 'secondary' },
-            { id: 'execute', label: 'Execute on production', variant: 'danger' }
+            { id: 'execute', label: guard.confirmLabel, variant: 'danger' }
         ],
         dismissible: true,
         size: 'sm'
@@ -128,7 +160,6 @@ export async function confirmProductionExecution(
 
     if (result.actionId !== 'execute') return false;
 
-    const minutes = parseInt(result.fields.suppress || '0', 10);
-    if (!Number.isNaN(minutes)) suppress(env.id, minutes);
+    applyProductionChoice(env, parseInt(result.fields.suppress || '0', 10));
     return true;
 }

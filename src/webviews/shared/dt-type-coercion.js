@@ -226,7 +226,9 @@
                         };
                     }
 
-                    getVscode().postMessage(executionMessage);
+                    // (#470: through the one Execute confirmation, run-batch-confirm.js, when the page has it)
+                    if (window.RunBatchConfirm) window.RunBatchConfirm.send(executionMessage, m => getVscode().postMessage(m));
+                    else getVscode().postMessage(executionMessage);
                 }
             }
         }

@@ -2501,6 +2501,7 @@ html[data-agent-connection="connected"] .agent-link {
 .dbmn-toolbar { display: flex; align-items: center; justify-content: center; gap: 16px; flex-wrap: nowrap; min-width: 0; }
 /* (doubled class: wins over a screen's own `.x .search-container { flex: 1 }`, e.g. compare.css's) */
 .dbmn-toolbar.dbmn-toolbar > .search-container { flex: 0 1 var(--toolbar-search, 560px); min-width: 140px; margin: 0; }
-/* The band as padding, for an element that is its own scroll area: it stays full width, its scrollbar at the window's
-   edge; --band-pad is the screen's own side padding; !important because the screens' padding rules are by id */
+/* .dbmn-band-pad: the band as padding, for an element that is its own scroll area (Run Batch's steps): it stays the
+   window's width, its scrollbar at the window's edge, and its contents sit in the band. --band-pad is the screen's own
+   side padding (20px unless set). (!important: the screens' own padding rules are by id) */
 .dbmn-band-pad { padding-inline: max(var(--band-pad, 20px), calc((100% - var(--dbmn-band, 1280px)) / 2 + var(--band-pad, 20px))) !important; box-sizing: border-box; }

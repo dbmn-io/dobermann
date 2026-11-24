@@ -220,8 +220,13 @@
         ['Rename dialog', 'Right-click → Rename in the Hub\'s lists: reports, endpoints, environments, runs', M, 'Hub lists', 'hub/hub-tabs.js (askRename)'],
         ['Tabs in a screen', 'A screen\'s own tabs (Environment, Console)', S, 'Environment, Console', 'shared/tabs.css'],
 
-        ['<dbmn-table>', 'A table of rows: search, sort, move, resize, only the rows in view drawn; rows the page holds, or asked for as they scroll; hidden characters shown or not', C, 'Query, Console, Run Batch (Validate), the request card\'s INPUT rows, Design system, <dbmn-log>', 'shared/dbmn-table.js'],
-        ['Request card', 'One request: its header, the INPUT rows behind it, Body or Details, and the response. To become one component; built twice today (the Console, Run Batch\'s Review), the INPUT rows already shared', P, 'Console (Raw tab, Raw window), Run Batch (Review)', 'console/modules/raw-tab-handler.js, shared/request-preview.js'],
+        ['<dbmn-table>', 'A table of rows: search, sort, move, resize, only the rows in view drawn; rows the page holds, or asked for as they scroll; hidden characters shown or not; a count and a filter on a heading (count, filter)', C, 'Query, Console, Run Batch (Validate), the request card\'s INPUT rows, Design system, <dbmn-log>', 'shared/dbmn-table.js'],
+        ['Request card', 'One request: its header, the INPUT rows behind it, Body or Details, and the response. Being replaced by <dbmn-transaction> (the Requests tab now; Raw\'s card and Review\'s preview when they move)', R, 'Console (Raw tab, Raw window), Run Batch (Review)', 'console/modules/raw-tab-handler.js, shared/request-preview.js'],
+        ['<dbmn-transaction>', 'One request in full: its reason, Input rows, Request (Body, Details), Response (Body, Headers), search, copy, fill the window, Logs, Reprocess; ↑ ↓ to the next. Replaces the request card', C, 'Design system; Console (Requests) and Run Batch (Review) next (#467)', 'shared/dbmn-transaction.js, shared/transaction-card.css'],
+        ['<dbmn-view-editor>', 'Edit a View: its name, the columns picked from a tree, their order, the rows they are read from; Save, Save As, Delete (#468)', P, 'Console (Completed, Error, Requests)', 'shared/dbmn-view-editor.js'],
+        ['<dbmn-run-heading>', 'A run\'s one line: the environment as a link, its name renamed in place, ⓘ for its details, the tabs with their counts (a change pulses once)', C, 'Design system; Console and Run Batch next (#464, #470)', 'shared/dbmn-run-heading.js, shared/tabs.css'],
+        ['<dbmn-run-details>', 'Where a run went and how it ran: the window ⓘ opens on the run heading (headers by name, variables masked, threads, error handling, lineage)', C, 'Design system; Console next (#464)', 'shared/dbmn-run-details.js, shared/modals.css'],
+        ['<dbmn-guard-line>', 'The production guard\'s line, and its Warning frequency when it asks', C, 'Run Batch (Execute), Run API', 'shared/dbmn-guard-line.js'],
         ['<dbmn-log>', 'Log lines as a table: the newest in view, followed until you scroll up', C, 'Logs', 'shared/dbmn-log.js'],
         ['<dbmn-level>', 'How serious a log line is: an icon and a word', C, 'Logs, <dbmn-log>', 'shared/dbmn-level.js'],
         ['Rows inside a row', 'A list of records in a cell, opened inside it, with the screen\'s own buttons beside it (part of <dbmn-table>)', C, 'Console, Design system', 'shared/dbmn-table.js'],
@@ -414,6 +419,121 @@
             on.setAttribute('aria-pressed', pressed() ? 'false' : 'true');
             table.specialCharacters = pressed();
         });
+    }
+
+    /* ── One request in full: a sent one with an error, and a Ready one (Review) ── */
+    function drawTransaction() {
+        const tx = $('dsTx');
+        if (!tx) return;
+        const items = from => Array.from({ length: 3 }, (_, i) => ({ gtin: `000123456${String(from + i).padStart(5, '0')}`, sku: `SKU-WOOF-002-00${i + 1}`, qty: 1428 - i * 317, uom: i === 1 ? 'BOX' : 'EA' }));
+        const input = { columns: ['gtin', 'sku', 'qty', 'uom'], rows: items(201).map(r => [r.gtin, r.sku, String(r.qty), r.uom]) };
+        const sent = {
+            id: 'tx-2', n: 2, status: 'error', http: 422, httpText: 'Unprocessable Content', timeMs: 96, sent: '20:14:02', rowStart: 201, rowEnd: 203,
+            reason: 'violates check constraint "uom_check"', method: 'POST', url: 'http://127.0.0.1:54321/functions/v1/playground/inventory',
+            query: [{ name: 'upsert', value: 'true' }], requestHeaders: [{ name: 'Content-Type', value: 'application/json' }, { name: 'org', value: 'WOOF' }],
+            responseHeaders: [{ name: 'content-type', value: 'application/json' }, { name: 'x-request-id', value: '9e3779b1' }],
+            requestBody: JSON.stringify(items(201)), responseBody: JSON.stringify({ code: '23514', error: 'violates check constraint "uom_check"', row: 2 }),
+            reprocess: true, logs: true, previous: true, next: true
+        };
+        const ready = { id: 'rq-2', n: 2, status: 'ready', rowStart: 201, rowEnd: 203, method: 'POST', url: '/functions/v1/playground/inventory',
+            requestHeaders: sent.requestHeaders, requestBody: sent.requestBody, previous: true, next: true };
+        let isReady = false;
+        const show = () => { tx.transaction = isReady ? ready : sent; tx.input = input; };
+        show();
+        const said = $('dsTxSaid');
+        const say = text => { if (said) said.textContent = text; };
+        tx.addEventListener('dbmn-transaction-move', e => say(`Move ${e.detail.by > 0 ? 'down' : 'up'}: the screen gives the next one`));
+        tx.addEventListener('dbmn-transaction-logs', () => say('Logs: the screen opens this request\'s logs'));
+        tx.addEventListener('dbmn-transaction-reprocess', () => say('Reprocess: the screen asks the host'));
+        tx.addEventListener('dbmn-transaction-copied', e => say(e.detail.ok ? `Copied (${e.detail.what})` : 'Not copied'));
+        tx.addEventListener('dbmn-transaction-close', () => { tx.removeAttribute('window'); tx.connectedCallback(); say('Closed'); });
+        const win = $('dsTxWindow');
+        if (win) win.addEventListener('click', () => { tx.setAttribute('window', ''); tx.connectedCallback(); tx.focus(); });
+        const other = $('dsTxReady');
+        if (other) other.addEventListener('click', () => { isReady = !isReady; other.textContent = isReady ? 'Show a sent request' : 'Show a Ready request'; show(); });
+    }
+
+    /* ── A run's details, as the host sends them (screens/console/run-details.ts) ── */
+    function drawRunDetails() {
+        const el = $('dsRunDetails');
+        if (!el) return;
+        el.details = {
+            name: 'Inventory-Errors 20 Nov 20:14', environment: { name: 'DBMN Local', production: false },
+            endpoint: { name: 'Inventory', method: 'POST' }, url: 'http://127.0.0.1:54321/functions/v1/playground/inventory',
+            kind: 'batch', executionId: 'exec_7f3a', started: '2026-11-20T09:14:02Z', durationMs: 41000,
+            threads: { current: 4, max: 8 }, errorHandling: 'continue',
+            headers: [{ name: 'org', value: 'WOOF' }, { name: 'Content-Type', value: 'application/json' }],
+            variables: [{ name: 'apiKey', value: '••••' }], lineage: null
+        };
+    }
+
+    /* ── A run's heading: the environment, the name, ⓘ, the tabs and their counts ── */
+    function drawRunHeading() {
+        const h = $('dsRunHeading');
+        if (!h) return;
+        const tabs = { input: 1000, requests: 5, success: 1, errors: 1 };
+        const draw = () => {
+            h.tabs = [{ id: 'input', label: 'Input', count: tabs.input }, { id: 'requests', label: 'Requests', count: tabs.requests },
+                { id: 'success', label: 'Completed', count: tabs.success, tone: 'ok' }, { id: 'errors', label: 'Error', count: tabs.errors, tone: 'error' }];
+        };
+        h.environment = { name: 'DBMN Local' };
+        h.name = 'Inventory-Errors 20 Nov 20:14';
+        draw();
+        h.active = 'requests';
+        const said = $('dsRunSaid');
+        h.addEventListener('dbmn-run-heading-tab', e => { h.active = e.detail.id; if (said) said.textContent = `Tab: ${e.detail.id}`; });
+        h.addEventListener('dbmn-run-heading-info', () => { if (said) said.textContent = 'ⓘ: the run\'s details would open'; });
+        h.addEventListener('dbmn-run-heading-environment', () => { if (said) said.textContent = 'The environment would open'; });
+        h.addEventListener('dbmn-name-change', e => { h.name = e.detail.name; if (said) said.textContent = `Renamed: ${e.detail.name}`; });
+        const more = $('dsRunCount');
+        if (more) more.addEventListener('click', () => { if (tabs.success < 4) tabs.success += 1; draw(); });
+    }
+
+    /* ── The production guard's line, as the host would give it ── */
+    function drawGuard() {
+        const line = $('dsGuard');
+        if (!line) return;
+        line.guard = {
+            environment: 'Acme Prod', line: 'Acme Prod is a production environment.', ask: true,
+            frequency: { label: 'Warning frequency', value: '0', options: [
+                { value: '0', label: 'Warn me every time' }, { value: '15', label: "Don't warn again for 15 minutes" },
+                { value: '30', label: "Don't warn again for 30 minutes" }, { value: '60', label: "Don't warn again for 60 minutes" }] }
+        };
+    }
+
+    /* ── Tables: a count and a filter on a heading (count / filter options); the page filters ── */
+    function drawCounts() {
+        const table = $('dsCounts');
+        if (!table) return;
+        table.style.setProperty('--table-height', '200px');
+        const all = [
+            { n: 201, status: 'VALID', sku: 'SKU-WOOF-002-001', qty: '1428', uom: 'EA', bad: [] },
+            { n: 202, status: 'VALID', sku: 'SKU-WOOF-002-002', qty: '1111', uom: 'EA', bad: [] },
+            { n: 207, status: 'INVALID', sku: 'SKU-WOOF-002-007', qty: '326', uom: 'XX', bad: ['uom'] },
+            { n: 208, status: 'VALID', sku: 'SKU-WOOF-002-008', qty: '1130', uom: 'CS', bad: [] },
+            { n: 412, status: 'INVALID', sku: 'SKU-WOOF-005-012', qty: '12a', uom: 'EA', bad: ['qty'] },
+            { n: 655, status: 'INVALID', sku: 'SKU-WOOF-007-055', qty: '', uom: 'PL', bad: ['qty'] },
+            { n: 656, status: 'VALID', sku: 'SKU-WOOF-007-056', qty: '1175', uom: 'CS', bad: [] }
+        ];
+        const state = { status: null, counts: [] };   // (status: the values shown, null for all; counts: the columns filtering)
+        const tally = col => all.filter(r => r.bad.includes(col)).length;
+        const draw = () => {
+            const statusOn = v => !state.status || state.status.includes(v);
+            table.columns = [
+                { id: 'n', name: '#', pinned: true },
+                { id: 'status', name: 'Status', pinned: true, filter: { label: 'Status', items: ['INVALID', 'VALID'].map(v => ({ value: v, label: v, count: all.filter(r => r.status === v).length, on: statusOn(v) })) } },
+                { id: 'sku', name: 'sku' },
+                { id: 'qty', name: 'qty', count: { n: tally('qty'), on: state.counts.includes('qty') } },
+                { id: 'uom', name: 'uom', count: { n: tally('uom'), on: state.counts.includes('uom') } }
+            ];
+            table.rows = all.filter(r => statusOn(r.status) && state.counts.every(c => r.bad.includes(c)));
+        };
+        table.addEventListener('dbmn-table-count', e => {
+            state.counts = e.detail.on ? state.counts.concat(e.detail.id) : state.counts.filter(c => c !== e.detail.id);
+            draw();
+        });
+        table.addEventListener('dbmn-table-filter', e => { state.status = e.detail.values; draw(); table.redrawHeads(); });
+        draw();
     }
 
     /* ── Buttons: toggle buttons (.dbmn-toggle); the page holds the state and sets aria-pressed ── */
@@ -822,6 +942,11 @@
     drawSampled();
     drawEdit();
     drawSpecial();
+        drawCounts();
+        drawGuard();
+        drawRunHeading();
+        drawTransaction();
+        drawRunDetails();
     drawToggles();
     drawLookup();
     drawPaged();

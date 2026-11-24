@@ -14,6 +14,8 @@ import { EnvironmentManager } from '../../../environmentManager';
 import { RunCancelledError } from '../../../errors/run-cancelled-error';
 import { memoryStoreContext } from '../../../platform/memory/memory-store-context';
 import { RunBatchController } from '../../../screens/run-batch/run-batch.controller';
+import { createDefaultDataLoadingConfig } from '../../../data-loading/zod-schemas';
+import { clearProductionSuppression } from '../../../services/ui/production-guard.service';
 import type { RunBatchPorts } from '../../../screens/run-batch/run-batch.ports';
 import { ScreenSession } from '../../../screens/screen-session';
 import { BulkLoadResult, bulkLoadFailure } from '../../../webviews/run-batch/bulk-load-result';
@@ -143,5 +145,99 @@ describe('RunBatchController — what a file is, as Source is told it', () => {
         const [empty, data] = (answer.metadata as { sheetDetails: Array<{ name: string; rowCount: number; validationStatus: string }> }).sheetDetails;
         expect({ name: empty.name, rows: empty.rowCount <= 1, status: empty.validationStatus }).to.deep.equal({ name: 'Empty', rows: true, status: 'error' });
         expect({ name: data.name, status: data.validationStatus }).to.deep.equal({ name: 'Data', status: 'valid' });
+    });
+});
+
+describe('RunBatchController — Execute\'s one confirmation, and the tab handed to the Console (#470)', () => {
+    afterEach(() => clearProductionSuppression());
+    async function harness(environmentType: string) {
+        const context = memoryStoreContext();
+        const endpoints = new APIEndpointManager(context);
+        const endpoint = await endpoints.addEndpoint({ name: 'Stock', method: 'POST', path: '/stock', body: '{"s":"{{s}}"}' });
+        const posted: Message[] = [];
+        const events: string[] = [];
+        const runs: Array<Record<string, unknown>> = [];
+        const session = new ScreenSession({ post: m => posted.push(m) }, { openExternal: () => undefined });
+        const environments = {
+            getActiveEnvironment: async () => ({ id: `env-${environmentType}`, name: environmentType === 'production' ? 'Prod' : 'Test', baseUrl: 'https://api.example.test', environmentType, variables: {}, parallelProcessing: { enabled: true, maxConcurrency: 4 } }),
+            getHeaderVariables: async () => [{ name: 'ORG', value: 'DM1', options: ['DM1'] }]
+        };
+        const ports = {
+            endpoints, environments,
+            toast: { info: (m: string) => events.push(`info ${m}`), warn: (m: string) => events.push(`warn ${m}`), error: (m: string) => events.push(`error ${m}`) },
+            executeBulkLoad: async (request: Record<string, unknown>) => { runs.push(request); return { success: true, message: 'started' }; },
+            host: { close: () => events.push('tab closed'), openConsole: async () => undefined }
+        } as unknown as RunBatchPorts;
+        const controller = new RunBatchController(session, ports, { context: 'runBatch', endpointId: endpoint.id, endpointName: endpoint.name, endpoint } as never);
+        // (Review drawn: the plan it shows)
+        (controller as unknown as { lastPlan: unknown }).lastPlan = { method: 'POST', urlTemplate: '/stock', reps: { applies: false, label: '', value: 1 }, totals: { rows: 3, requests: 3 }, requests: [] };
+        const execute = (extra: Record<string, unknown>) => controller.handleMessage({ type: 'executeBulkLoadCommand', endpointId: endpoint.id, jsonData: [{ s: '1' }], mappings: [{ variable: 's', column: 's' }], ...extra } as never);
+        return { controller, posted, events, runs, execute, of: (type: string) => posted.filter(m => m.type === type) };
+    }
+
+    it('Execute asks: the window gets the rows, requests, environment with its header values, URL, Error handling and Threads', async () => {
+        const h = await harness('development');
+        await h.controller.handleMessage({ type: 'runBatch.executeAsk' } as never);
+        const summary = (h.of('runBatch.executeConfirm')[0] as { summary: Record<string, unknown> }).summary;
+        expect(summary).to.include({ rows: 3, requests: 3, method: 'POST', url: 'https://api.example.test/stock', guard: null });
+        expect(summary.sentence).to.equal('3 rows as 3 requests to Test (ORG DM1): POST https://api.example.test/stock');
+        expect(summary.threads).to.deep.equal({ value: 1, options: [1, 2, 4] });
+    });
+
+    it('production: the guard is in the same window; Execute with no yes from it is refused and nothing runs', async () => {
+        const h = await harness('production');
+        await h.controller.handleMessage({ type: 'runBatch.executeAsk' } as never);
+        expect((h.of('runBatch.executeConfirm')[0] as { summary: { guard: { ask: boolean } } }).summary.guard.ask).to.equal(true);
+        await h.execute({ confirm: { errorHandling: 'continue', threads: 1 } });
+        await settle();
+        expect(h.runs, 'not run').to.have.length(0);
+        expect(h.of('resetExecuteButton')).to.have.length(1);
+        expect(h.events[0]).to.match(/^warn Not run: Prod is production/);
+    });
+
+    it('the window\'s choices are what runs: Stop on first error, 2 threads; its production yes with 15 minutes holds for the next', async () => {
+        const h = await harness('production');
+        await h.execute({ confirm: { errorHandling: 'stop', threads: 2, production: { minutes: 15 } } });
+        await settle();
+        expect(h.runs).to.have.length(1);
+        expect(h.runs[0]).to.deep.include({ stopOnFirstError: true, parallelProcessing: { enabled: true, maxConcurrency: 2 } });
+        await h.controller.handleMessage({ type: 'runBatch.executeAsk' } as never);
+        const next = (h.of('runBatch.executeConfirm')[0] as { summary: Record<string, { ask?: boolean; value?: unknown }> }).summary;
+        expect(next.guard.ask, 'within 15 minutes: the line, no question').to.equal(false);
+        expect(next.errorHandling.value, 'last choice kept').to.equal('stop');
+        expect(next.threads.value).to.equal(2);
+    });
+
+    it('what Review showed at Execute is kept for the Console that takes the tab\'s place', async () => {
+        const h = await harness('development');
+        await h.execute({ confirm: { errorHandling: 'continue', threads: 1 }, review: { search: 'WOOF', scrollTop: 240.4, selected: 7, extra: 'dropped' } });
+        expect(h.controller.handoff()).to.deep.equal({ tab: 'requests', search: 'WOOF', scrollTop: 240, selected: 7 });
+    });
+});
+
+describe('RunBatchController — the Execute window says the run as it will be sent (#470, 2026-11-24)', () => {
+    afterEach(() => clearProductionSuppression());
+
+    it('Rows per request changed just before Execute: the window plans again with the endpoint as saved, 1,000 rows as 100 requests', async () => {
+        const context = memoryStoreContext();
+        const endpoints = new APIEndpointManager(context);
+        const endpoint = await endpoints.addEndpoint({ name: 'Stock', method: 'POST', path: '/stock', body: '{"items":[{"s":"{{s}}"}]}' });
+        const posted: Message[] = [];
+        const session = new ScreenSession({ post: m => posted.push(m) }, { openExternal: () => undefined });
+        const environments = {
+            getActiveEnvironment: async () => ({ id: 'env-test', name: 'Test', baseUrl: 'https://api.example.test', environmentType: 'development', variables: {} }),
+            getHeaderVariables: async () => []
+        };
+        const controller = new RunBatchController(session, { endpoints, environments, toast: { info: () => undefined, warn: () => undefined, error: () => undefined } } as unknown as RunBatchPorts,
+            { context: 'runBatch', endpointId: endpoint.id, endpointName: endpoint.name, endpoint } as never);
+        // Review planned with Rows per request 1 (what the page last drew)…
+        const rows = Array.from({ length: 1000 }, (_, i) => [`S${i}`]);
+        (controller as unknown as { lastPlanArgs: unknown }).lastPlanArgs = { source: { headers: ['s'], rows }, message: { mappings: [{ variable: 's', column: 's' }] }, environment: { baseUrl: 'https://api.example.test' }, variables: {} };
+        // …then Rows per request 10 was typed and saved to the endpoint as Execute was pressed
+        await endpoints.updateEndpoint(endpoint.id, { ...endpoint, dataLoadingConfig: { ...createDefaultDataLoadingConfig(), repeatableArrays: [{ arrayPath: 'items', enabled: true, maxRepetitions: 10 }] } } as never);
+        await controller.handleMessage({ type: 'runBatch.executeAsk' } as never);
+        const summary = (posted.find(m => m.type === 'runBatch.executeConfirm') as { summary: { rows: number; requests: number; sentence: string } }).summary;
+        expect(summary).to.include({ rows: 1000, requests: 100 });
+        expect(summary.sentence).to.match(/^1,000 rows as 100 requests to Test: POST /);
     });
 });

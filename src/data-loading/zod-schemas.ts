@@ -189,9 +189,19 @@ export const TabViewSettingsSchema = z.object({
     views: z.array(ConsoleViewSchema)
 });
 
+/** A Requests tab View (#466/#468): which of a request's columns show, in what order. */
+export const RequestsViewSchema = z.object({
+    id: z.string().min(1),
+    name: z.string().min(1).max(100),
+    columns: z.array(z.object({ id: z.string().min(1).max(300), hidden: z.boolean().optional() })).max(500),
+    order: z.array(z.string().min(1).max(300)).max(500)
+});
+
 export const ConsoleViewsSchema = z.object({
     success: TabViewSettingsSchema,
     errors: TabViewSettingsSchema,
+    // The Requests tab's own Views (request-views.ts), kept beside the data tabs'
+    requests: z.object({ views: z.array(RequestsViewSchema) }).optional(),
     // The Input tab's saved searches (its Views are made, not kept): in a tab's shape, views always empty
     input: TabViewSettingsSchema.extend({
         searches: z.array(z.object({ name: z.string().min(1).max(30), text: z.string().min(1) })).max(50).optional()

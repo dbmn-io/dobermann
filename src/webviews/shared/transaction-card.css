@@ -1115,3 +1115,51 @@
     font-size: 12px;
     color: var(--vscode-descriptionForeground);
 }
+
+/* <dbmn-transaction> (dbmn-transaction.js): one request in full, the same window for the Console and Run Batch's
+   Review. The badges and the Body / Details buttons are the card's own (above); `window` draws it over the screen */
+dbmn-transaction { display: flex; flex-direction: column; gap: 8px; min-height: 0; color: var(--dbmn-foreground); outline: none; }
+dbmn-transaction[window] {
+    position: fixed; inset: 40px max(24px, calc((100% - var(--dbmn-band, 1280px)) / 2)); z-index: 900; padding: 12px 14px;
+    background: var(--dbmn-editor-background); border: 1px solid var(--dbmn-panel-border); border-radius: 6px;
+    box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.45), 0 12px 32px rgba(0, 0, 0, 0.4);
+}
+.dbmn-tx-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.dbmn-tx-title { font-size: 14px; }
+.dbmn-tx-facts, .dbmn-tx-pane-note, .dbmn-tx-show-label, .dbmn-tx-found { color: var(--dbmn-descriptionForeground); font-size: 12px; }
+.dbmn-tx-spacer { flex: 1; }
+.dbmn-tx-glyph { display: inline-flex; line-height: 0; }
+.dbmn-tx-glyph svg { width: 14px; height: 14px; }
+.dbmn-tx-action { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; font-size: 12px; }
+.dbmn-tx-btn {
+    display: inline-flex; padding: 3px; border: none; border-radius: 3px; background: none; line-height: 0;
+    color: var(--dbmn-descriptionForeground); cursor: pointer;
+}
+.dbmn-tx-btn:hover:not(:disabled), .dbmn-tx-btn:focus-visible { color: var(--dbmn-foreground); background: var(--dbmn-toolbar-hoverBackground, var(--dbmn-list-hoverBackground)); }
+.dbmn-tx-btn:disabled { opacity: 0.35; cursor: default; }
+.dbmn-tx-nav { display: inline-flex; gap: 1px; }
+.dbmn-tx-reason { margin: 0; }
+.dbmn-tx-show { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.dbmn-tx-seg { display: inline-flex; border: 1px solid var(--dbmn-panel-border); border-radius: 4px; overflow: hidden; }
+.dbmn-tx-seg-btn {
+    padding: 3px 10px; border: none; border-right: 1px solid var(--dbmn-panel-border); background: none; font: inherit; font-size: 12px;
+    color: var(--dbmn-descriptionForeground); cursor: pointer;
+}
+.dbmn-tx-seg-btn:last-child { border-right: none; }
+.dbmn-tx-seg-btn.is-on { background: var(--dbmn-button-secondaryBackground); color: var(--dbmn-button-secondaryForeground); }
+.dbmn-tx-seg-btn:disabled { opacity: 0.45; cursor: default; }
+.dbmn-tx-search { width: 260px; max-width: 100%; height: 24px; }
+.dbmn-tx-panes { flex: 1; min-height: 0; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 10px; }
+.dbmn-tx-panes.has-max { grid-auto-flow: row; }
+.dbmn-tx-pane { display: flex; flex-direction: column; min-height: 0; min-width: 0; border: 1px solid var(--dbmn-panel-border); border-radius: 4px; }
+.dbmn-tx-pane[hidden] { display: none; }
+.dbmn-tx-pane-head { display: flex; align-items: center; gap: 8px; padding: 4px 8px; border-bottom: 1px solid var(--dbmn-panel-border); font-size: 12px; }
+.dbmn-tx-editor { flex: 1; min-height: 120px; overflow: auto; }
+.dbmn-tx-code {
+    margin: 0; padding: 8px 10px; white-space: pre; font-family: var(--dbmn-editor-font-family, monospace); font-size: var(--dbmn-editor-font-size, 12px);
+    color: var(--dbmn-editor-foreground, var(--dbmn-foreground));
+}
+.dbmn-tx-hit { background: var(--dbmn-editor-findMatchHighlightBackground, rgba(234, 92, 0, 0.33)); color: inherit; outline: 1px solid var(--dbmn-editor-findMatchHighlightBorder, transparent); }
+.dbmn-tx-input { flex: 1; min-height: 120px; }
+.dbmn-tx-none { color: var(--dbmn-descriptionForeground); }
+@media (max-width: 900px) { .dbmn-tx-panes { grid-auto-flow: row; } dbmn-transaction[window] { inset: 12px; } }

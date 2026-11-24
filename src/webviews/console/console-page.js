@@ -2118,149 +2118,45 @@ class DynamicReportManager {
     }
 
     /**
-     * Narrow panel: compact the tab strip only when the full labels
-     * overflow it (tabs.css .is-compact). Measured with labels shown,
-     * so it re-expands as soon as there is room again.
+     * The run's tabs, in the run heading (<dbmn-run-heading>, design system; #464): Links (Chain) → Input → Raw →
+     * Completed → Error → Settings. The heading draws them; this only says which there are and their counts.
+     * Batch while RUNNING: Completed shows at 0 to take the streaming results; Error is kept hidden until one arrives.
+     * PREPARING: no Completed / Error yet. A single run: only the ones with data.
      */
-    fitReportTabs() {
-        const bar = document.getElementById('report-tabs');
-        if (!bar) return;
-        bar.classList.remove('is-compact');
-        if (bar.scrollWidth > bar.clientWidth) bar.classList.add('is-compact');
-    }
-
-    watchReportTabsFit() {
-        const bar = document.getElementById('report-tabs');
-        if (!bar || this._tabsFitWatched) return;
-        this._tabsFitWatched = true;
-        let queued = false;
-        const schedule = () => {
-            if (queued) return;
-            queued = true;
-            requestAnimationFrame(() => { queued = false; this.fitReportTabs(); });
-        };
-        new ResizeObserver(schedule).observe(bar);
-        // Tabs added/shown, counts growing, the active tab changing. The
-        // bar's own class (set by fitReportTabs) is ignored, or it loops.
-        new MutationObserver((records) => {
-            if (records.some(r => r.target !== bar || r.type !== 'attributes')) schedule();
-        }).observe(bar, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['class', 'style'] });
-    }
-
     createDynamicTabs(classified, rawData) {
-        const tabsContainer = document.getElementById('report-tabs');
-        this.watchReportTabsFit();
-        tabsContainer.innerHTML = '';
-
+        const heading = document.getElementById('run-heading');
+        const tabs = [];
         // GitHub Issue #247: Links tab, in front of Input (console-chain.js)
-        if (window.ConsoleChain) window.ConsoleChain.decorateTabs(tabsContainer, (t) => this.switchTab(t));
-
-        // Create tabs in specified order: Input → Success → Errors → RAW → Settings
-        // GitHub Issue #166: Request and Logs tabs hidden - RAW tab now provides this functionality
-        // To re-enable, set window.showLegacyTabs = true before report loads
-
-        // GitHub Issue #101: Request tab (hidden - RAW tab shows request/response for all transactions)
-        if (window.showLegacyTabs) {
-            const requestTab = document.createElement('div');
-            requestTab.className = 'tab-item';
-            requestTab.dataset.tab = 'request';
-            requestTab.innerHTML = `
-                <span class="tab-label">Request</span>
-            `;
-            requestTab.onclick = () => this.switchTab('request');
-            tabsContainer.appendChild(requestTab);
-        }
-
-        // Logs tab (hidden - RAW tab has View Logs per transaction)
-        if (window.showLegacyTabs) {
-            const logsTab = document.createElement('div');
-            logsTab.className = 'tab-item';
-            logsTab.dataset.tab = 'logs';
-            logsTab.innerHTML = `
-                <span class="tab-label">Logs<span class="red-pulse ml-8 hidden" id="logs-tab-indicator">●</span></span>
-            `;
-            logsTab.onclick = () => this.switchTab('logs');
-            tabsContainer.appendChild(logsTab);
-        }
-
-        // Input tab - always show if inputData exists (even during preparation before execution)
-        // GitHub Issue #151: Hide Input tab for child batches (reprocessed from another batch - no CSV)
-        if (rawData.inputData !== undefined && !window.hideInputTab) {
-            const inputTab = document.createElement('div');
-            inputTab.className = 'tab-item';
-            inputTab.dataset.tab = 'input';
-            inputTab.title = 'Input';
-            const inputCount = classified.input?.length || 0;
-            inputTab.innerHTML = `
-                <span class="tab-label">Input</span>
-                <span class="tab-count" data-tab="input">${inputCount}</span>
-            `;
-            inputTab.onclick = () => this.switchTab('input');
-            tabsContainer.appendChild(inputTab);
-        }
-
-        // Detect if this is a batch report with results (RUNNING state)
+        if (window.ConsoleChain) window.ConsoleChain.decorateTabs(tabs, (t) => this.switchTab(t));
+        // GitHub Issue #101/#166: the legacy Request and Logs tabs, only when asked for (window.showLegacyTabs)
+        if (window.showLegacyTabs) tabs.push({ id: 'request', label: 'Request' }, { id: 'logs', label: 'Logs' });
+        // Input: whenever there is input data (even while preparing). #151: not for a reprocessed batch (no CSV)
+        if (rawData.inputData !== undefined && !window.hideInputTab) tabs.push({ id: 'input', label: 'Input', count: classified.input?.length || 0 });
         const isBatchReport = rawData.metadata?.batchId !== undefined;
         const hasResults = rawData.responses && rawData.responses.length > 0;
-
-        // GitHub Issue #166/#184: RAW tab (after Input, before Completed/Error)
-        // Shows raw request/response JSON for all transactions
-        if (isBatchReport || (rawData.responses && rawData.responses.length > 0)) {
-            const rawTab = document.createElement('div');
-            rawTab.className = 'tab-item';
-            rawTab.dataset.tab = 'raw';
-            rawTab.title = 'Raw';
-            const rawCount = rawData.responses ? rawData.responses.length : 0;
-            rawTab.innerHTML = `<span class="tab-label">Raw</span><span class="tab-count" data-tab="raw">${rawCount}</span>`;
-            rawTab.onclick = () => this.switchTab('raw');
-            tabsContainer.appendChild(rawTab);
-        }
-
-        // Create tabs for Completed and Error
-        // For batch reports during RUNNING: show Completed tab (even with count=0) to receive streaming updates
-        //   Error tab is created hidden and revealed when errors actually arrive
-        // For batch reports during PREPARING: don't show tabs yet (no execution started)
-        // For individual reports: only show if they have data
-        const tabLabels = { success: 'Completed', errors: 'Error' };
-        const orderedCategories = ['success', 'errors'];
-        orderedCategories.forEach(category => {
-            const items = classified[category];
-            const count = items?.length || 0;
-
-            // Show tab if: has data OR is batch with results (RUNNING, not PREPARING)
-            if ((items && items.length > 0) || (isBatchReport && hasResults)) {
-                const tab = document.createElement('div');
-                tab.className = 'tab-item';
-                tab.dataset.tab = category;
-                tab.title = tabLabels[category];
-
-                const label = tabLabels[category];
-                tab.innerHTML = `
-                    <span class="tab-label">${label}</span>
-                    <span class="tab-count" data-tab="${category}">${count}</span>
-                `;
-                tab.onclick = () => this.switchTab(category);
-
-                // Hide errors tab until errors actually arrive
-                if (category === 'errors' && count === 0) {
-                    tab.style.display = 'none';
-                }
-
-                tabsContainer.appendChild(tab);
-            }
+        // #166/#184: Raw, every transaction's request and response
+        if (isBatchReport || hasResults) tabs.push({ id: 'raw', label: 'Raw', count: rawData.responses ? rawData.responses.length : 0 });
+        [['success', 'Completed', 'ok'], ['errors', 'Error', 'error']].forEach(([id, label, tone]) => {
+            const count = classified[id]?.length || 0;
+            if (count > 0 || (isBatchReport && hasResults)) tabs.push({ id, label, count, tone, hidden: id === 'errors' && count === 0 });
         });
-
-        // GitHub Issue #156: Info tab (always shown, last/rightmost tab)
-        const infoTab = document.createElement('div');
-        infoTab.className = 'tab-item';
-        infoTab.dataset.tab = 'info';
-        infoTab.title = 'Settings';
-        infoTab.innerHTML = `<span class="tab-label">Settings</span>`;
-        infoTab.onclick = () => this.switchTab('info');
-        tabsContainer.appendChild(infoTab);
-
-        // Initialize Info tab for batch vs individual
+        // (#464: no Settings tab: ⓘ on the heading opens the run's details, and Threads / Stop on next error are the
+        //  footer box's. The Settings panel stays in the page for now, unseen: the box still reads its controls)
+        if (heading) {
+            heading.tabs = tabs;
+            if (this.currentTab) heading.active = this.currentTab;
+        }
         initInfoTab(isBatchReport);
+    }
+
+    /** A tab is in the heading (shown or kept hidden); its count; whether it shows. */
+    tabExists(id) {
+        const heading = document.getElementById('run-heading');
+        return !!(heading && Array.isArray(heading.tabs) && heading.tabs.some(t => t && t.id === id));
+    }
+    showTab(id, on) {
+        const heading = document.getElementById('run-heading');
+        if (heading && heading.setHidden) heading.setHidden(id, !on);
     }
 
 
@@ -2273,10 +2169,9 @@ class DynamicReportManager {
         // Issue #337: and a pending Input redraw (input rows still streaming in)
         clearTimeout(this._inputStatusTimer);
 
-        // Update active tab styling
-        document.querySelectorAll('.tab-item').forEach(tab => {
-            tab.classList.toggle('active', tab.dataset.tab === tabName);
-        });
+        // The run heading shows which tab is open (only its tabs: not the Execute window's)
+        const heading = document.getElementById('run-heading');
+        if (heading) heading.active = tabName;
 
         this.currentTab = tabName;
 
@@ -4190,10 +4085,7 @@ class DynamicReportManager {
         // Update tab counts (live counters may have changed from retry status changes)
         this.updateTabCountWithAnimation('success', this._liveSuccessCount);
         this.updateTabCountWithAnimation('errors', this._liveErrorCount);
-        const rawCountEl = document.querySelector('.tab-count[data-tab="raw"]');
-        if (rawCountEl) {
-            rawCountEl.textContent = this.rawData.responses.length;
-        }
+        this.updateTabCountWithAnimation('raw', this.rawData.responses.length);
 
         // Refresh error/success tab if active (member was removed from classification).
         // Issue #312: debounced like a result — this used to redraw the whole table
@@ -4261,7 +4153,7 @@ class DynamicReportManager {
             // Defer one tick so the tabs created/updated below exist
             // before switchTab() tries to activate one.
             setTimeout(() => {
-                if (document.querySelector(`.tab-item[data-tab="${target}"]`)) {
+                if (this.tabExists(target)) {
                     this.switchTab(target);
                 }
             }, 0);
@@ -4289,20 +4181,11 @@ class DynamicReportManager {
         }
 
         // Check if COMPLETED/ERROR tabs exist - if not, create them now (first result arrived)
-        const successTab = document.querySelector('.tab-item[data-tab="success"]');
-        const errorsTab = document.querySelector('.tab-item[data-tab="errors"]');
-
-        if (!successTab || !errorsTab) {
-            // First result arrived - need full classify to create tabs
+        if (!this.tabExists('success') || !this.tabExists('errors')) {
+            // First result arrived - need full classify to create tabs (createDynamicTabs keeps the open one open)
             const classified = this.classifyResponses(this.rawData.responses);
             this._lastClassified = classified;
             this.createDynamicTabs(classified, this.rawData);
-
-            // Reactivate current tab after recreating tabs
-            const currentTabElement = document.querySelector(`.tab-item[data-tab="${this.currentTab}"]`);
-            if (currentTabElement) {
-                currentTabElement.classList.add('active');
-            }
         } else {
             // Tabs already exist - update counts from live counters (cheap)
             this.updateTabCountWithAnimation('success', this._liveSuccessCount);
@@ -4310,9 +4193,7 @@ class DynamicReportManager {
             this.updateTabCountWithAnimation('raw', this.rawData.responses.length);
 
             // Show/hide errors tab based on count
-            if (this._liveErrorCount > 0) {
-                errorsTab.style.display = '';
-            }
+            if (this._liveErrorCount > 0) this.showTab('errors', true);
 
             // The cached classification no longer includes this result. Drop it, so
             // whoever reads next (the auto-switch above, a tab click, the views
@@ -4416,18 +4297,14 @@ class DynamicReportManager {
         this.applyLiveCounts(merged);
         if (this.rawData.metadata) this.rawData.metadata.totalRows = merged.responses.length;
 
-        const successTab = document.querySelector('.tab-item[data-tab="success"]');
-        const errorsTab = document.querySelector('.tab-item[data-tab="errors"]');
-        if (!successTab || !errorsTab) {
+        if (!this.tabExists('success') || !this.tabExists('errors')) {
             // The first chunk had no results yet — build the tabs now
             this.createDynamicTabs(merged.classified, this.rawData);
-            const current = document.querySelector(`.tab-item[data-tab="${this.currentTab}"]`);
-            if (current) current.classList.add('active');
         } else {
             this.updateTabCountWithAnimation('success', this._liveSuccessCount);
             this.updateTabCountWithAnimation('errors', this._liveErrorCount);
             this.updateTabCountWithAnimation('raw', merged.responses.length);
-            if (this._liveErrorCount > 0) errorsTab.style.display = '';
+            if (this._liveErrorCount > 0) this.showTab('errors', true);
         }
         this.updateTransactionCount(this._liveSuccessCount + this._liveErrorCount);
 
@@ -4471,22 +4348,9 @@ class DynamicReportManager {
      * Update tab count with animation
      */
     updateTabCountWithAnimation(tabName, newCount) {
-        const tabCountElement = document.querySelector(`.tab-count[data-tab="${tabName}"]`);
-        if (!tabCountElement) return;
-
-        const oldCount = parseInt(tabCountElement.textContent) || 0;
-        if (newCount === oldCount) return; // No change
-
-        // Update count
-        tabCountElement.textContent = newCount.toString();
-
-        // Add animation class
-        tabCountElement.classList.add('count-increment');
-
-        // Remove animation class after animation completes
-        setTimeout(() => {
-            tabCountElement.classList.remove('count-increment');
-        }, 400);
+        // (the run heading draws the count, and pulses it once when it changes)
+        const heading = document.getElementById('run-heading');
+        if (heading && heading.setCount) heading.setCount(tabName, newCount);
     }
 
 }
@@ -5225,7 +5089,8 @@ class TabbedReportManager {
     showEmptyState(message) {
 
         // Hide the tabs and table, show empty state
-        document.getElementById('report-tabs').style.display = 'none';
+        const heading = document.getElementById('run-heading');
+        if (heading) heading.tabs = [];
         document.getElementById('table-container').classList.add('hidden');
         
         const emptyState = document.getElementById('empty-state');
@@ -6053,12 +5918,10 @@ window.addEventListener('message', event => {
                         // No toast on load — the "COMPLETED WITH ERRORS" badge
                         // already conveys this; toasts are for live transitions.
                         // Ensure errors tab is visible
-                        const errorsTab = document.querySelector('.tab-item[data-tab="errors"]');
-                        if (errorsTab) errorsTab.style.display = '';
+                        document.getElementById('run-heading')?.setHidden?.('errors', false);
                     } else {
                         // No errors - hide errors tab
-                        const errorsTab = document.querySelector('.tab-item[data-tab="errors"]');
-                        if (errorsTab) errorsTab.style.display = 'none';
+                        document.getElementById('run-heading')?.setHidden?.('errors', true);
                     }
                 }
                 // Handle STOPPED status
@@ -6289,8 +6152,7 @@ window.addEventListener('message', event => {
                 mgr.paintBatchProgress(); // Issue #311: the bar follows the tabs
 
                 // Hide errors tab (no errors now)
-                const errorsTab = document.querySelector('.tab-item[data-tab="errors"]');
-                if (errorsTab) errorsTab.style.display = 'none';
+                document.getElementById('run-heading')?.setHidden?.('errors', true);
 
                 // Clear footer notification
                 clearFooterNotification();
@@ -6527,16 +6389,14 @@ function updateExecutionStatus(payload) {
                     showFooterNotification('error', `Batch completed with ${errorCount} error${errorCount > 1 ? 's' : ''}`, { persistent: true });
                 }
                 // Show errors tab (make sure it's visible)
-                const errorsTab = document.querySelector('.tab-item[data-tab="errors"]');
-                if (errorsTab) errorsTab.style.display = '';
+                document.getElementById('run-heading')?.setHidden?.('errors', false);
             } else {
                 statusPillClass = 'status-pill-success';
                 titleStatusClass = 'title-success';
                 statusBadge.textContent = 'COMPLETED';
                 clearFooterNotification();
                 // GitHub Issue #152: Hide errors tab if 0 errors after completion
-                const errorsTab = document.querySelector('.tab-item[data-tab="errors"]');
-                if (errorsTab) errorsTab.style.display = 'none';
+                document.getElementById('run-heading')?.setHidden?.('errors', true);
             }
             // Stop timer when execution completes
             progressHandler.stopTimer();
@@ -6596,8 +6456,7 @@ function updateExecutionStatus(payload) {
             titleStatusClass = 'title-stopped';
             statusBadge.textContent = 'STOPPED';
             // Stopped means there was an error - ensure errors tab is visible
-            const errorsTab = document.querySelector('.tab-item[data-tab="errors"]');
-            if (errorsTab) errorsTab.style.display = '';
+            document.getElementById('run-heading')?.setHidden?.('errors', false);
             progressHandler.stopTimer();
             // GitHub Issue #152: Enable export button
             setExportButtonEnabled(true);
@@ -7613,11 +7472,39 @@ function paintProgressStats() {
         { id: 'threads', label: 'Threads', value: currentThreadCount, options: THREAD_CHOICES, max: maxThreadCount || 16, overTitle: `This environment allows up to ${maxThreadCount || 16}` },
         { id: 'stopOnError', label: 'Stop on next error', value: stopOnNext }
     ];
-    const handler = window.progressHandler;
-    if (handler && handler.executionStartTime) {
-        stats.push({ label: 'Started', value: new Date(handler.executionStartTime).toLocaleTimeString() });
+    // #465: the run's figures from the host (console.figures), above what it runs with
+    const figures = window.ConsoleRunHeading && window.ConsoleRunHeading.figures ? window.ConsoleRunHeading.figures() : null;
+    if (figures) {
+        stats.unshift(...runFigures(figures, done));
+        // (one duration: once finished, the box says the run's own time, the same as its details and figures)
+        if (done && typeof figures.tookMs === 'number') box.setAttribute('note', runTook(figures.tookMs));
+    }
+    else {
+        const handler = window.progressHandler;
+        if (handler && handler.executionStartTime) stats.push({ label: 'Started', value: new Date(handler.executionStartTime).toLocaleTimeString() });
     }
     box.stats = stats;
+}
+/** How long a run took, as the box, its figures and its details all say it. */
+function runTook(ms) {
+    const s = Math.round(ms / 1000);
+    return s < 60 ? `${s} s` : `${Math.floor(s / 60)} min ${s % 60} s`;
+}
+/** A run's figures as the box lists them: requests and rows, how many completed and failed, its times (#465). */
+function runFigures(f, done) {
+    const n = v => (typeof v === 'number' ? v.toLocaleString() : null);
+    const took = ms => (ms === null || ms === undefined ? null : runTook(ms));
+    const out = [];
+    const add = (label, value) => { if (value !== null && value !== undefined && value !== '') out.push({ label, value: String(value) }); };
+    if (f.requests) add('Requests', done ? n(f.requests.total) : `${n(f.requests.done)} of ${n(f.requests.total)}`);
+    if (f.rows && f.rows.sent !== null) add('Rows', f.rows.total !== null ? `${n(f.rows.sent)} of ${n(f.rows.total)}` : n(f.rows.sent));
+    add('Completed', n(f.completed));
+    add('Errors', n(f.errors));
+    if (f.reprocessed) add('Reprocessed', n(f.reprocessed));
+    if (f.started) add('Started', new Date(f.started).toLocaleTimeString());
+    if (done) add('Took', took(f.tookMs));
+    else { add('Running for', took(f.elapsedMs)); add('Left', f.etaMs ? `about ${took(f.etaMs)}` : null); }
+    return out;
 }
 function listenToProgressBox() {
     const box = document.getElementById('progress-display');
@@ -7697,6 +7584,7 @@ function updateInfoBatchName(name) {
     // #445: the title carries the batch's name too
     const titleName = document.getElementById('report-title-name');
     if (titleName) titleName.textContent = name.trim();
+    if (window.ConsoleRunHeading) window.ConsoleRunHeading.named(name.trim());   // the run heading too (#464)
     showInfoNotification('Batch name updated');
 }
 
@@ -7788,4 +7676,13 @@ window.addEventListener('message', event => {
     if (!message || message.type !== 'hubTabColour') return;
     // 'none': the tab is drawn plain (no progress yet), so the heading is too
     document.documentElement.dataset.tabColour = message.colour || 'none';
+});
+
+// #470: this Console took its Run Batch tab's place: what Review showed at Execute (ReviewHandoff: tab 'requests',
+// search, scrollTop, selected, sort, widths) comes first thing, before any data. Kept for the Requests tab, which
+// opens there once it is in the Console (not in this release: the Console opens as before, on its first data tab)
+window.addEventListener('message', event => {
+    const message = event.data;
+    if (!message || message.type !== 'console.carryOn') return;
+    window.consoleCarryOn = message.payload || null;
 });

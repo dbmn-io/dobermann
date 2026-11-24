@@ -3,7 +3,7 @@
 import { APIEndpointConfig } from '../../data-loading/types';
 import { ExecutionOptions } from './execution.interface';
 import { ExecutionMetadata, ExecutionStatus } from '../../storage/execution-metadata';
-import type { BatchMemberLogRow } from '../storage/execution-storage.interface';
+import type { BatchMemberLogRow, BatchMemberRequestRow } from '../storage/execution-storage.interface';
 import { BatchResumptionData } from '../../storage/execution-metadata';
 
 // Table pagination options
@@ -275,6 +275,9 @@ export interface IExecutionMetadataService {
 
     /** Dobermann issue 7: `limit` of a batch's requests from `offset`, only what a log line needs. */
     getBatchMemberLogRows?(batchId: string, offset: number, limit: number): Promise<BatchMemberLogRow[]>;
+
+    /** #466: every request of a batch, only what the Console's Requests tab reads. */
+    getBatchMemberRequestRows?(batchId: string): Promise<BatchMemberRequestRow[]>;
 
     /**
      * Get all transactions (active + completed) in a single call
