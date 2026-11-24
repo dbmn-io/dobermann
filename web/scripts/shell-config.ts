@@ -42,7 +42,22 @@ export const BOOTSTRAP = `(function () {
     var state;
     var api = {
         postMessage: function (message) {
-            var copy = JSON.parse(JSON.stringify(message));
+            // A copy, as VS Code sends a webview's messages: JSON (functions and undefined left out,
+            // a Date as text, nothing shared with the sender), except bytes, which VS Code passes as
+            // bytes: an ArrayBuffer or typed array goes as a copy of itself (a file Run Batch or
+            // Import reads), not as the {} JSON would make of it.
+            var bytes = [];
+            var text = JSON.stringify(message, function (key, value) {
+                var kind = Object.prototype.toString.call(value);
+                if (kind === '[object ArrayBuffer]' || (ArrayBuffer.isView(value) && kind !== '[object DataView]')) {
+                    bytes.push(value.slice(0));
+                    return { __dbmnBytes__: bytes.length - 1 };
+                }
+                return value;
+            });
+            var copy = JSON.parse(text, function (key, value) {
+                return value && typeof value === 'object' && typeof value.__dbmnBytes__ === 'number' && value.__dbmnBytes__ < bytes.length ? bytes[value.__dbmnBytes__] : value;
+            });
             if (window.__dbmnShell) window.__dbmnShell.receive(copy); else queue.push(copy);
         },
         getState: function () { return state; },
