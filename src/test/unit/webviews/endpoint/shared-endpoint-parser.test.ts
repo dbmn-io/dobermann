@@ -242,3 +242,47 @@ describe('parseSharedEndpointText (#291) — flattened / partial pastes', () => 
         });
     });
 });
+
+/**
+ * An endpoint shared through a chat that drops line breaks (Teams): the header fields run together, the body is glued
+ * onto the description, and every `//` comment in the body now runs to the end of the one line. The fields came back
+ * but the body went into the description ("it's like it's all getting pasted into the comment section"). Made up.
+ */
+describe('parseSharedEndpointText: a paste that lost its line breaks', () => {
+    const FLAT = '// Name: Stock adjustment// Method: POST// Path: /stock/api/adjust// Description: Adjust stock\'s lines{  "Actions": {    "Line": "RESET"  },'
+        + '  "AdjustmentId": "WOOF-{{AdjustmentId:string}}",  //"WOOF-S1"  "Closed": false,  "Extended": {    "Host": "WOOF",'
+        + '    "Kind": "{{Kind:string}}" //"Online"    // "MessageID": "d4ee-cb"  },  "Lines": [    {      "Sku": "{{Sku:string}}",'
+        + '      //"0001"      "Qty": "{{Qty:number|int}}"    }  ]}';
+    const strip = (s: string) => s.split('\n').map(line => line.replace(/\s*\/\/.*$/, '')).join('\n');
+
+    it('the header fields come back, the description without the body', () => {
+        const parsed = parseSharedEndpointText(FLAT)!;
+        expect({ name: parsed.name, method: parsed.method, path: parsed.path, description: parsed.description }).to.deep.equal({
+            name: 'Stock adjustment', method: 'POST', path: '/stock/api/adjust', description: 'Adjust stock\'s lines'
+        });
+    });
+
+    it('the body comes back whole: each comment ends where its line did, and nothing after it is lost', () => {
+        const parsed = parseSharedEndpointText(FLAT)!;
+        expect(parsed.body, 'a body').to.be.a('string');
+        expect(JSON.parse(strip(parsed.body!))).to.deep.equal({
+            Actions: { Line: 'RESET' }, AdjustmentId: 'WOOF-{{AdjustmentId:string}}', Closed: false,
+            Extended: { Host: 'WOOF', Kind: '{{Kind:string}}' }, Lines: [{ Sku: '{{Sku:string}}', Qty: '{{Qty:number|int}}' }]
+        });
+        expect(parsed.body).to.include('//"WOOF-S1"').and.include('// "MessageID": "d4ee-cb"');
+        expect(parsed.warning).to.equal(undefined);
+    });
+
+    it('a body it cannot read back for certain says so, plainly, and keeps what came', () => {
+        const parsed = parseSharedEndpointText('// Name: Notes// Method: POST// Path: /notes{  "a": 1, // two  words here  "b": 2}')!;
+        expect(parsed.name).to.equal('Notes');
+        expect(parsed.body).to.include('"a": 1');
+        expect(parsed.warning).to.match(/line breaks/i).and.match(/check the body/i);
+    });
+
+    it('a paste with its line breaks is left as it was', () => {
+        const parsed = parseSharedEndpointText('// Name: X\n// Method: POST\n// Path: /x\n\n{\n  "a": 1, // one\n  "b": 2\n}')!;
+        expect(parsed.body).to.equal('{\n  "a": 1, // one\n  "b": 2\n}');
+        expect(parsed.warning).to.equal(undefined);
+    });
+});

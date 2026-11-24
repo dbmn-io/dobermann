@@ -50,7 +50,12 @@ export interface ParsedSharedEndpoint {
     queryParams?: Array<{ key: string; value: string; enabled: boolean }>;
     /** Normalised (trimmed, lower-cased, de-duplicated) — the same rules as the tag editor. */
     tags?: string[];
+    /** Said to the user when the paste came through without its line breaks and its body couldn't be read back for certain. */
+    warning?: string;
 }
+
+/** What the paste says when a flattened body couldn't be put back for certain. */
+export const FLATTENED_BODY_WARNING = 'This endpoint lost its line breaks on the way (some chats do that), and its body could not be read back for certain. Check the body before you save, or share the endpoint as a file.';
 
 type MetaKey = 'Name' | 'Method' | 'Path' | 'Description' | 'Tags' | 'Header' | 'QueryParam';
 
@@ -85,6 +90,13 @@ const FLAGGED_VALUE = /^(\/\/[ \t]+(?:Header|QueryParam):.*?\[(?:enabled|disable
  */
 const UNFLAGGED_VALUE_THEN_BODY = /^(\/\/[ \t]+(?:Header|QueryParam):(?:(?!\[(?:enabled|disabled)\]).)*?)[ \t]+(?=\{(?!\{))/gm;
 
+/**
+ * A Name/Description/Tags line with a JSON body glued onto it (a flattened card: "// Description: Create PO{  "Actions"…").
+ * The body starts at the first `{` (never `{{`) that opens real JSON (a key, an empty object or a comment), or a `[`
+ * opening a list of them.
+ */
+const TEXT_VALUE_THEN_BODY = /^(\/\/[ \t]+(?:Name|Description|Tags):.*?)[ \t]*(?=\{(?!\{)\s*(?:"|\}|\/\/)|\[\s*[{"[\]])/gm;
+
 /** `key: value [enabled|disabled]` payload of a Header/QueryParam line; the flag is optional. */
 const KEY_VALUE_FLAG = /^(.+?):\s*(.*?)\s*(?:\[(enabled|disabled)\])?\s*$/;
 
@@ -118,9 +130,72 @@ export function normaliseSharedEndpointText(text: string): string {
     t = t.replace(FLAGGED_VALUE, '$1\n');
     //    Without a flag, a body glued on is recognisable by its opening brace.
     t = t.replace(UNFLAGGED_VALUE_THEN_BODY, '$1\n');
+    //    A name or description (free text) with the body glued on: the body starts at its JSON.
+    t = t.replace(TEXT_VALUE_THEN_BODY, '$1\n');
     // 4. The footer always gets its own line so the line parser can drop it.
     t = t.replace(/[ \t]*(⚡)/g, '\n$1');
     return t;
+}
+
+/** Each `// …` comment taken out (to the end of its line), outside strings. */
+function stripLineComments(text: string): string {
+    let out = '';
+    let inString = false;
+    for (let i = 0; i < text.length; i++) {
+        const c = text[i];
+        if (inString) {
+            out += c;
+            if (c === '\\') { out += text[i + 1] ?? ''; i++; } else if (c === '"') inString = false;
+            continue;
+        }
+        if (c === '"') { inString = true; out += c; continue; }
+        if (c === '/' && text[i + 1] === '/') {
+            const end = text.indexOf('\n', i);
+            if (end < 0) break;
+            i = end - 1;
+            continue;
+        }
+        out += c;
+    }
+    return out;
+}
+
+/** Reads as JSON once its comments are out and its {{placeholders}} stand for values. */
+function readsAsJson(text: string): boolean {
+    try {
+        JSON.parse(stripLineComments(text).replace(/\{\{[^{}]*\}\}/g, '0'));
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * A body flattened onto one line: a `//` comment there runs to the end of the line, taking the rest of the body with
+ * it. What is left of the lost line breaks is the indentation: each comment ends at the first run of two or more spaces.
+ */
+function endFlattenedComments(text: string): string {
+    let out = '';
+    let inString = false;
+    for (let i = 0; i < text.length; i++) {
+        const c = text[i];
+        if (inString) {
+            out += c;
+            if (c === '\\') { out += text[i + 1] ?? ''; i++; } else if (c === '"') inString = false;
+            continue;
+        }
+        if (c === '"') { inString = true; out += c; continue; }
+        if (c === '/' && text[i + 1] === '/') {
+            const rest = text.slice(i);
+            const gap = rest.search(/[ \t]{2,}/);
+            if (gap < 0) { out += rest; break; }
+            out += rest.slice(0, gap) + '\n';
+            i += gap - 1;
+            continue;
+        }
+        out += c;
+    }
+    return out;
 }
 
 /** Strip the "⚡ Dobermann | …" footer that the rendered card appends. */
@@ -260,7 +335,14 @@ export function parseSharedEndpointText(text: string): ParsedSharedEndpoint | nu
         }
 
         if (bodyLines.length > 0) {
-            const body = stripFooter(bodyLines.join('\n').trim());
+            let body = stripFooter(bodyLines.join('\n').trim());
+            // A body that came through on one line (line breaks lost on the way): its comments ended where its
+            // lines did, kept only when that reads back as JSON; else kept as it came, and said (#473)
+            if (body && !body.includes('\n') && !readsAsJson(body)) {
+                const repaired = endFlattenedComments(body);
+                if (readsAsJson(repaired)) body = repaired;
+                else endpoint.warning = FLATTENED_BODY_WARNING;
+            }
             if (body) {
                 endpoint.body = body;
             }

@@ -284,6 +284,8 @@ export class EndpointEditorController {
         const parsed = parseSharedEndpointText(text);
         if (parsed) {
             this.session.post({ type: 'pastedEndpointData', endpoint: parsed });
+            // (#473: a body that came through without its line breaks and couldn't be read back for certain)
+            if (parsed.warning) this.ports.toast.warn(parsed.warning);
         } else {
             this.ports.toast.warn(NOT_A_SHARED_ENDPOINT);
         }
@@ -301,6 +303,7 @@ export class EndpointEditorController {
         }
         if (pristineDraft) {
             this.session.post({ type: 'pastedEndpointData', endpoint: parsed });
+            if (parsed.warning) this.ports.toast.warn(parsed.warning);
             return;
         }
         const label = [parsed.method, parsed.path].filter(Boolean).join(' ');
@@ -320,6 +323,7 @@ export class EndpointEditorController {
         });
         if (result.actionId === 'endpoint') {
             this.session.post({ type: 'pastedEndpointData', endpoint: parsed });
+            if (parsed.warning) this.ports.toast.warn(parsed.warning);
         } else if (result.actionId === 'text') {
             this.session.post({ type: 'insertPastedText', text });
         }
