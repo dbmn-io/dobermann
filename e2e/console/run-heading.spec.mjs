@@ -71,8 +71,10 @@ test('the run heading: one line, the tabs with their counts, no Settings tab', a
     await expect(page.locator('#run-heading .tab-item[data-tab="success"] .tab-count')).toHaveText('1');
     await expect(page.locator('#run-heading .tab-item[data-tab="info"]')).toHaveCount(0);
     await expect(page.locator('#run-heading .tab-item[data-tab="success"]')).toHaveClass(/active/);
-    await page.locator('#run-heading .tab-item[data-tab="raw"]').click();
-    await expect(page.locator('#run-heading .tab-item[data-tab="raw"]')).toHaveClass(/active/);
+    // (B22: no Raw tab; Requests is the run's requests)
+    await expect(page.locator('#run-heading .tab-item[data-tab="raw"]')).toHaveCount(0);
+    await page.locator('#run-heading .tab-item[data-tab="requests"]').click();
+    await expect(page.locator('#run-heading .tab-item[data-tab="requests"]')).toHaveClass(/active/);
     expect(errors).toEqual([]);
 });
 

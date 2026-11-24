@@ -51,6 +51,7 @@
     <script src="{{DBMN_RUN_DETAILS_URI}}"></script>
     <script src="{{CONSOLE_RUN_HEADING_URI}}"></script>
     <script src="{{CONSOLE_EDITOR_URI}}"></script>
+    <script src="{{CONSOLE_ACTIONS_URI}}"></script>
     <script src="{{REQUEST_PREVIEW_URI}}"></script>
     <script src="{{EDITOR_WINDOW_CONTROLS_SCRIPT}}"></script>
 </head>
@@ -140,7 +141,8 @@
                 </div>
 
 
-                <div class="toolbar-actions">
+                <!-- (B20: these controls are the footer's Actions now: kept, unseen, as the menu's items press them) -->
+                <div class="toolbar-actions" hidden>
                     <!-- GitHub Issue #174: Separate Copy and Export dropdowns -->
                     <div class="export-menu">
                         <button id="copy-btn" class="export-button">Copy <span class="inline-icon" data-icon="chevron-down"></span></button>
@@ -512,6 +514,10 @@
                 </button>
                 <button id="cancel-preparation-btn" data-click="cancelExecution" class="btn btn-danger hidden" title="Cancel: stop now, and cut off the requests in flight">
                     <span class="btn-icon" data-icon="square"></span>Cancel
+                </button>
+                <!-- B20: what you can do with the rows on this tab (console/modules/console-actions.js): Copy, Export, Chain, Query -->
+                <button id="console-actions-btn" type="button" class="btn btn-primary hidden" aria-haspopup="menu" title="Copy, export, chain or query these rows">
+                    Actions <span class="inline-icon" data-icon="chevron-up"></span>
                 </button>
             </dbmn-actions>
 

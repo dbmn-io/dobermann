@@ -26,6 +26,7 @@ const SCRIPTS: Record<string, string> = {
     DBMN_TRANSACTION_URI: 'shared/dbmn-transaction.js', // #467: one request in full
     CONSOLE_RUN_HEADING_URI: 'console/modules/console-run-heading.js', // #464: the run heading's wiring
     CONSOLE_EDITOR_URI: 'console/modules/console-editor.js', // the transaction window's Monaco
+    CONSOLE_ACTIONS_URI: 'console/modules/console-actions.js', // B20: the footer's Actions
     HELP_MODE_URI: 'shared/help-mode.js',
     BUTTON_CONTRAST_URI: 'shared/button-contrast.js',
     CONSOLE_HELP_URI: 'console/modules/console-help.js',

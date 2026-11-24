@@ -19,7 +19,7 @@ const SCRIPTS = ['dbmn-toast.js', 'icons.js', 'json-comment-stripper.js', 'templ
 const BODY = JSON.stringify({ lines: [{ gtin: '{{gtin:string}}', uom: '{{uom:string|upper}}', qty: '{{qty:number}}' }] });
 
 function load() {
-    const dom = new JSDOM(`<!DOCTYPE html><body><button id="csvNextBtn">Next</button><button id="gridErrorFilterBtn">Filter Errors</button>
+    const dom = new JSDOM(`<!DOCTYPE html><body><button id="csvNextBtn">Next</button>
         <div id="csvDataValidationStep"><div class="csv-grid-entry" id="csvGridEntry"></div><div class="grid-hint"></div></div></body>`,
         { runScripts: 'outside-only', pretendToBeVisual: true });
     const w = dom.window as any;
@@ -52,7 +52,7 @@ describe('Run Batch Validate — Ctrl+Z undoes edits and deletes, back to the da
         const w = load();
         const table = w.document.querySelector('#csvGridEntry dbmn-table#validateGrid');
         expect(table.hasAttribute('editable')).to.equal(true);
-        expect(table.columns.map((c: any) => c.name)).to.deep.equal(['#', 'gtin', 'uom', 'qty']);
+        expect(table.columns.map((c: any) => c.name)).to.deep.equal(['#', 'Status', 'gtin', 'uom', 'qty'], 'Status after the number (slice 5)');
         expect(model(w)).to.deep.equal([['', '', '']]);   // one empty row to type into
     });
 

@@ -9,7 +9,7 @@ import { test, expect } from '@playwright/test';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { ROOT, consolePage, envelope } from './console-page.mjs';
+import { ROOT, consolePage, envelope, requestsArrived } from './console-page.mjs';
 
 const EXEC_ID = 'exec_monaco_cdn_down';
 const responseFile = () => ({
@@ -45,8 +45,12 @@ test('Monaco\'s CDN down: the Console opens without an error and shows the rows'
         await page.waitForTimeout(20);
     }
     await expect(page.locator('#console-table .dbmn-table-body > tr.data-row')).toHaveCount(2);
-    // The Raw tab too: its editors need Monaco, so it shows the text without them
-    await page.locator('.tab-item[data-tab="raw"]').click();
-    await page.waitForTimeout(300);
+    // The full transaction too (B22: Raw is gone): a single run's window opens by itself; its panes need Monaco, so
+    // they show the text without it
+    await requestsArrived(page);
+    const tx = page.locator('dbmn-transaction[window]');
+    await expect(tx).toHaveCount(1);
+    await expect(tx.locator('.dbmn-tx-pane[data-part="response"] [data-editor="text"]')).toHaveCount(1, { timeout: 15_000 });
+    await expect(tx.locator('.dbmn-tx-pane[data-part="response"] .dbmn-tx-code')).not.toHaveText('—');
     expect(pageErrors, 'uncaught errors in the page').toEqual([]);
 });

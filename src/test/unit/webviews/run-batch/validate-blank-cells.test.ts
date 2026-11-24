@@ -19,7 +19,6 @@ const SCRIPTS = ['dbmn-toast.js', 'json-comment-stripper.js', 'template-rename.j
 
 function load() {
     const dom = new JSDOM(`<!DOCTYPE html><body><button id="csvNextBtn">Next</button>
-        <button id="gridErrorFilterBtn" disabled>Filter Errors</button>
         <div id="csvDataValidationStep"><div class="grid-hint"></div></div><table><tbody id="vanillaGridBody"></tbody></table></body>`,
         { runScripts: 'outside-only', pretendToBeVisual: true });
     const w = dom.window as any;
@@ -51,7 +50,7 @@ describe('Run Batch Validate — required cells left empty', () => {
         expect(result.message).to.equal('6 empty fields in 3 rows: product.supplier.gln (3), reorderQty (3)');
     });
 
-    it('one check of every row: the rows to fix join Filter Errors (on), the hint says so, the modal lines name each column', () => {
+    it('one check of every row: the rows to fix are Status\'s INVALID filter (on), the hint says so, the modal lines name each column', () => {
         const w = load();
         const issues = w.DTDataEntryGrid.refreshGridIssues();
         const s = w.CSVHandler.csvState;
@@ -59,7 +58,7 @@ describe('Run Batch Validate — required cells left empty', () => {
         expect(issues.lines).to.deep.equal(['product.supplier.gln — empty in 3 rows', 'reorderQty — empty in 3 rows']);
         expect(Array.from(s.gridErrorRows)).to.deep.equal([1, 3, 4]);
         expect(s.gridErrorFilterActive).to.equal(true);
-        expect(w.document.getElementById('gridErrorFilterBtn').textContent).to.equal('Show All');
+        expect(s.gridStatusFilter, 'Status: INVALID only').to.deep.equal(['invalid']);
         expect(w.document.querySelector('.grid-hint').textContent).to.match(/^Showing the 3 rows that need fixing, of 5\./);
     });
 

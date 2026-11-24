@@ -1583,7 +1583,7 @@ body:has(#csvBatchContainer) .footer-content {
 }
 
 /* #435: the footer's buttons keep one width whatever they say (Import Data, Next, Execute,
-   "Processing…"), and their row keeps room for the most a step shows (Back, Filter Errors,
+   "Processing…"), and their row keeps room for the most a step shows (Back, Enter Data,
    Next), so the step bar beside them never moves as buttons come and go */
 #csvBatchContainer .webview-footer .footer-button-container {
     width: calc(3 * 112px + 2 * 10px);
@@ -2072,7 +2072,7 @@ body.is-footer-peek:has(#csvBatchContainer) .webview-footer {
 }
 
 /* Name, steps, buttons, from the left: each starts where it does on every stepped screen, and a
-   button that comes and goes (Filter Errors) does so at the end. A little more room below
+   button that comes and goes (Enter Data) does so at the end. A little more room below
    than above, so the row does not look as if it is sinking. */
 body:has(#csvBatchContainer) .webview-footer.named-footer .footer-content {
     justify-content: flex-start;
@@ -2089,7 +2089,7 @@ body:has(#csvBatchContainer) .webview-footer.named-footer .footer-content {
 }
 
 #csvBatchContainer .webview-footer.named-footer .footer-button-container .btn {
-    /* The standard footer button, at its own size. A button that comes (Filter Errors, Execute) eases in where it stands: nothing beside it jumps */
+    /* The standard footer button, at its own size. A button that comes (Execute) eases in where it stands: nothing beside it jumps */
     animation: foot-btn-in 0.18s ease-out;
 }
 
@@ -2159,3 +2159,18 @@ body:has(#csvBatchContainer) .webview-footer.named-footer .footer-content {
 .review-requests-table { display: flex; flex-direction: column; min-height: 320px; height: min(70vh, 640px); }
 .review-requests-table > dbmn-table { flex: 1; min-height: 0; gap: 0; }
 .review-requests-table > dbmn-table .dbmn-table-scroll { flex: 1; min-height: 0; max-height: none; }
+
+/* Slice 5 (#470): Validate in Results' style. A row's Status: its pill, then the columns to fix as tags */
+.grid-status { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+/* How many rows show, by the search box (Results' "1 of 1,000 rows") */
+.grid-tools .grid-row-count { color: var(--vscode-descriptionForeground); font-size: 12px; white-space: nowrap; }
+/* Status's pills and a heading's count, in the mock's colours (James's v18): INVALID and the counts amber, filled;
+   VALID quiet, outlined; each column to fix as an amber-outlined tag in its own case. The theme's warning colour */
+.grid-status-pill { font-size: 10px; font-weight: 700; border-radius: 8px; padding: 1px 7px; line-height: 14px; white-space: nowrap; }
+.grid-status-pill.is-invalid { color: var(--vscode-editor-background); background: var(--vscode-editorWarning-foreground); }
+.grid-status-pill.is-valid { color: var(--vscode-descriptionForeground); border: 1px solid var(--vscode-panel-border); font-weight: 600; }
+.grid-status-col { font-family: var(--vscode-editor-font-family, monospace); font-size: 10px; color: var(--vscode-editorWarning-foreground);
+    border: 1px solid color-mix(in srgb, var(--vscode-editorWarning-foreground) 55%, transparent); border-radius: 3px; padding: 0 4px; white-space: nowrap; }
+#validateGrid .dbmn-head-count:not(.is-active) { color: var(--vscode-editor-background); background: var(--vscode-editorWarning-foreground); font-weight: 600; }
+/* (measured off screen for Status's width) */
+.grid-status-probe { position: absolute; left: -9999px; top: 0; visibility: hidden; white-space: nowrap; }

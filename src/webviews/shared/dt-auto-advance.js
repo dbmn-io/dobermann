@@ -10,7 +10,7 @@
  *     ignoring case, or one ignoring punctuation (location.gln ↔ location_gln). A partial-name
  *     guess always stops on Map — until the user confirms it once (Next saves it, #307).
  *   - Validate is passed only when every row is valid. Its own Next runs the checks: blanks,
- *     rules, types. Anything they find stops on Validate, with Filter Errors on.
+ *     rules, types. Anything they find stops on Validate, with only its INVALID rows shown.
  *
  * Each step it passes stays on screen for a moment (dwell), so the step bar
  * (batch-stepper.js) shows the walk: Map ticks off, then Validate, then Review.

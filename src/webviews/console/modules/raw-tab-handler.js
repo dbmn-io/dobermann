@@ -3318,8 +3318,9 @@ class RawTabHandler {
         this.closeTransactionMenu();
 
         const isError = this.normalizeStatus(tx.status || tx.metadata?.status || '') === 'error';
+        // (B22: "View full transaction", the Requests tab's window, #467; Raw's own window only without it)
         const items = [
-            { id: 'view', label: 'View transaction', run: () => this.openTransactionModal(tx) }
+            { id: 'view', label: 'View full transaction', run: () => { if (!(window.ConsoleRequests && window.ConsoleRequests.openFor && window.ConsoleRequests.openFor(tx))) this.openTransactionModal(tx); } }
         ];
         if (isError) {
             items.push({ id: 'reprocess', label: 'Reprocess', run: () => this.reprocessTransaction(tx) });

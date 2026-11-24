@@ -2006,9 +2006,8 @@ class DynamicReportManager {
             // If no responses yet, but has input data (batch preparing), switch to Input tab
             this.switchTab('input');
         } else {
-            // Otherwise default to RAW tab (for PREPARING/RUNNING executions)
-            // GitHub Issue #166: Changed from 'logs' to 'raw' since Logs tab is now hidden
-            this.switchTab('raw');
+            // Otherwise the Requests tab (PREPARING / RUNNING): its rows come as the run goes (B22: Raw is gone)
+            this.switchTab('requests');
         }
     }
 
@@ -2140,7 +2139,7 @@ class DynamicReportManager {
         const requestsKnown = window.ConsoleRequests && window.ConsoleRequests.state.total;
         if (isBatchReport || hasResults) tabs.push({ id: 'requests', label: 'Requests', count: requestsKnown || (rawData.responses ? rawData.responses.length : 0) });
         // #166/#184: Raw, every transaction's request and response
-        if (isBatchReport || hasResults) tabs.push({ id: 'raw', label: 'Raw', count: rawData.responses ? rawData.responses.length : 0 });
+        // (B22: no Raw tab: Requests is a run's requests, its full transaction a click away)
         [['success', 'Completed', 'ok'], ['errors', 'Error', 'error']].forEach(([id, label, tone]) => {
             const count = classified[id]?.length || 0;
             if (count > 0 || (isBatchReport && hasResults)) tabs.push({ id, label, count, tone, hidden: id === 'errors' && count === 0 });
@@ -4155,7 +4154,7 @@ class DynamicReportManager {
         // bounce the user around — if they've navigated elsewhere
         // (settings, info), respect that.
         if (!this._autoSwitchedOnFirstResult
-            && (this.currentTab === 'raw' || this.currentTab === 'input')) {
+            && (this.currentTab === 'raw' || this.currentTab === 'requests' || this.currentTab === 'input')) {
             const target = payload.classification === 'success' ? 'success' : 'errors';
             // Defer one tick so the tabs created/updated below exist
             // before switchTab() tries to activate one.

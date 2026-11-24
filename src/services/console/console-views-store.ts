@@ -116,6 +116,26 @@ export class ConsoleViewsStore {
         await this.mirror(endpointId, next);
     }
 
+    /**
+     * The Input tab's saved searches (the ★ by its box): the Console's Input tab and Run Batch's Validate (the same
+     * tab, before the run; slice 5) keep one list, as `input.searches` beside the data tabs' Views.
+     */
+    async loadInputSearches(endpointId: string): Promise<Array<{ name: string; text: string }>> {
+        const all = await this.loadAll(endpointId);
+        const input = all?.input as { searches?: unknown } | undefined;
+        return Array.isArray(input?.searches) ? (input!.searches as Array<{ name: string; text: string }>) : [];
+    }
+
+    /** Keep the Input tab's saved searches; every View stays as it is. Mirrored to the endpoint as save() does. */
+    async saveInputSearches(endpointId: string, searches: Array<{ name: string; text: string }>): Promise<void> {
+        const scopeKey = await this.resolveScopeKey(endpointId);
+        const before = (await this.loadAll(endpointId)) ?? {};
+        const input = (before.input && typeof before.input === 'object' ? before.input : { activeView: '', views: [] }) as Record<string, unknown>;
+        const next = { ...before, input: { ...input, searches } };
+        await this.writeViewsToRegistry(scopeKey, next);
+        await this.mirror(endpointId, next);
+    }
+
     private async loadAll(endpointId: string): Promise<Record<string, unknown> | null> {
         const scopeKey = await this.resolveScopeKey(endpointId);
         const registry = await this.getOrMigrateRegistry();

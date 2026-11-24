@@ -3422,3 +3422,4 @@ html[data-tab-colour="stopped"] .report-title { --title-c: var(--vscode-descript
     color: var(--vscode-descriptionForeground);
     border: 1px solid var(--vscode-descriptionForeground);
 }
+.toolbar-actions[hidden] { display: none !important; }

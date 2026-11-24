@@ -15,7 +15,9 @@
         { selector: '#columnMappingTable', help: 'batch-preparation#step-2-map-transform' },
         { selector: '#updateTemplateOption', help: 'batch-preparation#remember-mapping' },
         // Step 3 — Review & Edit Data
-        { selector: '#gridEntryContainer, #gridErrorFilterBtn', help: 'batch-preparation#step-3-review-edit-data' },
+        { selector: '#gridEntryContainer', help: 'batch-preparation#step-3-review-edit-data' },
+        // (slice 5: what Validate shows: All columns / Invalid only, hidden characters, Clear all filters)
+        { selector: '#gridTools', help: 'batch-preparation#validation' },
         // Step 4 — Review & Configure
         { selector: '#repsControlGroup, #arraySelectGroup, #queryItemsGroup, #repeatedArrayGroup', help: 'batch-preparation#batch-configuration' },
         { selector: '#groupedByGroup', help: 'batch-preparation#nested-grouping' },

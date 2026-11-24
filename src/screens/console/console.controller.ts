@@ -5343,6 +5343,9 @@ export class ConsoleController {
         ConsoleController.missedStatusUpdates.take(executionId);
         // The run's state changed: its details and figures, all of them (#464, #465)
         reportManager.runChanged(true);
+        // ...and its requests: a single run's one request is only told here (a batch's are told per request), so its
+        // response, written as it ends, reached the Requests tab and its window only once this was said (B22)
+        reportManager.requestsChanged();
 
         if (reportManager) {
             try {

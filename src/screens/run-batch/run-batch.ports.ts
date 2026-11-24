@@ -7,6 +7,7 @@
 import type { APIEndpointManager } from '../../apiEndpointManager';
 import type { EnvironmentManager } from '../../environmentManager';
 import type { IConfiguration } from '../../platform/interfaces/configuration.interface';
+import type { IKeyValueStore } from '../../platform/interfaces/key-value-store.interface';
 import type { FormatConverterService } from '../../services/format-converter/format-converter.service';
 import type { BulkLoadRequest } from '../../services/execution/run-orchestrator';
 import type { BulkLoadResult } from '../../webviews/run-batch/bulk-load-result';
@@ -17,6 +18,8 @@ export interface RunBatchPorts {
     formatConverter: FormatConverterService;
     /** `dbmn.execution.maxCsvRows`. */
     settings: IConfiguration;
+    /** Where the Console keeps an endpoint's Views: Validate's ★ keeps the Input tab's saved searches there (slice 5). */
+    state?: Pick<IKeyValueStore, 'get' | 'update'>;
     toast: { info(message: string): void; warn(message: string, opts?: { forceNative?: boolean }): void; error(message: string): void };
     /** Prepare and run the batch; its Console opens from the engine. */
     executeBulkLoad(request: BulkLoadRequest): Promise<BulkLoadResult>;

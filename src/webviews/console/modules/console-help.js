@@ -16,7 +16,7 @@
         // Tabs
         { selector: '.tab-item[data-tab="links"]', help: 'chain#links-tab' },
         { selector: '.tab-item[data-tab="input"]', help: 'console#input-tab' },
-        { selector: '.tab-item[data-tab="raw"]', help: 'console#raw-tab' },
+        { selector: '.tab-item[data-tab="requests"]', help: 'console#raw-tab' },   // (B22: Requests, under Raw's old anchor)
         { selector: '.tab-item[data-tab="success"]', help: 'console#completed-tab' },
         { selector: '.tab-item[data-tab="errors"]', help: 'console#error-tab' },
         // Toolbar

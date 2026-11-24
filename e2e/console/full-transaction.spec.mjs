@@ -1,7 +1,8 @@
 /**
- * Issues #306 and #296 on the REAL Console page: one transaction in Raw is shown clean (no
- * list, no Transaction #001 card), a `{}` request body is no body, Status and Show sit in the
- * Raw bar, and a Completed/Error row opens the same transaction card in a modal on right-click.
+ * Issues #306 and #296 on the REAL Console page, since B22 (Raw retired) in the full-transaction window
+ * (<dbmn-transaction>, the Requests tab's): a single run's opens by itself with Request off when there is no body, and
+ * an Input, Completed or Error row opens it on right-click ("View full transaction"), its input rows and Reprocess.
+ * (Was raw-transaction-view.spec.mjs; its "Status and Show in the Raw bar" case went with the Raw tab.)
  *
  *   npm run test:e2e:console      (no backend needed — the page is loaded from src/)
  */
@@ -9,7 +10,7 @@ import { test, expect } from '@playwright/test';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { ROOT, consolePage, envelope } from './console-page.mjs';
+import { ROOT, consolePage, envelope, requestsArrived } from './console-page.mjs';
 
 /** A response as the host hands it to the page (sourceFile is what Raw maps IDs by). */
 const response = (n, status, data) => ({
@@ -44,62 +45,23 @@ async function openConsole(page, { reportType, batchId = '', executionId = '', e
 const send = (page, message) => page.evaluate(m => window.postMessage(m, '*'), message);
 const posted = (page, type) => page.evaluate(t => window.__posted.filter(m => m.type === t), type);
 
-test('one GET transaction: clean view, Request off, and {} is no body', async ({ page }) => {
+test('one GET transaction: its window opens by itself, Request off with no body, the response shown', async ({ page }) => {
     const pageErrors = await openConsole(page, { reportType: 'individual', executionId: 'exec_1', endpoint: 'GET https://api.test/items' });
     await page.evaluate(r => window.dynamicReportManager.initialize({
         responses: [r], requests: [], logContent: [], metadata: { executionId: 'exec_1' }
     }), response(1, 'completed', { items: [{ sku: 'A' }] }));
+    await requestsArrived(page);
 
-    await page.locator('.tab-item[data-tab="raw"]').click();
-
-    const card = page.locator('.raw-tab-container .raw-card');
-    await expect(card).toHaveCount(1);
-    await expect(card).toHaveClass(/raw-card-solo/);
-    await expect(page.locator('.raw-card-title'), 'no Transaction #001 title').toHaveCount(0);
-    await expect(page.locator('.raw-filter-bar'), 'no list bar for one transaction').toHaveCount(0);
-
-    const chip = name => card.locator(`.raw-show-chip[data-show="${name}"]`);
-    await expect(chip('showData'), 'no input rows to show').toBeDisabled();
-    await expect(chip('showRequest')).toHaveAttribute('aria-pressed', 'false');
-    await expect(chip('showResponse')).toHaveAttribute('aria-pressed', 'true');
-    await expect(card.locator('.raw-panes-container')).toHaveClass(/request-hidden/);
-
-    // The request file holds `{}` — the host sends it back as no body.
-    await send(page, summaries(1));
-    await expect.poll(() => posted(page, 'console.get_raw_transaction_content').then(p => p.length)).toBeGreaterThan(0);
-    await send(page, content([{ executionId: 'exec_1', requestContent: '', responseContent: null }]));
-
-    await chip('showRequest').click();
-    await expect(chip('showRequest')).toHaveAttribute('aria-pressed', 'true');
-    await expect(card.locator('.raw-panes-container')).not.toHaveClass(/request-hidden/);
-    await expect(card.locator('.raw-request-pane .raw-view-mode-group'), 'no Body option').toHaveCount(0);
-    await expect(card.locator('#monaco-request-0')).toHaveAttribute('data-request-mode', 'details');
-    expect(pageErrors, 'uncaught errors in the page').toEqual([]);
-});
-
-test('a batch: Status and Show sit in the Raw bar, no filter modal', async ({ page }) => {
-    const pageErrors = await openConsole(page, { reportType: 'batch', batchId: 'batch-1', endpoint: 'POST https://api.test/inventory' });
-    await page.evaluate(rs => window.dynamicReportManager.initialize({
-        responses: rs, requests: [], logContent: [], metadata: { batchId: 'batch-1' },
-        inputData: [{ sku: 'A', uom: 'EA' }, { sku: 'B', uom: 'EA' }, { sku: 'C', uom: 'XX' }]
-    }), [response(1, 'completed', { ok: 1 }), response(2, 'completed', { ok: 1 }), response(3, 'error', { message: 'violates check constraint "uom_check"' })]);
-
-    await page.locator('.tab-item[data-tab="raw"]').click();
-    await send(page, summaries(3));
-
-    await expect(page.locator('#raw-filter-btn'), 'the funnel is gone').toHaveCount(0);
-    const bar = page.locator('.raw-filter-bar');
-    await expect(bar.locator('#raw-status-select option[value="error"]')).toHaveText('Error (1)');
-    await expect(bar.locator('.raw-show-chip[data-show="showRequest"]'), 'POST sends a body').toHaveAttribute('aria-pressed', 'true');
-    await expect(bar.locator('.raw-show-chip[data-show="showData"]')).toHaveAttribute('aria-pressed', 'false');
-    await expect(page.locator('.raw-tab-container .raw-card')).toHaveCount(3);
-
-    await bar.locator('#raw-status-select').selectOption('error');
-    await expect(page.locator('.raw-tab-container .raw-card')).toHaveCount(1);
-    await expect(page.locator('.raw-card-title')).toHaveText('Transaction #003');
-
-    await bar.locator('.raw-show-chip[data-show="showData"]').click();
-    await expect(page.locator('.raw-tab-container .raw-csv-data-wrapper')).not.toHaveClass(/raw-section-hidden/);
+    const tx = page.locator('dbmn-transaction[window]');
+    await expect(tx).toHaveCount(1);
+    await expect(tx.locator('.dbmn-tx-title')).toHaveText('Transaction #001');
+    const show = name => tx.locator('.dbmn-tx-seg-btn', { hasText: name });
+    await expect(show('Request'), 'no body: Request starts off').not.toHaveClass(/is-on/);
+    await expect(show('Response')).toHaveClass(/is-on/);
+    await expect(tx.locator('.dbmn-tx-pane[data-part="request"]')).toHaveCount(0);
+    await expect(tx.locator('.dbmn-tx-pane[data-part="response"]')).toContainText('"sku"', { timeout: 15_000 });
+    await show('Request').click();
+    await expect(tx.locator('.dbmn-tx-pane[data-part="request"]')).toHaveCount(1);
     expect(pageErrors, 'uncaught errors in the page').toEqual([]);
 });
 
@@ -139,12 +101,17 @@ test('Input tab: rows searched by their transaction\'s Result in the box (no dro
     expect(exports.at(-1).payload.searchTerm).toBe('@Result=Error');
     expect(exports.at(-1).payload.inputStatusFilter).toBeUndefined();
 
-    // Right-click an Input row → its transaction
+    // Right-click an Input row → its full transaction, with its input rows (rows 3 and 4: C and D)
     await rows.nth(0).locator('td').first().click({ button: 'right' });
-    await expect(page.locator('.raw-context-menu-item')).toHaveText(['View transaction', 'Reprocess']);
+    await expect(page.locator('.raw-context-menu-item')).toHaveText(['View full transaction', 'Reprocess']);
     await page.locator('.raw-context-menu-item[data-action="view"]').click();
-    await expect(page.locator('.dbmn-modal-transaction .dbmn-modal-title')).toHaveText('Transaction #002');
+    const tx = page.locator('dbmn-transaction[window]');
+    await expect(tx.locator('.dbmn-tx-title')).toHaveText('Transaction #002');
+    // (a sent request opens on Request and Response; its input rows are a click away)
+    await tx.locator('.dbmn-tx-seg-btn', { hasText: 'Input' }).click();
+    await expect(tx.locator('.dbmn-tx-input')).toContainText('XX', { timeout: 15_000 });
     await page.keyboard.press('Escape');
+    await expect(tx).toHaveCount(0);
 
     await box.fill('@Result="Not processed"');
     await expect(rows).toHaveCount(2);
@@ -169,87 +136,67 @@ test('Input tab: rows searched by their transaction\'s Result in the box (no dro
     expect(pageErrors, 'uncaught errors in the page').toEqual([]);
 });
 
-test('right-click an Error row: view the transaction, reprocess it with its real ID', async ({ page }) => {
+test('right-click an Error row: its full transaction, with its input row, reason and Reprocess with its real ID', async ({ page }) => {
     const pageErrors = await openConsole(page, { reportType: 'batch', batchId: 'batch-1', endpoint: 'POST https://api.test/inventory' });
     await page.evaluate(rs => window.dynamicReportManager.initialize({
         responses: rs, requests: [], logContent: [], metadata: { batchId: 'batch-1' },
         inputData: [{ sku: 'A', uom: 'EA' }, { sku: 'B', uom: 'EA' }, { sku: 'C', uom: 'XX' }]
     }), [response(1, 'completed', { ok: 1 }), response(2, 'completed', { ok: 1 }), response(3, 'error', { message: 'violates check constraint "uom_check"' })]);
+    // (the run's record: each request's real ID and input rows, as the host sends it)
+    await send(page, summaries(3));
 
-    // Completed rows offer View only
+    // Completed rows offer View full transaction only
     await page.locator('.tab-item[data-tab="success"]').click();
     await page.locator('#console-table .dbmn-table-body > tr.data-row').first().click({ button: 'right' });
-    await expect(page.locator('.raw-context-menu-item')).toHaveText(['View transaction']);
+    await expect(page.locator('.raw-context-menu-item')).toHaveText(['View full transaction']);
     await page.keyboard.press('Escape');
     await expect(page.locator('.raw-context-menu')).toHaveCount(0);
 
-    // Error rows offer View and Reprocess
+    // Error rows offer View full transaction and Reprocess
     await page.locator('.tab-item[data-tab="errors"]').click();
     // (in view first: a scroll closes the menu, and the page's scroll to the row would land just after it opens)
     const errorRow = page.locator('#console-table .dbmn-table-body > tr.data-row').first();
     await errorRow.scrollIntoViewIfNeeded();
     await page.waitForTimeout(100);
     await errorRow.click({ button: 'right' });
-    await expect(page.locator('.raw-context-menu-item')).toHaveText(['View transaction', 'Reprocess']);
+    await expect(page.locator('.raw-context-menu-item')).toHaveText(['View full transaction', 'Reprocess']);
     await page.locator('.raw-context-menu-item[data-action="view"]').click();
 
-    const modal = page.locator('.dbmn-modal-transaction');
-    await expect(modal).toBeVisible();
-    await expect(modal.locator('.dbmn-modal-title')).toHaveText('Transaction #003');
-    const card = modal.locator('.raw-card-solo');
-    await expect(card.locator('.raw-status-badge')).toHaveText('ERROR');
-
-    // The modal asks for the Raw summaries (real IDs + input rows) even though Raw never opened.
-    await expect.poll(() => posted(page, 'console.get_raw_tab_data').then(p => p.length)).toBe(1);
-    await send(page, summaries(3));
-    await send(page, content([{ executionId: 'exec_3', requestContent: '{\n  "sku": "C",\n  "uom": "XX"\n}', responseContent: null }]));
-    await expect(card.locator('.raw-csv-data-wrapper'), 'input row shown for a single transaction').not.toHaveClass(/raw-section-hidden/);
-    // (the INPUT rows: the design system's table, shared with Run Batch's Review)
-    await expect(card.locator('.raw-input-table .dbmn-table-body td').nth(1)).toHaveText('XX');
-    await expect(card.locator('.raw-request-pane .raw-view-mode-btn[data-mode="body"]')).toBeVisible();
-
-    // The modal's Show chips work though the Raw tab was never opened.
-    for (const [prop, hiddenClass] of [['showRequest', /request-hidden/], ['showResponse', /response-hidden/]]) {
-        const chip = card.locator(`.raw-show-chip[data-show="${prop}"]`);
-        await expect(chip).toHaveAttribute('aria-pressed', 'true');
-        await chip.click();
-        await expect(chip).toHaveAttribute('aria-pressed', 'false');
-        await expect(card.locator('.raw-panes-container')).toHaveClass(hiddenClass);
-        await chip.click();
-        await expect(chip).toHaveAttribute('aria-pressed', 'true');
+    const tx = page.locator('dbmn-transaction[window]');
+    await expect(tx.locator('.dbmn-tx-title')).toHaveText('Transaction #003');
+    await expect(tx.locator('.dbmn-tx-head .raw-status-badge')).toHaveText('ERROR');
+    // (why it failed, as the Error tab says it: the fixture has no error message of its own, so its HTTP status)
+    await expect(tx.locator('.raw-card-reason-text')).toContainText('HTTP 422');
+    // its input row (the design system's table), shown though no other tab was opened: a click away
+    await tx.locator('.dbmn-tx-seg-btn', { hasText: 'Input' }).click();
+    await expect(tx.locator('.dbmn-tx-input')).toContainText('XX', { timeout: 15_000 });
+    // Show: each part turns off and on again
+    for (const part of ['Request', 'Response', 'Input']) {
+        const b = tx.locator('.dbmn-tx-seg-btn', { hasText: part });
+        const on = async () => /\bis-on\b/.test(await b.getAttribute('class'));
+        const was = await on();
+        await b.click();
+        await expect.poll(on).toBe(!was);
+        await b.click();
+        await expect.poll(on).toBe(was);
     }
-    const inputChip = card.locator('.raw-show-chip[data-show="showData"]');
-    await inputChip.click();
-    await expect(inputChip).toHaveAttribute('aria-pressed', 'false');
-    await expect(card.locator('.raw-csv-data-wrapper')).toHaveClass(/raw-section-hidden/);
-    await card.locator('.raw-solo-search').fill('uom');
-    await expect.poll(() => page.evaluate(() => window.rawTabHandler.modal?.searchTerm)).toBe('uom');
-
-    await card.locator('.raw-retry-btn').click();
+    await tx.locator('.dbmn-tx-reprocess').click();
     const retries = await posted(page, 'retryMember');
     expect(retries.map(m => m.payload)).toEqual([{ executionId: 'exec_3', batchId: 'batch-1' }]);
-    await expect(card.locator('.raw-status-badge')).toHaveText('PENDING');
 
-    // The result comes back through the live update — the modal follows it.
+    // The result comes back through the live update: the open window follows it (as Raw's card did)
     const done = response(3, 'completed', { ok: 1 });
     await send(page, { type: 'batch_member_result_update', payload: { result: done, classification: 'success', batchId: 'batch-1', totalMembers: 3 } });
-    await expect(card.locator('.raw-status-badge')).toHaveText('COMPLETED');
+    await expect(tx.locator('.dbmn-tx-head .raw-status-badge')).toHaveText('COMPLETED', { timeout: 10_000 });
 
-    // The modal body is a form: none of the card's buttons may submit (close) it.
-    await card.locator('.raw-request-pane .raw-view-mode-btn[data-mode="details"]').click();
-    await expect(card.locator('#monaco-request-m')).toHaveAttribute('data-request-mode', 'details');
-    await card.locator('.raw-response-pane .raw-pane-copy-btn').click();
-    await expect(modal, 'card buttons keep the modal open').toHaveCount(1);
-
-    // Full window works in the modal; Esc leaves it without closing the modal.
-    const responsePane = card.locator('.raw-response-pane');
-    await responsePane.locator('.raw-pane-fullscreen-btn').click();
-    await expect(responsePane).toHaveClass(/raw-pane-fullscreen/);
+    // ⤢ fills the window with a pane; the first Esc puts it back, the second closes the window
+    const pane = () => tx.locator('.dbmn-tx-pane[data-part="response"]');
+    await pane().locator('.dbmn-tx-max').click();
+    await expect(pane()).toHaveClass(/is-max/);
     await page.keyboard.press('Escape');
-    await expect(responsePane).not.toHaveClass(/raw-pane-fullscreen/);
-    await expect(modal, 'first Esc only leaves full window').toHaveCount(1);
-
+    await expect(pane()).not.toHaveClass(/is-max/);
+    await expect(tx, 'the first Esc only puts the pane back').toHaveCount(1);
     await page.keyboard.press('Escape');
-    await expect(modal).toHaveCount(0);
+    await expect(tx).toHaveCount(0);
     expect(pageErrors, 'uncaught errors in the page').toEqual([]);
 });

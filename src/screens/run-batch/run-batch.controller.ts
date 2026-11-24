@@ -41,6 +41,7 @@ import { sharedScript } from '../../utils/shared-script';
 import { JsonGenerator } from '../../data-loading/json-generator';
 import { ArrayRepetitionHelper } from '../../services/transaction-preparation/helpers/array-repetition.helper';
 import { TemplateParser } from '../../data-loading/template-parser';
+import { ConsoleViewsStore } from '../../services/console/console-views-store';
 import { lookupTablesNamed, refreshTemplateLookups, templateUsesLookups } from '../../data-loading/template-lookups';
 const TemplateRename = sharedScript<typeof templateRenameScript>(templateRenameScript, 'TemplateRename');
 // GitHub Issue #226: Centralised column-mismatch detection (testable utility)
@@ -65,6 +66,8 @@ export interface RunBatchMessage extends WebviewMessage {
     'showSuccessMessage' | 'showErrorMessage' | 'showError' | 'showWarning' | 'requestEndpointConfig' | 'executeBulkLoadCommand' |
     // #466/#470: Review's Requests table (Ready rows from the batch plan)
     'console.requests.page' | 'console.requests.detail' | 'console.requests.counts' | 'console.requests.columns' | 'console.requests.shown' |
+    // Slice 5: Validate's ★, the Input tab's saved searches (kept with the Console's)
+    'runBatch.inputSearches.load' | 'runBatch.inputSearches.save' |
     'getEndpointTemplate' | 'generateJsonPreview' | 'generateBulkJson' | 'verifyCSV' |
     'getCurrentEnvironment' |
     'validateWorkspaceForBatch' | 'openFileDialog' | 'detectFileFormat' | 'convertFileFormat' |
@@ -232,6 +235,12 @@ export class RunBatchController {
                 await this.handleExecuteBulkLoadCommand(message);
                 break;
 
+            // Slice 5: Validate's ★ keeps the same list as the Console's Input tab
+            case 'runBatch.inputSearches.load':
+            case 'runBatch.inputSearches.save':
+                await this.handleInputSearches(message);
+                break;
+
             // #470: Execute pressed on Review: what its confirmation says and offers
             case 'runBatch.executeAsk':
                 await this.handleExecuteAsk();
@@ -367,6 +376,32 @@ export class RunBatchController {
      *   review:  ReviewHandoff (review-handoff.ts), what Review showed, for the Console that takes the tab's place.
      * `production` is the guard's answer, sent only when summary.guard was shown (its Warning frequency as minutes).
      */
+    /** Validate's ★: the endpoint's Input tab searches, read or kept (none kept without a store: the list stays empty). */
+    private async handleInputSearches(message: RunBatchMessage): Promise<void> {
+        const state = this.ports.state;
+        if (!state) {
+            this.session.post({ type: 'runBatch.inputSearches', searches: [] });
+            return;
+        }
+        const store = new ConsoleViewsStore({ state, endpoints: this.ports.endpoints });
+        try {
+            if (message.type === 'runBatch.inputSearches.save') {
+                const raw = (message as { searches?: unknown }).searches;
+                const searches = Array.isArray(raw)
+                    ? raw.filter((s): s is { name: string; text: string } => !!s && typeof (s as { name?: unknown }).name === 'string' && typeof (s as { text?: unknown }).text === 'string')
+                        .slice(0, 50).map(s => ({ name: s.name, text: s.text }))
+                    : [];
+                await store.saveInputSearches(this.endpointId, searches);
+                return;
+            }
+            this.session.post({ type: 'runBatch.inputSearches', searches: await store.loadInputSearches(this.endpointId) });
+        } catch (error) {
+            console.warn('[RunBatch] saved searches:', error);
+            if (message.type === 'runBatch.inputSearches.save') this.ports.toast.error('The saved search could not be kept.');
+            else this.session.post({ type: 'runBatch.inputSearches', searches: [] });
+        }
+    }
+
     private async handleExecuteAsk(): Promise<void> {
         const environments = this.ports.environments;
         const environment = await environments.getActiveEnvironment();

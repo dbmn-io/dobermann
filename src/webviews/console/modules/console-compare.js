@@ -120,6 +120,8 @@
         /** How many saved compares read this View (0 when none). */
         comparesUsing: name => state.views[name] || 0,
         /** How many saved queries read this View: such a View is locked (columns can only be added). */
-        queriesUsing: name => state.queries[name] || 0
+        queriesUsing: name => state.queries[name] || 0,
+        /** Its menu, opened from another button (the footer's Actions, B20). */
+        openFrom: anchor => start({ currentTarget: anchor })
     };
 })();

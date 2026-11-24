@@ -11,6 +11,7 @@ import { WebviewBase } from '../shared/webview-base';
 import { WebviewConfig, WebviewMessage } from '../shared/types';
 import { IServiceContainer, ServiceTokens } from '../../container/service-container.interface';
 import { CoreServiceTokens } from '../../container/core-services-registry';
+import type { StoreContext } from '../../platform/interfaces/store-context.interface';
 import type { IDbmnAuthService } from '../../services/dbmn-auth/dbmn-auth.interface';
 import { sendDbmnSignInLinkInApp } from '../../services/ui/dbmn-prompts';
 import type { APIEndpointManager } from '../../apiEndpointManager';
@@ -34,6 +35,14 @@ export class RunBatchWebview extends WebviewBase {
             get environments() { return container.resolve<EnvironmentManager>(ServiceTokens.EnvironmentManager); },
             get formatConverter() { return container.resolve<FormatConverterService>(CoreServiceTokens.FormatConverterService); },
             settings: dbmnSettings(),
+            // (where the Console keeps an endpoint's Views: Validate's ★ shares the Input tab's saved searches, slice 5)
+            get state() {
+                try {
+                    return container.resolve<{ getCatalogueStore(): StoreContext }>(ServiceTokens.DobermannInstance).getCatalogueStore().globalState;
+                } catch {
+                    return context.globalState;
+                }
+            },
             toast: {
                 info: m => this.toast?.info(m),
                 warn: (m, opts) => this.toast?.warn(m, opts),

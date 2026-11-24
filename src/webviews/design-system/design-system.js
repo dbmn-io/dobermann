@@ -252,7 +252,7 @@
     const MOVES = [
         ['Query', 'Footer and steps', ON, 'dbmn-footer, dbmn-steps', ''],
         ['Run Batch', 'Footer and steps', ON, 'dbmn-footer, dbmn-steps', ''],
-        ['Run Batch', 'Table', ON, 'Validate: dbmn-table editable, amber cells with the reason on hover, the errors filter showing the rows to fix', 'Source\'s file preview draws its own'],
+        ['Run Batch', 'Table', ON, 'Validate: dbmn-table editable, amber cells with the reason on hover, a Status column (INVALID with its columns as tags, VALID) whose filter and the columns\' counts show the rows to fix; Review\'s Requests table (DbmnRequests); the run heading over both', 'Source\'s file preview draws its own'],
         ['Console', 'Footer and progress', ON, 'dbmn-footer, dbmn-progress (written only through ConsoleProgress)', 'Next: Threads, Stop on next error and Rows per request in the box\'s figures'],
         ['Edit Endpoint', 'Footer and status', ON, 'dbmn-footer, dbmn-status (its More menu kept for buttons that don\'t fit)', ''],
         ['Edit Environment', 'Footer and status', ON, 'dbmn-footer, dbmn-status', ''],

@@ -145,6 +145,7 @@ export function webTabs(deps: WebTabDeps): HubTabFactory {
                 environments: deps.environments,
                 formatConverter: new FormatConverterService(new DataTypeDetectionService(), new DataTransformationService()),
                 settings: deps.settings,
+                state: deps.state.globalState,
                 toast: deps.toast,
                 executeBulkLoad: request => deps.executeBulkLoad(request),
                 promptSignIn: deps.promptSignIn,

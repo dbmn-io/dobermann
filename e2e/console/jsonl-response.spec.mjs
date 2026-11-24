@@ -9,7 +9,7 @@ import { test, expect } from '@playwright/test';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { ROOT, consolePage } from './console-page.mjs';
+import { ROOT, consolePage, requestsArrived } from './console-page.mjs';
 
 const RECORDS = [
     { sku: 'DOG-001', location: 'WH1', quantity: 12 },
@@ -27,7 +27,7 @@ const response = () => ({
     metadata: { executionId: 'exec_1', sourceFile: 'transaction-001-response.json', status: 'completed', timestamp: '2026-10-10T10:00:00Z', responseTime: 90 }
 });
 
-test('a JSONL response: a row per line in Completed; Raw shows the lines, then Pretty', async ({ page }) => {
+test('a JSONL response: a row per line in Completed; its full transaction shows the lines, then Pretty', async ({ page }) => {
     const pageErrors = [];
     page.on('pageerror', e => pageErrors.push(e.message));
     const file = join(ROOT, '.dev-local/console-harness-jsonl.html');
@@ -45,21 +45,23 @@ test('a JSONL response: a row per line in Completed; Raw shows the lines, then P
     await expect(page.locator('#console-table .dbmn-table-body > tr.data-row')).toHaveCount(3);
     await expect(page.locator('#console-table')).toContainText('DOG-003');
 
-    // Raw: labelled, Lines by default
-    await page.locator('.tab-item[data-tab="raw"]').click();
-    const pane = page.locator('.raw-response-pane').first();
-    await expect(pane.locator('.raw-pane-title')).toHaveText('RESPONSE (JSONL · 3 records · 1 line not JSON)');
-    await expect(pane.locator('[data-toggle-group="response-format"] .raw-view-mode-btn.active')).toHaveText('Lines');
-    const container = pane.locator('.raw-monaco-container');
-    await expect(container).toHaveAttribute('data-jsonl-mode', 'lines');
+    // Its full transaction (B22: Raw's card is the window now; a single run's opens by itself): labelled, Lines first
+    await requestsArrived(page);
+    const pane = page.locator('dbmn-transaction[window] .dbmn-tx-pane[data-part="response"]');
+    await expect(pane.locator('.dbmn-tx-pane-title')).toHaveText('RESPONSE (JSONL · 3 records · 1 line not JSON)', { timeout: 15_000 });
+    await expect(pane.locator('.dbmn-tx-formats .raw-view-mode-btn.active')).toHaveText('Lines');
+    // (the text the pane holds: Monaco's model when it has loaded, else the <pre>)
     const shown = () => page.evaluate(() => {
-        const el = document.querySelector('.raw-response-pane .raw-monaco-container');
-        return window.rawTabHandler.resolveContentForContainer(el);
+        const holder = document.querySelector('dbmn-transaction[window] .dbmn-tx-pane[data-part="response"] .dbmn-tx-editor');
+        const pre = holder && holder.querySelector('.dbmn-tx-code');
+        if (pre) return pre._dbmnText;
+        const ed = holder && holder._dbmnEditor;
+        return ed && ed.text ? ed.text() : (window.monaco ? window.monaco.editor.getModels().map(m => m.getValue()).pop() : null);
     });
     expect(await shown()).toBe([...RECORDS.map(r => JSON.stringify(r)), '{"sku":"DOG-0'].join('\n'));
 
-    await pane.locator('.raw-view-mode-btn[data-mode="pretty"]').click();
-    await expect(container).toHaveAttribute('data-jsonl-mode', 'pretty');
+    await pane.locator('.dbmn-tx-formats .raw-view-mode-btn[data-format="pretty"]').click();
+    await expect(pane.locator('.dbmn-tx-formats .raw-view-mode-btn.active')).toHaveText('Pretty');
     expect(await shown()).toBe(JSON.stringify(RECORDS, null, 2));
     expect(pageErrors, 'uncaught errors in the page').toEqual([]);
 });

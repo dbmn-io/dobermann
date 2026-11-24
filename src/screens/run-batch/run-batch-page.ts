@@ -174,6 +174,28 @@ export function buildRunBatchPage(asset: AssetUrl, batchConfig: { endpointId: st
         <!-- GitHub Issue #202: Step 3 — Review & Edit Data (NEW) -->
         <div id="csvDataValidationStep" class="csv-step hidden dbmn-band-pad">
             <div class="grid-entry-container" id="gridEntryContainer">
+                <!-- Slice 5 (#470): Validate in Results' style. What the table shows, one centred group (the design system's
+                     .dbmn-toolbar): the columns (All / Invalid only), hidden characters, and the funnel that clears every
+                     filter. Status's filter and each column's count are on their headings (the table's) -->
+                <div id="gridTools" class="dbmn-toolbar grid-tools" role="group" aria-label="What Validate shows">
+                    <div class="toggle-group dbmn-switch-stack" role="group" aria-label="Columns shown">
+                        <button type="button" class="toggle-btn active" id="gridColsAll" data-click="grid:colsAll" aria-pressed="true" title="Every column">All columns</button>
+                        <button type="button" class="toggle-btn" id="gridColsInvalid" data-click="grid:colsInvalid" aria-pressed="false" title="Only the columns with something to fix">Invalid only</button>
+                    </div>
+                    <button type="button" class="dbmn-toggle" id="gridSpecial" data-click="grid:special" aria-pressed="false" data-icon="pilcrow" title="Show hidden characters" aria-label="Show hidden characters"></button>
+                    <button type="button" class="dbmn-toggle" id="gridClearFilters" data-click="grid:clearFilters" aria-pressed="false" data-icon="funnel" title="No filters on" aria-label="Clear all filters" disabled></button>
+                    <!-- Results' search with its ★ (the Console Input tab's saved searches), and how many rows show
+                         (run-batch/validate-search.js) -->
+                    <div class="search-container">
+                        <div class="search-input-wrapper">
+                            <svg class="search-icon-inset" width="14" height="14" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg>
+                            <div id="gridSearchMirror" class="search-input-mirror" aria-hidden="true"></div>
+                            <input type="text" id="gridSearch" class="search-input" placeholder="Search rows, or @column=value" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off" />
+                            <dbmn-saved-searches id="gridSaved" class="search-box-saved" hidden></dbmn-saved-searches>
+                        </div>
+                    </div>
+                    <span id="gridRowCount" class="grid-row-count" aria-live="polite"></span>
+                </div>
                 <div id="csvGridEntry" class="csv-grid-entry"></div>
                 <p class="grid-hint">Review your data below. Edit cells, add or delete rows, and fix any highlighted validation errors before proceeding.</p>
             </div>
@@ -336,7 +358,6 @@ export function buildRunBatchPage(asset: AssetUrl, batchConfig: { endpointId: st
             <dbmn-actions>
                 <button type="button" id="csvBackBtn" data-click="csv:goToPreviousStep" class="btn btn-secondary" disabled>Back</button>
                 <button id="csvEnterDataBtn" data-click="csv:enterDataMode" class="btn btn-secondary" data-help="batch-preparation#enter-data">Enter Data</button>
-                <button id="gridErrorFilterBtn" data-click="grid:toggleErrorFilter" class="btn btn-secondary hidden" disabled>Filter Errors</button>
                 <button id="csvNextBtn" data-click="csv:goToNextStep" class="btn btn-primary" disabled>Import Data</button>
                 <button id="csvExecuteBtn" data-click="csv:startDataLoading" class="btn btn-primary hidden">Execute</button>
             </dbmn-actions>
@@ -388,6 +409,8 @@ export function buildRunBatchPage(asset: AssetUrl, batchConfig: { endpointId: st
     <script src="${asset('shared/dbmn-name.js')}"></script>
     <script src="${asset('shared/dbmn-run-heading.js')}"></script>
     <script src="${asset('run-batch/run-batch-heading.js')}"></script>
+    <script src="${asset('shared/dbmn-saved-searches.js')}"></script>
+    <script src="${asset('run-batch/validate-search.js')}"></script>
     <!-- #466/#470: Review's requests as the Console's Requests table, Ready rows from the plan -->
     <script src="${asset('shared/dbmn-transaction.js')}"></script>
     <script src="${asset('shared/dbmn-requests.js')}"></script>

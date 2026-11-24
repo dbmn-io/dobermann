@@ -130,13 +130,20 @@
         }
         disconnectedCallback() { this.removeEventListener('keydown', this._onKey); this._dropEditors(); }
 
+        /** Focus inside the window (a button about to be drawn again)? Then it stays in the window, so Esc and ↑ ↓
+            still reach it (a redrawn button takes focus away to the page: Esc did nothing after a Show toggle). */
+        _holdsFocus() { const a = document.activeElement; return !!a && a !== this && this.contains(a); }
+        _keepFocus(had) { if (had && !this.contains(document.activeElement)) this.focus({ preventScroll: true }); }
         _say(type, detail) { this.dispatchEvent(new CustomEvent(type, { bubbles: true, detail: detail || {} })); }
         get _sent() { return !!this._tx && this._tx.responseBody !== undefined; }
         _showing(part) {
             if (part === 'response') return this._sent && this._show.response;
             if (part === 'input') return this._show.input === null ? !this._sent : this._show.input;
-            // (a request with no body, a GET, starts with Request off, as Raw's card did)
-            return this._show.request === null ? !!(this._tx && this._tx.requestBody) || !this._sent : this._show.request;
+            // (a request with no body, a GET, starts with Request off, as Raw's card did. Until its body is known
+            //  (requestBody undefined: the detail still coming) nothing is chosen, so Request never shows then hides)
+            if (this._show.request !== null) return this._show.request;
+            if (!this._tx || this._tx.requestBody === undefined) return false;
+            return !!this._tx.requestBody || !this._sent;
         }
 
         _key(e) {
@@ -153,6 +160,7 @@
 
         _draw() {
             if (!this.isConnected) return;
+            const had = this._holdsFocus() || document.activeElement === this;
             this._dropEditors();
             this.replaceChildren();
             const t = this._tx;
@@ -172,6 +180,7 @@
             this._panesEl = make('div', 'dbmn-tx-panes');
             this.append(this._panesEl);
             this._drawPanes();
+            this._keepFocus(had);
         }
 
         _header(t) {
@@ -224,6 +233,7 @@
         _drawShow() {
             const box = this._showEl;
             if (!box || !this._tx) return;
+            const had = this._holdsFocus();
             box.replaceChildren(make('span', 'dbmn-tx-show-label', 'Show'));
             const seg = make('span', 'dbmn-tx-seg');
             seg.setAttribute('role', 'group');
@@ -254,11 +264,13 @@
             this._foundEl = make('span', 'dbmn-tx-found');
             this._foundEl.setAttribute('role', 'status');
             box.append(this._foundEl);
+            this._keepFocus(had);
         }
 
         _drawPanes() {
             const box = this._panesEl;
             if (!box || !this._tx) return;
+            const had = this._holdsFocus();
             this._dropEditors();
             box.replaceChildren();
             box.classList.toggle('has-max', !!this._max);
@@ -295,6 +307,7 @@
             }
             if (!box.children.length) box.append(make('p', 'dbmn-tx-none', 'Nothing shown: pick Input, Request or Response above.'));
             this._searchPanes();
+            this._keepFocus(had);
         }
 
         _pane(part, title, modes, body, formats, format) {
@@ -341,6 +354,7 @@
             }
             const max = iconButton('dbmn-tx-btn dbmn-tx-max', this._max === part ? 'minimize-2' : 'maximize-2', this._max === part ? 'Put it back (Esc)' : 'Fill the window');
             max.setAttribute('aria-pressed', String(this._max === part));
+            // (focus kept on the window: the panes are drawn again, and Esc must still reach it)
             max.addEventListener('click', () => { this._max = this._max === part ? null : part; this._drawPanes(); });
             head.append(max);
             pane.append(head);

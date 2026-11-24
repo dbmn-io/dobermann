@@ -624,6 +624,7 @@
     // drawing: the checks, the rows to fix, undo, paste, adding and deleting rows.
 
     const ROW_NUMBER = '#';        // the row number column's id
+    const STATUS = '__status';     // Validate's Status column's id (slice 5)
     let rowPlaces = new Map();     // a row (its array) → its place in gridDataModel
 
     /** The table, once its script has made it one (a test page may load the grid without it). */
@@ -698,6 +699,9 @@
         table.emptyText = () => 'No rows. Add one below.';
         table.onCellKey = handleGridKey;
         table.addEventListener('dbmn-table-edit', handleGridEdit);
+        // (slice 5: a column's count, Status's filter: the table's own count and filter menu)
+        table.addEventListener('dbmn-table-count', onGridCount);
+        table.addEventListener('dbmn-table-filter', onGridFilter);
         table.addEventListener('dbmn-table-paste', event => {
             event.preventDefault();
             const held = table.held;
@@ -733,6 +737,9 @@
         csvState.gridBlankCells = null;
         csvState.gridErrorRows = null;
         csvState.gridErrorFilterActive = false;
+        csvState.gridStatusFilter = null;
+        csvState.gridColFilter = new Set();
+        csvState.gridInvalidColsOnly = false;
         csvState.gridInitialized = true;
         csvState.dataEntryGrid = { table };
         showGridRows();
@@ -751,7 +758,17 @@
             className: 'grid-row-num',
             render: (value, row) => rowNumberCell(row)
         };
-        return [number].concat(variables.map((v, col) => {
+        // Slice 5 (#470, Validate in Results' style): a row's Status first, filtered as Results' is; each column with
+        // something to fix counts its rows on its heading; Invalid only leaves out the columns with nothing to fix
+        const counts = columnIssueCounts();
+        const status = {
+            id: STATUS, name: 'Status', pinned: true, sortable: false, removable: false, editable: false,
+            className: 'grid-status-cell', wrap: true, width: statusWidth(),
+            render: (value, row) => statusNode(placeOf(row)),
+            filter: statusFilter()
+        };
+        const shown = variables.map((v, col) => col).filter(col => !csvState.gridInvalidColsOnly || counts[col] > 0);
+        return [number, status].concat(shown.map(col => [variables[col], col]).map(([v, col]) => {
             const mods = v.modifiers || {};
             const column = {
                 id: String(col),
@@ -785,7 +802,8 @@
                         if (name) name.after(opt); else th.append(opt);
                     }
                 },
-                cell: (td, value, row) => markCell(td, col, row)
+                cell: (td, value, row) => markCell(td, col, row),
+                count: columnCount(col, counts)
             };
             if (mods.lookups && mods.lookups.length) {
                 // The values it may take, offered in the cell's box and filtered as it's typed
@@ -875,17 +893,196 @@
         }
     }
 
+    // =========================================================================
+    // Validate in Results' style (slice 5, #470): Status, the heading counts, Invalid only, ¶, Clear all filters,
+    // on the design system's table options (count, filter) and toolbar (.dbmn-toolbar). The rules are unchanged:
+    // these only read what the checks found (gridValidationErrors, gridBlankCells, gridErrorRows)
+    // =========================================================================
+
+    /** The columns a row has something to fix in: a rule it breaks, or a required value it lacks. */
+    function issueColumns(place) {
+        const out = new Set();
+        const errors = csvState.gridValidationErrors && csvState.gridValidationErrors.get(place);
+        if (errors) errors.forEach(e => out.add(e.col));
+        const blanks = csvState.gridBlankCells && csvState.gridBlankCells.get(place);
+        if (blanks) blanks.forEach(b => out.add(b.col));
+        return out;
+    }
+    function isInvalid(place) { return !!csvState.gridErrorRows && csvState.gridErrorRows.has(place); }
+    /** A row the columns' counts let through (any column ticked that it has something to fix in). */
+    function passesColumns(place) {
+        const on = csvState.gridColFilter;
+        if (!on || !on.size) return true;
+        const cols = issueColumns(place);
+        for (const col of on) if (cols.has(col)) return true;
+        return false;
+    }
+    function passesStatus(place) {
+        const f = csvState.gridStatusFilter;
+        if (!f) return true;
+        return f.includes(isInvalid(place) ? 'invalid' : 'valid');
+    }
+    function rowPasses(place) { return passesStatus(place) && passesColumns(place); }
+    function anyGridFilter() { return !!csvState.gridStatusFilter || !!(csvState.gridColFilter && csvState.gridColFilter.size); }
+
+    /** Each column's rows with something to fix, by column. */
+    function columnIssueCounts() {
+        const counts = {};
+        const n = modelRows().length;
+        for (let place = 0; place < n; place++) issueColumns(place).forEach(col => { counts[col] = (counts[col] || 0) + 1; });
+        return counts;
+    }
+    function columnCount(col, counts) {
+        const n = (counts || columnIssueCounts())[col] || 0;
+        const on = !!(csvState.gridColFilter && csvState.gridColFilter.has(col));
+        const name = (gridVariables()[col] || {}).name || `column ${col + 1}`;
+        return { n, on, title: on ? `Showing the rows with something to fix in ${name}: click for every row` : `${n.toLocaleString()} row${n === 1 ? '' : 's'} to fix in ${name}: click to show only them` };
+    }
+    /**
+     * Status's heading filter (the shared menu): INVALID and VALID, Show and Only, each counted among the rows the
+     * columns' counts leave ("n of all" while one narrows them), as Results' Status menu counts
+     */
+    function statusFilter() {
+        const n = modelRows().length;
+        let invalid = 0, valid = 0, allInvalid = 0;
+        for (let place = 0; place < n; place++) {
+            if (isInvalid(place)) allInvalid++;
+            if (!passesColumns(place)) continue;
+            if (isInvalid(place)) invalid++; else valid++;
+        }
+        const narrowed = !!(csvState.gridColFilter && csvState.gridColFilter.size);
+        const f = csvState.gridStatusFilter;
+        const pill = (cls, text) => () => { const p = document.createElement('span'); p.className = `status-pill-generic ${cls}`; p.textContent = text; return p; };
+        return {
+            label: 'Status',
+            items: [
+                { value: 'invalid', label: 'INVALID', node: pill('error', 'INVALID'), on: !f || f.includes('invalid'), count: narrowed ? `${invalid.toLocaleString()} of ${allInvalid.toLocaleString()}` : invalid },
+                { value: 'valid', label: 'VALID', node: pill('success', 'VALID'), on: !f || f.includes('valid'), count: valid }
+            ]
+        };
+    }
+    /** A row's Status: INVALID with the columns it has something to fix in, or VALID (the mock's amber and quiet pills). */
+    function statusNode(place) {
+        const cols = issueColumns(place);
+        return statusOf(Array.from(cols).sort((a, b) => a - b).map(col => (gridVariables()[col] || {}).name || `column ${col + 1}`));
+    }
+    function statusOf(names) {
+        const box = document.createElement('span');
+        box.className = 'grid-status';
+        const pill = document.createElement('span');
+        pill.className = `grid-status-pill ${names.length ? 'is-invalid' : 'is-valid'}`;
+        pill.textContent = names.length ? 'INVALID' : 'VALID';
+        box.appendChild(pill);
+        names.forEach(name => { const t = document.createElement('span'); t.className = 'grid-status-col'; t.textContent = name; box.appendChild(t); });
+        if (names.length) box.title = `To fix: ${names.join(', ')}`;
+        return box;
+    }
+    /**
+     * Status's width, as Results' is sized: INVALID with the longest column name (any column may come to need fixing,
+     * and the table keeps a column's first width), measured off screen, plus the cell's padding; a row with several
+     * columns to fix wraps onto a second line rather than widening it. The heading (name, ▾, funnel) needs ~120px.
+     */
+    function statusWidth() {
+        const names = gridVariables().map(v => (v && v.name) || '');
+        const longest = names.sort((a, b) => b.length - a.length)[0];
+        const probe = document.createElement('div');
+        probe.className = 'grid-status-probe';
+        probe.appendChild(statusOf(longest ? [longest] : []));
+        // (inside the table, so it is measured in the cells' font)
+        const host = document.getElementById('validateGrid') || document.getElementById('csvGridEntry') || document.body;
+        host.appendChild(probe);
+        const wide = Math.ceil(probe.firstChild.getBoundingClientRect().width);
+        probe.remove();
+        return Math.min(360, Math.max(120, wide + 24));
+    }
+    /** The headings as the counts and filters now are, drawn again in place (an open menu takes its new ticks). */
+    function refreshHeads() {
+        const table = gridTable();
+        if (!table || !table.columns) return;
+        // (Invalid only: the columns shown change as rows are fixed; given again, their widths kept)
+        const counts = columnIssueCounts();
+        if (csvState.gridInvalidColsOnly) {
+            const want = Object.keys(counts).filter(k => counts[k] > 0).map(String).sort().join(',');
+            const have = table.columns.map(c => c.id).filter(id => id !== ROW_NUMBER && id !== STATUS).sort().join(',');
+            if (want !== have) { table.columns = gridColumns(gridVariables()); return; }
+        }
+        table.columns.forEach(spec => {
+            if (spec.id === STATUS) spec.filter = statusFilter();
+            else if (spec.id !== ROW_NUMBER) spec.count = columnCount(Number(spec.id), counts);
+        });
+        if (table.redrawHeads) table.redrawHeads();
+    }
+    /** The toolbar: All columns / Invalid only, and the funnel lit while anything filters. */
+    function updateGridTools() {
+        const only = !!csvState.gridInvalidColsOnly;
+        [['gridColsAll', !only], ['gridColsInvalid', only]].forEach(([id, on]) => {
+            const b = document.getElementById(id);
+            if (b) { b.classList.toggle('active', on); b.setAttribute('aria-pressed', String(on)); }
+        });
+        const clear = document.getElementById('gridClearFilters');
+        if (clear) {
+            const on = anyGridFilter();
+            clear.disabled = !on;
+            clear.setAttribute('aria-pressed', String(on));
+            clear.title = on ? 'Clear all filters' : 'No filters on';
+        }
+        const special = document.getElementById('gridSpecial');
+        const table = gridTable();
+        if (special && table) special.setAttribute('aria-pressed', String(!!table.specialCharacters));
+    }
+    /** The table's events: a column's count clicked, Status's filter changed. */
+    function onGridCount(event) {
+        const col = Number(event.detail.id);
+        if (!Number.isInteger(col)) return;
+        const set = new Set(csvState.gridColFilter || []);
+        if (event.detail.on) set.add(col); else set.delete(col);
+        csvState.gridColFilter = set;
+        csvState.gridErrorFilterTouched = true;
+        showGridRows();
+        updateGridHint();
+    }
+    function onGridFilter(event) {
+        if (event.detail.id !== STATUS) return;
+        csvState.gridStatusFilter = event.detail.values;
+        csvState.gridErrorFilterActive = !!(event.detail.values && event.detail.values.length === 1 && event.detail.values[0] === 'invalid');
+        csvState.gridErrorFilterTouched = true;
+        showGridRows();
+        updateGridHint();
+    }
+    /** All columns, or only the columns with something to fix. */
+    function setInvalidColsOnly(on) {
+        csvState.gridInvalidColsOnly = !!on;
+        const table = gridTable();
+        if (table) table.columns = gridColumns(gridVariables());
+        showGridRows();
+    }
+    /** The toolbar's funnel: every filter off, every row. */
+    function clearGridFilters() {
+        csvState.gridStatusFilter = null;
+        csvState.gridErrorFilterActive = false;
+        csvState.gridColFilter = new Set();
+        csvState.gridErrorFilterTouched = true;
+        showGridRows();
+        updateGridHint();
+    }
+    /** ¶: spaces, tabs, breaks and hidden characters marked in every cell, or in none (the table's own). */
+    function toggleGridSpecial() {
+        const table = gridTable();
+        if (!table) return;
+        table.specialCharacters = !table.specialCharacters;
+        updateGridTools();
+    }
+
     /** The rows in the table: all of them, or only the rows to fix while the errors filter is on. */
     function showGridRows() {
         placeRows();
         const table = document.getElementById('validateGrid');
         if (!table) return;
         const rows = modelRows();
-        let shown = rows;
-        if (csvState.gridErrorFilterActive && csvState.gridErrorRows) {
-            shown = Array.from(csvState.gridErrorRows).filter(i => i < rows.length).sort((a, b) => a - b).map(i => rows[i]);
-        }
-        table.rows = shown;
+        table.rows = rows.filter((row, i) => rowPasses(i));
+        refreshHeads();
+        updateGridTools();
+        updateGridHint();
     }
 
     /** Hold a cell (and bring it into view) by its row's place and its column. */
@@ -2011,10 +2208,25 @@
         const total = modelRows().length;
         const bad = csvState.gridErrorRows ? csvState.gridErrorRows.size : 0;
         const rows = n => `${n.toLocaleString()} row${n === 1 ? '' : 's'}`;
+        const fix = ' Fix the highlighted cells, or delete a row from its number.';
+        const status = csvState.gridStatusFilter;   // null: INVALID and VALID both shown
+        const only = value => !!status && status.length === 1 && status[0] === value;
+        const cols = Array.from(csvState.gridColFilter || []).sort((a, b) => a - b);
+        const table = gridTable();
+        const shown = table && Array.isArray(table.rows) ? table.rows.length : total;
         if (bad === 0) {
             hint.textContent = `${rows(total)}. Edit any cell, or delete a row from its number.`;
-        } else if (csvState.gridErrorFilterActive) {
-            hint.textContent = `Showing the ${rows(bad)} that ${bad === 1 ? 'needs' : 'need'} fixing, of ${total.toLocaleString()}. Fix the highlighted cells, or delete a row from its number.`;
+        } else if (cols.length && !only('valid') && !(status && !status.length)) {
+            // (a column's count on: the rows with something to fix there; every such row is INVALID)
+            const where = cols.map(col => (gridVariables()[col] || {}).name || `column ${col + 1}`).join(' or ');
+            hint.textContent = `Showing the ${rows(shown)} with something to fix in ${where}, of ${total.toLocaleString()}.${shown ? fix : ''}`;
+        } else if (only('invalid')) {
+            hint.textContent = `Showing the ${rows(bad)} that ${bad === 1 ? 'needs' : 'need'} fixing, of ${total.toLocaleString()}.${fix}`;
+        } else if (only('valid')) {
+            hint.textContent = `Showing the ${rows(shown)} with nothing to fix, of ${total.toLocaleString()}.`;
+        } else if (status || cols.length) {
+            // (a filter that leaves nothing: VALID with a column's count, or no Status line ticked)
+            hint.textContent = `Showing ${rows(shown)} of ${total.toLocaleString()}.`;
         } else {
             hint.textContent = `${rows(total)}, ${bad.toLocaleString()} to fix (highlighted).`;
         }
@@ -2027,7 +2239,7 @@
     /**
      * Check EVERY row — required cells left empty, and each column's rules (type, >=0, …) —
      * and make the grid show the result: cell highlights, the rows to fix (the errors filter, on
-     * unless the user chose Show All), the hint line and the step bar. Runs on load, after a
+     * unless the user cleared that filter), the hint line and the step bar. Runs on load, after a
      * delete, a paste or an undo, shortly after an edit, and when Next is pressed (which then
      * stops or goes on from what this returns). Nothing goes to the footer.
      *
@@ -2084,21 +2296,18 @@
             return;
         }
         csvState.gridErrorRows = rows;
-        const btn = document.getElementById('gridErrorFilterBtn');
-        if (btn) {
-            btn.disabled = false;
-            btn.textContent = csvState.gridErrorFilterActive ? 'Show All' : `Filter Errors (${rows.size})`;
-        }
         placeRows();
         const table = document.getElementById('validateGrid');
         if (table) {
             const model = modelRows();
             let shown = model;
-            if (csvState.gridErrorFilterActive) {
+            if (anyGridFilter()) {
                 const before = new Set(table.rows);
-                shown = model.filter((row, i) => before.has(row) || rows.has(i));
+                shown = model.filter((row, i) => before.has(row) || (rows.has(i) && rowPasses(i)));
             }
             table.rows = shown;   // drawn again, marks and all
+            refreshHeads();
+            updateGridTools();
         }
         refreshStepper();
     }
@@ -2111,8 +2320,8 @@
 
     /**
      * The rows to fix become the errors filter's rows. Rows loaded (a file, a paste, a run) open
-     * on the rows to fix, unless the user chose Show All; rows typed in stay in view, every one
-     * (a row being typed, or the one before it, never disappears), with Filter Errors a click away.
+     * on the rows to fix, unless the user cleared that filter; rows typed in stay in view, every one
+     * (a row being typed, or the one before it, never disappears), with Status's INVALID filter a click away.
      */
     function setIssueRows(rows) {
         if (rows.size === 0) {
@@ -2120,8 +2329,6 @@
             return;
         }
         csvState.gridErrorRows = rows;
-        const btn = document.getElementById('gridErrorFilterBtn');
-        if (btn) btn.disabled = false;
         setErrorFilter(csvState.gridErrorFilterTouched ? !!csvState.gridErrorFilterActive : !!csvState.gridRowsLoaded);
         refreshStepper();
     }
@@ -2153,36 +2360,24 @@
     }
 
     // =========================================================================
-    // The errors filter (the footer's Filter Errors / Show All)
+    // The rows to fix: Status's INVALID line, on its heading's filter (slice 5, #470: it replaced the footer's
+    // Filter Errors / Show All); the toolbar's funnel shows every row
     // =========================================================================
 
-    /** Filter on or off, and the button to match ("Show All" while on); the table shows the rows. */
+    /** Only the rows to fix (Status: INVALID), or every row. */
     function setErrorFilter(on) {
-        const btn = document.getElementById('gridErrorFilterBtn');
         csvState.gridErrorFilterActive = !!on;
+        csvState.gridStatusFilter = on ? ['invalid'] : null;
         showGridRows();
-        if (btn) btn.textContent = on ? 'Show All' : `Filter Errors (${csvState.gridErrorRows ? csvState.gridErrorRows.size : 0})`;
     }
 
-    /** The footer button: only the rows to fix, or every row. */
-    function toggleErrorFilter() {
-        const btn = document.getElementById('gridErrorFilterBtn');
-        if (!btn) return;
-        csvState.gridErrorFilterTouched = true;
-        setErrorFilter(!csvState.gridErrorFilterActive);
-        updateGridHint();
-    }
-
-    /** Nothing to fix: the button rests and every row shows. */
+    /** Nothing to fix: no filter, every row shows. */
     function hideErrorFilter() {
         refreshStepper();
-        const btn = document.getElementById('gridErrorFilterBtn');
-        if (btn) {
-            btn.textContent = 'Filter Errors';
-            btn.disabled = true;
-        }
         csvState.gridErrorRows = null;
         csvState.gridErrorFilterActive = false;
+        csvState.gridStatusFilter = null;
+        csvState.gridColFilter = new Set();
         showGridRows();
     }
 
@@ -2428,6 +2623,10 @@
 
         // The grid and its rows
         initializeDataEntryGrid,
+        // Validate in Results' style (slice 5): the toolbar's switch, funnel and ¶
+        setInvalidColsOnly,
+        clearGridFilters,
+        toggleGridSpecial,
         addGridRow,
         deleteGridRow,
         populateGridFromMappedData,
@@ -2470,7 +2669,6 @@
         refreshGridIssues,
 
         // The errors filter
-        toggleErrorFilter,
         hideErrorFilter,
 
         // Leaving Validate mid-load

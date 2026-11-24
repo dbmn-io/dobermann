@@ -8,8 +8,8 @@
  * Raw stays beside it until the transaction window has its card's views.
  */
 (function () {
-    /** A single run's request opening by itself: on once Raw is gone (B22). Off while Raw is beside Requests. */
-    const OPEN_SINGLE_RUN = false;
+    /** A single run's request opens by itself, as Raw showed its card (B22: Raw is gone). */
+    const OPEN_SINGLE_RUN = true;
     'use strict';
 
     const post = message => window.vscode && window.vscode.postMessage(message);
@@ -132,14 +132,33 @@
         const r = requests();
         if (!id || !r) return false;
         const status = String(response.status || meta.status || '').toLowerCase();
+        // (its input rows: where the Console's record of the run puts them, as Raw's window found them)
+        const raw = window.rawTabHandler;
+        const info = raw && raw.execIdToRowInfo && raw.execIdToRowInfo.get(id);
+        const start = info && info.rowStart !== undefined ? Number(info.rowStart) : (meta.rowStart !== undefined ? Number(meta.rowStart) : null);
+        const count_ = info && info.rows !== undefined ? parseInt(info.rows, 10) || 1 : (meta.rows !== undefined ? parseInt(meta.rows, 10) || 1 : 1);
+        const reasons = window.ConsoleErrorReason;
+        const testFailed = !!(reasons && reasons.isTestFailure && reasons.isTestFailure(response));
         r.openRow({
-            id, n: (meta.memberIndex !== undefined ? meta.memberIndex : 0), status: status === 'success' ? 'completed' : status,
+            id, n: (meta.memberIndex !== undefined ? meta.memberIndex : 0), status: testFailed ? 'test_failed' : status === 'success' ? 'completed' : status,
             http: typeof response.httpStatus === 'number' ? response.httpStatus : null, httpText: response.httpStatusText || '',
             timeMs: meta.responseTime !== undefined ? meta.responseTime : null, sent: meta.timestamp || null,
-            reason: null, method: null, url: null, query: {}, requestHeaders: [], response: { contentType: '' }, responseHeaders: [], hasLogs: true
+            rowStart: start, rowEnd: start === null ? null : start + count_ - 1,
+            reason: (status === 'error' || testFailed) && reasons && reasons.reasonFor ? reasons.reasonFor(response) : null,
+            method: null, url: null, query: {}, requestHeaders: [], response: { contentType: '' }, responseHeaders: [], hasLogs: true
         });
         return true;
     }
+
+    // The open window follows a live result for its request (a reprocess coming back, a running one finishing), as Raw's
+    // card did: drawn again from the new result, what it shows kept
+    window.addEventListener('message', event => {
+        const m = event.data;
+        if (!m || m.type !== 'batch_member_result_update' || !m.payload || !m.payload.result) return;
+        const tx = document.querySelector('dbmn-transaction[window]');
+        const id = m.payload.result.metadata && m.payload.result.metadata.executionId;
+        if (tx && id && tx.transaction && tx.transaction.id === id) openFor(m.payload.result);
+    });
 
     window.ConsoleRequests = { onSwitchTab, openFor, get state() { return { total: state.total, shown: !!(state.requests && state.requests.state.shown) }; } };
 })();

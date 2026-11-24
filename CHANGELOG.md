@@ -26,7 +26,9 @@ All notable changes to Dobermann are documented here.
 - **Signing in to VS Code also signs in the web app, if you want it** — After a VS Code sign-in, the browser tab's "Open DBMN in your browser" link opens the web app signed in, with a sign-in of its own: signing out of one leaves the other.
 
 ### Changed
-- **Requests in the Console** — A Requests tab lists one row per request with its status, HTTP code, time and rows; open a row for the full request and response in one window, with folding, JSON Lines and HTML views.
+- **Actions in the Console's footer** — Copy, Export, Chain and the database button sit under **Actions** in the Console's footer, beside Reprocess. [Docs](https://dbmn.io/docs/console/)
+- **Validate looks like Query's Results** — Run Batch's Validate has the same search box (with ★), a Status column and counts on its headings; the Console's Input tab shows how many rows need fixing. [Docs](https://dbmn.io/docs/batch-preparation/)
+- **Requests in the Console** — The Requests tab, in place of Raw, lists one row per request with its status, HTTP code, time and rows; open a row for the full request and response in one window, with folding, JSON Lines and HTML views.
 - **Review lists the requests** — Run Batch's Review shows the requests it will send as a table of Ready rows, the same table the Console uses once they run. [Docs](https://dbmn.io/docs/batch-preparation/)
 - **The Console's new heading** — The run's environment, its name (click to rename) and ⓘ for where it went and how it ran sit above the tabs, which count Input, Completed and Error as the run goes. The Settings tab is gone; its details open from ⓘ, and the footer box lists the run's figures. [Docs](https://dbmn.io/docs/console/#settings-tab)
 - **One Execute window** — Execute in Run Batch opens one window that says what will be sent (rows, requests, environment), with Error handling and Threads, and a production line on a production environment. The Run Batch tab then becomes the run's Console. [Docs](https://dbmn.io/docs/batch-preparation/)

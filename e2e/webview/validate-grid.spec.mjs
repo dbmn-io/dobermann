@@ -15,7 +15,8 @@ const read = rel => readFileSync(join(ROOT, 'src/webviews', rel), 'utf8');
 const STYLES = ['shared/atomic.css', 'shared/core.css', 'shared/tables.css', 'shared/console.css', 'shared/search.css', 'shared/modals.css', 'shared/column-head.css',
     'shared/column-drag.css', 'shared/dbmn-table.css', 'shared/data-transformer.css'];
 const SCRIPTS = ['shared/icons.js', 'shared/search-matcher.js', 'shared/value-formatter.js', 'shared/dbmn-modal.js', 'shared/dbmn-clipboard.js', 'shared/cell-detail.js',
-    'shared/virtual-window.js', 'shared/dbmn-context-menu.js', 'shared/column-drag.js', 'shared/column-head.js', 'shared/dbmn-table.js', 'shared/lookup-value.js', 'shared/dt-data-entry-grid.js'];
+    'shared/virtual-window.js', 'shared/dbmn-context-menu.js', 'shared/column-drag.js', 'shared/column-head.js', 'shared/dbmn-table.js', 'shared/lookup-value.js', 'shared/dt-data-entry-grid.js',
+    'shared/dbmn-saved-searches.js', 'run-batch/validate-search.js'];
 
 // gtin: exactly 14 characters; uom: upper case; qty: a whole number, 0 or more; due: a date, optional; active: yes/no
 const BODY = JSON.stringify({ items: [{ gtin: '{{gtin:string|14}}', uom: '{{uom:string|upper}}', qty: '{{qty:number|int|>=0}}', due: '{{due:date|opt}}', active: '{{active:boolean}}' }] });
@@ -26,14 +27,28 @@ ${STYLES.map(read).join('\n')}
 body{margin:0;padding:16px;width:1000px;background:#1e1e1e;color:#ccc;font:13px sans-serif}
 #csvDataValidationStep{height:420px}</style>
 ${SCRIPTS.map(rel => `<script>${read(rel)}</script>`).join('\n')}</head><body>
-<button id="csvNextBtn">Next</button><button id="gridErrorFilterBtn" disabled>Filter Errors</button>
+<button id="csvNextBtn">Next</button>
+<div id="gridTools" class="dbmn-toolbar grid-tools"><div class="toggle-group dbmn-switch-stack"><button type="button" class="toggle-btn active" id="gridColsAll">All columns</button><button type="button" class="toggle-btn" id="gridColsInvalid">Invalid only</button></div><button type="button" class="dbmn-toggle" id="gridSpecial" aria-pressed="false">¶</button><button type="button" class="dbmn-toggle" id="gridClearFilters" disabled>Clear</button><div class="search-container"><div class="search-input-wrapper"><div id="gridSearchMirror" class="search-input-mirror"></div><input type="text" id="gridSearch" class="search-input" placeholder="Search rows, or @column=value"><dbmn-saved-searches id="gridSaved" class="search-box-saved" hidden></dbmn-saved-searches></div></div><span id="gridRowCount" class="grid-row-count"></span></div>
 <div id="csvDataValidationStep"><div id="gridEntryContainer" class="grid-entry-container"><div id="csvGridEntry" class="csv-grid-entry"></div></div><p class="grid-hint"></p></div>
 <script>
   window.state = { modalStep: 3 };
+  // (validate-search.js reads Run Batch's state, and posts to the host: both stood in for)
+  window.CSVHandler = { csvState: window.state };
+  window.posted = [];
+  window.vscode = { postMessage: m => window.posted.push(m) };
+  // (the run heading's Input tab, stood in for: its amber count as validate-search.js sets it)
+  window.issuesSet = [];
+  const heading = document.createElement('div'); heading.id = 'run-heading';
+  heading.setIssues = (id, n) => window.issuesSet.push([id, n]);
+  document.body.prepend(heading);
   DTDataEntryGrid.init(window.state, () => null);
   DTDataEntryGrid.initializeDataEntryGrid({ body: ${JSON.stringify(body)} });
-  // (Run Batch wires the footer button as data-click="grid:toggleErrorFilter")
-  document.getElementById('gridErrorFilterBtn').addEventListener('click', () => DTDataEntryGrid.toggleErrorFilter());
+  ValidateSearch.wire();
+  // (slice 5: the toolbar's grid:colsAll / grid:colsInvalid / grid:special / grid:clearFilters)
+  document.getElementById('gridColsAll').addEventListener('click', () => DTDataEntryGrid.setInvalidColsOnly(false));
+  document.getElementById('gridColsInvalid').addEventListener('click', () => DTDataEntryGrid.setInvalidColsOnly(true));
+  document.getElementById('gridSpecial').addEventListener('click', () => DTDataEntryGrid.toggleGridSpecial());
+  document.getElementById('gridClearFilters').addEventListener('click', () => DTDataEntryGrid.clearGridFilters());
   window.load = rows => {
     const vars = window.state.gridTemplateVariables.map(v => Object.assign({}, v, { mappedTo: v.name }));
     DTDataEntryGrid.populateGridFromMappedData({ headers: ['gtin', 'uom', 'qty', 'due', 'active'], rows }, vars);
@@ -44,7 +59,9 @@ const GOOD = ['00012345600012', 'EA', '5', '2026-11-20', 'true'];
 const rowsOf = page => page.evaluate(() => window.state.gridDataModel.map(r => r.slice()));
 const body = page => page.locator('#validateGrid .dbmn-table-body tr:not(.dbmn-table-spacer)');
 // A cell by its row among those shown and its column: 0 is the row number, then gtin, uom, qty, due, active
-const td = (page, row, col) => body(page).nth(row).locator('td').nth(col);
+// (Status sits between the number and gtin since slice 5, #470: Validate in Results' style)
+const td = (page, row, col) => body(page).nth(row).locator('td').nth(col === 0 ? 0 : col + 1);
+const statusCell = (page, row) => body(page).nth(row).locator('td').nth(1);
 const loaded = async (page, rows) => {
     await page.evaluate(r => window.load(r), rows);
     await expect(page.locator('#csvNextBtn')).toHaveText('Next');   // the background check has finished
@@ -52,9 +69,9 @@ const loaded = async (page, rows) => {
 
 test('the grid is the shared table: a row number, a column per variable, ○ on an optional one, the rules on a heading\'s hover', async ({ page }) => {
     await page.setContent(gridPage());
-    await expect(page.locator('#validateGrid thead .column-name')).toHaveText(['#', 'gtin', 'uom', 'qty', 'due', 'active']);
-    await expect(page.locator('#validateGrid thead th').nth(4).locator('.grid-header-optional-indicator')).toHaveText('○');
-    await expect(page.locator('#validateGrid thead th').nth(1)).toHaveClass(/grid-header-has-validation/);
+    await expect(page.locator('#validateGrid thead .column-name')).toHaveText(['#', 'Status', 'gtin', 'uom', 'qty', 'due', 'active']);
+    await expect(page.locator('#validateGrid thead th').nth(5).locator('.grid-header-optional-indicator')).toHaveText('○');
+    await expect(page.locator('#validateGrid thead th').nth(2)).toHaveClass(/grid-header-has-validation/);
     await expect(body(page)).toHaveCount(1);
     await expect(td(page, 0, 0)).toHaveText('1');
 });
@@ -104,7 +121,7 @@ test('a yes/no cell is a tick box a click turns over; a date opens the browser\'
     expect((await rowsOf(page))[0][3]).toBe('2026-12-01');
 });
 
-test('loaded rows: the rows to fix show first, amber, the reason on hover; Show All shows every row; fixing one checks again', async ({ page }) => {
+test('loaded rows: the rows to fix show first, amber, the reason on hover; Clear all filters shows every row; fixing one checks again', async ({ page }) => {
     await page.setContent(gridPage());
     await loaded(page, [GOOD, ['123', 'EA', '5', '', 'false'], GOOD, ['00012345600043', 'CS', '-1', '', 'true'], ['', 'PL', '3', '', 'true']]);
     // Opening a cell moves nothing: the cell, its row and its text stay where they were
@@ -121,7 +138,7 @@ test('loaded rows: the rows to fix show first, amber, the reason on hover; Show 
     expect(Math.abs(await textAt() - textBefore)).toBeLessThanOrEqual(1);
     await page.keyboard.press('Escape');
     await expect(body(page)).toHaveCount(3);
-    await expect(page.locator('#gridErrorFilterBtn')).toHaveText('Show All');
+    await expect(page.locator('#gridClearFilters')).toBeEnabled();
     await expect(page.locator('.grid-hint')).toHaveText(/^Showing the 3 rows that need fixing, of 5\./);
     await expect(body(page).locator('td.grid-row-num')).toHaveText(['2', '4', '5']);
     await expect(td(page, 0, 1)).toHaveClass(/grid-cell-error/);
@@ -131,10 +148,13 @@ test('loaded rows: the rows to fix show first, amber, the reason on hover; Show 
     // The optional date may be empty
     await expect(td(page, 0, 4)).not.toHaveClass(/grid-cell-blank-warning/);
 
-    await page.locator('#gridErrorFilterBtn').click();
-    await expect(page.locator('#gridErrorFilterBtn')).toHaveText('Filter Errors (3)');
+    await page.locator('#gridClearFilters').click();
     await expect(body(page)).toHaveCount(5);
-    await page.locator('#gridErrorFilterBtn').click();
+    await expect(page.locator('.grid-hint')).toHaveText('5 rows, 3 to fix (highlighted).');
+    // Back to the rows to fix: Status's menu, Only INVALID
+    await page.locator('#validateGrid thead th[data-col="__status"] .dbmn-head-btn').click();
+    await page.locator('.dbmn-filter-menu .dbmn-filter-line', { hasText: 'INVALID' }).locator('.dbmn-filter-only input').click();
+    await page.keyboard.press('Escape');
     await expect(body(page)).toHaveCount(3);
 
     // Fix row 4's qty: once typing stops it is checked again (no longer amber) but stays in view
@@ -144,7 +164,7 @@ test('loaded rows: the rows to fix show first, amber, the reason on hover; Show 
     await page.keyboard.type('7');
     await page.keyboard.press('Enter');
     await expect(td(page, 1, 3)).not.toHaveClass(/grid-cell-error/);
-    await expect(page.locator('#gridErrorFilterBtn')).toHaveText('Show All');
+    await expect(page.locator('#gridClearFilters')).toBeEnabled();
     await expect(body(page)).toHaveCount(3);
     // (the cell below is open: Esc gives it up, Esc again leaves the grid)
     await page.keyboard.press('Escape');
@@ -160,7 +180,7 @@ test('a row\'s number turns into a bin on hover: it deletes the row, Ctrl+Z puts
     const bin = td(page, 0, 0).locator('.row-delete-btn');
     await expect(bin).toBeVisible();
     await bin.click();
-    await expect(page.locator('#gridErrorFilterBtn')).toBeDisabled();
+    await expect(page.locator('#gridClearFilters'), 'nothing to fix: no filter').toBeDisabled();
     await expect(body(page)).toHaveCount(2);
     await expect(body(page).locator('td.grid-row-num')).toHaveText(['1', '2']);
     await page.keyboard.press('Control+z');
@@ -209,7 +229,9 @@ test('typed rows: deleting one keeps every other row in view, numbered again (th
     await expect(body(page)).toHaveCount(2);
     await expect(body(page).locator('td.grid-row-num')).toHaveText(['1', '2']);
     await expect(td(page, 0, 1)).toHaveText('00012345600012');
-    await expect(page.locator('#gridErrorFilterBtn')).toHaveText('Filter Errors (1)');
+    // (typed rows: no filter, the one to fix highlighted)
+    await expect(page.locator('#gridClearFilters')).toBeDisabled();
+    await expect(page.locator('.grid-hint')).toHaveText('2 rows, 1 to fix (highlighted).');
 });
 
 // An order and its lines: orderId once per order (level 1), sku and qty per line (level 2)
@@ -217,7 +239,7 @@ const NESTED = JSON.stringify({ orderId: '{{orderId}}', customer: '{{customer}}'
 
 test('nested data entry: Tab on the last cell adds a row; the next Tab copies the order\'s fields from the row above and goes to the line\'s', async ({ page }) => {
     await page.setContent(gridPage(NESTED));
-    await expect(page.locator('#validateGrid thead .column-name')).toHaveText(['#', 'orderId', 'customer', 'sku', 'qty']);
+    await expect(page.locator('#validateGrid thead .column-name')).toHaveText(['#', 'Status', 'orderId', 'customer', 'sku', 'qty']);
     await td(page, 0, 1).click();
     for (const value of ['SO-1', 'Harbour Foods', 'A-1']) { await page.keyboard.type(value); await page.keyboard.press('Tab'); }
     await page.keyboard.type('5');
@@ -259,8 +281,8 @@ test('list and lookup types: a value not in the lookup table is a row to fix, sa
     // CA is in TMS twice: the first row's WMS (CS), said in a note on the cell, not a row to fix
     expect(await page.evaluate(() => (window.state.gridCellNotes.get(2) || []).map(n => n.note))).toEqual(['CA · in TMS twice, first row used (CS)']);
     // The heading: underlined, its valid values on hover
-    await expect(page.locator('#validateGrid thead th').nth(1)).toHaveClass(/grid-header-has-validation/);
-    await expect(page.locator('#validateGrid thead th').nth(1)).toHaveAttribute('title', /^uom: a lookup in UOM: TMS → WMS\. One of EA, SE, CA\n/);
+    await expect(page.locator('#validateGrid thead th').nth(2)).toHaveClass(/grid-header-has-validation/);
+    await expect(page.locator('#validateGrid thead th').nth(2)).toHaveAttribute('title', /^uom: a lookup in UOM: TMS → WMS\. One of EA, SE, CA\n/);
     // A cell opened to fix: its box offers the valid values (typing filters them); picking one fixes the row
     await td(page, 0, 1).click();
     const box = td(page, 0, 1).locator('input.dbmn-cell-input');
@@ -303,3 +325,117 @@ test('list of a one-column table needs no column named; once the table has two, 
     await expect(td(page, 0, 1)).toHaveAttribute('title', /is a list from Sites: it has more than one column: say which, e\.g\. sites:site/);
 });
 
+
+
+/* ---------- Slice 5 (#470): Validate in Results' style ---------- */
+
+const LOADED = [GOOD, ['123', 'EA', '5', '', 'false'], GOOD, ['00012345600043', 'CS', '-1', '', 'true'], ['', 'PL', '3', '', 'true']];
+// A heading by its column (the count sits inside the heading's name): # , Status, then the variables by their place
+const COL = { Status: '__status', gtin: '0', uom: '1', qty: '2', due: '3', active: '4' };
+const head = (page, name) => page.locator(`#validateGrid thead th[data-col="${COL[name]}"]`);
+const names = page => page.locator('#validateGrid thead th').evaluateAll(ths => ths.map(th => { const n = th.querySelector('.column-name'); return n ? (n.firstChild && n.firstChild.nodeType === 3 ? n.firstChild.textContent : n.textContent).trim() : ''; }));
+
+test('Status: INVALID with the columns to fix, VALID otherwise; loaded rows open on INVALID, its filter lit', async ({ page }) => {
+    await page.setContent(gridPage());
+    await loaded(page, LOADED);
+    await expect(body(page)).toHaveCount(3);
+    await expect(statusCell(page, 0).locator('.grid-status-pill.is-invalid')).toHaveText('INVALID');
+    await expect(statusCell(page, 0).locator('.grid-status-col')).toHaveText(['gtin']);
+    await expect(statusCell(page, 1).locator('.grid-status-col')).toHaveText(['qty']);
+    await expect(statusCell(page, 2).locator('.grid-status-col')).toHaveText(['gtin']);
+    await expect(head(page, 'Status').locator('.dbmn-head-funnel')).toBeVisible();
+    await expect(page.locator('#gridClearFilters')).toBeEnabled();
+    await page.screenshot({ path: join(ROOT, '.dev-local', 'validate-status.png') });
+    // Status's menu: INVALID and VALID, counted; Only VALID shows the two good rows
+    await head(page, 'Status').locator('.dbmn-head-btn').click();
+    const menu = page.locator('.dbmn-filter-menu');
+    const lines = () => menu.locator('.dbmn-filter-line:not(.dbmn-filter-heading)').evaluateAll(ls => ls.map(l => `${l.querySelector('.dbmn-filter-name').textContent.trim()} ${l.querySelector('.dbmn-filter-count').textContent.trim()}`));
+    await expect.poll(lines).toEqual(['INVALID 3', 'VALID 2']);
+    await menu.locator('.dbmn-filter-line', { hasText: 'VALID' }).last().locator('.dbmn-filter-only input').click();
+    await expect(body(page).locator('td.grid-row-num')).toHaveText(['1', '3']);
+    await expect(statusCell(page, 0).locator('.grid-status-pill.is-valid')).toHaveText('VALID');
+    await expect(page.locator('.grid-hint'), 'the line says what is shown').toHaveText('Showing the 2 rows with nothing to fix, of 5.');
+    await expect(menu).toBeVisible();
+    await page.keyboard.press('Escape');
+});
+
+test('a column\'s count: its rows to fix, lit with a funnel; Status counts among them; the funnel shows every row', async ({ page }) => {
+    await page.setContent(gridPage());
+    await loaded(page, LOADED);
+    await page.locator('#gridClearFilters').click();
+    await expect(body(page)).toHaveCount(5);
+    await expect(page.locator('#gridClearFilters')).toBeDisabled();
+    const gtin = head(page, 'gtin');
+    await expect(gtin.locator('.dbmn-head-count')).toHaveText('2');
+    await expect(head(page, 'qty').locator('.dbmn-head-count')).toHaveText('1');
+    await expect(head(page, 'uom').locator('.dbmn-head-count')).toHaveCount(0);
+    const widths = await page.locator('#validateGrid thead th').evaluateAll(ths => ths.map(th => Math.round(th.getBoundingClientRect().width)));
+    await expect(page.locator('.grid-hint')).toHaveText('5 rows, 3 to fix (highlighted).');
+    await gtin.locator('.dbmn-head-count').click();
+    await expect(body(page).locator('td.grid-row-num')).toHaveText(['2', '5']);
+    await expect(page.locator('.grid-hint')).toHaveText('Showing the 2 rows with something to fix in gtin, of 5. Fix the highlighted cells, or delete a row from its number.');
+    await expect(gtin.locator('.dbmn-head-count')).toHaveClass(/is-active/);
+    expect(await page.locator('#validateGrid thead th').evaluateAll(ths => ths.map(th => Math.round(th.getBoundingClientRect().width)))).toEqual(widths);
+    await head(page, 'Status').locator('.dbmn-head-btn').click();
+    await expect.poll(() => page.locator('.dbmn-filter-menu .dbmn-filter-count').allTextContents()).toEqual(['2 of 3', '0']);
+    await page.keyboard.press('Escape');
+    await gtin.locator('.dbmn-head-funnel').click();
+    await expect(body(page)).toHaveCount(5);
+});
+
+test('Invalid only: just the columns with something to fix (and # and Status); All columns brings the rest back', async ({ page }) => {
+    await page.setContent(gridPage());
+    await loaded(page, LOADED);
+    await page.locator('#gridColsInvalid').click();
+    await expect.poll(() => names(page)).toEqual(['#', 'Status', 'gtin', 'qty']);
+    await expect(page.locator('#gridColsInvalid')).toHaveAttribute('aria-pressed', 'true');
+    await page.locator('#gridColsAll').click();
+    await expect.poll(() => names(page)).toEqual(['#', 'Status', 'gtin', 'uom', 'qty', 'due', 'active']);
+});
+
+test('the toolbar\'s funnel clears Status and the counts together; ¶ marks hidden characters', async ({ page }) => {
+    await page.setContent(gridPage());
+    await loaded(page, LOADED);
+    await head(page, 'qty').locator('.dbmn-head-count').click();
+    await expect(body(page)).toHaveCount(1);
+    await page.locator('#gridClearFilters').click();
+    await expect(body(page)).toHaveCount(5);
+    await expect(page.locator('#validateGrid .dbmn-head-funnel')).toHaveCount(0);
+    await page.locator('#gridSpecial').click();
+    await expect(page.locator('#gridSpecial')).toHaveAttribute('aria-pressed', 'true');
+    await expect.poll(() => page.evaluate(() => document.getElementById('validateGrid').specialCharacters)).toBe(true);
+});
+
+test('the search box with ★: it searches what the filters leave, the count says how many of all, the ★ keeps the Input tab\'s list', async ({ page }) => {
+    await page.setContent(gridPage());
+    await loaded(page, LOADED);
+    await expect(page.locator('#gridRowCount')).toHaveText('3 of 5 rows');   // (INVALID only, as rows load)
+    await page.locator('#gridClearFilters').click();
+    await expect(page.locator('#gridRowCount')).toHaveText('5 rows');
+    await page.locator('#gridSearch').fill('@qty=-1');
+    await expect(body(page)).toHaveCount(1);
+    await expect(page.locator('#gridRowCount')).toHaveText('1 of 5 rows');
+    await expect(body(page).locator('td.grid-row-num')).toHaveText(['4']);
+    await page.locator('#gridSearch').fill('');
+    await expect(body(page)).toHaveCount(5);
+    // The ★: asked for the list once, given it by the host, and a save goes back as the whole list
+    expect(await page.evaluate(() => window.posted.filter(m => m.type === 'runBatch.inputSearches.load').length)).toBe(1);
+    await page.evaluate(() => window.postMessage({ type: 'runBatch.inputSearches', searches: [{ name: 'Bad qty', text: '@qty=-1' }] }, '*'));
+    await expect(page.locator('#gridSaved')).toBeVisible();
+    await page.evaluate(() => document.getElementById('gridSaved').dispatchEvent(new CustomEvent('dbmn-saved-change', { detail: { searches: [{ name: 'Bad qty', text: '@qty=-1' }, { name: 'EA', text: '@uom=EA' }] } })));
+    expect(await page.evaluate(() => window.posted.filter(m => m.type === 'runBatch.inputSearches.save').pop().searches.length)).toBe(2);
+});
+
+test('the Input tab\'s amber count is the rows to fix; its click shows only them; Status fits its widest tag, each column in its own case', async ({ page }) => {
+    await page.setContent(gridPage());
+    await loaded(page, LOADED);
+    await page.locator('#gridClearFilters').click();
+    expect((await page.evaluate(() => window.issuesSet)).pop()).toEqual(['input', 3]);
+    await page.evaluate(() => document.getElementById('run-heading').dispatchEvent(new CustomEvent('dbmn-run-heading-issues', { bubbles: true, detail: { id: 'input' } })));
+    await expect(body(page)).toHaveCount(3);
+    await expect(statusCell(page, 1).locator('.grid-status-col')).toHaveText(['qty']);
+    // (the tag and the pill on one line: Status measured for INVALID and its longest column name)
+    const [pill, tag] = await Promise.all([statusCell(page, 1).locator('.grid-status-pill').boundingBox(), statusCell(page, 1).locator('.grid-status-col').boundingBox()]);
+    expect(Math.abs(pill.y - tag.y), 'one line').toBeLessThan(4);
+    await expect(head(page, 'Status')).not.toHaveText(/…/);
+});

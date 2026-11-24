@@ -7,7 +7,7 @@
  */
 import { expect } from 'chai';
 import type { ExecutionMetadata } from '../../../storage/execution-metadata';
-import { StoredRunRequests } from '../../../screens/console/requests/stored-run-requests';
+import { StoredRunRequests, parseResponseFile } from '../../../screens/console/requests/stored-run-requests';
 import { REQUEST_STATUSES } from '../../../screens/console/requests/request-rows';
 
 type Record_ = Partial<ExecutionMetadata> & { id: string; reprocessCount?: number };
@@ -242,5 +242,52 @@ describe('Console Requests (host): a row per request', () => {
         expect([page.total, page.of]).to.deep.equal([3, 30]);
         expect(page.rows.map(r => r.n)).to.deep.equal([10, 20, 30]);
         expect((await source.page({ offset: 0, limit: 5, statuses: null })).total).to.equal(30);
+    });
+});
+
+describe('Console Requests (host): a JSON Lines response is given back as its lines', () => {
+    // (the engine keeps a JSON Lines body as its records and the lines that weren't JSON: Raw's card read it as lines)
+    const file = JSON.stringify({
+        httpStatus: 200, headers: { 'content-type': 'application/x-ndjson' },
+        data: [{ sku: 'DOG-001' }, { sku: 'DOG-002' }, { sku: 'DOG-003' }],
+        format: { kind: 'jsonl', records: 3, invalid: [{ line: 4, text: '{"sku":"DOG-0' }], invalidCount: 1 }
+    });
+
+    it('a record a line, the line that wasn\'t JSON back where it was, whether the body is shown pretty or not', () => {
+        const lines = '{"sku":"DOG-001"}\n{"sku":"DOG-002"}\n{"sku":"DOG-003"}\n{"sku":"DOG-0';
+        expect(parseResponseFile(file, true).body).to.equal(lines);
+        expect(parseResponseFile(file, false).body).to.equal(lines);
+        expect(parseResponseFile(file).headers).to.deep.equal([{ name: 'content-type', value: 'application/x-ndjson' }]);
+    });
+
+    it('a JSON body stays JSON', () => {
+        expect(parseResponseFile(JSON.stringify({ httpStatus: 200, headers: {}, data: [{ a: 1 }] }), false).body).to.equal('[{"a":1}]');
+    });
+});
+
+
+describe('Console Requests (host): the files read where there is no Buffer (the web app)', () => {
+    // (round 38c: Buffer.byteLength threw there, the read's catch gave no text, and every body was missing)
+    it('a request\'s response and its size, with Buffer gone', async () => {
+        const fs = await import('fs');
+        const os = await import('os');
+        const path = await import('path');
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dbmn-nobuffer-'));
+        const responseFile = path.join(dir, 'r.response.json');
+        fs.writeFileSync(responseFile, JSON.stringify({ httpStatus: 200, headers: {}, data: { carriers: ['WOOF', 'ÄÖ'] } }));
+        const record = { id: 'r-1', status: 'completed', endpointMethod: 'GET', endpointPath: '/reference/carriers', responseFile, createdAt: new Date() };
+        const source = new StoredRunRequests({ requests: async () => [record as never], files: { exists: p => fs.existsSync(p), read: p => fs.readFileSync(p, 'utf8') } });
+        const bytes = Buffer.byteLength(fs.readFileSync(responseFile, 'utf8'));
+        const saved = (globalThis as { Buffer?: unknown }).Buffer;
+        try {
+            (globalThis as { Buffer?: unknown }).Buffer = undefined;
+            const detail = await source.detail('r-1');
+            expect(detail?.responseBody).to.contain('WOOF');
+            const page = await source.page({ offset: 0, limit: 10 });
+            expect(page.rows[0].response?.bytes, 'its size in bytes, UTF-8').to.equal(bytes);
+        } finally {
+            (globalThis as { Buffer?: unknown }).Buffer = saved;
+            fs.rmSync(dir, { recursive: true, force: true });
+        }
     });
 });

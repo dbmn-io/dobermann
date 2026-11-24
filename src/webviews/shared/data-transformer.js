@@ -413,6 +413,8 @@
         if (window.RunBatchHeading) window.RunBatchHeading.onStep(stepNumber);
         // (#466/#470: Review's Requests table tells the host whether it is on screen)
         if (window.ReviewRequests) window.ReviewRequests.onStep(stepNumber);
+        // (slice 5: Validate's search box, ★ and row count follow its table)
+        if (window.ValidateSearch) window.ValidateSearch.onStep(stepNumber);
         // The step bar lets the user click back to any step reached since the data loaded
         csvState.maxStepReached = stepNumber === 1 ? 1 : Math.max(csvState.maxStepReached || 1, stepNumber);
         csvState.navigationInProgress = false;
@@ -610,20 +612,6 @@
             }
         }
 
-        // Error filter button — only visible on Step 3 when errors exist
-        const errorFilterBtn = document.getElementById('gridErrorFilterBtn');
-        if (errorFilterBtn) {
-            if (csvState.modalStep === 3) {
-                // Always visible on Step 3, disabled when no errors
-                errorFilterBtn.classList.remove('hidden');
-                if (!csvState.gridErrorRows || csvState.gridErrorRows.size === 0) {
-                    errorFilterBtn.textContent = 'Filter Errors';
-                    errorFilterBtn.disabled = true;
-                }
-            } else {
-                errorFilterBtn.classList.add('hidden');
-            }
-        }
     }
 
     function updateReadButtonState() {
@@ -5138,7 +5126,11 @@ ${columnSummaries.map(line => `• ${escapeText(line)}`).join('\n')}
         'csv:goToNextStep': () => csv('goToNextStep')(),
         'csv:startDataLoading': () => csv('startDataLoading')(),
         'csv:updateSelectedSheet': () => csv('updateSelectedSheet')(),
-        'grid:toggleErrorFilter': () => window.DTDataEntryGrid?.toggleErrorFilter(),
+        // Slice 5 (#470): Validate's toolbar, in Results' style
+        'grid:colsAll': () => window.DTDataEntryGrid?.setInvalidColsOnly(false),
+        'grid:colsInvalid': () => window.DTDataEntryGrid?.setInvalidColsOnly(true),
+        'grid:special': () => window.DTDataEntryGrid?.toggleGridSpecial(),
+        'grid:clearFilters': () => window.DTDataEntryGrid?.clearGridFilters(),
         'grid:clearFileAndShowGrid': () => window.DTDataEntryGrid?.clearFileAndShowGrid(),
         'ingestion:setFilterChoice': choice => window.DTDataIngestion?.setFilterChoice(choice),
         'batchConfig:updateSelectedDelimiter': () => window.DTBatchConfig?.updateSelectedDelimiter(),

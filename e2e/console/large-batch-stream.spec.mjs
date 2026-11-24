@@ -16,7 +16,7 @@ import { test, expect } from '@playwright/test';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { ROOT, consolePage, envelope } from './console-page.mjs';
+import { ROOT, consolePage, envelope, requestsArrived } from './console-page.mjs';
 
 const BATCH_ID = '2026-10-02T01-00-00_big';
 
@@ -67,7 +67,9 @@ test('the page is usable on the first chunk and counts up as the rest stream in'
 
     await page.evaluate(m => window.postMessage(m, '*'), envelope('console.raw_chunk', { responses: range(201, 301).map(i => response(i)), loaded: 300, total: 300 }));
     await expect(page.locator('.tab-count[data-tab="success"]')).toHaveText('299');
-    await expect(page.locator('.tab-count[data-tab="raw"]')).toHaveText('300');
+    // (B22: Requests, the run's requests, in Raw's place: counted by the host from the stored run, all 300)
+    await requestsArrived(page);
+    await expect(page.locator('.tab-count[data-tab="requests"]')).toHaveText('300');
     // Last chunk: the bar is handed back to the execution
     await expect(page.locator('#progress-display')).not.toHaveAttribute('phase', 'Loading transactions');
     await expect(page.locator('#progress-display')).not.toHaveAttribute('data-state', /loading/);
@@ -119,7 +121,8 @@ test('a batch still running: results that land while the batch streams in merge,
     // The last chunk carries exec_240 as it is on disk (an error) — it replaces the live row, not doubles it
     await page.evaluate(m => window.postMessage(m, '*'), envelope('console.raw_chunk', { responses: range(201, 251).map(i => response(i, i !== 240)), loaded: 250, total: 250 }));
 
-    await expect(page.locator('.tab-count[data-tab="raw"]')).toHaveText('251');
+    await requestsArrived(page);
+    await expect(page.locator('.tab-count[data-tab="requests"]')).toHaveText('251');
     await expect(page.locator('.tab-count[data-tab="success"]')).toHaveText('250');
     await expect(page.locator('.tab-count[data-tab="errors"]')).toHaveText('1');
     const ids = await page.evaluate(() => window.dynamicReportManager.rawData.responses.map(r => r.metadata.executionId));

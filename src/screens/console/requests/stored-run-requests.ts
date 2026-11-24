@@ -72,6 +72,10 @@ interface ReadFiles {
 }
 
 /** Columns whose values are only in the files. */
+/** Byte lengths, in Node and the browser alike. */
+const utf8 = new TextEncoder();
+/** A request that has had its answer: its response is expected. */
+const FINISHED = new Set(['completed', 'error', 'test_failed', 'failed']);
 const FILE_COLUMNS = new Set(['request', 'response', 'contentType', 'responseHeaders', 'requestBytes', 'responseBytes']);
 export const needsFiles = (id: string) => FILE_COLUMNS.has(id) || id.startsWith('response header: ');
 
@@ -161,6 +165,9 @@ export class StoredRunRequests implements RequestSource {
         if (at < 0) return undefined;
         const r = requests[at];
         const files = this.readFiles(r, true);
+        // A finished request whose response isn't there yet (the web app writes a run's files a moment behind; a
+        // single run's window asks as it ends): its record is read again next time, not kept as it was
+        if (files.responseBody === null && FINISHED.has(String(r.status || ''))) this.records = null;
         const row = recordRow(r, at + 1);
         return {
             id, method: row.method, url: row.url, query: row.query,
@@ -250,7 +257,9 @@ export class StoredRunRequests implements RequestSource {
             if (!path || !files.exists(path)) return { text: null, bytes: null };
             try {
                 const text = files.read(path);
-                return { text, bytes: Buffer.byteLength(text) };
+                // (TextEncoder, not Buffer: the web app has no Buffer, and its ReferenceError, caught here, made every
+                //  body there read as missing: no response in the window, nothing in Request/Response, round 38c)
+                return { text, bytes: utf8.encode(text).length };
             } catch {
                 return { text: null, bytes: null };
             }
@@ -307,6 +316,20 @@ export function recordRow(r: RequestRecord, n: number): RequestRow {
  * A response file: { headers, data } as a request writes it (execution-file.service.ts); an older
  * single run's { _meta: { responseHeaders }, …data }; or plain text.
  */
+/**
+ * A JSON Lines response file (format.kind 'jsonl', its data the records) as its lines again: a record a line, the lines
+ * that weren't JSON put back where they were (blank lines aren't kept, so a place can shift by those). Else null.
+ */
+export function jsonLinesOf(file: Record<string, unknown>): string | null {
+    const format = file.format as { kind?: string; invalid?: Array<{ line: number; text: string }> } | undefined;
+    if (!format || format.kind !== 'jsonl' || !Array.isArray(file.data)) return null;
+    const lines = (file.data as unknown[]).map(record => JSON.stringify(record));
+    (format.invalid || []).slice().sort((a, b) => a.line - b.line).forEach(bad => {
+        lines.splice(Math.min(Math.max(0, bad.line - 1), lines.length), 0, String(bad.text ?? ''));
+    });
+    return lines.join('\n');
+}
+
 export function parseResponseFile(text: string | null, pretty = true): { body: string | null; headers: HeaderPair[] } {
     if (text === null) return { body: null, headers: [] };
     const out = (v: unknown) => (pretty ? JSON.stringify(v, null, 2) : JSON.stringify(v));
@@ -315,6 +338,10 @@ export function parseResponseFile(text: string | null, pretty = true): { body: s
     if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
         const o = parsed as Record<string, unknown>;
         if ('data' in o && ('httpStatus' in o || 'headers' in o)) {
+            // (a JSON Lines body is kept as its records and the lines that weren't JSON: given back as received,
+            //  a record a line, the others where they were, as Raw's card did; the window reads it as JSON Lines)
+            const lines = jsonLinesOf(o);
+            if (lines !== null) return { body: lines, headers: headerPairs(o.headers as Record<string, unknown>) };
             return { body: o.data === undefined ? null : out(o.data), headers: headerPairs(o.headers as Record<string, unknown>) };
         }
         if (o._meta && typeof o._meta === 'object') {

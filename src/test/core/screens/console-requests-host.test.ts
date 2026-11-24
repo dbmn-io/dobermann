@@ -132,6 +132,55 @@ describe('Console Requests (host): through the controller', () => {
         } finally { h.done(); }
     });
 
+    it('a single run: its response, written as it ends, reaches the Requests side (its window asked before it was)', async () => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dbmn-single-'));
+        const run: Record<string, unknown> = { id: 'x-1', status: 'running', endpointMethod: 'GET', endpointPath: '/reference/carriers', createdAt: new Date() };
+        const posted: Message[] = [];
+        const session = new ScreenSession({ post: m => posted.push(m) }, { openExternal: () => undefined });
+        const metadata = { getExecution: async (id: string) => (id === 'x-1' ? { ...run } : null), countBatchMembersByStatus: async () => ({}) };
+        const ports = { metadata, state: { get: () => undefined, update: async () => undefined },
+            logger: { log: () => undefined, error: () => undefined }, toast: { info: () => undefined, warn: () => undefined, error: () => undefined } };
+        const controller = new ConsoleController(session, ports as never, { type: 'individual', executionId: 'x-1', responseFiles: [] } as never);
+        (ConsoleController as unknown as { activeConsoles: Map<string, ConsoleController> }).activeConsoles.set('x-1', controller);
+        const of = (type: string) => posted.filter(m => m.type === type);
+        try {
+            // The window opens as the run starts: no response yet
+            await controller.handle({ type: 'console.requests.detail', seq: 1, id: 'x-1' });
+            expect(of('console.requests.detail')[0].detail.responseBody).to.equal(null);
+            // The run ends: its response is written, and the Console is told its status
+            const responseFile = path.join(dir, 'x-1.response.json');
+            fs.writeFileSync(responseFile, JSON.stringify({ httpStatus: 200, headers: {}, data: { carriers: ['WOOF'] } }));
+            Object.assign(run, { status: 'completed', responseFile });
+            await ConsoleController.sendStatusUpdate('x-1', { status: 'completed' } as never);
+            await wait(320);
+            expect(of('console.requests.counts'), 'the page told: its open window asks again').to.have.length.greaterThan(0);
+            await controller.handle({ type: 'console.requests.detail', seq: 2, id: 'x-1' });
+            expect(of('console.requests.detail')[1].detail.responseBody).to.contain('WOOF');
+        } finally { controller.dispose(); fs.rmSync(dir, { recursive: true, force: true }); }
+    });
+
+    it('a finished single run whose response file lands a moment after it ends: the next detail has it, with no other word', async () => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dbmn-late-'));
+        const responseFile = path.join(dir, 'y-1.response.json');
+        // (its record says completed before it names its response file: both written as it ends)
+        const run: Record<string, unknown> = { id: 'y-1', status: 'completed', endpointMethod: 'GET', endpointPath: '/reference/carriers', createdAt: new Date() };
+        const posted: Message[] = [];
+        const session = new ScreenSession({ post: m => posted.push(m) }, { openExternal: () => undefined });
+        const metadata = { getExecution: async (id: string) => (id === 'y-1' ? { ...run } : null) };
+        const ports = { metadata, state: { get: () => undefined, update: async () => undefined },
+            logger: { log: () => undefined, error: () => undefined }, toast: { info: () => undefined, warn: () => undefined, error: () => undefined } };
+        const controller = new ConsoleController(session, ports as never, { type: 'individual', executionId: 'y-1', responseFiles: [] } as never);
+        const details = () => posted.filter(m => m.type === 'console.requests.detail').map(m => m.detail.responseBody);
+        try {
+            await controller.handle({ type: 'console.requests.detail', seq: 1, id: 'y-1' });   // (written behind: not yet)
+            fs.writeFileSync(responseFile, JSON.stringify({ httpStatus: 200, headers: {}, data: { carriers: ['WOOF'] } }));
+            run.responseFile = responseFile;
+            await controller.handle({ type: 'console.requests.detail', seq: 2, id: 'y-1' });   // (the window asks again)
+            expect(details()[0]).to.equal(null);
+            expect(details()[1]).to.contain('WOOF');
+        } finally { controller.dispose(); fs.rmSync(dir, { recursive: true, force: true }); }
+    });
+
     it('a batch\'s counts come from the store\'s count, not its records', async () => {
         const h = batch(3);
         try {

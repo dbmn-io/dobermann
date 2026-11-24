@@ -10,7 +10,7 @@ import { test, expect } from '@playwright/test';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { ROOT, consolePage, envelope } from './console-page.mjs';
+import { ROOT, consolePage, envelope, requestsArrived } from './console-page.mjs';
 
 const BATCH = 'batch-428';
 const TEST_MESSAGE = 'Test "PostExecutionTest" failed: Expected undefined to be true';
@@ -56,31 +56,44 @@ test('a test failure is named on its card, filtered on its own, and explained on
     await expect(page.locator('.tab-count[data-tab="errors"]')).toHaveText('3');
     await expect(page.locator('.tab-count[data-tab="success"]')).toHaveText('1');
 
-    // Raw: TEST FAILED beside the 200, the reason under the header; a server error stays ERROR
-    await page.locator('.tab-item[data-tab="raw"]').click();
-    const card = n => page.locator(`.raw-card[data-exec-id="exec_${n}"]`);
-    await expect(card(2).locator('.raw-status-badge')).toHaveText('TEST FAILED');
-    await expect(card(2).locator('.raw-http-status')).toHaveText('200');
-    await expect(card(2).locator('.raw-card-reason-text')).toHaveText(TEST_MESSAGE);
-    await expect(card(2).locator('.raw-card-reason-note')).toContainText('The server answered 200');
-    await expect(card(4).locator('.raw-status-badge')).toHaveText('ERROR');
-    await expect(card(4).locator('.raw-card-reason-text')).toHaveText('HTTP 400: Bad Request');
-    await expect(card(4).locator('.raw-card-reason-note')).toHaveCount(0);
-    await expect(card(1).locator('.raw-card-reason')).toHaveCount(0);
+    // Requests (B22: Raw's cards became its rows and the full transaction): Test failed beside the 200, a server
+    // error stays Error; the reason in its window, with the note that the server answered 200
+    await requestsArrived(page);
+    await page.locator('.tab-item[data-tab="requests"]').click();
+    const reqRows = page.locator('#requests-table .dbmn-table-body > tr:not(.dbmn-table-spacer)');
+    await expect(reqRows).toHaveCount(4, { timeout: 15_000 });
+    const reqRow = n => reqRows.nth(n - 1);
+    await expect(reqRow(2).locator('.raw-status-badge')).toHaveText(/^test failed$/i);
+    await expect(reqRow(2)).toContainText('200');
+    await expect(reqRow(4).locator('.raw-status-badge')).toHaveText(/^error$/i);
+    const tx = page.locator('dbmn-transaction[window]');
+    const open = async n => { await reqRow(n).locator('td').first().click(); await expect(tx).toHaveCount(1); };
+    const close = async () => { await page.keyboard.press('Escape'); await expect(tx).toHaveCount(0); };
+    await open(2);
+    await expect(tx.locator('.raw-card-reason-text')).toHaveText(TEST_MESSAGE);
+    await expect(tx.locator('.raw-card-reason-note')).toContainText('The server answered 200');
+    await close();
+    await open(4);
+    await expect(tx.locator('.raw-card-reason-text')).toHaveText('HTTP 400: Bad Request');
+    await expect(tx.locator('.raw-card-reason-note')).toHaveCount(0);
+    await close();
+    await open(1);
+    await expect(tx.locator('.raw-card-reason')).toHaveCount(0);
+    await close();
 
-    // The Status filter has Test failed after Error, each under one: the server error is Error's
-    // only one, so it can't hide among test failures, and the counts add up to All
-    const options = await page.locator('#raw-status-select option').allTextContents();
-    expect(options).toContain('All (4)');
-    expect(options).toContain('Completed (1)');
-    expect(options).toContain('Test failed (2)');
-    expect(options.indexOf('Test failed (2)')).toBe(options.indexOf('Error (1)') + 1);
-    await page.locator('#raw-status-select').selectOption('error');
-    await expect(page.locator('.raw-cards-container .raw-card')).toHaveCount(1);
-    await expect(card(4)).toHaveCount(1);
-    await page.locator('#raw-status-select').selectOption('test-failed');
-    await expect(page.locator('.raw-cards-container .raw-card')).toHaveCount(2);
-    await page.screenshot({ path: join(ROOT, '.dev-local/428-raw-test-failed.png'), fullPage: true });
+    // The Status filter has Test failed as its own line, counted: the server error is Error's only one, so it can't
+    // hide among test failures
+    await page.locator('#requests-table thead th[data-col="status"] .dbmn-head-btn').click();
+    const menu = page.locator('.dbmn-filter-menu');
+    const lines = () => menu.locator('.dbmn-filter-line:not(.dbmn-filter-heading)').evaluateAll(ls => ls.map(l => `${l.querySelector('.dbmn-filter-name').textContent.trim()} ${l.querySelector('.dbmn-filter-count').textContent.trim()}`));
+    await expect.poll(lines).toEqual(expect.arrayContaining(['Completed 1', 'Error 1', 'Test failed 2']));
+    await menu.locator('.dbmn-filter-line', { hasText: /^Error/ }).locator('.dbmn-filter-only input').click();
+    await expect(reqRows).toHaveCount(1);
+    await expect(reqRows.first().locator('.raw-status-badge')).toHaveText(/^error$/i);
+    await menu.locator('.dbmn-filter-line', { hasText: 'Test failed' }).locator('.dbmn-filter-only input').click();
+    await expect(reqRows).toHaveCount(2);
+    await page.keyboard.press('Escape');
+    await page.screenshot({ path: join(ROOT, '.dev-local/428-requests-test-failed.png'), fullPage: true });
 
     // Error tab: Reason first, whatever the view; not a column the view can hide
     await page.locator('.tab-item[data-tab="errors"]').click();
@@ -110,7 +123,9 @@ test('live: a test failure goes straight to Error, never counted under Completed
     expect([...seen], 'Completed never counted them').toEqual(['1']);
     await expect(badge('errors')).toHaveText('3');
 
-    await page.locator('.tab-item[data-tab="raw"]').click();
-    await expect(page.locator('.raw-card[data-exec-id="exec_3"] .raw-status-badge')).toHaveText('TEST FAILED');
+    // (B22: the Requests tab, its row's status as stored)
+    await requestsArrived(page);
+    await page.locator('.tab-item[data-tab="requests"]').click();
+    await expect(page.locator('#requests-table .dbmn-table-body > tr:not(.dbmn-table-spacer)').nth(2).locator('.raw-status-badge')).toHaveText(/^test failed$/i, { timeout: 15_000 });
     expect(pageErrors, 'uncaught errors in the page').toEqual([]);
 });
