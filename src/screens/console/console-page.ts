@@ -291,9 +291,17 @@ export function buildConsolePage(template: string, asset: AssetUrl, config: Cons
         html = html.replace(/{{ENDPOINT_ID}}/g, config.endpointId || '');
         html = html.replace(/{{ENVIRONMENT_ID}}/g, config.executionSummary.environmentId || '');
 
-        // ENV variables: base64-encode JSON to avoid HTML escaping issues
-        const envVars = config.executionSummary.environmentVariables;
-        const envVarsJson = envVars && Object.keys(envVars).length > 0 ? base64Utf8(JSON.stringify(envVars)) : '';
+        // The run's header values under Sending To, each by its own name: no fixed Organization
+        // (James, 2026-11-24: "the ones that we show in the heading should be on this screen")
+        const headers = config.executionSummary.headers ?? [];
+        html = html.replace(/{{RUN_HEADERS}}/g, headers.map(h =>
+            `<div class="stat-item"><span class="stat-label">${escapeHtml(h.name)}</span><span class="font-mono">${escapeHtml(h.value)}</span></div>`).join(''));
+
+        // ENV variables: base64-encode JSON to avoid HTML escaping issues. The headers are listed
+        // above, so Variables keeps the rest.
+        const shownAbove = new Set(headers.map(h => h.name));
+        const envVars = Object.fromEntries(Object.entries(config.executionSummary.environmentVariables ?? {}).filter(([name]) => !shownAbove.has(name)));
+        const envVarsJson = Object.keys(envVars).length > 0 ? base64Utf8(JSON.stringify(envVars)) : '';
         html = html.replace(/{{ENVIRONMENT_VARIABLES_JSON}}/g, envVarsJson);
     } else {
         // Fallback values when no execution summary available
@@ -332,8 +340,14 @@ export function buildConsolePage(template: string, asset: AssetUrl, config: Cons
         html = html.replace(/{{ENDPOINT_ID}}/g, config.endpointId || '');
         html = html.replace(/{{ENVIRONMENT_ID}}/g, '');
         html = html.replace(/{{ENVIRONMENT_VARIABLES_JSON}}/g, '');
+        html = html.replace(/{{RUN_HEADERS}}/g, '');
     }
 
 
     return html;
+}
+
+/** Text for the page's markup. */
+function escapeHtml(text: string): string {
+    return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }

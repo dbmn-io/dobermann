@@ -149,6 +149,8 @@ export interface ConsoleWebviewConfig {
         /** #344: the environment runs in DBMN for VS Code (the web app shows it in the title) */
         runsInVsCode?: boolean;
         organization?: string;
+        /** The run's header values, each by its own name (the Settings tab, in place of Organization). */
+        headers?: Array<{ name: string; value: string }>;
         endpointName?: string;
         /** #445: the batch's own name (batchConfiguration.name) */
         batchName?: string;

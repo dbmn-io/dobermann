@@ -97,6 +97,7 @@
     "screens/run-batch/run-batch-page",
     "screens/compare/compare.ports",
     "screens/console/console-report-config",
+    "screens/console/run-headers",
     "services/format-converter/format-converter.service",
     "services/run-content/run-content-store",
     "services/logging/execution-logging.service",

@@ -5957,16 +5957,6 @@ window.addEventListener('message', event => {
             document.getElementById('loading-overlay').classList.add('hidden');
             document.getElementById('error-container').classList.add('hidden');
 
-            // GitHub Issue #156: Show/hide Info tab organization based on content
-            const infoOrgStat = document.getElementById('info-org-stat');
-            const infoOrg = document.getElementById('info-organization');
-            if (infoOrgStat && infoOrg) {
-                const orgContent = infoOrg.textContent.trim();
-                if (!orgContent || orgContent === '' || orgContent === 'Unknown' || orgContent === CONSOLE_PAGE.ORGANIZATION) {
-                    infoOrgStat.style.display = 'none';
-                }
-            }
-
             // Navigation links: show when IDs are available
             const envLink = document.getElementById('info-environment-link');
             if (envLink && envLink.dataset.environmentId && envLink.dataset.environmentId !== '' && envLink.dataset.environmentId !== CONSOLE_PAGE.ENVIRONMENT_ID) {

@@ -180,10 +180,8 @@
                             <span class="stat-label">Environment</span>
                             <a href="#" class="nav-link stat-link" id="info-environment-link" data-environment-id="{{ENVIRONMENT_ID}}" title="Open the environment"><span id="info-environment">{{ENVIRONMENT}}</span></a>
                         </div>
-                        <div class="stat-item" id="info-org-stat">
-                            <span class="stat-label">Organization</span>
-                            <span id="info-organization">{{ORGANIZATION}}</span>
-                        </div>
+                        <!-- The run's header values, each by its own name (org, version…): no fixed Organization -->
+                        {{RUN_HEADERS}}
                         <div class="stat-item">
                             <span class="stat-label">Endpoint</span>
                             <a href="#" class="nav-link stat-link" id="info-endpoint-link" data-endpoint-id="{{ENDPOINT_ID}}" title="Open the endpoint"><span id="info-endpoint-name">{{ENDPOINT_NAME}}</span></a>

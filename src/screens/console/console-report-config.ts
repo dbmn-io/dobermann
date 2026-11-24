@@ -15,6 +15,7 @@ import * as path from 'path';
 import { IExecutionMetadataService } from '../../services/execution/execution-metadata.interface';
 import type { EnvironmentManager } from '../../environmentManager';
 import { fillBaseUrl } from '../../utils/environment-url';
+import { runHeaders } from './run-headers';
 
 export interface BuildConsoleReportConfigOptions {
     executionId: string;
@@ -159,9 +160,11 @@ export async function buildConsoleReportConfig(
                 let environmentMaxConcurrency: number | undefined;
                 let runsInVsCode = false;
                 let resolvedEnvironmentId: string | undefined;
+                let runEnvironment: EnvironmentConfig | undefined;
                 if (batchExecution.environmentId || batchExecution.environment) {
                     try {
                         const environment = await environmentOf(environments, batchExecution.environmentId, batchExecution.environment);
+                        runEnvironment = environment;
                         resolvedEnvironmentId = environment?.id;
                         // #424: the base URL the batch went to, kept when it started (an older batch: the environment's)
                         baseUrl = batchExecution.baseUrl || (environment?.baseUrl ? fillBaseUrl(environment.baseUrl, environment.variables) : undefined);
@@ -210,7 +213,9 @@ export async function buildConsoleReportConfig(
                     copiedFromEnvironment: batchExecution.copiedFromEnvironment || undefined,
                     copiedFromOrganization: batchExecution.copiedFromOrganization || undefined,
                     copiedAt: batchExecution.copiedAt ? new Date(batchExecution.copiedAt).toLocaleString() : undefined,
-                    environmentVariables: batchExecution.environmentVariables
+                    environmentVariables: batchExecution.environmentVariables,
+                    // The Settings tab's header values, each by its own name (no fixed Organization)
+                    headers: runHeaders(batchExecution.environmentVariables, batchExecution.organization, runEnvironment)
                 };
             }
         } else {
@@ -235,9 +240,11 @@ export async function buildConsoleReportConfig(
                 let baseUrl: string | undefined;
                 let runsInVsCode = false;
                 let resolvedEnvironmentId: string | undefined;
+                let runEnvironment: EnvironmentConfig | undefined;
                 if (execution.environmentId || execution.environment) {
                     try {
                         const environment = await environmentOf(environments, execution.environmentId, execution.environment);
+                        runEnvironment = environment;
                         resolvedEnvironmentId = environment?.id;
                         baseUrl = environment?.baseUrl ? fillBaseUrl(environment.baseUrl, environment.variables) : undefined;
                         runsInVsCode = environment?.runOn === 'local-agent';
@@ -267,7 +274,9 @@ export async function buildConsoleReportConfig(
                     requestQueryParams: execution.requestQueryParams,
                     environmentId: resolvedEnvironmentId ?? execution.environmentId,
                     runsInVsCode,
-                    environmentVariables: execution.environmentVariables
+                    environmentVariables: execution.environmentVariables,
+                    // The Settings tab's header values, each by its own name (no fixed Organization)
+                    headers: runHeaders(execution.environmentVariables, execution.organization, runEnvironment)
                 };
             }
         }
