@@ -93,6 +93,16 @@ describe('FetchRequestExecutor (Issue #322)', () => {
         expect(server.requests[0].headers['content-type']).to.equal('application/json');
     });
 
+    it('POST: its enabled query parameters are sent too (they were dropped: only GET sent them)', async () => {
+        server.on('POST /orders', { status: 200, body: { ok: true } });
+        await executor.executeEndpoint(endpoint({
+            method: 'POST', body: '{ "sku": "A" }',
+            queryParams: { page: { value: '0', enabled: true }, size: { value: '100', enabled: true }, skip: { value: 'x', enabled: false } }
+        }), undefined, 'env-1');
+        expect(server.requests[0].url).to.equal('/orders?page=0&size=100');
+        expect(server.requests[0].body).to.equal('{"sku":"A"}');
+    });
+
     it('JSONL (#115): the lines come back as records, with the format', async () => {
         server.on('GET /orders', { headers: { 'content-type': 'application/x-ndjson' }, body: '{"id":1}\n{"id":2}\n' });
         const result = await executor.executeEndpoint(endpoint({}), undefined, 'env-1');

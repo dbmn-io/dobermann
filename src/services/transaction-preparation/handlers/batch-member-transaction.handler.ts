@@ -6,6 +6,7 @@ import { IPathGeneratorHelper } from '../helpers/path-generator.helper';
 import { TemplateParser } from '../../../data-loading/template-parser';
 import { JsonGenerator } from '../../../data-loading/json-generator';
 import { encodeBase64Fields } from '../../../utils/encoding';
+import { stripJsonCommentsSafe } from '../../../utils/json-comment-stripper';
 
 /**
  * Handler for batch member transactions
@@ -215,7 +216,9 @@ export class BatchMemberTransactionHandler implements ITransactionHandler {
             }));
 
         const options = {
-            template: endpoint.body,
+            // JSONC comments out (a single run's body has them taken out too): a paginated run's
+            // pages are members, and a body's `// "Query": …` line broke every one of them
+            template: typeof endpoint.body === 'string' ? stripJsonCommentsSafe(endpoint.body) : endpoint.body,
             mappings,
             headers: header,
             repeatableArrays: endpoint.dataLoadingConfig.repeatableArrays || [],
@@ -260,7 +263,9 @@ export class BatchMemberTransactionHandler implements ITransactionHandler {
             }));
 
         const options = {
-            template: endpoint.body,
+            // JSONC comments out (a single run's body has them taken out too): a paginated run's
+            // pages are members, and a body's `// "Query": …` line broke every one of them
+            template: typeof endpoint.body === 'string' ? stripJsonCommentsSafe(endpoint.body) : endpoint.body,
             mappings,
             headers: header,
             repeatableArrays: endpoint.dataLoadingConfig?.repeatableArrays || [],

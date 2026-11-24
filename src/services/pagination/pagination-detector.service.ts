@@ -282,6 +282,29 @@ export class PaginationDetectorService {
     }
 
     /**
+     * The endpoint for one page: the page and size filled wherever the endpoint asks for them,
+     * its query parameters and its body alike (an API may read one or the other, so both say the
+     * same page). Every page is made through this, so no {{A8:PAGE…}} or {{A8:SIZE…}} is ever left
+     * for the request template to read as a generator (it said "Unknown A8 variable type 'size'").
+     */
+    endpointForPage<T extends { queryParams?: Record<string, unknown>; body?: string }>(endpoint: T, pageNumber: number, size?: number): T {
+        const fill = (text: string) => this.replacePaginationInBody(text, pageNumber, size);
+        const out = { ...endpoint };
+        if (endpoint.queryParams) {
+            const params: Record<string, unknown> = {};
+            for (const [key, value] of Object.entries(endpoint.queryParams)) {
+                if (typeof value === 'string') params[key] = fill(value);
+                else if (value && typeof value === 'object' && typeof (value as { value?: unknown }).value === 'string') {
+                    params[key] = { ...(value as object), value: fill((value as { value: string }).value) };
+                } else params[key] = value;
+            }
+            out.queryParams = params;
+        }
+        if (typeof endpoint.body === 'string' && endpoint.body) out.body = fill(endpoint.body);
+        return out;
+    }
+
+    /**
      * GitHub Issue #245: Replace {{A8:PAGE...}} and {{A8:SIZE...}} templates inside
      * a request body string with literal page/size values. The body is pre-resolved
      * before transaction creation so the JsonGenerator only ever sees literals.

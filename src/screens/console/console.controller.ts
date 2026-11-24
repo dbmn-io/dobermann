@@ -3189,16 +3189,8 @@ export class ConsoleController {
             // GitHub Issue #245: Resolve the next page in the body or query params.
             // #446: the page size the API sends, when it sends fewer than asked
             const nextPageSize = this.pageSizeToAsk(batchId, endpoint, batchMembers);
-            let pagedEndpoint;
-            if (paginationConfig.location === 'body') {
-                const updatedBody = paginationDetector.replacePaginationInBody(endpoint.body || '', nextPage, nextPageSize);
-                pagedEndpoint = { ...endpoint, body: updatedBody };
-            } else {
-                const updatedQueryParams = paginationDetector.replacePaginationTemplate(
-                    endpoint.queryParams || {}, paginationConfig, nextPage, nextPageSize
-                );
-                pagedEndpoint = { ...endpoint, queryParams: updatedQueryParams };
-            }
+            // (in the body and the query params alike: an endpoint may ask in both)
+            const pagedEndpoint = paginationDetector.endpointForPage(endpoint, nextPage, nextPageSize);
 
             const batchMemberHandler = new BatchMemberTransactionHandler(
                 transactionCreator, new PathGeneratorHelper(), new TemplateParser(), new JsonGenerator(endpointManager)
@@ -3554,15 +3546,8 @@ export class ConsoleController {
             // GitHub Issue #245: resolve the page in the body or query params per location.
             // #446: the page size the API sends, when it sends fewer than asked
             const rangePageSize = this.pageSizeToAsk(batchId, endpoint, batchMembers);
-            const pagedEndpointFor = (pageNumber: number) => {
-                if (paginationConfig.location === 'body') {
-                    return { ...endpoint, body: paginationDetector.replacePaginationInBody(endpoint.body || '', pageNumber, rangePageSize) };
-                }
-                return {
-                    ...endpoint,
-                    queryParams: paginationDetector.replacePaginationTemplate(endpoint.queryParams || {}, paginationConfig, pageNumber, rangePageSize)
-                };
-            };
+            // (in the body and the query params alike: an endpoint may ask in both)
+            const pagedEndpointFor = (pageNumber: number) => paginationDetector.endpointForPage(endpoint, pageNumber, rangePageSize);
             let currentTransactionIndex = batchMembers.length;
 
             const firstMemberResult = await batchMemberHandler.createTransaction({

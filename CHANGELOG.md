@@ -26,6 +26,7 @@ All notable changes to Dobermann are documented here.
 - **Signing in to VS Code also signs in the web app, if you want it** — After a VS Code sign-in, the browser tab's "Open DBMN in your browser" link opens the web app signed in, with a sign-in of its own: signing out of one leaves the other.
 
 ### Changed
+- **POST, PUT and PATCH send their query parameters** — An endpoint's enabled query parameters are now sent for every method, as GET always did; before, they were dropped while the run's record showed them in the URL. **Behaviour change:** turn off any query parameter you don't want sent.
 - **Compare is part of Query** — A compare is now a query whose views are joined with **Compare**. Start one from the Console's database button; any run can be the Baseline. Compares you saved open as queries. **Behaviour change:** a saved compare's **Relaxed** columns are now compared like every other column: by their text, so 42 equals "42", while case, spaces and hidden characters count as differences, shown with ¶. [Docs](https://dbmn.io/docs/query/#compare)
 - **Hub search reads like every other search box** — Endpoints, History and Reporting take words and `@field=value`: `@tag=inventory`, `@env=prod`, `@status=error`, `@ran>7d`, and a header such as `@org=vic`. **Breaking:** `#tag`, `@dbmn`, `!error`, `~prod` and a bare `7d` no longer work; **Build a search** writes the new form. [Docs](https://dbmn.io/docs/hub/#search)
 - **The Console's Input tab searches** — The **Result** drop-down is gone: search `@Result=Error` instead. Copy and Export follow the search, and the ★ saves it. **Behaviour change:** to get the rows to send again, search `@Result=Error`, then export. [Docs](https://dbmn.io/docs/console/#input-status)
@@ -41,6 +42,7 @@ All notable changes to Dobermann are documented here.
 - **The Compare screen** — Query took its place (see **Compare is part of Query**), and the **Compare** button on the Console's Completed tab is now the database button. [Docs](https://dbmn.io/docs/query/#from-compare)
 
 ### Fixed
+- **Paginated endpoints with the page in the body run** — An endpoint that asks for the page and size in both its query parameters and its body now runs, and a comment in a paginated body no longer stops it.
 - **Drop-down lists are readable in the web app** — An open drop-down, such as an environment's **Environment Type**, could show blank rows in the browser. Its rows now take the box's own colours in every theme.
 - **Run Batch warns before sending to production again** — On a production environment, Review shows "Warning: this is a production environment." under **Sending To**. The warning had been missing since 0.3.0; the confirmation before Execute always worked. [Docs](https://dbmn.io/docs/environments/#environment-type)
 - **Run Batch says why it can't read a file** — An image, PDF, zip, empty file, header-only CSV or fake .xlsx now says why on the Source step; before, most did nothing. An Excel file whose first sheet is empty opens on its first sheet with rows. [Docs](https://dbmn.io/docs/batch-preparation/#upload-file)

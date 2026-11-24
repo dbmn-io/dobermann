@@ -1917,29 +1917,9 @@ export class TransactionPreparationService implements ITransactionPreparationSer
             // GitHub Issue #94: Replace pagination template with first page number for batch_member
             const paginationDetectorService = new PaginationDetectorService();
 
-            // GitHub Issue #245: Resolve the first page in the body or query params,
-            // depending on where the {{A8:PAGE}} template lives.
-            let endpointWithFirstPage;
-            if (paginationConfig.location === 'body') {
-                const bodyWithFirstPage = paginationDetectorService.replacePaginationInBody(
-                    endpoint.body || '',
-                    paginationConfig.startValue
-                );
-                endpointWithFirstPage = {
-                    ...endpoint,
-                    body: bodyWithFirstPage
-                };
-            } else {
-                const queryParamsWithPage = paginationDetectorService.replacePaginationTemplate(
-                    endpoint.queryParams || {},
-                    paginationConfig as Parameters<PaginationDetectorService['replacePaginationTemplate']>[1],
-                    paginationConfig.startValue
-                );
-                endpointWithFirstPage = {
-                    ...endpoint,
-                    queryParams: queryParamsWithPage
-                };
-            }
+            // GitHub Issue #245: the first page, in the body and the query params alike: wherever
+            // the endpoint asks for it (an endpoint may ask in both)
+            const endpointWithFirstPage = paginationDetectorService.endpointForPage(endpoint, paginationConfig.startValue);
 
             // Create first batch_member with startValue page (status = 'pending')
             // Use minimal CSV data for the member

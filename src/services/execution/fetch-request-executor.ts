@@ -84,10 +84,11 @@ export class FetchRequestExecutor implements IRequestExecutor {
             // Flatten query params to simple key-value pairs, filtering out disabled params (GitHub Issue #101)
             const flatQueryParams = flattenQueryParams(endpointConfig.queryParams || {});
 
-            // GET sends its query parameters: after a `?`, or after an `&` when the path already
-            // has a query of its own (`/orders?status=open`); none, and the URL is left as it is.
-            // (It always added `?`, so a path's own query sent its last value with a `?` on the end.)
-            const query = endpointConfig.method === 'GET' ? new URLSearchParams(flatQueryParams).toString() : '';
+            // Every method sends its enabled query parameters (a POST's too: an API may page a POST
+            // search by its query, and the run's record has always said they were sent): after a `?`,
+            // or after an `&` when the path already has a query of its own (`/orders?status=open`);
+            // none, and the URL is left as it is. (Only GET sent them, so a POST's were quietly dropped.)
+            const query = new URLSearchParams(flatQueryParams).toString();
             const url = query ? `${fullUrl}${fullUrl.includes('?') ? '&' : '?'}${query}` : fullUrl;
 
             // Issue #113/#126: Only include Authorization header if auth is required
