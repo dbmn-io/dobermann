@@ -2000,6 +2000,10 @@ dbmn-actions .execution-button-group,
 
 body.editor-slide-in {
     animation: editor-slide-in 0.22s ease-out;
+    /* The editors (endpoint, environment, lookup) in the screen band, form and footer alike (James, 2026-11-24:
+       "Every footer needs the same width and the same restrictions"; band the whole editor): the page stays the
+       window's width, its scrollbar at the edge, the form centred in --dbmn-band */
+    padding-inline: max(20px, calc((100% - var(--dbmn-band, 1280px)) / 2 + 20px));
 }
 
 body.editor-slide-out {
