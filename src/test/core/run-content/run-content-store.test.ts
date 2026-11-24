@@ -5,7 +5,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import {
-    RUN_ARCHIVE_NAME, appendRunFile, forgetRunArchives, listRunFiles, readRunFile, readRunFileIfExists,
+    RUN_ARCHIVE_NAME, appendRunFile, forgetRunArchives, listRunFiles, locateRunFile, readRunFile, readRunFileIfExists,
     removeRunFile, renameRunFile, runFileExists, runFileSize, writeRunFile
 } from '../../../services/run-content/run-content-store';
 
@@ -132,5 +132,16 @@ describe('Run content store (#358)', () => {
         writeRunFile(file('x.json'), 'x');
         fs.rmSync(dir, { recursive: true, force: true });
         expect(runFileExists(file('x.json'))).to.equal(false);
+    });
+
+    // #459: a run VS Code recorded on Windows, opened in the web app (whose path functions are POSIX, as Node's here)
+    it('a run recorded on Windows: its archive is beside it, its name the file\'s own', () => {
+        expect(locateRunFile('C:\\Users\\jo\\ws\\Prod\\Stock\\transaction-001.json')).to.deep.equal({
+            archive: path.join('C:\\Users\\jo\\ws\\Prod\\Stock\\', RUN_ARCHIVE_NAME), name: 'transaction-001.json'
+        });
+        expect(locateRunFile('/home/jo/ws/Prod/Stock/transaction-001.json')).to.deep.equal({
+            archive: `/home/jo/ws/Prod/Stock/${RUN_ARCHIVE_NAME}`, name: 'transaction-001.json'
+        });
+        expect(locateRunFile('transaction-001.json')).to.deep.equal({ archive: RUN_ARCHIVE_NAME, name: 'transaction-001.json' });
     });
 });

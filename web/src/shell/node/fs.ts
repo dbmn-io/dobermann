@@ -17,6 +17,7 @@
 import type { FolderFile, FolderSource } from './folder-source';
 import { isUnderRoot, rootsByFolderName } from '../../../../src/services/workspace/folder-check';
 import { writesNow } from '../../../../src/services/workspace/write-now';
+import { readsFromFolder } from '../../../../src/services/workspace/folder-reread';
 
 type Data = Uint8Array;
 
@@ -469,14 +470,16 @@ export function onFolderChange(listener: (path: string, reason: 'changed' | 'con
 
 /**
  * Before code reads synchronously: the files (`paths`) and the files directly in folders
- * (`folders`, not below) that aren't in memory yet. Nothing outside folder mode.
+ * (`folders`, not below) that aren't in memory yet, or that another writer changed since they
+ * were read (folder-reread.ts: a later VS Code run grows a run archive held here, #459).
+ * Nothing outside folder mode.
  */
 export async function loadFromFolder(paths: string[], folders: string[] = []): Promise<void> {
     if (!folder) return;
     for (const raw of paths) {
         const p = norm(raw);
         await learnAlias(p);
-        if (inFolder(p) && !files.has(p)) await readFromFolder(p);
+        if (inFolder(p)) await refreshFromFolder(p);
     }
     for (const raw of folders) {
         const d = norm(raw);
@@ -487,10 +490,21 @@ export async function loadFromFolder(paths: string[], folders: string[] = []): P
         dirs.add(d);
         for (const { name, kind } of entries) {
             const p = `${d}/${name}`;
-            if (kind === 'file' && !files.has(p)) await readFromFolder(p);
+            if (kind === 'file') await refreshFromFolder(p);
             else if (kind === 'directory') dirs.add(p);
         }
     }
+}
+
+/** Read a folder file when it isn't held, or the folder's copy changed since (and nothing of ours waits to be saved). */
+async function refreshFromFolder(p: string): Promise<void> {
+    const held = files.has(p);
+    if (!held) { await readFromFolder(p); return; }
+    if (dirty.has(p)) return;
+    const now = await folder!.source.stat(folderParts(p));
+    if (!readsFromFolder(held, dirty.has(p), onDisk.get(p), now)) return;
+    await readFromFolder(p);
+    console.info(`[Workspace] ${p} changed in the folder since it was read: read again`);
 }
 
 async function checkWatched(): Promise<void> {

@@ -44,6 +44,7 @@ All notable changes to Dobermann are documented here.
 - **The Compare screen** — Query took its place (see **Compare is part of Query**), and the **Compare** button on the Console's Completed tab is now the database button. [Docs](https://dbmn.io/docs/query/#from-compare)
 
 ### Fixed
+- **A VS Code run opens in the web app** — A run made in VS Code on Windows, or made after the web app had already opened that endpoint's runs, now shows its requests and responses in the web app on the same folder.
 - **Import a query with no reports yet** — Reporting's empty list now has Import a query too, so a query copied elsewhere can be brought in before any report exists.
 - **Pasting an endpoint that lost its line breaks** — An endpoint shared through a chat that joined its lines now pastes with its body read back where it can be, and says so when it can't. A body that kept its line breaks is never changed.
 - **Paginated endpoints with the page in the body run** — An endpoint that asks for the page and size in both its query parameters and its body now runs, and a comment in a paginated body no longer stops it.

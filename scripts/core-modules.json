@@ -124,6 +124,7 @@
     "services/workspace/workspace-layout",
     "services/workspace/account-workspace",
     "services/workspace/folder-check",
+    "services/workspace/folder-reread",
     "services/agent/agent-protocol",
     "services/agent/agent-signature",
     "services/agent/agent-http",

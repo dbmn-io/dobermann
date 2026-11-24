@@ -45,9 +45,17 @@ const indexes = new Map<string, ArchiveIndex>();
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
-function locate(filePath: string): { archive: string; name: string } {
-    return { archive: path.join(path.dirname(filePath), RUN_ARCHIVE_NAME), name: path.basename(filePath) };
+/**
+ * A run file's archive (beside it) and its name in there. Split at the last `/` or `\\`, whichever the path uses: a run
+ * VS Code recorded on Windows keeps `C:\\…\\transaction-001.json`, and the web app's path functions (POSIX, like Node's
+ * on Linux and macOS) see no folder in it: its archive became `./run-content.dbmn` and nothing of the run read (#459).
+ */
+export function locateRunFile(filePath: string): { archive: string; name: string } {
+    const cut = Math.max(filePath.lastIndexOf('/'), filePath.lastIndexOf('\\'));
+    // (joined as before, so Node on Windows names each archive one way, whichever separator the path used)
+    return { archive: path.join(cut < 0 ? '.' : filePath.slice(0, cut + 1), RUN_ARCHIVE_NAME), name: filePath.slice(cut + 1) };
 }
+const locate = locateRunFile;
 
 function readRange(archive: string, offset: number, length: number): Uint8Array {
     const buffer = new Uint8Array(length);
