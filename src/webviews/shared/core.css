@@ -76,6 +76,17 @@ textarea {
     border-radius: 3px;
 }
 
+/* An open drop-down's rows. A browser draws a native <select>'s list from its options' own
+ * colours; given none, the web app's list came out as blank rows on the dark theme (James,
+ * 2026-11-24, the Environment editor's Environment Type). VS Code's webviews draw the list
+ * themselves, so this only shows outside VS Code. Exactly the colours the select itself has (the
+ * group above), so the open list can never differ from the closed box. */
+select option,
+select optgroup {
+    background-color: var(--vscode-input-background);
+    color: var(--vscode-input-foreground);
+}
+
 button {
     text-wrap-mode: nowrap;
 }
