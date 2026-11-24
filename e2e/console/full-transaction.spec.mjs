@@ -45,7 +45,7 @@ async function openConsole(page, { reportType, batchId = '', executionId = '', e
 const send = (page, message) => page.evaluate(m => window.postMessage(m, '*'), message);
 const posted = (page, type) => page.evaluate(t => window.__posted.filter(m => m.type === t), type);
 
-test('one GET transaction: its window opens by itself, Request off with no body, the response shown', async ({ page }) => {
+test('one GET transaction: its window opens by itself, every part side by side, the response shown', async ({ page }) => {
     const pageErrors = await openConsole(page, { reportType: 'individual', executionId: 'exec_1', endpoint: 'GET https://api.test/items' });
     await page.evaluate(r => window.dynamicReportManager.initialize({
         responses: [r], requests: [], logContent: [], metadata: { executionId: 'exec_1' }
@@ -55,12 +55,9 @@ test('one GET transaction: its window opens by itself, Request off with no body,
     const tx = page.locator('dbmn-transaction[window]');
     await expect(tx).toHaveCount(1);
     await expect(tx.locator('.dbmn-tx-title')).toHaveText('Transaction #001');
-    const show = name => tx.locator('.dbmn-tx-seg-btn', { hasText: name });
-    await expect(show('Request'), 'no body: Request starts off').not.toHaveClass(/is-on/);
-    await expect(show('Response')).toHaveClass(/is-on/);
-    await expect(tx.locator('.dbmn-tx-pane[data-part="request"]')).toHaveCount(0);
+    // (every part side by side, no Show buttons: a GET's request as its Details)
+    await expect(tx.locator('.dbmn-tx-seg-btn')).toHaveCount(0);
     await expect(tx.locator('.dbmn-tx-pane[data-part="response"]')).toContainText('"sku"', { timeout: 15_000 });
-    await show('Request').click();
     await expect(tx.locator('.dbmn-tx-pane[data-part="request"]')).toHaveCount(1);
     expect(pageErrors, 'uncaught errors in the page').toEqual([]);
 });
@@ -107,8 +104,7 @@ test('Input tab: rows searched by their transaction\'s Result in the box (no dro
     await page.locator('.raw-context-menu-item[data-action="view"]').click();
     const tx = page.locator('dbmn-transaction[window]');
     await expect(tx.locator('.dbmn-tx-title')).toHaveText('Transaction #002');
-    // (a sent request opens on Request and Response; its input rows are a click away)
-    await tx.locator('.dbmn-tx-seg-btn', { hasText: 'Input' }).click();
+    // (its input rows beside its request and response)
     await expect(tx.locator('.dbmn-tx-input')).toContainText('XX', { timeout: 15_000 });
     await page.keyboard.press('Escape');
     await expect(tx).toHaveCount(0);
@@ -167,18 +163,14 @@ test('right-click an Error row: its full transaction, with its input row, reason
     await expect(tx.locator('.dbmn-tx-head .raw-status-badge')).toHaveText('ERROR');
     // (why it failed, as the Error tab says it: the fixture has no error message of its own, so its HTTP status)
     await expect(tx.locator('.raw-card-reason-text')).toContainText('HTTP 422');
-    // its input row (the design system's table), shown though no other tab was opened: a click away
-    await tx.locator('.dbmn-tx-seg-btn', { hasText: 'Input' }).click();
+    // its input row (the design system's table), shown though no other tab was opened
     await expect(tx.locator('.dbmn-tx-input')).toContainText('XX', { timeout: 15_000 });
-    // Show: each part turns off and on again
-    for (const part of ['Request', 'Response', 'Input']) {
-        const b = tx.locator('.dbmn-tx-seg-btn', { hasText: part });
-        const on = async () => /\bis-on\b/.test(await b.getAttribute('class'));
-        const was = await on();
-        await b.click();
-        await expect.poll(on).toBe(!was);
-        await b.click();
-        await expect.poll(on).toBe(was);
+    // ⤢ zooms each part, and back
+    for (const part of ['request', 'response', 'input']) {
+        await tx.locator(`.dbmn-tx-pane[data-part="${part}"] .dbmn-tx-max`).click();
+        await expect(tx.locator('.dbmn-tx-pane:not([hidden])')).toHaveCount(1);
+        await tx.locator(`.dbmn-tx-pane[data-part="${part}"] .dbmn-tx-max`).click();
+        await expect(tx.locator('.dbmn-tx-pane:not([hidden])')).toHaveCount(3);
     }
     await tx.locator('.dbmn-tx-reprocess').click();
     const retries = await posted(page, 'retryMember');

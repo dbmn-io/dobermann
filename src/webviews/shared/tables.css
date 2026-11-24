@@ -1588,12 +1588,17 @@ body[data-vscode-theme-kind="vscode-light"] .monaco-editor .tmpl-modifier-empty 
     overflow-wrap: anywhere;
 }
 
-/* Quiet tinted chip (same recipe as .bx-var role chips) instead of a solid pill */
-.map-layout .variable-type {
+/* The type as a quiet chip: its words in the theme's own text colour (always readable, James 2026-11-25: "correct
+   contrast throughout"), the type's colour only in its border and a light tint. (body + the class pair outrank
+   buttons.css's solid-pill text colour, which made these white on a pale tint in a light theme, dark on dark in a
+   dark one.) */
+body .map-layout .variable-type[class*="data-type-"] {
     flex: none;
     padding: 0 6px;
     border-radius: 3px;
-    border: 1px solid currentColor;
+    border: 1px solid var(--dbmn-type-colour, var(--vscode-panel-border));
+    background: color-mix(in srgb, var(--dbmn-type-colour, transparent) 12%, transparent);
+    color: var(--vscode-foreground) !important;
     font-family: var(--vscode-editor-font-family, monospace);
     font-size: 11px;
     font-weight: 400;
@@ -1602,10 +1607,11 @@ body[data-vscode-theme-kind="vscode-light"] .monaco-editor .tmpl-modifier-empty 
     line-height: 16px;
 }
 
-.map-layout .variable-type.data-type-string  { color: var(--vscode-charts-blue);   background: color-mix(in srgb, var(--vscode-charts-blue) 14%, transparent); }
-.map-layout .variable-type.data-type-number  { color: var(--vscode-charts-green);  background: color-mix(in srgb, var(--vscode-charts-green) 14%, transparent); }
-.map-layout .variable-type.data-type-boolean { color: var(--vscode-charts-orange); background: color-mix(in srgb, var(--vscode-charts-orange) 14%, transparent); }
-.map-layout .variable-type.data-type-date    { color: var(--vscode-charts-purple); background: color-mix(in srgb, var(--vscode-charts-purple) 14%, transparent); }
+.map-layout .variable-type.data-type-string  { --dbmn-type-colour: var(--vscode-charts-blue); }
+.map-layout .variable-type.data-type-number  { --dbmn-type-colour: var(--vscode-charts-green); }
+.map-layout .variable-type.data-type-boolean { --dbmn-type-colour: var(--vscode-charts-orange); }
+.map-layout .variable-type.data-type-date    { --dbmn-type-colour: var(--vscode-charts-purple); }
+.map-layout .variable-type.data-type-array   { --dbmn-type-colour: var(--vscode-charts-red); }
 
 .map-layout .variable-sources,
 .map-layout .variable-modifiers {
@@ -1671,7 +1677,8 @@ body[data-vscode-theme-kind="vscode-light"] .monaco-editor .tmpl-modifier-empty 
 }
 
 .map-layout .map-source-cell .source-format-select.format-none {
-    color: var(--vscode-descriptionForeground);
+    color: var(--vscode-foreground);
+    font-style: italic;
 }
 
 .map-layout .map-source-cell .source-format-select:hover,

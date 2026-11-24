@@ -408,6 +408,7 @@ export function buildRunBatchPage(asset: AssetUrl, batchConfig: { endpointId: st
     <script src="${asset('run-batch/run-batch-confirm.js')}"></script>
     <script src="${asset('shared/dbmn-name.js')}"></script>
     <script src="${asset('shared/dbmn-run-heading.js')}"></script>
+    <script src="${asset('shared/dbmn-code-pane.js')}"></script>
     <script src="${asset('run-batch/run-batch-heading.js')}"></script>
     <script src="${asset('shared/dbmn-saved-searches.js')}"></script>
     <script src="${asset('run-batch/validate-search.js')}"></script>

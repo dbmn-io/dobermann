@@ -34,7 +34,7 @@ const SCRIPTS = {
     DBMN_RUN_HEADING_URI: 'shared/dbmn-run-heading.js',
     DBMN_RUN_DETAILS_URI: 'shared/dbmn-run-details.js',
     CONSOLE_RUN_HEADING_URI: 'console/modules/console-run-heading.js',
-    CONSOLE_EDITOR_URI: 'console/modules/console-editor.js',
+    CONSOLE_EDITOR_URI: 'shared/dbmn-code-pane.js',
     CONSOLE_ACTIONS_URI: 'console/modules/console-actions.js',
     DBMN_REQUESTS_URI: 'shared/dbmn-requests.js',              // #466: the Requests table (shared with Review)
     CONSOLE_REQUESTS_URI: 'console/modules/requests-tab.js',   // #466

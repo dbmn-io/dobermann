@@ -26,6 +26,9 @@
         where.appendChild(box);
         state.requests = window.DbmnRequests.mount(box, {
             post,
+            // (the window's panes in Run Batch's Monaco: JSON coloured and folding, as the Console's)
+            editor: window.DbmnCodePane ? window.DbmnCodePane.make : null,
+            whenEditorReady: window.DbmnCodePane ? window.DbmnCodePane.whenReady : null,
             // (the run heading's Requests tab counts them: its own count reads Review's totals)
             counts: () => { if (window.RunBatchHeading) window.RunBatchHeading.refresh(); }
         });

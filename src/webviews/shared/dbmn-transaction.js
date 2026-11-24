@@ -33,8 +33,10 @@
  *   dbmn-transaction-logs { id }          dbmn-transaction-reprocess { id }
  *   dbmn-transaction-copied { what, ok }  Copy All / a pane's copy (it copies itself, through dbmn-clipboard.js)
  *
- * What is shown (Input, Request, Response), each pane's mode (Body / Details, Body / Headers) and the search stay as
- * they were when it moves to another transaction. A pane's ⤢ fills the window with it; Esc puts it back.
+ * Every part there is shows side by side (its input rows, the request, the response once sent); ⤢ fills the window
+ * with one, and that is how one is looked at alone (James, 2026-11-25: no Show buttons, no Copy All; one line across
+ * the top with the search). The panes slide to their new places. Each pane's mode (Body / Details, Body / Headers)
+ * and the search stay as they were when it moves to another transaction; Esc puts a filled pane back.
  * Draws in the page (no shadow root); no business logic, no messages. Needs icons.js and dbmn-table.js
  * (dbmn-clipboard.js to copy); styles in transaction-card.css (dbmn-transaction).
  */
@@ -91,6 +93,12 @@
         return { kind: 'other', formats: [] };
     }
     function htmlText(html) { const d = document.createElement('div'); d.innerHTML = html; d.querySelectorAll('script,style').forEach(n => n.remove()); return (d.textContent || '').replace(/\n\s*\n+/g, '\n\n').trim(); }
+    /** JSON coloured as the editor colours it while Monaco is not there (the cell window's painter: one look). */
+    function paint(pre, text, language) {
+        if (!text) { pre.textContent = '—'; return; }
+        if (window.CellDetail && typeof window.CellDetail.paint === 'function') window.CellDetail.paint(pre, text, language);
+        else pre.textContent = text;
+    }
     const lines = list => (Array.isArray(list) ? list : []).map(h => `${h.name}: ${h.value}`).join('\n');
     function detailsText(t) {
         const query = Array.isArray(t.query) ? t.query : [];
@@ -106,7 +114,6 @@
             this._tx = null;
             this._input = null;
             this._editor = null;
-            this._show = { input: null, request: null, response: true };   // null: by default (see _showing)
             this._mode = { request: 'body', response: 'body', format: null };   // format: lines/pretty (JSONL), raw/render/text (HTML)
             this._search = '';
             this._max = null;
@@ -115,7 +122,11 @@
         }
         set transaction(t) { this._tx = t || null; this._max = null; this._draw(); }
         get transaction() { return this._tx; }
-        set input(i) { this._input = i || null; this._fillInput(); this._drawShow(); }
+        set input(i) {
+            const had = !!this._inputTable;
+            this._input = i || null;
+            if (had) this._fillInput(); else this._drawPanes();
+        }
         get input() { return this._input; }
         set editor(fn) { this._editor = typeof fn === 'function' ? fn : null; this._draw(); }
         /** The screen's editor has become ready: the panes drawn again in it (what is shown and the search kept). */
@@ -136,20 +147,19 @@
         _keepFocus(had) { if (had && !this.contains(document.activeElement)) this.focus({ preventScroll: true }); }
         _say(type, detail) { this.dispatchEvent(new CustomEvent(type, { bubbles: true, detail: detail || {} })); }
         get _sent() { return !!this._tx && this._tx.responseBody !== undefined; }
+        /** Every part there is, side by side (James, 2026-11-25: no Show buttons; ⤢ zooms one, and that hides the
+            others): its input rows when it has any, the request, the response once it is sent. */
         _showing(part) {
-            if (part === 'response') return this._sent && this._show.response;
-            if (part === 'input') return this._show.input === null ? !this._sent : this._show.input;
-            // (a request with no body, a GET, starts with Request off, as Raw's card did. Until its body is known
-            //  (requestBody undefined: the detail still coming) nothing is chosen, so Request never shows then hides)
-            if (this._show.request !== null) return this._show.request;
-            if (!this._tx || this._tx.requestBody === undefined) return false;
-            return !!this._tx.requestBody || !this._sent;
+            if (!this._tx) return false;
+            if (part === 'response') return this._sent;
+            if (part === 'input') return !!(this._input && Array.isArray(this._input.rows) && this._input.rows.length) || !!this._tx.rowStart;
+            return true;
         }
 
         _key(e) {
             const typing = e.target && (e.target.closest('input, textarea, select, [contenteditable="true"]') || e.target.closest('.dbmn-tx-editor'));
             if (e.key === 'Escape') {
-                if (this._max) { this._max = null; this._drawPanes(); e.stopPropagation(); return; }
+                if (this._max) { this._zoom(null); e.stopPropagation(); return; }
                 if (this.hasAttribute('window')) { e.stopPropagation(); this._say('dbmn-transaction-close'); }
                 return;
             }
@@ -174,9 +184,6 @@
                 if (t.testFailed && t.http) why.append(make('span', 'raw-card-reason-note', `The server answered ${t.http}; this result comes from the endpoint's test.`));
                 this.append(why);
             }
-            this._showEl = make('div', 'dbmn-tx-show');
-            this.append(this._showEl);
-            this._drawShow();
             this._panesEl = make('div', 'dbmn-tx-panes');
             this.append(this._panesEl);
             this._drawPanes();
@@ -198,8 +205,20 @@
             if (t.sent) facts.push(t.sent);
             if (t.rowStart) facts.push(`input rows ${Number(t.rowStart).toLocaleString()}–${Number(t.rowEnd || t.rowStart).toLocaleString()}`);
             if (!this._sent && t.method) facts.push(`${t.method} ${t.url || ''}`.trim());
-            head.append(make('span', 'dbmn-tx-facts', facts.join(' · ')));
+            const said = make('span', 'dbmn-tx-facts', facts.join(' · '));
+            said.title = facts.join(' · ');
+            head.append(said);
             head.append(make('span', 'dbmn-tx-spacer'));
+            // (the search, on the same one line: what it finds is marked in every pane)
+            const find = make('input', 'dbmn-modal-input dbmn-tx-search');
+            find.type = 'search';
+            find.placeholder = 'Search this transaction…';
+            find.setAttribute('aria-label', 'Search this transaction');
+            find.value = this._search;
+            find.addEventListener('input', () => { this._search = find.value; this._searchPanes(); });
+            this._foundEl = make('span', 'dbmn-tx-found');
+            this._foundEl.setAttribute('role', 'status');
+            head.append(find, this._foundEl);
             const nav = make('span', 'dbmn-tx-nav');
             const up = iconButton('dbmn-tx-btn dbmn-tx-prev', 'chevron-up', 'Previous request (↑)');
             const down = iconButton('dbmn-tx-btn dbmn-tx-next', 'chevron-down', 'Next request (↓)');
@@ -219,52 +238,12 @@
                 b.addEventListener('click', () => this._say('dbmn-transaction-logs', { id: t.id }));
                 head.append(b);
             }
-            const all = iconButton('btn btn-secondary dbmn-tx-action dbmn-tx-copy-all', 'copy', 'Copy the request and its response', 'Copy All');
-            all.addEventListener('click', () => this._copy('all'));
-            head.append(all);
             if (this.hasAttribute('window')) {
                 const x = iconButton('dbmn-tx-btn dbmn-tx-close', 'x', 'Close (Esc)');
                 x.addEventListener('click', () => this._say('dbmn-transaction-close'));
                 head.append(x);
             }
             return head;
-        }
-
-        _drawShow() {
-            const box = this._showEl;
-            if (!box || !this._tx) return;
-            const had = this._holdsFocus();
-            box.replaceChildren(make('span', 'dbmn-tx-show-label', 'Show'));
-            const seg = make('span', 'dbmn-tx-seg');
-            seg.setAttribute('role', 'group');
-            seg.setAttribute('aria-label', 'Show');
-            const rows = this._input && Array.isArray(this._input.rows) ? this._input.rows.length : (this._tx.rowStart ? (this._tx.rowEnd || this._tx.rowStart) - this._tx.rowStart + 1 : 0);
-            [['input', `Input (${rows.toLocaleString()} row${rows === 1 ? '' : 's'})`], ['request', 'Request'], ['response', 'Response']].forEach(([part, label]) => {
-                const b = make('button', 'dbmn-tx-seg-btn' + (this._showing(part) ? ' is-on' : ''), label);
-                b.type = 'button';
-                b.dataset.part = part;
-                b.setAttribute('aria-pressed', String(this._showing(part)));
-                if (part === 'response' && !this._sent) { b.disabled = true; b.title = 'Not sent yet'; }
-                b.addEventListener('click', () => {
-                    this._show[part] = !this._showing(part);
-                    this._max = null;
-                    this._drawShow();
-                    this._drawPanes();
-                });
-                seg.append(b);
-            });
-            box.append(seg);
-            const find = make('input', 'dbmn-modal-input dbmn-tx-search');
-            find.type = 'search';
-            find.placeholder = 'Search this transaction…';
-            find.setAttribute('aria-label', 'Search this transaction');
-            find.value = this._search;
-            find.addEventListener('input', () => { this._search = find.value; this._searchPanes(); });
-            box.append(find);
-            this._foundEl = make('span', 'dbmn-tx-found');
-            this._foundEl.setAttribute('role', 'status');
-            box.append(this._foundEl);
-            this._keepFocus(had);
         }
 
         _drawPanes() {
@@ -355,7 +334,7 @@
             const max = iconButton('dbmn-tx-btn dbmn-tx-max', this._max === part ? 'minimize-2' : 'maximize-2', this._max === part ? 'Put it back (Esc)' : 'Fill the window');
             max.setAttribute('aria-pressed', String(this._max === part));
             // (focus kept on the window: the panes are drawn again, and Esc must still reach it)
-            max.addEventListener('click', () => { this._max = this._max === part ? null : part; this._drawPanes(); });
+            max.addEventListener('click', () => this._zoom(this._max === part ? null : part));
             head.append(max);
             pane.append(head);
             if (body) {
@@ -374,14 +353,37 @@
                     holder.dataset.editor = 'monaco';
                 } else {
                     holder.dataset.editor = 'text';
-                    const pre = make('pre', 'dbmn-tx-code', body.text || '—');
+                    const pre = make('pre', 'dbmn-tx-code');
                     pre.dataset.language = body.language;
                     pre._dbmnText = body.text;
+                    paint(pre, body.text, body.language);
                     holder.append(pre);
                 }
                 pane.append(holder);
             }
             return pane;
+        }
+
+        /**
+         * One part fills the window (⤢), or they go back side by side: the panes move to their new places, not jump
+         * (James, 2026-11-25: "animate that at least a little bit"). Each pane slides and grows from where it was.
+         */
+        _zoom(part) {
+            const before = new Map();
+            (this._panesEl ? [...this._panesEl.querySelectorAll('.dbmn-tx-pane:not([hidden])')] : []).forEach(el => before.set(el.dataset.part, el.getBoundingClientRect()));
+            this._max = part;
+            this._drawPanes();
+            if (!this._panesEl || (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches)) return;
+            this._panesEl.querySelectorAll('.dbmn-tx-pane:not([hidden])').forEach(el => {
+                const was = before.get(el.dataset.part);
+                const now = el.getBoundingClientRect();
+                if (!was || !now.width || typeof el.animate !== 'function') return;
+                const dx = was.left - now.left, dy = was.top - now.top, sx = was.width / now.width, sy = was.height / now.height;
+                el.animate([
+                    { transformOrigin: 'top left', transform: `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})`, opacity: 0.85 },
+                    { transformOrigin: 'top left', transform: 'none', opacity: 1 }
+                ], { duration: 220, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)' });
+            });
         }
 
         _fillInput() {
@@ -403,7 +405,7 @@
                 const pre = holder.querySelector('pre');
                 if (!pre) return;
                 const text = pre._dbmnText || '';
-                if (!needle) { pre.textContent = text || '—'; return; }
+                if (!needle) { paint(pre, text, pre.dataset.language); return; }
                 const low = text.toLowerCase();
                 const parts = [];
                 let at = 0;

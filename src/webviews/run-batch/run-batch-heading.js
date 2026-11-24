@@ -13,7 +13,7 @@
  */
 (function () {
     'use strict';
-    const state = { step: 1, environment: null, rows: null, requests: null };
+    const state = { step: 1, reviewed: false, environment: null, rows: null, requests: null };
     const heading = () => document.getElementById('run-heading');
     const nameBox = () => document.getElementById('batchNameInput');
 
@@ -33,7 +33,8 @@
         h.hidden = state.step < 3;
         const tabs = [];
         if (state.step >= 3) tabs.push({ id: 'input', label: 'Input', count: rowCount() === null ? undefined : rowCount() });
-        if (state.step >= 4) tabs.push({ id: 'requests', label: 'Requests', count: requestCount() === null ? undefined : requestCount() });
+        // (Requests stays once Review has made them, Back or not: James, 2026-11-25; a new file starts again)
+        if (state.step >= 4 || state.reviewed) tabs.push({ id: 'requests', label: 'Requests', count: requestCount() === null ? undefined : requestCount() });
         h.tabs = tabs;
         h.active = state.step === 4 ? 'requests' : 'input';
         const box = nameBox();
@@ -78,7 +79,12 @@
     else wire();
 
     window.RunBatchHeading = {
-        onStep(n) { state.step = n; draw(); },
+        onStep(n) {
+            state.step = n;
+            if (n >= 4) state.reviewed = true;
+            if (n === 1) state.reviewed = false;
+            draw();
+        },
         refresh: draw
     };
 })();

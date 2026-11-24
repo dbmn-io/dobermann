@@ -1185,6 +1185,12 @@
 .dbmn-modal-lg { max-width: min(calc(100vw - 48px), 820px); }
 /* Issue #271: wide viewer for the console cell-detail modal (maximised text). */
 .dbmn-modal-cell-detail { max-width: min(calc(100vw - 48px), 1120px); }
+/* JSON coloured as the editor colours it, in the cell window and the transaction window */
+.dbmn-tok-key { color: var(--dbmn-debugTokenExpression-name, #9cdcfe); }
+.dbmn-tok-str { color: var(--dbmn-debugTokenExpression-value, #ce9178); }
+.dbmn-tok-num { color: var(--dbmn-charts-green, #b5cea8); }
+.dbmn-tok-lit { color: var(--dbmn-charts-blue, #569cd6); }
+
 /* maximisable: the whole window */
 .dbmn-modal-backdrop.has-maximised { padding: 8px; }
 .dbmn-modal.is-maximised { width: 100%; height: 100%; max-width: none; max-height: none; }

@@ -3416,10 +3416,29 @@ html[data-tab-colour="stopped"] .report-title { --title-c: var(--vscode-descript
 .requests-table .requests-body { display: inline-flex; gap: 8px; align-items: baseline; min-width: 0; max-width: 100%; }
 .requests-table .requests-preview { font-family: var(--vscode-editor-font-family); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .requests-table .requests-items { flex: none; color: var(--vscode-descriptionForeground); font-size: 11px; }
-/* A request not sent yet (Run Batch's Review): Ready, quiet, outlined: no colour of its own */
+/* A request's state, as Compare's pills are drawn (James, 2026-11-25: "the pills look very different to our diffs"):
+   the app's own font, a soft tint of the state's colour with its border, never the table's code font.
+   Ready (not sent yet) is quiet and outlined, like SAME. */
+.requests-table .raw-status-badge {
+    display: inline-flex; align-items: center; padding: 2px 10px; border-radius: 10px;
+    font-family: var(--vscode-font-family); font-size: 11px; font-weight: 600; line-height: 14px; letter-spacing: 0;
+    border: 1px solid transparent;
+}
 .requests-table .raw-status-badge.status-ready {
     background: transparent;
     color: var(--vscode-descriptionForeground);
-    border: 1px solid var(--vscode-descriptionForeground);
+    border-color: var(--vscode-panel-border);
 }
+.requests-table .raw-status-badge.status-completed {
+    background: color-mix(in srgb, var(--vscode-charts-green, #89d185) 22%, transparent);
+    border-color: color-mix(in srgb, var(--vscode-charts-green, #89d185) 65%, transparent);
+    color: var(--vscode-foreground);
+}
+.requests-table .raw-status-badge.status-error,
+.requests-table .raw-status-badge.status-failed {
+    background: color-mix(in srgb, var(--vscode-charts-red, #e06c75) 22%, transparent);
+    border-color: color-mix(in srgb, var(--vscode-charts-red, #e06c75) 65%, transparent);
+    color: var(--vscode-foreground);
+}
+.requests-table .raw-status-badge.status-test-failed { box-shadow: none; border-color: var(--vscode-errorForeground); background: transparent; }
 .toolbar-actions[hidden] { display: none !important; }

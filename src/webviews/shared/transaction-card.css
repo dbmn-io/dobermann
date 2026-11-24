@@ -1120,13 +1120,16 @@
    Review. The badges and the Body / Details buttons are the card's own (above); `window` draws it over the screen */
 dbmn-transaction { display: flex; flex-direction: column; gap: 8px; min-height: 0; color: var(--dbmn-foreground); outline: none; }
 dbmn-transaction[window] {
-    position: fixed; inset: 40px max(24px, calc((100% - var(--dbmn-band, 1280px)) / 2)); z-index: 900; padding: 12px 14px;
+    position: fixed; inset: 64px max(24px, calc((100% - var(--dbmn-band, 1280px)) / 2)) 72px; z-index: 900; padding: 10px 14px 12px;
     background: var(--dbmn-editor-background); border: 1px solid var(--dbmn-panel-border); border-radius: 6px;
     box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.45), 0 12px 32px rgba(0, 0, 0, 0.4);
 }
-.dbmn-tx-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+/* (one line across the top: title, state, what it was, the search, ↑ ↓, the actions, ✕; the facts give way first) */
+.dbmn-tx-head { display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; min-width: 0; }
+.dbmn-tx-head > * { flex: none; }
+.dbmn-tx-head > .dbmn-tx-facts { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dbmn-tx-title { font-size: 14px; }
-.dbmn-tx-facts, .dbmn-tx-pane-note, .dbmn-tx-show-label, .dbmn-tx-found { color: var(--dbmn-descriptionForeground); font-size: 12px; }
+.dbmn-tx-facts, .dbmn-tx-pane-note, .dbmn-tx-found { color: var(--dbmn-descriptionForeground); font-size: 12px; }
 .dbmn-tx-spacer { flex: 1; }
 .dbmn-tx-glyph { display: inline-flex; line-height: 0; }
 .dbmn-tx-glyph svg { width: 14px; height: 14px; }
@@ -1139,16 +1142,7 @@ dbmn-transaction[window] {
 .dbmn-tx-btn:disabled { opacity: 0.35; cursor: default; }
 .dbmn-tx-nav { display: inline-flex; gap: 1px; }
 .dbmn-tx-reason { margin: 0; }
-.dbmn-tx-show { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.dbmn-tx-seg { display: inline-flex; border: 1px solid var(--dbmn-panel-border); border-radius: 4px; overflow: hidden; }
-.dbmn-tx-seg-btn {
-    padding: 3px 10px; border: none; border-right: 1px solid var(--dbmn-panel-border); background: none; font: inherit; font-size: 12px;
-    color: var(--dbmn-descriptionForeground); cursor: pointer;
-}
-.dbmn-tx-seg-btn:last-child { border-right: none; }
-.dbmn-tx-seg-btn.is-on { background: var(--dbmn-button-secondaryBackground); color: var(--dbmn-button-secondaryForeground); }
-.dbmn-tx-seg-btn:disabled { opacity: 0.45; cursor: default; }
-.dbmn-tx-search { width: 260px; max-width: 100%; height: 24px; }
+.dbmn-tx-search { width: 240px; max-width: 30vw; height: 26px; }
 .dbmn-tx-panes { flex: 1; min-height: 0; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 10px; }
 .dbmn-tx-panes.has-max { grid-auto-flow: row; }
 .dbmn-tx-pane { display: flex; flex-direction: column; min-height: 0; min-width: 0; border: 1px solid var(--dbmn-panel-border); border-radius: 4px; }
@@ -1160,7 +1154,12 @@ dbmn-transaction[window] {
     color: var(--dbmn-editor-foreground, var(--dbmn-foreground));
 }
 .dbmn-tx-hit { background: var(--dbmn-editor-findMatchHighlightBackground, rgba(234, 92, 0, 0.33)); color: inherit; outline: 1px solid var(--dbmn-editor-findMatchHighlightBorder, transparent); }
-.dbmn-tx-input { flex: 1; min-height: 120px; }
+/* (the input rows fill their pane: the window bounds it, so the table scrolls inside) */
+.dbmn-tx-pane > dbmn-table.dbmn-tx-input { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.dbmn-tx-pane > dbmn-table.dbmn-tx-input .dbmn-table-scroll { flex: 1; min-height: 0; max-height: none; }
+/* (its headings solid, the rows never showing through them, under the pointer too) */
+.dbmn-tx-pane > dbmn-table.dbmn-tx-input thead th { background-color: var(--dbmn-editor-background); }
+.dbmn-tx-pane > dbmn-table.dbmn-tx-input thead th:hover { background-image: linear-gradient(var(--dbmn-list-hoverBackground), var(--dbmn-list-hoverBackground)); }
 .dbmn-tx-none { color: var(--dbmn-descriptionForeground); }
 @media (max-width: 900px) { .dbmn-tx-panes { grid-auto-flow: row; } dbmn-transaction[window] { inset: 12px; } }
 .dbmn-tx-formats { margin-left: 4px; } .dbmn-tx-render { overflow: auto; }

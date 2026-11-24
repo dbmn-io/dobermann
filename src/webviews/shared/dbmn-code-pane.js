@@ -1,28 +1,35 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Flexion Tech Pty Ltd
 /**
- * The Console's code editor for a pane of <dbmn-transaction> (its `editor` hook): the same read-only Monaco editor as
- * Raw's card (raw-tab-handler.js createEditorForContainer), so a body folds at the margin arrows, a folded part copies,
- * and the search marks it. Draws nothing of its own.
+ * The code editor for a pane of <dbmn-transaction> (its `editor` hook), on every screen that has Monaco: the Console
+ * and Run Batch's Review (James, 2026-11-25: "syntax highlighting is needed in JSON"). The same read-only Monaco editor
+ * as Raw's card had, so a body folds at the margin arrows, a folded part copies, and the search marks it.
  *
- *   tx.editor = window.ConsoleEditor.make;   // (container, { pane, text, language }) → { search(text), dispose() } | null
+ *   tx.editor = window.DbmnCodePane.make;   // (container, { pane, text, language }) → { search(text), dispose() } | null
+ *   window.DbmnCodePane.whenReady(() => tx.refreshEditors());
  *
- * null while Monaco is not loaded (or failed): the window shows the text as it is, then redraws its panes in Monaco
- * once whenReady() says so (each pane's data-editor says which: "text" or "monaco", for a spec to wait on).
- * Browser: window.ConsoleEditor.
+ * null while Monaco is not loaded (or failed): the window shows the text as it is (JSON coloured), then redraws its
+ * panes in Monaco once whenReady() says so (each pane's data-editor says which: "text" or "monaco").
+ * Browser: window.DbmnCodePane (window.ConsoleEditor, its old name, too).
  */
 (function () {
     'use strict';
 
-    function ready() {
-        const raw = window.rawTabHandler;
-        return !!(window.monaco && window.monaco.editor && (!raw || raw.monacoReady));
-    }
+    let themed = false;
+    function ready() { return !!(window.monaco && window.monaco.editor); }
     /** Monaco loaded (the Console loads it only when asked: Raw did, now the window does), then `then`. */
     function whenReady(then) {
-        if (ready()) { then(); return; }
+        const go = () => {
+            if (!ready()) return;
+            if (!themed && typeof window.defineVSCodeTheme === 'function') { try { window.defineVSCodeTheme(); } catch { /* its own theme stays */ } }
+            themed = true;
+            then();
+        };
+        if (ready()) { go(); return; }
+        // (the Console's own loader when it has one, else Monaco's loader as the page set it up)
         const raw = window.rawTabHandler;
-        if (raw && typeof raw.ensureMonaco === 'function') raw.ensureMonaco(() => { if (ready()) then(); });
+        if (raw && typeof raw.ensureMonaco === 'function') raw.ensureMonaco(go);
+        else if (typeof window.require === 'function') window.require(['vs/editor/editor.main'], go);
     }
 
     function make(container, { text, language }) {
@@ -56,5 +63,6 @@
         };
     }
 
-    window.ConsoleEditor = { make, ready, whenReady };
+    window.DbmnCodePane = { make, ready, whenReady };
+    window.ConsoleEditor = window.DbmnCodePane;
 })();

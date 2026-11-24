@@ -24,6 +24,31 @@
         return !!str && !!VF && VF.detectValueType(str) !== 'text';
     }
 
+    /**
+     * JSON coloured as the editor colours it (keys, strings, numbers, true/false/null): the cell window and the
+     * transaction window's panes before Monaco (James, 2026-11-25: "syntax highlighting needed here").
+     * Anything not JSON, or past 400k characters, stays plain text.
+     */
+    function tok(cls, text) { const s = document.createElement('span'); s.className = cls; s.textContent = text; return s; }
+    function paint(pre, text, language) {
+        if (!text) { pre.textContent = ''; return; }
+        if (language !== 'json' || text.length > 400000) { pre.textContent = text; return; }
+        const out = document.createDocumentFragment();
+        const re = /("(?:[^"\\]|\\.)*")(\s*:)?|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)|\b(true|false|null)\b/g;
+        let at = 0, m;
+        while ((m = re.exec(text))) {
+            if (m.index > at) out.append(document.createTextNode(text.slice(at, m.index)));
+            if (m[1]) {
+                out.append(tok(m[2] ? 'dbmn-tok-key' : 'dbmn-tok-str', m[1]));
+                if (m[2]) out.append(document.createTextNode(m[2]));
+            } else if (m[3]) out.append(tok('dbmn-tok-num', m[3]));
+            else out.append(tok('dbmn-tok-lit', m[4]));
+            at = re.lastIndex;
+        }
+        if (at < text.length) out.append(document.createTextNode(text.slice(at)));
+        pre.replaceChildren(out);
+    }
+
     function open(rawValue, opts) {
         const options = opts || {};
         const VF = window.ValueFormatter;
@@ -85,7 +110,9 @@
             const res = VF
                 ? VF.formatValue(rawValue, select.value)
                 : { text: String(rawValue == null ? '' : rawValue), type: 'text' };
-            pre.textContent = res.text;
+            // (coloured when it reads as JSON: Auto, Deep and JSON give JSON; Escaped JSON too once unescaped)
+            const json = !res.error && /^\s*[[{]/.test(res.text || '') && ['auto', 'deep', 'json', 'escaped-json'].includes(select.value);
+            paint(pre, res.text, json ? 'json' : 'text');
             if (res.error) {
                 errLine.innerHTML = window.Icons.label('triangle-alert', escapeHtml(res.error));
                 errLine.hidden = false;
@@ -124,5 +151,5 @@
         }
     }
 
-    window.CellDetail = { open, worthOpening };
+    window.CellDetail = { open, worthOpening, paint };
 })();

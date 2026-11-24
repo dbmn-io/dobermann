@@ -39,28 +39,31 @@ ${SCRIPTS0.concat(['shared/dbmn-transaction.js']).map(rel => `<script>${read(rel
 const heard = p => p.evaluate(() => window.heard.splice(0));
 const panes = p => p.locator('#t .dbmn-tx-pane:not([hidden])').evaluateAll(list => list.map(el => el.dataset.part));
 
-test('a sent transaction: its figures, the reason, Request and Response shown (Input off), JSON indented; Body / Details and Body / Headers', async ({ page: p }) => {
+test('a sent transaction: its figures, the reason, every part side by side (Input, Request, Response), JSON indented and coloured; Body / Details and Body / Headers', async ({ page: p }) => {
     await p.setContent(page());
     await expect(p.locator('#t .dbmn-tx-title')).toHaveText('Transaction #002');
     await expect(p.locator('#t .raw-status-badge')).toHaveText('ERROR');
     await expect(p.locator('#t .raw-http-status')).toHaveText('422');
     await expect(p.locator('#t .dbmn-tx-facts')).toHaveText('96ms · 20:14:02 · input rows 201–202');
     await expect(p.locator('#t .dbmn-tx-reason')).toContainText('uom_check');
-    expect(await panes(p)).toEqual(['request', 'response']);
+    expect(await panes(p)).toEqual(['input', 'request', 'response']);
     await expect(p.locator('#t .dbmn-tx-pane[data-part="request"] pre')).toContainText('"gtin": "00012345600201"');
+    await expect(p.locator('#t .dbmn-tx-pane[data-part="request"] pre .dbmn-tok-key').first()).toHaveText('"gtin"');
+    // One line across the top: the search on it, no Show row, no Copy All
+    await expect(p.locator('#t .dbmn-tx-head .dbmn-tx-search')).toHaveCount(1);
+    await expect(p.locator('#t .dbmn-tx-copy-all, #t .dbmn-tx-seg-btn')).toHaveCount(0);
     await p.locator('#t .dbmn-tx-pane[data-part="request"] .raw-view-mode-btn[data-mode="details"]').click();
     await expect(p.locator('#t .dbmn-tx-pane[data-part="request"] pre')).toContainText('POST http://127.0.0.1/inventory');
     await expect(p.locator('#t .dbmn-tx-pane[data-part="request"] pre')).toContainText('upsert = true');
     await p.locator('#t .dbmn-tx-pane[data-part="response"] .raw-view-mode-btn[data-mode="headers"]').click();
     await expect(p.locator('#t .dbmn-tx-pane[data-part="response"] pre')).toHaveText('x-request-id: 9e3779b1');
-    // The two panes side by side
-    const [a, b] = await p.locator('#t .dbmn-tx-pane').evaluateAll(l => l.map(e => e.getBoundingClientRect().top));
-    expect(Math.abs(a - b)).toBeLessThan(2);
+    // The panes side by side
+    const tops = await p.locator('#t .dbmn-tx-pane').evaluateAll(l => l.map(e => e.getBoundingClientRect().top));
+    expect(Math.max(...tops) - Math.min(...tops)).toBeLessThan(2);
 });
 
-test('Show: Input on gives its rows in a dbmn-table; the choices and modes stay when it moves to another; a Ready request greys Response', async ({ page: p }) => {
+test('the input rows in a dbmn-table filling their pane; the modes stay when it moves to another; a Ready request has no Response', async ({ page: p }) => {
     await p.setContent(page());
-    await p.locator('#t .dbmn-tx-seg-btn[data-part="input"]').click();
     expect(await panes(p)).toEqual(['input', 'request', 'response']);
     await expect(p.locator('#t .dbmn-tx-pane[data-part="input"] dbmn-table tbody tr')).toHaveCount(2);
     await p.locator('#t .dbmn-tx-pane[data-part="request"] .raw-view-mode-btn[data-mode="details"]').click();
@@ -70,8 +73,10 @@ test('Show: Input on gives its rows in a dbmn-table; the choices and modes stay 
     await p.evaluate(() => { t.transaction = ready; t.input = input; });
     await expect(p.locator('#t .dbmn-tx-title')).toHaveText('Request #003');
     await expect(p.locator('#t .raw-status-badge')).toHaveText('READY');
-    await expect(p.locator('#t .dbmn-tx-seg-btn[data-part="response"]')).toBeDisabled();
     expect(await panes(p)).toEqual(['input', 'request']);
+    // (the table as tall as its pane)
+    const [pane, table] = await p.locator('#t .dbmn-tx-pane[data-part="input"]').evaluate(e => [e.getBoundingClientRect().bottom, e.querySelector('dbmn-table').getBoundingClientRect().bottom]);
+    expect(pane - table).toBeLessThan(4);
     await expect(p.locator('#t .dbmn-tx-reprocess')).toHaveCount(0);
 });
 
@@ -84,11 +89,11 @@ test('search marks what it finds in every pane and says how many; ⤢ fills the 
     expect(await panes(p)).toEqual(['response']);
     await p.locator('#t .dbmn-tx-pane[data-part="response"] pre').click();
     await p.keyboard.press('Escape');
-    expect(await panes(p)).toEqual(['request', 'response']);
+    expect(await panes(p)).toEqual(['input', 'request', 'response']);
     expect(await heard(p)).toEqual([]);   // Esc put the pane back; it did not close (not a window)
 });
 
-test('the buttons and keys say what was asked: ↓ (↑ off at the first), Logs, Reprocess, Copy All; as a window ✕ and Esc close', async ({ page: p }) => {
+test('the buttons and keys say what was asked: ↓ (↑ off at the first), Logs, Reprocess; as a window ✕ and Esc close', async ({ page: p }) => {
     await p.setContent(page());
     await expect(p.locator('#t .dbmn-tx-prev')).toBeDisabled();
     await p.locator('#t .dbmn-tx-next').click();
@@ -105,7 +110,7 @@ test('the buttons and keys say what was asked: ↓ (↑ off at the first), Logs,
     expect((await heard(p)).map(x => x[0])).toEqual(['dbmn-transaction-close', 'dbmn-transaction-close']);
 });
 
-test('reads as Raw\'s card did: JSON Lines as Lines or Pretty with its record count; HTML as Raw, Render or Text; a GET starts with Request off', async ({ page: p }) => {
+test('reads as Raw\'s card did: JSON Lines as Lines or Pretty with its record count; HTML as Raw, Render or Text; a GET\'s request as its Details', async ({ page: p }) => {
     await p.setContent(page());
     // JSON Lines
     await p.evaluate(() => { t.transaction = { ...sent, responseBody: '{"a":1}\n{"a":2}\nnot json\n{"a":3}', responseHeaders: [] }; });
@@ -121,8 +126,7 @@ test('reads as Raw\'s card did: JSON Lines as Lines or Pretty with its record co
     expect(await p.evaluate(() => window.ran)).toBeUndefined();
     await p.locator('#t .dbmn-tx-formats [data-format="text"]').click();
     await expect(p.locator('#t .dbmn-tx-pane[data-part="response"] pre')).toHaveText('Down');
-    // A GET: no body, Request off at the start; Details still there when shown
+    // A GET: no body, its request shown as its Details
     await p.evaluate(() => { const fresh = document.createElement('dbmn-transaction'); fresh.id = 't2'; document.body.append(fresh); fresh.transaction = { ...sent, method: 'GET', requestBody: '' }; });
-    await expect(p.locator('#t2 .dbmn-tx-seg-btn[data-part="request"]')).toHaveAttribute('aria-pressed', 'false');
-    await expect(p.locator('#t2 .dbmn-tx-pane[data-part="request"]')).toHaveCount(0);
+    await expect(p.locator('#t2 .dbmn-tx-pane[data-part="request"] pre')).toContainText('GET http://127.0.0.1/inventory');
 });
