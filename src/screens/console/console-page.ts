@@ -78,30 +78,13 @@ export function buildConsolePage(template: string, asset: AssetUrl, config: Cons
 
     // Replace execution summary placeholders
     if (config.executionSummary) {
-        // Environment and Organization as separate fields
         const env = config.executionSummary.environment && config.executionSummary.environment !== 'Unknown' ?
             config.executionSummary.environment : '';
-        const org = config.executionSummary.organization && config.executionSummary.organization !== 'Unknown' ?
-            config.executionSummary.organization : '';
 
         html = html.replace(/{{ENVIRONMENT}}/g, env);
         html = html.replace(/{{AGENT_LINK_VISIBILITY}}/g, config.executionSummary.runsInVsCode ? '' : 'hidden');
-        html = html.replace(/{{ORGANIZATION}}/g, org);
         html = html.replace(/{{ENDPOINT_METHOD}}/g, config.executionSummary.endpointMethod || 'Unknown');
         html = html.replace(/{{ENDPOINT_PATH}}/g, config.executionSummary.endpointPath || 'Unknown');
-
-        // Construct environment path for title: Environment/Org/Path
-        let environmentPath = '';
-        if (env) {
-            environmentPath = env;
-            if (org) {
-                environmentPath += `/${org}`;
-            }
-        }
-        if (config.executionSummary.endpointPath) {
-            environmentPath += config.executionSummary.endpointPath;
-        }
-        html = html.replace(/{{ENVIRONMENT_PATH}}/g, environmentPath);
 
         // Construct full URL from environment baseUrl + endpoint path
         // The base URL comes from the environment; without it (signed out, the environment
@@ -307,10 +290,8 @@ export function buildConsolePage(template: string, asset: AssetUrl, config: Cons
         // Fallback values when no execution summary available
         html = html.replace(/{{ENVIRONMENT}}/g, '');
         html = html.replace(/{{AGENT_LINK_VISIBILITY}}/g, 'hidden');
-        html = html.replace(/{{ORGANIZATION}}/g, '');
         html = html.replace(/{{ENDPOINT_METHOD}}/g, 'Unknown');
         html = html.replace(/{{ENDPOINT_PATH}}/g, 'Unknown');
-        html = html.replace(/{{ENVIRONMENT_PATH}}/g, 'Unknown');
         html = html.replace(/{{FULL_URL}}/g, 'Unknown');
         html = html.replace(/{{TRANSACTION_COUNT}}/g, '0');
         html = html.replace(/{{REQUEST_FILE}}/g, 'Unknown');

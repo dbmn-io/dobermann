@@ -15,11 +15,12 @@
  */
 import type { APIEndpointConfig } from '../../apiConfigManager';
 import type { APIEndpointManager } from '../../apiEndpointManager';
-import type { EnvironmentManager } from '../../environmentManager';
+import type { EnvironmentConfig, EnvironmentManager } from '../../environmentManager';
 import { ColumnDefinition } from '../../types/console-messages';
 import { rankChainTargets, ChainTargetCandidate, MAX_SUGGESTIONS, isSuggested } from '../../services/chain/chain-target-ranker';
 import { ChainHandoff, ExecutionLinks, ExecutionLinkEnd } from '../../services/chain/chain-types';
-import { linkDifferences, RunContext } from '../../services/chain/link-differences';
+import { chainHeaderWarnings, headerDifferences, linkDifferences, RunContext } from '../../services/chain/link-differences';
+import { runHeaders } from './run-headers';
 import { endpointInputVariables } from '../../services/chain/endpoint-input-variables';
 
 export interface ChainRowsRequest {
@@ -42,7 +43,7 @@ export interface ConsoleChainHost {
         getExecutionLinks?(id: string): Promise<unknown>;
     };
     endpoints: Pick<APIEndpointManager, 'getAllEndpoints' | 'getEndpoint'>;
-    environments: Pick<EnvironmentManager, 'getActiveEnvironment'>;
+    environments: Pick<EnvironmentManager, 'getActiveEnvironment'> & Partial<Pick<EnvironmentManager, 'getAllEnvironments'>>;
     openConsole(executionId: string, isBatch: boolean): Promise<void>;
     openRunBatch(endpoint: APIEndpointConfig, chain: ChainHandoff): Promise<void>;
 }
@@ -101,6 +102,15 @@ export class ConsoleChainHandler {
         }
     }
 
+    /** Every environment, to tell a run's header values from its other variables (none: []). */
+    private async allEnvironments(): Promise<EnvironmentConfig[]> {
+        try {
+            return (await this.host.environments.getAllEnvironments?.()) ?? [];
+        } catch {
+            return [];
+        }
+    }
+
     async sendLinks(): Promise<void> {
         const { executionId } = this.host.getChainSourceRef();
         let links: ExecutionLinks = { upstream: [], downstream: [] };
@@ -115,11 +125,13 @@ export class ConsoleChainHandler {
                 // No links is the right answer when the store cannot say.
             }
         }
-        // Traceability: where each linked run differs from this one (a warning only).
-        const self: RunContext = links.self || {};
-        const ctx = (end: ExecutionLinkEnd): RunContext => ({ environment: end.environment, organization: end.organization, headers: end.headers });
+        // Traceability: where each linked run differs from this one (a warning only): its
+        // environment, its header values by their own names, the request headers it sent
+        const environments = await this.allEnvironments();
+        const ctx = (run: RunRecordLike): RunContext => ({ environment: run.environment, headerValues: headerValuesOf(run, environments), headers: run.headers });
+        const self: RunContext = ctx(links.self || {});
         const strip = (end: ExecutionLinkEnd, from: RunContext, to: RunContext): ExecutionLinkEnd => {
-            const { headers: _headers, organization: _org, ...rest } = end;   // header values stay on the host
+            const { headers: _headers, organization: _org, environmentVariables: _values, ...rest } = end;   // header values stay on the host
             return { ...rest, differences: linkDifferences(from, to) };
         };
         await this.host.post({
@@ -159,9 +171,18 @@ export class ConsoleChainHandler {
         if (!sameEnvironment) {
             warnings.push(`Rows came from ${sourceEnvironment || 'another environment'}. Run Batch sends to ${active.name}, the active environment.`);
         }
-        const activeOrg = active?.variables?.org;
-        if (activeOrg && source?.organization && activeOrg !== source.organization) {
-            warnings.push(`Rows came from organization ${source.organization}. The active organization is ${activeOrg}.`);
+        // Each header value that differs, by its own name (James, 2026-11-24: no fixed Organization)
+        if (active) {
+            const fromEnvironment = source?.environmentId && source.environmentId === active.id ? active
+                : (await this.allEnvironments()).find(e => e.id === source?.environmentId || e.name === source?.environment);
+            const toActive = headerValuesOf({ environmentVariables: active.variables }, [], active);
+            let fromRun = headerValuesOf(source || {}, [], fromEnvironment);
+            // Its environment gone, a batch's kept values can't be told from its other variables:
+            // only the names the active environment sends are compared
+            if (!fromEnvironment && fromRun && toActive) {
+                fromRun = Object.fromEntries(Object.entries(fromRun).filter(([name]) => Object.keys(toActive).some(n => n.toLowerCase() === name.toLowerCase())));
+            }
+            warnings.push(...chainHeaderWarnings(headerDifferences(fromRun, toActive)));
         }
 
         const token = `chain_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -256,4 +277,23 @@ export function buildChainOptions(input: {
             fullyCovered: c.fullyCovered, sameResource: c.sameResource, variableCount: c.variableCount
         }))
     };
+}
+
+/** What a run kept that says which header values it was sent with. */
+interface RunRecordLike {
+    environment?: string;
+    environmentId?: string;
+    organization?: string;
+    environmentVariables?: Record<string, string>;
+    headers?: Record<string, string>;
+}
+
+/**
+ * A run's header values by name: what it kept, the header ones of its environment (found by name
+ * among `environments`, or `environment` given); an old run's organization as org. None: undefined.
+ */
+function headerValuesOf(run: RunRecordLike, environments: EnvironmentConfig[], environment?: EnvironmentConfig): Record<string, string> | undefined {
+    const env = environment ?? environments.find(e => (run.environmentId && e.id === run.environmentId) || e.name === run.environment);
+    const headers = runHeaders(run.environmentVariables, run.organization, env);
+    return headers.length ? Object.fromEntries(headers.map(h => [h.name, h.value])) : undefined;
 }

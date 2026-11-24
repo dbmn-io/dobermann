@@ -41,6 +41,8 @@ export interface ExecutionLinkEnd {
     viewName?: string;
     rowCount?: number;
     organization?: string;
+    /** The values the run kept for its environment's variables (a single run its header ones', a batch every one's). */
+    environmentVariables?: Record<string, string>;
     /** Request headers the run sent (an individual run's, or a batch's first member's). */
     headers?: Record<string, string>;
     /** Filled by the Console: how this run differs from the one being viewed. */
@@ -51,5 +53,5 @@ export interface ExecutionLinks {
     upstream: ExecutionLinkEnd[];
     downstream: ExecutionLinkEnd[];
     /** The run being viewed, for comparing against each end. */
-    self?: { environment?: string; organization?: string; headers?: Record<string, string> };
+    self?: { environment?: string; organization?: string; environmentVariables?: Record<string, string>; headers?: Record<string, string> };
 }

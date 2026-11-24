@@ -18,7 +18,6 @@ const CONSOLE_PAGE = (function (tag) {
         REPORT_TYPE: read('report-type'),
         EXECUTION_STATUS: read('execution-status'),
         MAX_THREADS: read('max-threads'),
-        ORGANIZATION: read('organization'),
         ENVIRONMENT_ID: read('environment-id'),
         ENDPOINT_ID: read('endpoint-id'),
         ENVIRONMENT_VARIABLES_JSON: read('environment-variables-json'),

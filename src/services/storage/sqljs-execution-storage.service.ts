@@ -78,6 +78,9 @@ function parseHeaders(raw: unknown): Record<string, string> | undefined {
     }
 }
 
+/** A run's kept variable values (environment_variables), for the Links tab's header values. */
+const parseVariables = parseHeaders;
+
 export class SqlJsExecutionStorage implements IExecutionStorage {
     private db: SqlJsDatabase | null = null;
     private dbPath: string | null = null;
@@ -1557,7 +1560,7 @@ export class SqlJsExecutionStorage implements IExecutionStorage {
             const stmt = this.db!.prepare(`
                 SELECT l.id AS link_id, l.view_name, l.row_count, l.created_at AS linked_at,
                        e.id AS execution_id, e.execution_type, e.endpoint_id, e.endpoint_name, e.endpoint_method,
-                       e.environment, e.organization, e.status, e.created_at,
+                       e.environment, e.organization, e.environment_variables, e.status, e.created_at,
                        ${HEADERS_OF('e')} AS headers
                 FROM execution_links l
                 JOIN executions e ON e.id = l.${otherColumn}
@@ -1586,6 +1589,7 @@ export class SqlJsExecutionStorage implements IExecutionStorage {
                         viewName: row.view_name == null ? undefined : String(row.view_name),
                         rowCount: row.row_count == null ? undefined : Number(row.row_count),
                         organization: row.organization == null ? undefined : String(row.organization),
+                        environmentVariables: parseVariables(row.environment_variables),
                         headers: parseHeaders(row.headers)
                     });
                 }
@@ -1598,7 +1602,7 @@ export class SqlJsExecutionStorage implements IExecutionStorage {
         const downstream = read('source_execution_id', 'target_execution_id');
         let self: ExecutionLinks['self'];
         if (upstream.length > 0 || downstream.length > 0) {
-            const stmt = this.db.prepare(`SELECT e.environment, e.organization, ${HEADERS_OF('e')} AS headers FROM executions e WHERE e.id = $id`);
+            const stmt = this.db.prepare(`SELECT e.environment, e.organization, e.environment_variables, ${HEADERS_OF('e')} AS headers FROM executions e WHERE e.id = $id`);
             try {
                 stmt.bind({ $id: executionId });
                 if (stmt.step()) {
@@ -1606,6 +1610,7 @@ export class SqlJsExecutionStorage implements IExecutionStorage {
                     self = {
                         environment: row.environment == null ? undefined : String(row.environment),
                         organization: row.organization == null ? undefined : String(row.organization),
+                        environmentVariables: parseVariables(row.environment_variables),
                         headers: parseHeaders(row.headers)
                     };
                 }
