@@ -83,9 +83,10 @@ export function buildRunBatchPage(asset: AssetUrl, batchConfig: { endpointId: st
          its own H2 ("Step N: …") inside the scrollable area. -->
 
     <!-- CSV Handler UI embedded directly (not as modal) -->
+    <!-- Each step in the screen band (core.css .dbmn-band-pad: full width, its contents centred; James 2026-11-24) -->
     <div id="csvBatchContainer">
         <!-- GitHub Issue #202: Step 1 — Load Data (file/paste tabs only) -->
-        <div id="csvUploadStep" class="csv-step">
+        <div id="csvUploadStep" class="csv-step dbmn-band-pad">
             <!-- Hidden file input for dropzone click -->
             <input type="file" id="csvModalFileInput" accept=".csv,.xlsx,.xls,.tsv,.txt"
                 data-change="csv:handleModalCSVUpload" class="hidden" />
@@ -141,7 +142,7 @@ export function buildRunBatchPage(asset: AssetUrl, batchConfig: { endpointId: st
         </div>
 
         <!-- GitHub Issue #135: Combined Map & Transform Section (was Steps 2 & 3) -->
-        <div id="csvMappingStep" class="csv-step hidden">
+        <div id="csvMappingStep" class="csv-step hidden dbmn-band-pad">
             <!-- GitHub Issue #162: Removed mapping status text - now redundant with Status column -->
             <div id="mappingErrors" class="hidden mt-15 p-12 border border-radius-4 bg-input"></div>
             <!-- Enhanced mapping table with coercion preview (GitHub Issue #135) -->
@@ -168,7 +169,7 @@ export function buildRunBatchPage(asset: AssetUrl, batchConfig: { endpointId: st
         </div>
 
         <!-- GitHub Issue #202: Step 3 — Review & Edit Data (NEW) -->
-        <div id="csvDataValidationStep" class="csv-step hidden">
+        <div id="csvDataValidationStep" class="csv-step hidden dbmn-band-pad">
             <div class="grid-entry-container" id="gridEntryContainer">
                 <div id="csvGridEntry" class="csv-grid-entry"></div>
                 <p class="grid-hint">Review your data below. Edit cells, add or delete rows, and fix any highlighted validation errors before proceeding.</p>
@@ -176,7 +177,7 @@ export function buildRunBatchPage(asset: AssetUrl, batchConfig: { endpointId: st
         </div>
 
         <!-- JSON Preview Section (GitHub Issue #202: now Step 4) -->
-        <div id="csvJsonPreviewStep" class="csv-step hidden">
+        <div id="csvJsonPreviewStep" class="csv-step hidden dbmn-band-pad">
             <!-- GitHub Issue #308: one Step 4 for every endpoint — body, URL parameters or both.
                  Configure and Requests use the Console Settings cards (tables.css .table-stats);
                  the first requests use the Raw tab's card (transaction-card.css). Everything is

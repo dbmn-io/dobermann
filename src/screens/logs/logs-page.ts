@@ -31,7 +31,8 @@ export function buildLogsPage(asset: AssetUrl): string {
     </div>
 
     <main class="logs-page">
-        <dbmn-log id="logsList" label="Logs" saved-searches></dbmn-log>
+        <!-- (in the screen band, core.css .dbmn-band, James 2026-11-24: its toolbar and its lines centred on a wide window) -->
+        <dbmn-log id="logsList" class="dbmn-band" label="Logs" saved-searches></dbmn-log>
     </main>
 
     <dbmn-footer class="logs-footer">

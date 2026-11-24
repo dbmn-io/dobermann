@@ -92,7 +92,8 @@
 
     <div id="report-container">
         <!-- Tab Navigation -->
-        <div class="report-tabs" id="report-tabs">
+        <!-- (the tabs and the toolbar in the screen band, core.css .dbmn-band, James 2026-11-24; the rows keep their own width) -->
+        <div class="report-tabs dbmn-band" id="report-tabs">
             <!-- Tabs will be dynamically created based on available data -->
         </div>
 
@@ -102,7 +103,7 @@
                  Issue #262: compact layout — search icon inline, two help icons total
                  (one after search box, one after Export), `View:` prefix dropped,
                  inline (X of Y) count removed (the footer row count carries it). -->
-            <div class="report-toolbar" id="report-toolbar">
+            <div class="report-toolbar dbmn-band" id="report-toolbar">
                 <div class="view-selector">
                     <div class="view-selector-split">
                         <button id="view-path-btn" class="view-path-button" title="Switch active view">
