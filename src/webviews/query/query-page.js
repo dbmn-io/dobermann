@@ -2313,7 +2313,10 @@
                     totals[asked.ids[i]] = t === null ? (i === 0 ? 'Total' : '') : t.toLocaleString(undefined, { minimumFractionDigits: places, maximumFractionDigits: places });
                 });
                 // (Compact: a compared column's total is its Baseline's, and no other)
-                table.totals = window.QueryCompareResults.compactTotals(totals, (table.columns || []).map(c => c.id), resultCols(), ui.state && ui.state.compare ? ui.state.compare.baseline : undefined, colId);
+                // (Side by side: a compared column's total unlike its Baseline's marked as a DIFF, in the row and its card)
+                const baseline = ui.state && ui.state.compare ? ui.state.compare.baseline : undefined;
+                const marked = window.QueryCompareResults.markTotals(totals, resultCols(), baseline, colId, colour);
+                table.totals = window.QueryCompareResults.compactTotals(marked, (table.columns || []).map(c => c.id), resultCols(), baseline, colId);
             } else table.totals = null;
         }
         // The rows on screen, in the footer's summary (the one place the count shows): a search changes it

@@ -160,7 +160,8 @@
  *                                     // fields the search reaches that are not columns: @body names them
  *                                     // (a plain word looks only in the columns shown), @ suggests them
  *                                     // (with every column, shown or not). `@@word` is the Hub's alone.
- *   orders.totals = { qty: '12,410' } // a row under the rows, from the screen; null takes it away
+ *   orders.totals = { qty: '12,410' } // a row under the rows, from the screen; null takes it away. A total may be
+ *                                     // { value, className }: the screen's mark on it, in the row and in its card
  *   orders.busy = true;               // something is looking: the search box's glass is the spinner
  *                                     // (with `source` it turns by itself while rows are asked for)
  *   orders.shown                      // with `rows`: the rows the search shows, in the order shown
@@ -267,6 +268,11 @@
         if (at < whole.length) frag.append(whole.slice(at));
         return frag;
     }
+
+    /** A total as the screen gave it: a value, or { value, className } when the screen marks it (Query: a total
+        that differs from the Baseline's wears its DIFF class, in the totals row and on its line in the card). */
+    const totalValue = got => (got && typeof got === 'object' ? got.value : got);
+    const totalClass = got => (got && typeof got === 'object' && got.className ? String(got.className) : '');
 
     class DbmnTable extends HTMLElement {
         constructor() {
@@ -1242,9 +1248,10 @@
             if (!this._totals) { this._foot.replaceChildren(); return; }
             const tr = make('tr');
             this._columns.forEach(column => {
-                const value = this._totals[column.id];
+                const got = this._totals[column.id];
+                const value = totalValue(got), mark = totalClass(got);
                 const text = value === undefined || value === null ? '' : typeof value === 'number' ? count(value) : String(value);
-                const td = make('td', (column.numbers || typeof value === 'number' ? 'text-right' : '') + (column.wrap ? ' dbmn-cell-wrap' : '') + (column.className ? ` ${column.className}` : ''), text);
+                const td = make('td', (column.numbers || typeof value === 'number' ? 'text-right' : '') + (column.wrap ? ' dbmn-cell-wrap' : '') + (column.className ? ` ${column.className}` : '') + (mark ? ` ${mark}` : ''), text);
                 // (its whole value under the pointer, however narrow its column; a group's total: every
                 // total of its group, one under another, in a card instead)
                 if (text && !this._groupTotals(column)) td.title = `Total: ${text}`;
@@ -1267,9 +1274,9 @@
         _groupTotals(column) {
             if (!column || !column.group || !this._totals) return null;
             const all = this._columns.filter(c => c.group && c.group.id === column.group.id);
-            const got = all.map(c => ({ column: c, value: this._totals[c.id] })).filter(x => x.value !== undefined && x.value !== null && x.value !== '');
+            const got = all.map(c => ({ column: c, value: totalValue(this._totals[c.id]), mark: totalClass(this._totals[c.id]) })).filter(x => x.value !== undefined && x.value !== null && x.value !== '');
             if (got.length < 2) return null;
-            return got.map(x => ({ column: x.column, text: typeof x.value === 'number' ? count(x.value) : String(x.value) }));
+            return got.map(x => ({ column: x.column, text: typeof x.value === 'number' ? count(x.value) : String(x.value), mark: x.mark }));
         }
         /**
          * A compared column's totals side by side are hard to compare: under the pointer, all of them in
@@ -1287,9 +1294,11 @@
             card._for = td;
             card.append(make('div', 'dbmn-total-card-title', `${column.group.name || column.group.id}: totals`));
             const list = make('div', 'dbmn-total-card-lines');
+            // (the screen's own marks when it gave any, on the whole line; else a total not the same as the first)
+            const marked = totals.some(t => t.mark);
             totals.forEach((t, i) => {
-                const name = make('span', `dbmn-total-card-name${t.column.className ? ` ${t.column.className}` : ''}`, t.column.name || t.column.id);
-                const value = make('span', 'dbmn-total-card-value' + (i > 0 && t.text !== totals[0].text ? ' is-different' : '') + (t.column === column ? ' is-this' : ''), t.text);
+                const name = make('span', `dbmn-total-card-name${t.column.className ? ` ${t.column.className}` : ''}${t.mark ? ` ${t.mark}` : ''}`, t.column.name || t.column.id);
+                const value = make('span', 'dbmn-total-card-value' + (!marked && i > 0 && t.text !== totals[0].text ? ' is-different' : '') + (t.mark ? ` ${t.mark}` : '') + (t.column === column ? ' is-this' : ''), t.text);
                 list.append(name, value);
             });
             card.append(list);

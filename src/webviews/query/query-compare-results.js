@@ -587,7 +587,31 @@
         return out;
     }
 
-    const api = { create, compactTotals };
+    /**
+     * Side by side's totals, marked (James, 2026-11-24: a differing total "gets a diff colour, and the pop up also"):
+     * a compared column's total unlike its Baseline's total becomes { value, className: 'compare-differs <its colour>' },
+     * the class a differing cell wears; the table puts it on the totals cell and on that line of the totals card.
+     * The Baseline's own, an alike one and every column not compared stay as they are.
+     */
+    function markTotals(totals, resultCols, baseline, colId, colourOf) {
+        const out = Object.assign({}, totals);
+        if (!baseline) return out;
+        const groups = new Map();
+        (resultCols || []).forEach(c => { if (c.group) groups.set(c.group, (groups.get(c.group) || []).concat([c])); });
+        groups.forEach(cells => {
+            if (cells.length < 2) return;
+            const base = cells.find(c => c.view === baseline);
+            if (!base || totals[colId(base)] === undefined) return;
+            cells.forEach(c => {
+                const id = colId(c);
+                if (c === base || totals[id] === undefined || String(totals[id]) === String(totals[colId(base)])) return;
+                out[id] = { value: totals[id], className: `compare-differs ${colourOf(c.view)}`.trim() };
+            });
+        });
+        return out;
+    }
+
+    const api = { create, compactTotals, markTotals };
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
     if (typeof window !== 'undefined') window.QueryCompareResults = api;
 })();

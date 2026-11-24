@@ -33,3 +33,36 @@ describe('Query: Results\' totals in Compact', () => {
         assert.deepStrictEqual(compactTotals(TOTALS, ['vBL:sku', 'vBL:qty', 'vC1:qty', 'vC2:qty', 'vBL:price'], COLS, 'vBL', colId), TOTALS);
     });
 });
+
+/**
+ * James, 2026-11-24: "the cells that are different should get a standard background for a DIFF… the cell gets a diff
+ * colour, and the pop up also gives the coloured background". A compared column's total that is not its Baseline's
+ * total wears the DIFF class (and its result's colour), as a differing cell does; the Baseline's and the alike don't.
+ */
+const { markTotals } = sharedScript<{
+    markTotals(totals: Record<string, unknown>, resultCols: Col[], baseline: string | undefined, colId: (c: Col) => string, colourOf: (view: string) => string): Record<string, unknown>;
+}>(resultsScript, 'QueryCompareResults');
+const colourOf = (view: string) => `tone-${view}`;
+
+describe('Query: a total that differs from the Baseline\'s, marked as a DIFF', () => {
+    it('C2 differs: its total marked, in its colour; BL, an alike C1 and plain columns as they were', () => {
+        const out = markTotals({ ...TOTALS, 'vC1:qty': '17' }, COLS, 'vBL', colId, colourOf);
+        assert.deepStrictEqual(out, {
+            'vBL:sku': 'Total', 'vBL:qty': '17', 'vC1:qty': '17',
+            'vC2:qty': { value: '24', className: 'compare-differs tone-vC2' },
+            'vBL:price': '41.50'
+        });
+    });
+
+    it('measured against the Baseline, whichever result it is', () => {
+        const out = markTotals(TOTALS, COLS, 'vC1', colId, colourOf);
+        assert.deepStrictEqual(out['vBL:qty'], { value: '17', className: 'compare-differs tone-vBL' });
+        assert.strictEqual(out['vC1:qty'], '19');
+        assert.deepStrictEqual(out['vC2:qty'], { value: '24', className: 'compare-differs tone-vC2' });
+    });
+
+    it('no compare (no Baseline) or no totals: nothing marked', () => {
+        assert.deepStrictEqual(markTotals(TOTALS, COLS, undefined, colId, colourOf), TOTALS);
+        assert.deepStrictEqual(markTotals({}, COLS, 'vBL', colId, colourOf), {});
+    });
+});

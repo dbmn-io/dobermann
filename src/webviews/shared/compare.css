@@ -1044,10 +1044,16 @@ button.compare-result-btn {
     border-left: 1px solid var(--vscode-panel-border);
 }
 
-/* A value that differs: its result's tint, underlined in its colour */
+/* A value that differs: its result's tint, underlined in its colour (a cell, and a total in the totals row) */
 .data-table td.compare-differs {
     background: color-mix(in srgb, var(--compare-c) 26%, transparent);
     box-shadow: inset 0 -2px 0 var(--compare-c);
+}
+/* ...and its line in the totals card (dbmn-table's, on the page's body, outside .query-page: the result's colour comes
+   from the lanes' own --lanes-c there) */
+.dbmn-total-card .compare-differs {
+    background: color-mix(in srgb, var(--compare-c, var(--lanes-c)) 26%, transparent);
+    box-shadow: inset 0 -2px 0 var(--compare-c, var(--lanes-c));
 }
 
 /* Status: a red DIFF and a pill per result that differs; Missing and a pill per result without
