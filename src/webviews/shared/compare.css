@@ -1033,6 +1033,12 @@ button.compare-result-btn {
     background: color-mix(in srgb, var(--compare-c) 26%, transparent);
     box-shadow: inset 0 -2px 0 var(--compare-c);
 }
+/* ...but a total sits over the rows (sticky, at the box's foot): the tint over the editor's own background, never
+   see-through, or the row scrolled under it shows through its figure (James, 2026-11-25) */
+.data-table .dbmn-table-foot td.compare-differs {
+    background-color: var(--dbmn-editor-background);
+    background-image: linear-gradient(color-mix(in srgb, var(--compare-c) 26%, transparent), color-mix(in srgb, var(--compare-c) 26%, transparent));
+}
 /* ...and its line in the totals card (dbmn-table's, on the page's body, outside .query-page: the result's colour comes
    from the lanes' own --lanes-c there) */
 .dbmn-total-card .compare-differs {

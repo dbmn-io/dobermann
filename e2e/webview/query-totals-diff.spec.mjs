@@ -63,8 +63,11 @@ test('Side by side with Totals: the total unlike the Baseline\'s wears the DIFF 
     // the totals row: C2's 570 marked; BL's 600 and C1's alike 600 not
     const marks = await feet.evaluateAll(tds => tds.map(td => [td.textContent.trim(), td.classList.contains('compare-differs')]));
     expect(marks.filter(([, m]) => m).map(([t]) => t)).toEqual(['570']);
-    const tint = await feet.filter({ hasText: '570' }).evaluate(td => getComputedStyle(td).backgroundColor);
-    expect(tint, 'a coloured background, as a differing cell has').not.toBe('rgba(0, 0, 0, 0)');
+    // (tinted as a differing cell is, over a solid background: the totals stay at the box's foot over the rows, and a
+    // see-through tint showed the row scrolled under it through the figure; James, 2026-11-25)
+    const bg = await feet.filter({ hasText: '570' }).evaluate(td => { const s = getComputedStyle(td); return { color: s.backgroundColor, image: s.backgroundImage }; });
+    expect(bg.color, 'a solid background under the tint').toMatch(/^rgb\(/);
+    expect(bg.image, 'the DIFF tint').toContain('gradient');
     // the card: hovering a qty total opens it; C2's line (name and value) marked and tinted, the others not
     await feet.filter({ hasText: '570' }).hover();
     const card = p.locator('.dbmn-total-card');
