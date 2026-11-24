@@ -206,8 +206,15 @@ test('New lookup table: a name, then up to five columns; a name taken or two col
     await expect(dialog).toContainText('New lookup table');
     const field = id => dialog.locator(`#dbmn-modal-field-${id}`);
     // The columns: five short boxes side by side on one line, an example in each (James, 2026-11-23: "make that smaller")
-    const tops = await Promise.all([0, 1, 2, 3, 4].map(i => field('column' + i).evaluate(e => Math.round(e.getBoundingClientRect().top))));
-    expect(new Set(tops).size).toBe(1);
+    // (CI 2026-11-24 once saw two rows here, and it passed on rerun; not reproduced locally, even with the CPU slowed
+    // 10x. So: measured once the dialog has finished opening and its fonts are in, all five in one go (five separate
+    // calls could land on different frames of the opening slide), within a pixel; and if it ever fails, what was seen)
+    await dialog.evaluate(el => Promise.all([document.fonts.ready, ...el.getAnimations({ subtree: true }).map(a => a.finished)]));
+    const tops = await dialog.evaluate(el => [0, 1, 2, 3, 4].map(i => el.querySelector('#dbmn-modal-field-column' + i).getBoundingClientRect().top));
+    if (Math.max(...tops) - Math.min(...tops) > 1) await test.info().attach('column boxes', { body: await p.screenshot(), contentType: 'image/png' });
+    expect(Math.max(...tops) - Math.min(...tops), `the five boxes' tops: ${tops.map(t => t.toFixed(1)).join(', ')}`).toBeLessThanOrEqual(1);
+    // (and the line is the grid that never wraps: one column per box, flowing sideways)
+    expect(await field('column0').evaluate(e => getComputedStyle(e.closest('.dbmn-modal-field-row')).gridAutoFlow)).toBe('column');
     await expect(field('column0')).toHaveAttribute('placeholder', 'WMS');
     await expect(field('column0')).toHaveAttribute('aria-label', 'Column 1');
     await field('name').fill('regions');
