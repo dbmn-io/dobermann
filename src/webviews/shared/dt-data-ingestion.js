@@ -514,9 +514,8 @@
         detailsHTML += '</div>';
 
         dropzone.innerHTML = detailsHTML;
-        // Clicks on the sheet and range pickers stay there: the dropzone underneath would open
-        // the file dialog. A listener on each, not an inline handler (#372: the web app's CSP)
-        dropzone.querySelectorAll('.sheet-selector, .filter-choice-container').forEach(el => el.addEventListener('click', event => event.stopPropagation()));
+        // (A click on the sheet and hidden-rows pickers doesn't open the file chooser: the drop
+        // zone's action skips it, data-transformer.js 'csv:openComputerFileDialog'.)
         dropzone.classList.remove('hidden');
         dropzone.classList.add('file-selected');
 

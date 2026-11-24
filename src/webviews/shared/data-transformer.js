@@ -5102,7 +5102,12 @@ ${columnSummaries.map(line => `• ${escapeText(line)}`).join('\n')}
         'csv:handleCSVDrop': (_arg, event) => csv('handleCSVDrop')(event),
         'csv:handleCSVDragOver': (_arg, event) => csv('handleCSVDragOver')(event),
         'csv:handleCSVDragLeave': (_arg, event) => csv('handleCSVDragLeave')(event),
-        'csv:openComputerFileDialog': () => csv('openComputerFileDialog')(),
+        // The drop zone opens the file chooser, but not for a click on the sheet or hidden-rows
+        // pickers drawn inside it: actions run before those pickers' own listeners (dbmn-actions.js)
+        'csv:openComputerFileDialog': (_arg, event, element) => {
+            if (element?.id === 'csvDropzone' && event?.target?.closest?.('.sheet-selector, .filter-choice-container')) return;
+            csv('openComputerFileDialog')();
+        },
         'csv:handlePasteAreaChange': () => csv('handlePasteAreaChange')(),
         'csv:cancelCoercionValidation': () => csv('cancelCoercionValidation')(),
         'csv:onArraySelectionChange': () => csv('onArraySelectionChange')(),
