@@ -22,8 +22,11 @@
  *       previous: true, next: true            // ↑ ↓ can move
  *   };
  *   tx.input = { columns: ['gtin', …], rows: [['000123…', …], …] };   // its input rows (may come later)
- *   tx.editor = (container, { pane, text, language }) => ({ search(text) {}, dispose() {} });
- *       // optional: the screen's code editor (Monaco) in a pane; without one the text is drawn as <pre>
+ *   tx.editor = (container, { pane, text, language }) => ({ search(text) {}, dispose() {} }) | null;
+ *       // optional: the screen's code editor (Monaco) in a pane (folding, find); null or none: the text as <pre>
+ *
+ * A response body reads as Raw's card did: JSON Lines as Lines (as received) or Pretty, "RESPONSE (JSONL · n records)";
+ * HTML as Raw, Render (its scripts taken out) or Text. A request with no body (a GET) starts with Request off.
  *
  *   dbmn-transaction-move { by: -1 | 1 }  ↑ ↓ or the buttons; the screen gives the next transaction
  *   dbmn-transaction-close                ✕ or Esc (window only)
@@ -72,6 +75,22 @@
         try { return { text: JSON.stringify(JSON.parse(raw), null, 2), language: 'json' }; }
         catch { return { text: raw, language: /^\s*</.test(raw) ? 'html' : 'plaintext' }; }
     }
+    /** What a response body is: JSON Lines (its records, its lines), HTML, or anything else; and the ways it reads. */
+    function bodyKind(t) {
+        const raw = t && t.responseBody !== undefined && t.responseBody !== null ? String(t.responseBody) : '';
+        const type = String((t && t.contentType) || '').toLowerCase();
+        if (/html/.test(type) || /^\s*<(!doctype|html)/i.test(raw)) return { kind: 'html', formats: [['raw', 'Raw'], ['render', 'Render'], ['text', 'Text']] };
+        let whole = true;
+        try { JSON.parse(raw); } catch { whole = false; }
+        const rows = raw.split(/\r?\n/).filter(l => l.trim());
+        if (!whole && rows.length > 1 || /ndjson|jsonl|json-seq/.test(type)) {
+            const records = []; let bad = 0;
+            rows.forEach(l => { try { records.push(JSON.parse(l)); } catch { bad++; } });
+            if (records.length) return { kind: 'jsonl', lines: rows, records, bad, formats: [['lines', 'Lines', 'One record per line, as received'], ['pretty', 'Pretty', 'The records as one indented JSON array']] };
+        }
+        return { kind: 'other', formats: [] };
+    }
+    function htmlText(html) { const d = document.createElement('div'); d.innerHTML = html; d.querySelectorAll('script,style').forEach(n => n.remove()); return (d.textContent || '').replace(/\n\s*\n+/g, '\n\n').trim(); }
     const lines = list => (Array.isArray(list) ? list : []).map(h => `${h.name}: ${h.value}`).join('\n');
     function detailsText(t) {
         const query = Array.isArray(t.query) ? t.query : [];
@@ -87,8 +106,8 @@
             this._tx = null;
             this._input = null;
             this._editor = null;
-            this._show = { input: null, request: true, response: true };   // input: null = by default
-            this._mode = { request: 'body', response: 'body' };
+            this._show = { input: null, request: null, response: true };   // null: by default (see _showing)
+            this._mode = { request: 'body', response: 'body', format: null };   // format: lines/pretty (JSONL), raw/render/text (HTML)
             this._search = '';
             this._max = null;
             this._editors = [];
@@ -99,6 +118,8 @@
         set input(i) { this._input = i || null; this._fillInput(); this._drawShow(); }
         get input() { return this._input; }
         set editor(fn) { this._editor = typeof fn === 'function' ? fn : null; this._draw(); }
+        /** The screen's editor has become ready: the panes drawn again in it (what is shown and the search kept). */
+        refreshEditors() { this._drawPanes(); }
 
         connectedCallback() {
             this.setAttribute('role', this.hasAttribute('window') ? 'dialog' : 'region');
@@ -114,7 +135,8 @@
         _showing(part) {
             if (part === 'response') return this._sent && this._show.response;
             if (part === 'input') return this._show.input === null ? !this._sent : this._show.input;
-            return this._show.request;
+            // (a request with no body, a GET, starts with Request off, as Raw's card did)
+            return this._show.request === null ? !!(this._tx && this._tx.requestBody) || !this._sent : this._show.request;
         }
 
         _key(e) {
@@ -260,15 +282,22 @@
             }
             if (this._showing('response')) {
                 const headers = this._mode.response === 'headers';
-                const body = headers ? { text: lines(t.responseHeaders), language: 'plaintext' } : shown(t.responseBody);
+                const kind = bodyKind(t);
+                const fmt = this._mode.format && kind.formats.some(f => f[0] === this._mode.format) ? this._mode.format : (kind.formats[0] || [])[0];
+                let body;
+                if (headers) body = { text: lines(t.responseHeaders), language: 'plaintext' };
+                else if (kind.kind === 'jsonl') body = fmt === 'pretty' ? { text: JSON.stringify(kind.records, null, 2), language: 'json' } : { text: kind.lines.join('\n'), language: 'plaintext' };
+                else if (kind.kind === 'html') body = fmt === 'render' ? { html: String(t.responseBody), text: String(t.responseBody) } : fmt === 'text' ? { text: htmlText(String(t.responseBody)), language: 'plaintext' } : { text: String(t.responseBody), language: 'html' };
+                else body = shown(t.responseBody);
                 const modes = Array.isArray(t.responseHeaders) && t.responseHeaders.length ? [['body', 'Body'], ['headers', `Headers (${t.responseHeaders.length})`]] : null;
-                box.append(this._pane('response', 'RESPONSE', modes, body));
+                const title = kind.kind === 'jsonl' ? `RESPONSE (JSONL · ${kind.records.length.toLocaleString()} record${kind.records.length === 1 ? '' : 's'}${kind.bad ? ` · ${kind.bad.toLocaleString()} line${kind.bad === 1 ? '' : 's'} not JSON` : ''})` : 'RESPONSE';
+                box.append(this._pane('response', title, modes, body, headers ? null : kind.formats, fmt));
             }
             if (!box.children.length) box.append(make('p', 'dbmn-tx-none', 'Nothing shown: pick Input, Request or Response above.'));
             this._searchPanes();
         }
 
-        _pane(part, title, modes, body) {
+        _pane(part, title, modes, body, formats, format) {
             const pane = make('section', 'dbmn-tx-pane' + (this._max === part ? ' is-max' : ''));
             pane.dataset.part = part;
             if (this._max && this._max !== part) pane.hidden = true;
@@ -290,6 +319,20 @@
                 });
                 head.append(seg);
             }
+            // (how the body reads: Lines / Pretty for JSON Lines, Raw / Render / Text for HTML, as Raw's card)
+            if (formats && formats.length) {
+                const seg = make('span', 'raw-view-mode-group dbmn-tx-formats');
+                formats.forEach(([id, label, hint]) => {
+                    const b = make('button', 'raw-view-mode-btn' + (format === id ? ' active' : ''), label);
+                    b.type = 'button';
+                    b.dataset.format = id;
+                    if (hint) b.title = hint;
+                    b.setAttribute('aria-pressed', String(format === id));
+                    b.addEventListener('click', () => { this._mode.format = id; this._drawPanes(); });
+                    seg.append(b);
+                });
+                head.append(seg);
+            }
             head.append(make('span', 'dbmn-tx-spacer'));
             if (body) {
                 const copy = iconButton('dbmn-tx-btn dbmn-tx-copy', 'copy', `Copy the ${title.toLowerCase()}`);
@@ -303,11 +346,20 @@
             pane.append(head);
             if (body) {
                 const holder = make('div', 'dbmn-tx-editor');
-                if (this._editor) {
-                    const ed = this._editor(holder, { pane: part, text: body.text, language: body.language }) || {};
+                const ed = !body.html && this._editor ? this._editor(holder, { pane: part, text: body.text, language: body.language }) : null;
+                if (body.html) {
+                    // (rendered as the page would show it, its scripts taken out, in its own shadow root)
+                    const view = make('div', 'dbmn-tx-render');
+                    const shadow = view.attachShadow({ mode: 'open' });
+                    shadow.innerHTML = '<style>:host{display:block;padding:12px;color:inherit}*{background:transparent!important;color:inherit!important}img{max-width:100%}table{border-collapse:collapse}th,td{border:1px solid rgba(128,128,128,.4);padding:4px 8px}</style>' + body.html;
+                    shadow.querySelectorAll('script').forEach(n => n.remove());
+                    holder.append(view);
+                } else if (ed) {
                     this._editors.push(ed);
                     holder._dbmnEditor = ed;
+                    holder.dataset.editor = 'monaco';
                 } else {
+                    holder.dataset.editor = 'text';
                     const pre = make('pre', 'dbmn-tx-code', body.text || '—');
                     pre.dataset.language = body.language;
                     pre._dbmnText = body.text;

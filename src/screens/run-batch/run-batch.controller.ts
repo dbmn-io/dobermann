@@ -31,7 +31,9 @@ import { applyProductionChoice, confirmProductionExecution, isProductionEnvironm
 import { ensureHeaderVariables } from '../../services/environment/header-variable-check';
 import { countNestedCalls, groupingColumnsForPreview } from '../../webviews/run-batch/nested-call-count';
 import { createDefaultDataLoadingConfig } from '../../data-loading/zod-schemas';
-import { planBatch, BatchPlan, PlanRequest } from '../../data-loading/batch-plan';
+import { planBatch, BatchPlan, PlanRequest, type BatchPlanInput } from '../../data-loading/batch-plan';
+import { PlannedBatchRequests } from '../console/requests/planned-batch-requests';
+import type { RequestPageQuery } from '../console/requests/request-rows';
 import { QueryParamRepetitionConfig } from '../../services/transaction-preparation/helpers/query-param-repetition.helper';
 import { stripJsonCommentsSafe } from '../../utils/json-comment-stripper';
 import * as templateRenameScript from '../../webviews/shared/template-rename.js';
@@ -61,6 +63,8 @@ export interface RunBatchConfig extends WebviewConfig {
 export interface RunBatchMessage extends WebviewMessage {
     type: 'processCSVFile' | 'validateColumnMappings' | 'executeBatch' | 'closeWebview' | 'requestTemplateLookups' |
     'showSuccessMessage' | 'showErrorMessage' | 'showError' | 'showWarning' | 'requestEndpointConfig' | 'executeBulkLoadCommand' |
+    // #466/#470: Review's Requests table (Ready rows from the batch plan)
+    'console.requests.page' | 'console.requests.detail' | 'console.requests.counts' | 'console.requests.columns' | 'console.requests.shown' |
     'getEndpointTemplate' | 'generateJsonPreview' | 'generateBulkJson' | 'verifyCSV' |
     'getCurrentEnvironment' |
     'validateWorkspaceForBatch' | 'openFileDialog' | 'detectFileFormat' | 'convertFileFormat' |
@@ -290,6 +294,12 @@ export class RunBatchController {
                 await this.handleGetSortingExplanation(message);
                 break;
 
+            // #466/#470: Review's Requests table, its Ready rows from the batch plan (planned-batch-requests.ts)
+            case 'console.requests.page': case 'console.requests.detail': case 'console.requests.counts':
+            case 'console.requests.columns': case 'console.requests.shown':
+                await this.handlePlannedRequests(message as unknown as Record<string, unknown>);
+                break;
+
             case 'showSuccessMessage':
                 if (message.message) {
                     this.ports.toast.info(message.message);
@@ -384,6 +394,9 @@ export class RunBatchController {
         }
     }
     private lastPlan: BatchPlan | undefined;
+    /** #466/#470: the input Review planned with, so its Requests table can page through every request. */
+    private lastPlanInput: BatchPlanInput | undefined;
+    private plannedRequests: PlannedBatchRequests | undefined;
     /** What Review planned from (its rows, the message, the environment): the confirmation plans the run again from it. */
     private lastPlanArgs: { source: { headers: string[]; rows: string[][] }; message: RunBatchMessage; environment: { baseUrl?: string } | undefined; variables: Record<string, string> } | undefined;
     /** The run's plan now: Review's rows with the endpoint as stored (its Rows per request as the run will use it). */
@@ -617,7 +630,7 @@ export class RunBatchController {
         // (as the run reads it: the smallest enabled Rows per request, run-orchestrator getArrayRepetitionConfig)
         const runReps = enabled.length ? Math.min(...enabled.map((a: { maxRepetitions: number }) => a.maxRepetitions)) : undefined;
         if (asRun) this.lastPlanArgs = undefined;   // (re-planned from what Review planned, kept below)
-        const plan = await planBatch({
+        const planInput: BatchPlanInput = {
             endpoint,
             baseUrl: activeEnvironment?.baseUrl,
             headers: source.headers,
@@ -628,7 +641,10 @@ export class RunBatchController {
             arrayPath: ui?.arrayPath || saved?.arrayPath || null,
             queryParamRepetition: message.queryParamRepetition?.enabled ? message.queryParamRepetition : null,
             environmentVariables
-        });
+        };
+        // (Review's plan: its Requests table pages through it; the confirmation's own plan leaves it as it is)
+        if (!asRun) this.lastPlanInput = planInput;
+        const plan = await planBatch(planInput);
         for (const request of plan.requests as Array<PlanRequest & { bodyText?: string; unencodedBodyText?: string }>) {
             if (request.body === null) continue;
             const text = JSON.stringify(request.body, null, 2);
@@ -820,6 +836,8 @@ export class RunBatchController {
             // #470: the plan Review shows; Execute's confirmation plans again from the same rows as the run will send them
             this.lastPlan = plan;
             this.lastPlanArgs = { source: planRowsSource, message, environment: activeEnvironment, variables: environmentVariables };
+            // #466/#470: an open Requests table asks again (Review planned again: other rows, mappings, Reps)
+            if (this.plannedRequests) this.session.post({ type: 'console.requests.changed', ...(await this.plannedRequests.counts()) });
             const rawBody = (this.endpointConfig.body || '').trim();
             const bodyText = rawBody ? stripJsonCommentsSafe(rawBody).trim() : '';
             if (!bodyText || bodyText === '{}') {
@@ -1595,5 +1613,43 @@ export class RunBatchController {
             type: 'sortingExplanation',
             explanation
         });
+    }
+
+    /**
+     * #466/#470: Review's Requests table: Ready rows from the batch plan, a page at a time (the Console's stored-run
+     * source takes over at Execute). The same messages the Console's table sends; bodies as Execute sends them.
+     */
+    private async handlePlannedRequests(message: Record<string, unknown>): Promise<void> {
+        this.plannedRequests ??= new PlannedBatchRequests({
+            input: () => this.lastPlanInput,
+            total: () => this.lastPlan?.totals.requests ?? 0,
+            headers: () => this.endpointConfig?.headers as Record<string, unknown> | undefined,
+            bodyText: body => {
+                const text = JSON.stringify(body, null, 2);
+                try { return encodeBase64Fields(text).encodedJson; } catch { return text; }
+            }
+        });
+        const source = this.plannedRequests;
+        const seq = message.seq;
+        try {
+            switch (message.type) {
+                case 'console.requests.page':
+                    this.session.post({ type: 'console.requests.rows', seq, ...(await source.page(message as unknown as RequestPageQuery)) });
+                    return;
+                case 'console.requests.detail':
+                    this.session.post({ type: 'console.requests.detail', seq, detail: (await source.detail(String(message.id ?? ''))) ?? null });
+                    return;
+                case 'console.requests.columns':
+                    this.session.post({ type: 'console.requests.columnTree', seq, tree: await source.columnTree() });
+                    return;
+                case 'console.requests.counts':
+                    this.session.post({ type: 'console.requests.counts', ...(await source.counts()) });
+                    return;
+                default:
+                    return;   // shown: nothing changes on its own before Execute
+            }
+        } catch (error) {
+            this.session.post({ type: message.type === 'console.requests.page' ? 'console.requests.rows' : String(message.type), seq, rows: [], total: 0, of: 0, error: error instanceof Error ? error.message : String(error) });
+        }
     }
 }

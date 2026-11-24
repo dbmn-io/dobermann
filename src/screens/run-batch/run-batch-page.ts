@@ -63,6 +63,7 @@ export function buildRunBatchPage(asset: AssetUrl, batchConfig: { endpointId: st
     <link rel="stylesheet" href="${asset('shared/toast.css')}">
     <link rel="stylesheet" href="${csvHandlerCssUri}">
     <link rel="stylesheet" href="${asset('shared/dbmn-footer.css')}">
+    <link rel="stylesheet" href="${asset('shared/dbmn-name.css')}">
     <!-- Validate's grid is the design system's table (shared/dbmn-table.js) -->
     <link rel="stylesheet" href="${asset('shared/console.css')}">
     <link rel="stylesheet" href="${asset('shared/search.css')}">
@@ -85,6 +86,8 @@ export function buildRunBatchPage(asset: AssetUrl, batchConfig: { endpointId: st
     <!-- CSV Handler UI embedded directly (not as modal) -->
     <!-- Each step in the screen band (core.css .dbmn-band-pad: full width, its contents centred; James 2026-11-24) -->
     <div id="csvBatchContainer">
+        <!-- The run's one line, as the Console's (shared/dbmn-run-heading.js, #470): from Validate on, Input and Requests as its tabs -->
+        <dbmn-run-heading id="run-heading" class="dbmn-band" hidden></dbmn-run-heading>
         <!-- GitHub Issue #202: Step 1 — Load Data (file/paste tabs only) -->
         <div id="csvUploadStep" class="csv-step dbmn-band-pad">
             <!-- Hidden file input for dropzone click -->
@@ -382,6 +385,13 @@ export function buildRunBatchPage(asset: AssetUrl, batchConfig: { endpointId: st
     <!-- #470: the one Execute confirmation, the production guard's line folded in -->
     <script src="${asset('shared/dbmn-guard-line.js')}"></script>
     <script src="${asset('run-batch/run-batch-confirm.js')}"></script>
+    <script src="${asset('shared/dbmn-name.js')}"></script>
+    <script src="${asset('shared/dbmn-run-heading.js')}"></script>
+    <script src="${asset('run-batch/run-batch-heading.js')}"></script>
+    <!-- #466/#470: Review's requests as the Console's Requests table, Ready rows from the plan -->
+    <script src="${asset('shared/dbmn-transaction.js')}"></script>
+    <script src="${asset('shared/dbmn-requests.js')}"></script>
+    <script src="${asset('run-batch/review-requests.js')}"></script>
     <script src="${dbmnToastUri}"></script>
     <script src="${dbmnClipboardUri}"></script>
     <script src="${csvHandlerScriptUri}"></script>

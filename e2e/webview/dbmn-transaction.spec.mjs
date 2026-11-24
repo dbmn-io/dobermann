@@ -104,3 +104,25 @@ test('the buttons and keys say what was asked: ↓ (↑ off at the first), Logs,
     await p.locator('#t .dbmn-tx-close').click();
     expect((await heard(p)).map(x => x[0])).toEqual(['dbmn-transaction-close', 'dbmn-transaction-close']);
 });
+
+test('reads as Raw\'s card did: JSON Lines as Lines or Pretty with its record count; HTML as Raw, Render or Text; a GET starts with Request off', async ({ page: p }) => {
+    await p.setContent(page());
+    // JSON Lines
+    await p.evaluate(() => { t.transaction = { ...sent, responseBody: '{"a":1}\n{"a":2}\nnot json\n{"a":3}', responseHeaders: [] }; });
+    await expect(p.locator('#t .dbmn-tx-pane[data-part="response"] .dbmn-tx-pane-title')).toHaveText('RESPONSE (JSONL · 3 records · 1 line not JSON)');
+    await expect(p.locator('#t .dbmn-tx-pane[data-part="response"] pre')).toContainText('{"a":2}');
+    await p.locator('#t .dbmn-tx-formats [data-format="pretty"]').click();
+    await expect(p.locator('#t .dbmn-tx-pane[data-part="response"] pre')).toContainText('"a": 3');
+    // HTML
+    await p.evaluate(() => { t.transaction = { ...sent, responseBody: '<html><body><h1>Down</h1><script>window.ran = 1</script></body></html>', contentType: 'text/html', responseHeaders: [] }; });
+    await expect(p.locator('#t .dbmn-tx-formats [data-format]')).toHaveText(['Raw', 'Render', 'Text']);
+    await p.locator('#t .dbmn-tx-formats [data-format="render"]').click();
+    expect(await p.evaluate(() => document.querySelector('#t .dbmn-tx-render').shadowRoot.querySelector('h1').textContent)).toBe('Down');
+    expect(await p.evaluate(() => window.ran)).toBeUndefined();
+    await p.locator('#t .dbmn-tx-formats [data-format="text"]').click();
+    await expect(p.locator('#t .dbmn-tx-pane[data-part="response"] pre')).toHaveText('Down');
+    // A GET: no body, Request off at the start; Details still there when shown
+    await p.evaluate(() => { const fresh = document.createElement('dbmn-transaction'); fresh.id = 't2'; document.body.append(fresh); fresh.transaction = { ...sent, method: 'GET', requestBody: '' }; });
+    await expect(p.locator('#t2 .dbmn-tx-seg-btn[data-part="request"]')).toHaveAttribute('aria-pressed', 'false');
+    await expect(p.locator('#t2 .dbmn-tx-pane[data-part="request"]')).toHaveCount(0);
+});

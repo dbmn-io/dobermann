@@ -235,4 +235,12 @@ describe('Console Requests (host): a row per request', () => {
         expect([a.rows[0].n, b.rows[0].n]).to.deep.equal([1, 2]);
         expect(reads).to.have.length(40 * 2 + 2 + 2);
     });
+
+    it('the Status heading\'s filter: only the statuses ticked, the run\'s size still said', async () => {
+        const { source } = run(30);
+        const page = await source.page({ offset: 0, limit: 50, statuses: ['error'] });
+        expect([page.total, page.of]).to.deep.equal([3, 30]);
+        expect(page.rows.map(r => r.n)).to.deep.equal([10, 20, 30]);
+        expect((await source.page({ offset: 0, limit: 5, statuses: null })).total).to.equal(30);
+    });
 });

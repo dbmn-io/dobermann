@@ -21,7 +21,11 @@ const SCRIPTS: Record<string, string> = {
     PROGRESS_HANDLER_URI: 'console/modules/progress-handler.js',
     BATCH_ACTIONS_URI: 'console/modules/batch-actions.js',
     CONSOLE_CHAIN_URI: 'console/modules/console-chain.js', // GitHub Issue #247
+    DBMN_REQUESTS_URI: 'shared/dbmn-requests.js', // #466: the Requests table, shared with Run Batch's Review
+    CONSOLE_REQUESTS_URI: 'console/modules/requests-tab.js', // #466: the Requests tab
+    DBMN_TRANSACTION_URI: 'shared/dbmn-transaction.js', // #467: one request in full
     CONSOLE_RUN_HEADING_URI: 'console/modules/console-run-heading.js', // #464: the run heading's wiring
+    CONSOLE_EDITOR_URI: 'console/modules/console-editor.js', // the transaction window's Monaco
     HELP_MODE_URI: 'shared/help-mode.js',
     BUTTON_CONTRAST_URI: 'shared/button-contrast.js',
     CONSOLE_HELP_URI: 'console/modules/console-help.js',

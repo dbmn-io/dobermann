@@ -409,6 +409,10 @@
         }
 
         csvState.modalStep = stepNumber;
+        // (#470: the run heading follows the steps: Input from Validate on, Requests on Review)
+        if (window.RunBatchHeading) window.RunBatchHeading.onStep(stepNumber);
+        // (#466/#470: Review's Requests table tells the host whether it is on screen)
+        if (window.ReviewRequests) window.ReviewRequests.onStep(stepNumber);
         // The step bar lets the user click back to any step reached since the data loaded
         csvState.maxStepReached = stepNumber === 1 ? 1 : Math.max(csvState.maxStepReached || 1, stepNumber);
         csvState.navigationInProgress = false;
@@ -2096,6 +2100,8 @@
             }
             const first = list.querySelector('.raw-card.expanded');
             if (first) { fillRequestEditor(first); }
+            // #466/#470: Review's requests as the Requests table (review-requests.js), in the cards' place
+            if (window.ReviewRequests) window.ReviewRequests.drawn();
             applyPreviewShow();
         }
         const chips = document.getElementById('requestPreviewShow');

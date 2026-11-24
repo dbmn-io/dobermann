@@ -600,23 +600,7 @@ body:has(#compareStepper) {
     }
 }
 
-/* Side by side over Compact: a small two-row toggle */
-.compare-view-toggle {
-    flex: none;
-    flex-direction: column;
-}
-
-/* (the shared .toggle-btn sets its padding and borders !important) */
-.compare-view-toggle .toggle-btn {
-    padding: 0 8px !important;
-    line-height: 17px;
-    text-align: left;
-}
-
-.compare-view-toggle .toggle-btn + .toggle-btn {
-    border-left: none !important;
-    border-top: 1px solid var(--vscode-input-border) !important;
-}
+/* (Side by side over Compact: core.css's .dbmn-switch-stack) */
 
 /* Find: an icon until opened, then the box takes the room */
 .compare-search {

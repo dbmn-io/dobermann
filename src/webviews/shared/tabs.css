@@ -156,3 +156,10 @@ dbmn-run-heading .tab-count.dbmn-run-count.is-error[data-tab] { background: var(
 @keyframes dbmn-run-count-pulse { from { transform: scale(1.25); } to { transform: scale(1); } }
 @media (prefers-reduced-motion: reduce) { .dbmn-run-count.is-changed { animation: none; } }
 .dbmn-run-tab[hidden] { display: none; }
+dbmn-run-heading[hidden] { display: none; }
+/* A tab's issues (the Input tab's invalid rows): amber, and a click away from showing them */
+.dbmn-run-issues {
+    margin-left: 4px; padding: 0 6px; border-radius: 9px; font-size: 11px; font-weight: 600; line-height: 16px; cursor: pointer;
+    background: var(--dbmn-editorWarning-foreground, #cca700); color: var(--dbmn-editor-background, #1e1e1e);
+}
+.dbmn-run-issues:hover, .dbmn-run-issues:focus-visible { outline: 1px solid var(--dbmn-focusBorder); outline-offset: 1px; }

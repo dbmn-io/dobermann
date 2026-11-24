@@ -123,6 +123,8 @@ export interface BatchPlanInput {
     queryParamRepetition?: QueryParamRepetitionConfig | null;
     environmentVariables?: Record<string, string>;
     previewCount?: number;
+    /** The requests from this one on (0-based): Review's Requests table pages through a batch (planRequests). */
+    previewOffset?: number;
     groupTableSize?: number;
 }
 
@@ -141,8 +143,30 @@ const variablesIn = (text: string): string[] => {
     return out;
 };
 
+/**
+ * `limit` of a batch's requests from `offset` (0-based), exactly as planBatch builds them, without building the ones
+ * before: Review's Requests table (#466/#470) pages through a batch of thousands. Only the rows behind these requests
+ * go to the generator; the totals are still the whole batch's.
+ */
+export async function planRequests(input: BatchPlanInput, offset: number, limit: number): Promise<PlanRequest[]> {
+    const from = Math.max(0, Math.floor(offset));
+    const count = Math.max(0, Math.floor(limit));
+    // A batch-wide {{A8:sequence}} counts on through the requests: how many numbers the ones before used isn't known
+    // without building them, so those are built from the start (and the page taken from them), as Execute numbers them
+    if (from > 0 && usesBatchSequence(input.endpoint.body)) {
+        return (await planBatch({ ...input, previewOffset: 0, previewCount: from + count })).requests.slice(from, from + count);
+    }
+    return (await planBatch({ ...input, previewOffset: from, previewCount: count })).requests;
+}
+
+/** {{A8:sequence}} (or :global) anywhere in the body: a number drawn on through the batch (`:local` starts again per request). */
+function usesBatchSequence(body: string | undefined): boolean {
+    return Array.from(String(body || '').matchAll(/\{\{\s*A8:sequence([^}]*)\}\}/gi)).some(m => !/:\s*local\b/i.test(m[1]));
+}
+
 export async function planBatch(input: BatchPlanInput): Promise<BatchPlan> {
     const previewCount = input.previewCount ?? 5;
+    const previewOffset = Math.max(0, Math.floor(input.previewOffset ?? 0));
     const groupTableSize = input.groupTableSize ?? 8;
     const method = (input.endpoint.method || 'POST').toUpperCase();
     const template = input.endpoint.bodyWithComments || input.endpoint.body || '';
@@ -188,8 +212,10 @@ export async function planBatch(input: BatchPlanInput): Promise<BatchPlan> {
         const mappingRecord = Object.fromEntries(input.mappings.filter(m => m.column).map(m => [m.variable, m.column as string]));
         const analysis = await helper.analyzeQueryParamRepetition([input.headers, ...input.rows], input.queryParamRepetition, mappingRecord);
         const { paramKey } = input.queryParamRepetition;
-        let start = 1;
-        const requests: PlanRequest[] = analysis.rowGroups.slice(0, previewCount).map((group, index) => {
+        // (from the offset: the rows of the requests before it are counted, not built)
+        let start = 1 + analysis.rowGroups.slice(0, previewOffset).reduce((n, g) => n + Math.max(0, g.rows.length - 1), 0);
+        const requests: PlanRequest[] = analysis.rowGroups.slice(previewOffset, previewOffset + previewCount).map((group, at) => {
+            const index = previewOffset + at;
             const rows = group.rows.slice(1);
             const params = { ...queryParams, [paramKey]: group.queryString };
             const filled = fillUrl(rows[0] || [], params);
@@ -216,7 +242,8 @@ export async function planBatch(input: BatchPlanInput): Promise<BatchPlan> {
     }
 
     if (!hasBody) {
-        const requests: PlanRequest[] = input.rows.slice(0, previewCount).map((row, index) => {
+        const requests: PlanRequest[] = input.rows.slice(previewOffset, previewOffset + previewCount).map((row, at) => {
+            const index = previewOffset + at;
             const filled = fillUrl(row, queryParams);
             return { index: index + 1, key: urlVariables.filter(v => !isSystem(v)).map(v => ({ variable: v, value: valueOf(row, v) })),
                 rowCount: 1, rowRange: { start: index + 1, end: index + 1 }, inputRows: [row], method, url: filled.url,
@@ -376,6 +403,66 @@ export async function planBatch(input: BatchPlanInput): Promise<BatchPlan> {
         table.columns = [];
     } else {
         totalRequests = rows.length;
+    }
+
+    // Where each request starts among the (sorted) rows: only needed to build requests past the first (planRequests)
+    const requestStarts = (upTo: number): number[] => {
+        const starts: number[] = [];
+        if (shape === 'single') { for (let i = 0; i < rows.length && starts.length < upTo; i++) starts.push(i); return starts; }
+        if (shape === 'flat') { for (let i = 0; i < rows.length && starts.length < upTo; i += reps) starts.push(i); return starts; }
+        let lastRequest: string | undefined;
+        let lastEntry: string | undefined;
+        let entriesInRequest = 0;
+        for (let i = 0; i < rows.length && starts.length < upTo; i++) {
+            const r = requestKey(rows[i]);
+            if (shape === 'grouped') {
+                if (r !== lastRequest) { starts.push(i); lastRequest = r; }
+                continue;
+            }
+            // nested: a new root starts a request; within it, every `reps` entries do
+            const e = entryKey(rows[i]);
+            if (r !== lastRequest) { starts.push(i); lastRequest = r; lastEntry = e; entriesInRequest = 1; continue; }
+            if (e !== lastEntry) {
+                lastEntry = e;
+                if (entriesInRequest >= reps) { starts.push(i); entriesInRequest = 1; } else entriesInRequest++;
+            }
+        }
+        return starts;
+    };
+    if (previewOffset > 0) {
+        const starts = requestStarts(previewOffset + previewCount + 1);
+        const from = starts[previewOffset];
+        const page: PlanRequest[] = [];
+        if (from !== undefined && previewCount > 0) {
+            const to = starts[previewOffset + previewCount] ?? rows.length;
+            const slice = rows.slice(from, to);
+            const sliceCsv = [input.headers, ...slice].map(r => r.map(csvCell).join(',')).join('\n');
+            const built = await generator.generateBatchJsonFiles(sliceCsv, options);
+            if (!built.success) throw new Error((built as { error?: string }).error || 'Could not build the requests');
+            const keyVars = shape === 'grouped' ? outer : shape === 'single' ? [] : rootVars;
+            built.files.slice(0, previewCount).forEach((file: { content: unknown; rowRange?: { start: number; end: number } }, i: number) => {
+                const local = file.rowRange ?? { start: i + 1, end: i + 1 };
+                const inputRows = slice.slice(local.start - 1, local.end);
+                const filled = fillUrl(inputRows[0] || [], queryParams);
+                page.push({
+                    index: previewOffset + i + 1,
+                    key: keyVars.map(v => ({ variable: v, value: valueOf(inputRows[0] || [], v) })),
+                    rowCount: inputRows.length, rowRange: { start: from + local.start, end: from + local.end }, inputRows,
+                    method, url: filled.url, queryParams: filled.params,
+                    body: file.content, size: new TextEncoder().encode(JSON.stringify(file.content)).length
+                });
+            });
+        }
+        const repsLabelAt = shape === 'flat' ? 'Rows per request'
+            : shape === 'nested-2' || shape === 'nested-3' ? `${analysis.outerArray} per request` : '';
+        return {
+            shape, method, hasBody, arrayPath, arrayCandidates,
+            reps: { applies: shape === 'flat' || shape === 'nested-2' || shape === 'nested-3', label: repsLabelAt, value: reps },
+            variables, levels,
+            totals: { rows: input.rows.length, requests: totalRequests },
+            groups: table.columns.length > 0 ? table : null,
+            requests: page, notes, template, urlTemplate
+        };
     }
 
     // The first requests, built by the generator from a prefix of the (sorted) rows.

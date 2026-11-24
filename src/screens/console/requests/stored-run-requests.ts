@@ -125,14 +125,17 @@ export class StoredRunRequests implements RequestSource {
 
     async page(query: RequestPageQuery): Promise<RequestPage> {
         const requests = await this.list();
-        const rows = requests.map((r, i) => recordRow(r, i + 1));
+        // (the Status heading's filter: only the statuses ticked; `of` stays the run's whole size)
+        const only = Array.isArray(query.statuses) ? new Set(query.statuses.map(String)) : null;
+        const all = requests.map((r, i) => recordRow(r, i + 1));
+        const rows = only ? all.filter(r => only.has(r.status)) : all;
         const byId = new Map(requests.map(r => [r.id, r]));
         const ordered = await this.order(rows, byId, query);
-        if (!ordered) return { rows: [], total: 0, of: rows.length };   // a newer search took over: this answer is not wanted
+        if (!ordered) return { rows: [], total: 0, of: all.length };   // a newer search took over: this answer is not wanted
         const offset = Math.max(0, query.offset || 0);
         const limit = Math.max(0, query.limit || 0);
         const shown = ordered.slice(offset, offset + limit).map(row => this.withFiles(row, byId.get(row.id)!));
-        return { rows: shown, total: ordered.length, of: rows.length };
+        return { rows: shown, total: ordered.length, of: all.length };
     }
 
     async columnTree(): Promise<RequestColumnTree> {

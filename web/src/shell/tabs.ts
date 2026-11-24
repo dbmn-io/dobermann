@@ -156,7 +156,9 @@ export function webTabs(deps: WebTabDeps): HubTabFactory {
             const screen = { handle: (m: Record<string, unknown>) => controller.handleMessage(m as never), dispose: () => controller.dispose() };
             return {
                 ...tab(buildRunBatchPage(asset, { endpointId: endpoint.id, endpointName: endpoint.name }), session, screen),
-                applyChain: c => controller.applyChain(c)
+                applyChain: c => controller.applyChain(c),
+                // #470: Review's view at Execute, for the Console that takes this tab's place
+                handoff: () => controller.handoff()
             };
         },
         compare: async ({ compareId, endpointName, start }, channel) => {
@@ -259,7 +261,9 @@ export function webTabs(deps: WebTabDeps): HubTabFactory {
                 ready: () => { void controller.onReady(); },
                 name: summary.batchName || summary.endpointName || summary.endpointPath || `Console ${executionId.slice(0, 8)}`, // #445: a batch by its own name
                 status: summary.status?.toLowerCase(),
-                endpointId: config.endpointId
+                endpointId: config.endpointId,
+                // #470: in a Run Batch tab's place, it opens where Review was
+                carryOn: review => controller.carryOn(review)
             };
         },
         environment: async (config, channel) => {

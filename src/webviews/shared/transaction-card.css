@@ -1163,3 +1163,5 @@ dbmn-transaction[window] {
 .dbmn-tx-input { flex: 1; min-height: 120px; }
 .dbmn-tx-none { color: var(--dbmn-descriptionForeground); }
 @media (max-width: 900px) { .dbmn-tx-panes { grid-auto-flow: row; } dbmn-transaction[window] { inset: 12px; } }
+.dbmn-tx-formats { margin-left: 4px; } .dbmn-tx-render { overflow: auto; }
+.dbmn-tx-editor.dbmn-tx-monaco { overflow: hidden; min-height: 180px; }

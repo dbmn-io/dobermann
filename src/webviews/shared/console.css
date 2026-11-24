@@ -3405,3 +3405,20 @@ html[data-tab-colour="stopped"] .report-title { --title-c: var(--vscode-descript
 
 /* The old title, kept unseen while the run's state still reads from it (#464: the run heading replaces it) */
 #report-title[hidden], #report-tabs[hidden] { display: none !important; }
+
+/* #466: the Requests tab (console/modules/requests-tab.js): its table fills the tab, as the data tabs' does */
+.requests-tab-content { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.requests-tab-content.hidden { display: none; }
+.requests-tab-content > dbmn-table { flex: 1; min-height: 0; gap: 0; }
+/* (as the data tabs' table: its rows scroll inside it, filling the tab, not stopping at the table's own cap) */
+.requests-tab-content > dbmn-table .dbmn-table-scroll { flex: 1; min-height: 0; max-height: none; }
+.requests-table .requests-none { color: var(--vscode-descriptionForeground); }
+.requests-table .requests-body { display: inline-flex; gap: 8px; align-items: baseline; min-width: 0; max-width: 100%; }
+.requests-table .requests-preview { font-family: var(--vscode-editor-font-family); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.requests-table .requests-items { flex: none; color: var(--vscode-descriptionForeground); font-size: 11px; }
+/* A request not sent yet (Run Batch's Review): Ready, quiet, outlined: no colour of its own */
+.requests-table .raw-status-badge.status-ready {
+    background: transparent;
+    color: var(--vscode-descriptionForeground);
+    border: 1px solid var(--vscode-descriptionForeground);
+}

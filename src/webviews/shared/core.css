@@ -2505,3 +2505,10 @@ html[data-agent-connection="connected"] .agent-link {
    window's width, its scrollbar at the window's edge, and its contents sit in the band. --band-pad is the screen's own
    side padding (20px unless set). (!important: the screens' own padding rules are by id) */
 .dbmn-band-pad { padding-inline: max(var(--band-pad, 20px), calc((100% - var(--dbmn-band, 1280px)) / 2 + var(--band-pad, 20px))) !important; box-sizing: border-box; }
+
+/* .dbmn-switch-stack: two choices stacked in one small box (Side by side over Compact; All columns over Only
+   diffs / Invalid only): a .toggle-group wearing it. Query, Compare and Run Batch's Validate (2026-11-24) */
+.dbmn-switch-stack { flex: none; flex-direction: column; }
+/* (the shared .toggle-btn sets its padding and borders !important) */
+.dbmn-switch-stack .toggle-btn { padding: 0 8px !important; line-height: 17px; text-align: left; }
+.dbmn-switch-stack .toggle-btn + .toggle-btn { border-left: none !important; border-top: 1px solid var(--vscode-input-border) !important; }

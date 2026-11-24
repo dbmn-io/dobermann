@@ -2134,6 +2134,11 @@ class DynamicReportManager {
         if (rawData.inputData !== undefined && !window.hideInputTab) tabs.push({ id: 'input', label: 'Input', count: classified.input?.length || 0 });
         const isBatchReport = rawData.metadata?.batchId !== undefined;
         const hasResults = rawData.responses && rawData.responses.length > 0;
+        // #466: Requests, a row per request (console/modules/requests-tab.js); Raw stays beside it until the transaction
+        // window has its card's views (lesson 5's fold, JSONL Lines, the HTML render: design system, 2026-11-24)
+        // (its count: every request, as the host has counted them, once it has; the responses loaded so far until then)
+        const requestsKnown = window.ConsoleRequests && window.ConsoleRequests.state.total;
+        if (isBatchReport || hasResults) tabs.push({ id: 'requests', label: 'Requests', count: requestsKnown || (rawData.responses ? rawData.responses.length : 0) });
         // #166/#184: Raw, every transaction's request and response
         if (isBatchReport || hasResults) tabs.push({ id: 'raw', label: 'Raw', count: rawData.responses ? rawData.responses.length : 0 });
         [['success', 'Completed', 'ok'], ['errors', 'Error', 'error']].forEach(([id, label, tone]) => {
@@ -2177,6 +2182,8 @@ class DynamicReportManager {
 
         // GitHub Issue #247: the Links tab is console-chain.js's; it also shows Chain on Completed
         if (window.ConsoleChain && window.ConsoleChain.onSwitchTab(tabName)) return;
+        // #466: the Requests tab is requests-tab.js's
+        if (window.ConsoleRequests && window.ConsoleRequests.onSwitchTab(tabName)) return;
 
         // Manage export button visibility based on tab
         const exportMenu = document.querySelector('.export-menu');

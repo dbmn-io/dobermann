@@ -139,6 +139,7 @@
  *   { id: 'lines', name: 'lines', nested: { count: row => row.lineCount, rows: row => fetchLines(row) } }
  *                                             // records that are fetched when the cell is opened
  *   nested: { controls: (row, value) => button }   // the screen's own buttons beside "3 records"
+ *   nested: { noun: 'header' }                       // "6 headers" in place of "6 records"
  *                                             // (the Console's "Set as Row"); a click on one is the screen's
  *
  * ── Rows that stay with the screen ──
@@ -1647,6 +1648,17 @@
             this._tell('resized', { id: this._columns[i].id, width });
         }
 
+        /**
+         * The height rows are drawn for: the scroll box's, never more than twice the window's. A box that is not bounded
+         * grows with what is drawn, and would draw (and ask for) every row: Review's 67,000 requests took 5 GB,
+         * 2026-11-25. Hidden (0): 400.
+         */
+        _viewHeight(box) {
+            const own = box.clientHeight || 400;
+            const most = Math.max(400, (window.innerHeight || 800) * 2);
+            return Math.min(own, most);
+        }
+
         _row(row) {
             // (a row whose page is on its way: empty, and as tall as any other)
             const tr = make('tr', row ? '' : 'dbmn-table-waiting');
@@ -1658,13 +1670,13 @@
             this._columns.forEach(column => {
                 const value = row ? row[column.id] : null;
                 const td = make('td', (column.numbers || typeof value === 'number' ? 'text-right' : '') + (column.wrap ? ' dbmn-cell-wrap' : '') + (column.className ? ` ${column.className}` : ''));
+                td.dataset.col = column.id;   // (every cell names its column: a screen reads which cell a click landed in)
                 if (!row) { td.textContent = '\u00a0'; tr.append(td); return; }
                 // Editable: a cell that takes no typing is drawn plain; a yes/no one turns over on a click
                 if (this._editable() && !this._canEdit(column, row)) td.classList.add('dbmn-cell-readonly');
                 else if (this._editable() && column.editor && column.editor.type === 'checkbox') td.classList.add('dbmn-cell-box');
                 if (this._nestCount(column, value, row) > 0) {
                     td.classList.add('has-nested');
-                    td.dataset.col = column.id;
                     td.append(this._nest(column, value, row));
                     tr.append(td);
                     return;
@@ -2004,7 +2016,7 @@
             if (box.clientWidth) this._table.style.setProperty('--table-nest-room', `${box.clientWidth}px`);
             const open = this._openList();
             if (open.length) { this._renderTall(force, total, open); return; }
-            const at = { scrollTop: box.scrollTop, viewportHeight: box.clientHeight || 400, rowHeight: this._rowH, totalRows: total };
+            const at = { scrollTop: box.scrollTop, viewportHeight: this._viewHeight(box), rowHeight: this._rowH, totalRows: total };
             const win = window.VirtualWindow;
             if (!force && !win.needsRender(Object.assign({ rendered: this._rendered, marginPx: 150 }, at))) return;
             const direction = Math.sign(box.scrollTop - this._lastTop);
@@ -2053,7 +2065,9 @@
             toggle.setAttribute('aria-expanded', state ? 'true' : 'false');
             const chevron = make('span', 'expand-icon');
             chevron.dataset.icon = state ? 'chevron-down' : 'chevron-right';
-            toggle.append(chevron, document.createTextNode(`${count(count_)} record${count_ === 1 ? '' : 's'}`));
+            // (nested.noun names what they are: "6 headers"; records unless said)
+            const noun = (column.nested && column.nested.noun) || 'record';
+            toggle.append(chevron, document.createTextNode(`${count(count_)} ${noun}${count_ === 1 ? '' : 's'}`));
             // The screen's own controls beside it (the Console's "Set as Row"): their clicks are the screen's
             const extra = column.nested && typeof column.nested.controls === 'function' ? column.nested.controls(row, value) : null;
             const controls = (Array.isArray(extra) ? extra : extra ? [extra] : []).filter(n => n instanceof Node);
@@ -2305,7 +2319,7 @@
             const box = this._scroll;
             const h = this._rowH;
             const win = this._tall(open, total, h);
-            const top = box.scrollTop, tall = box.clientHeight || 400;
+            const top = box.scrollTop, tall = this._viewHeight(box);
             const need = { start: win.indexAt(Math.max(0, top - 150)), end: Math.min(total, win.indexAt(top + tall + 150) + 1) };
             if (!force && this._rendered.start <= need.start && this._rendered.end >= need.end) return;
             this._lastTop = top;

@@ -25,7 +25,7 @@ ${['shared/icons.js'].concat(MORE).map(rel => `<script>${read(rel)}</script>`).j
 <dbmn-guard-line id="g"></dbmn-guard-line>
 <script>
   window.heard = [];
-  ['dbmn-run-heading-tab', 'dbmn-run-heading-info', 'dbmn-run-heading-environment', 'dbmn-name-change'].forEach(type =>
+  ['dbmn-run-heading-tab', 'dbmn-run-heading-info', 'dbmn-run-heading-environment', 'dbmn-name-change', 'dbmn-run-heading-issues'].forEach(type =>
       document.addEventListener(type, e => window.heard.push([type, e.detail || null])));
   const h = document.getElementById('h');
   h.environment = { name: 'DBMN Local' };
@@ -89,4 +89,16 @@ test('the run heading: setCount and setHidden change one tab as the run goes, th
     await expect(p.locator('#h .dbmn-run-tab')).toHaveText(['Input1000', 'Requests5', 'Completed3', 'Error2']);
     await expect(p.locator('#h .dbmn-run-tab.active')).toHaveText('Requests5');
     expect(await p.evaluate(() => h.has('errors'))).toBe(true);
+});
+
+test('the run heading: a live count keeps the same tab button (a click never lands on one being replaced); an amber issues count asks on its own', async ({ page: p }) => {
+    await p.setContent(page());
+    await p.evaluate(() => { window.before = document.querySelector('#h .dbmn-run-tab[data-tab="success"]'); h.setCount('success', 7); h.setIssues('input', 3); });
+    expect(await p.evaluate(() => window.before === document.querySelector('#h .dbmn-run-tab[data-tab="success"]'))).toBe(true);
+    await expect(p.locator('#h .dbmn-run-tab[data-tab="input"] .dbmn-run-issues')).toHaveText('3');
+    await p.locator('#h .dbmn-run-tab[data-tab="input"] .dbmn-run-issues').click();
+    await p.locator('#h .dbmn-run-tab[data-tab="input"] .dbmn-run-tab-label').click();
+    expect((await heard(p)).map(x => x[0] + ':' + (x[1] && x[1].id))).toEqual(['dbmn-run-heading-issues:input', 'dbmn-run-heading-tab:input']);
+    await p.evaluate(() => h.setIssues('input', 0));
+    await expect(p.locator('#h .dbmn-run-issues')).toHaveCount(0);
 });

@@ -59,6 +59,8 @@ export interface RequestPageQuery {
     search?: string;
     sort?: RequestSort | null;
     columns?: RequestColumn[];
+    /** The Status heading's filter: only these statuses (all when left out). */
+    statuses?: string[] | null;
 }
 
 export interface RequestPage { rows: RequestRow[]; total: number; of: number }
@@ -83,6 +85,8 @@ export interface RequestDetail {
     requestBody: string | null;
     responseBody: string | null;
     rows: [number, number] | null;
+    /** Its input rows, when the source holds them (a planned batch: from the plan); else the page's own. */
+    input?: { columns: string[]; rows: string[][] };
 }
 
 /** Rows that come from somewhere: a stored run, or a planned batch. */

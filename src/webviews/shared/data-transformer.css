@@ -2150,3 +2150,12 @@ body:has(#csvBatchContainer) .webview-footer.named-footer .footer-content {
     font-variant-numeric: tabular-nums;
     color: var(--vscode-descriptionForeground);
 }
+
+/* #466/#470: Review's requests as the Requests table (review-requests.js): the table in the cards' place */
+.review-requests.has-requests-table #requestPreviewList,
+.review-requests.has-requests-table #requestPreviewShow { display: none; }
+/* (a bounded box: the table scrolls inside it. Unbounded, its scroll box grew with every row it drew and it asked for
+   the next page, and the next, until it held all 67,000 of lesson 2's requests: 5 GB, 2026-11-25) */
+.review-requests-table { display: flex; flex-direction: column; min-height: 320px; height: min(70vh, 640px); }
+.review-requests-table > dbmn-table { flex: 1; min-height: 0; gap: 0; }
+.review-requests-table > dbmn-table .dbmn-table-scroll { flex: 1; min-height: 0; max-height: none; }

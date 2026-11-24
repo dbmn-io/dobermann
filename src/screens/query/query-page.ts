@@ -59,11 +59,11 @@ export function buildQueryPage(asset: AssetUrl, config: { queryId: string; name:
                 <div class="query-view-tools" role="group" aria-label="What the report shows">
                     <!-- A compare's Results, as Compare's (query-compare-results.js): the view and the columns shown -->
                     <span id="queryStatusTools" class="query-status-tools compare-results-controls" hidden>
-                        <div class="toggle-group compare-view-toggle" role="group" aria-label="View">
+                        <div class="toggle-group compare-view-toggle dbmn-switch-stack" role="group" aria-label="View">
                             <button type="button" class="toggle-btn active" id="queryViewSide" aria-pressed="true" title="A column per result under each compared column">Side by side</button>
                             <button type="button" class="toggle-btn" id="queryViewCompact" aria-pressed="false" title="One column each; values that differ in a pill">Compact</button>
                         </div>
-                        <div class="toggle-group compare-view-toggle" role="group" aria-label="Columns shown">
+                        <div class="toggle-group compare-view-toggle dbmn-switch-stack" role="group" aria-label="Columns shown">
                             <button type="button" class="toggle-btn active" id="queryColsAll" aria-pressed="true" title="Every column">All columns</button>
                             <button type="button" class="toggle-btn" id="queryColsChanged" aria-pressed="false" title="Hide the compared columns no row differs in">Only diffs</button>
                         </div>

@@ -15,6 +15,9 @@
  *                   { id: 'errors', label: 'Error', count: 1, tone: 'error' }];
  *   heading.active = 'requests';
  *   heading.marks = [node];          // the screen's own marks after ⓘ, as it made them (none by default)
+ *   { id: 'input', label: 'Input', count: 1000, issues: 3 }   // issues: an amber count to fix; a click on it:
+ *                                                            // dbmn-run-heading-issues { id } (the tab itself still switches)
+ *   heading.setIssues('input', 2);
  *   heading.setCount('errors', 2);  heading.setHidden('errors', false);   // as the run goes; heading.has('errors')
  *
  *   dbmn-run-heading-tab   { id }   a tab was picked (the screen sets `active` when it has moved)
@@ -66,6 +69,7 @@
         /** One tab's count, or whether it shows, changed as the run goes (the rest kept): the screen never edits the buttons. */
         setCount(id, n) { this._patch(id, { count: n }); }
         setHidden(id, hidden) { this._patch(id, { hidden: !!hidden }); }
+        setIssues(id, n) { this._patch(id, { issues: Number(n) || 0 }); }
         has(id) { return this._tabs.some(t => t && t.id === id && !t.hidden); }
         _patch(id, change) {
             let changed = false;
@@ -122,29 +126,68 @@
 
         _drawTabs() {
             if (!this._tabsEl) return;
-            // (a hidden tab is kept, unseen, with its count: it shows the moment it is needed, and its count is right)
-            this._tabsEl.replaceChildren(...this._tabs.filter(Boolean).map(t => {
-                const b = make('button', 'tab-item dbmn-run-tab' + (t.id === this._active ? ' active' : ''));
-                b.hidden = !!t.hidden;
-                b.type = 'button';
-                b.dataset.tab = t.id;
-                b.setAttribute('role', 'tab');
-                b.setAttribute('aria-selected', String(t.id === this._active));
-                b.append(make('span', 'dbmn-run-tab-label', t.label));
-                if (t.count !== undefined && t.count !== null) {
-                    const badge = make('span', 'tab-count dbmn-run-count' + (t.tone ? ` is-${t.tone}` : ''), count(t.count));
+            const tabs = this._tabs.filter(Boolean);
+            // (the same tabs as drawn: each kept and brought up to date, so a click never lands on a button being
+            //  replaced while the counts go live; other tabs: drawn again. A hidden tab is kept, unseen, with its count)
+            const have = [...this._tabsEl.children];
+            if (have.length !== tabs.length || have.some((b, i) => b.dataset.tab !== tabs[i].id)) {
+                this._tabsEl.replaceChildren(...tabs.map(t => this._tabButton(t)));
+            }
+            [...this._tabsEl.children].forEach((b, i) => this._fillTab(b, tabs[i]));
+        }
+        _tabButton(t) {
+            const b = make('button', 'tab-item dbmn-run-tab');
+            b.type = 'button';
+            b.dataset.tab = t.id;
+            b.setAttribute('role', 'tab');
+            b.append(make('span', 'dbmn-run-tab-label'));
+            b.addEventListener('click', event => {
+                if (event.target.closest('.dbmn-run-issues')) return;
+                this.dispatchEvent(new CustomEvent('dbmn-run-heading-tab', { bubbles: true, detail: { id: t.id } }));
+            });
+            return b;
+        }
+        _fillTab(b, t) {
+            const on = t.id === this._active;
+            b.classList.toggle('active', on);
+            b.setAttribute('aria-selected', String(on));
+            b.hidden = !!t.hidden;
+            b.querySelector('.dbmn-run-tab-label').textContent = t.label;
+            let badge = b.querySelector('.dbmn-run-count');
+            if (t.count === undefined || t.count === null) { if (badge) badge.remove(); }
+            else {
+                if (!badge) {
+                    badge = make('span', 'tab-count dbmn-run-count');
                     badge.dataset.tab = t.id;   // (as every tab strip's count: .tab-count[data-tab])
-                    const was = this._counts.get(t.id);
-                    if (was !== undefined && was !== t.count) {
-                        badge.classList.add('is-changed');
-                        setTimeout(() => badge.classList.remove('is-changed'), 400);
-                    }
-                    this._counts.set(t.id, t.count);
-                    b.append(badge);
+                    b.querySelector('.dbmn-run-tab-label').after(badge);
                 }
-                b.addEventListener('click', () => this.dispatchEvent(new CustomEvent('dbmn-run-heading-tab', { bubbles: true, detail: { id: t.id } })));
-                return b;
-            }));
+                badge.className = 'tab-count dbmn-run-count' + (t.tone ? ` is-${t.tone}` : '');
+                const text = count(t.count);
+                if (badge.textContent !== text) badge.textContent = text;
+                const was = this._counts.get(t.id);
+                if (was !== undefined && was !== t.count) {
+                    badge.classList.add('is-changed');
+                    setTimeout(() => badge.classList.remove('is-changed'), 400);
+                }
+                this._counts.set(t.id, t.count);
+            }
+            // (issues: an amber count of what needs fixing, the Input tab's invalid rows; a click on it says so)
+            let issues = b.querySelector('.dbmn-run-issues');
+            if (!(t.issues > 0)) { if (issues) issues.remove(); }
+            else {
+                if (!issues) {
+                    issues = make('span', 'dbmn-run-issues');
+                    issues.setAttribute('role', 'button');
+                    issues.tabIndex = 0;
+                    const ask = event => { event.stopPropagation(); this.dispatchEvent(new CustomEvent('dbmn-run-heading-issues', { bubbles: true, detail: { id: t.id } })); };
+                    issues.addEventListener('click', ask);
+                    issues.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); ask(event); } });
+                    b.append(issues);
+                }
+                issues.textContent = count(t.issues);
+                issues.title = t.issuesTitle || `${count(t.issues)} to fix: show them`;
+                issues.setAttribute('aria-label', issues.title);
+            }
         }
     }
     customElements.define('dbmn-run-heading', DbmnRunHeading);

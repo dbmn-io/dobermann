@@ -4769,8 +4769,12 @@ export class ConsoleController {
     private requestsCountsTimer?: ReturnType<typeof setTimeout>;
     /** The table's reload, told no more often than its last page costs allows (requestsReloadDelay). */
     private requestsReloadTimer?: ReturnType<typeof setTimeout>;
-    /** Whether the Requests tab is the one on screen (console.requests.shown); off screen, the table isn't reloaded. */
-    private requestsShown = true;
+    /**
+     * Whether the Requests tab is the one on screen (console.requests.shown); off screen, the table isn't reloaded.
+     * Off until the page says it is shown: its table is made at load, unseen, to hear the tab's counts, and a Console
+     * whose Requests tab is never opened was told to reload on every change of a run (cheap, but for nothing).
+     */
+    private requestsShown = false;
     /** Changes the table missed while off screen: told at once when it is shown again. */
     private requestsStale = false;
     /** How long the last page took to make (ms): a live run's reloads are paced by it. */
@@ -4830,6 +4834,10 @@ export class ConsoleController {
                     return;
                 case 'console.requests.columns':
                     await this.post({ type: 'console.requests.columnTree', seq, tree: await source.columnTree() });
+                    return;
+                case 'console.requests.counts':
+                    // (asked once as the page opens: the tab's count, and from then on as the run goes)
+                    await this.post({ type: 'console.requests.counts', ...(await source.counts()) });
                     return;
                 case 'console.requests.detail':
                     await this.post({ type: 'console.requests.detail', seq, detail: await source.detail(String(message.id ?? '')) ?? null });

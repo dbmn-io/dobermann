@@ -68,6 +68,8 @@ describe('Console Requests (host): through the controller', () => {
         const h = batch(4);
         try {
             await h.controller.handle({ type: 'console.requests.page', seq: 1, offset: 0, limit: 50 });
+            await h.controller.handle({ type: 'console.requests.shown', shown: true });   // (the tab on screen)
+            await wait(20);
             h.members[0].status = 'running';
             await ConsoleController.sendMemberStatusUpdate('b-1', ['m-1'], 'running');
             h.members[0].status = 'completed';
@@ -86,6 +88,8 @@ describe('Console Requests (host): through the controller', () => {
         const h = batch(3);
         try {
             await h.controller.handle({ type: 'console.requests.page', seq: 1, offset: 0, limit: 50 });
+            await h.controller.handle({ type: 'console.requests.shown', shown: true });   // (the tab on screen)
+            await wait(20);
             (h.controller as unknown as { lastRequestsPageMs: number }).lastRequestsPageMs = 200;   // a big run's page
             h.members[0].status = 'completed';
             await ConsoleController.sendMemberStatusUpdate('b-1', ['m-1'], 'completed');
@@ -94,6 +98,18 @@ describe('Console Requests (host): through the controller', () => {
             expect(h.of('console.requests.changed'), 'the table waits').to.have.length(0);
             await wait(500);
             expect(h.of('console.requests.changed')).to.have.length(1);
+        } finally { h.done(); }
+    });
+
+    it('a Requests tab never opened is never told to reload: its counts only (the table is made unseen at load)', async () => {
+        const h = batch(3);
+        try {
+            await h.controller.handle({ type: 'console.requests.counts' });   // (as the page asks at load)
+            h.members[0].status = 'completed';
+            await ConsoleController.sendMemberStatusUpdate('b-1', ['m-1'], 'completed');
+            await wait(400);
+            expect(h.of('console.requests.changed')).to.have.length(0);
+            expect(h.of('console.requests.counts').length, 'the tab\'s count still follows').to.be.greaterThan(1);
         } finally { h.done(); }
     });
 
