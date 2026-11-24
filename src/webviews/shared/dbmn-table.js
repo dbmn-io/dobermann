@@ -301,7 +301,15 @@
             if (!this._built) this._build();
             if (window.ResizeObserver && !this._seen) {
                 // Sized when first seen (a table behind another tab has no width to measure), and its window follows its height
-                this._seen = new ResizeObserver(() => { const fresh = !this._sized; if (fresh) this._size(); this._render(fresh); });
+                // (and when its box widens after that, a table narrower than the box fills it again: James, 2026-11-24,
+                // Results on an ultrawide sat at the width it was first measured at)
+                this._seen = new ResizeObserver(() => {
+                    const fresh = !this._sized;
+                    if (fresh) this._size();
+                    else if (this._scroll.clientWidth > (this._boxW || 0) + 1) this._fill();
+                    this._boxW = this._scroll.clientWidth;
+                    this._render(fresh);
+                });
                 this._seen.observe(this._scroll);
             }
             this._refresh();
@@ -1340,11 +1348,23 @@
             // widths measured then would cut every value short; offsetWidth is never scaled)
             const drawn = this._table.getBoundingClientRect().width;
             const scale = drawn > 0 && this._table.offsetWidth > 0 ? drawn / this._table.offsetWidth : 1;
-            let widths = this._columns.map(c => {
+            // (what each column asks for, up to the double-click fit's limit; held to 420 unless there's room: a column
+            // the screen draws itself, Compact's value and the other run's pill, was cut before its pill, James 2026-11-24)
+            // (a cell is capped by the shared cell style, so its heading under-reads a column the screen draws itself:
+            // for a drawn data column, its cells' own content width counts too, the sampled rows' widest)
+            const cellsNeed = this._columns.map((c, i) => {
+                if (!c.render || c.pinned) return 0;
+                let most = 0;
+                for (const tr of this._body.rows) { const td = tr.cells[i]; if (td && td.scrollWidth > most) most = td.scrollWidth; }
+                return most;
+            });
+            const asks = this._columns.map((c, i) => {
                 if (Number(c.width) > 0) return Math.round(Number(c.width));
                 const th = this._head.querySelector(`th[data-col="${CSS.escape(c.id)}"]`);
-                return th ? Math.min(420, Math.ceil(th.getBoundingClientRect().width / scale)) : 80;
+                const heading = th ? Math.ceil(th.getBoundingClientRect().width / scale) : 80;
+                return Math.min(window.ColumnHead.MAX_FIT, Math.max(heading, cellsNeed[i]));
             });
+            let widths = asks.map(w => Math.min(420, w));
             const sum = widths.reduce((a, b) => a + b, 0);
             const room = this._scroll.clientWidth;
             // A table narrower than its box fills it: the room goes to the data columns. A pinned
@@ -1357,7 +1377,7 @@
                 // left, to every data column in proportion
                 let spare = room - sum;
                 const needs = this._needs(widths, stays);
-                const short = needs.map((n, i) => (stays[i] ? 0 : Math.max(0, n - widths[i])));
+                const short = needs.map((n, i) => (stays[i] ? 0 : Math.max(0, Math.max(n, asks[i]) - widths[i])));
                 const lacking = short.reduce((a, b) => a + b, 0);
                 if (lacking > 0) {
                     const give = Math.min(spare, lacking);
@@ -1371,6 +1391,23 @@
             this._columns.forEach((column, i) => { if (!this._widths[column.id]) this._widths[column.id] = widths[i]; });
             this._sized = true;
             this._table.classList.add('is-sized');
+            this._colgroup();
+            this._rendered = { start: -1, end: -1 };
+        }
+
+        /** The box grew after the table was sized: a table narrower than it fills it again, the room to the data columns (not pinned, not given a width, not resized by hand). */
+        _fill() {
+            const room = this._scroll.clientWidth;
+            if (!room || !this._sized) return;
+            const ids = this._columns.map(c => c.id);
+            const ws = ids.map(id => this._widths[id] || 0);
+            const sum = ws.reduce((a, b) => a + b, 0);
+            if (sum >= room - 1) return;
+            const grows = this._columns.map(c => !c.pinned && !(Number(c.width) > 0) && !this._set[c.id]);
+            const g = ws.reduce((a, w, i) => a + (grows[i] ? w : 0), 0);
+            if (!g) return;
+            const spare = room - sum;
+            ids.forEach((id, i) => { if (grows[i]) this._widths[id] = Math.floor(ws[i] * (g + spare) / g); });
             this._colgroup();
             this._rendered = { start: -1, end: -1 };
         }
