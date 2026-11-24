@@ -153,6 +153,7 @@
  *       A sort's icon is a clock until the new rows land. Both events are told for `rows` too.
  *   orders.layout = saved;            // after `columns`: the order, widths, hidden columns and sort kept
  *   orders.searchWith(input, mirror); // the screen's own search box, with the @column suggestions
+ *   <dbmn-table natural>     as wide as its columns, centred, never stretched to fill (wide windows); its own scrollbars
  *   <dbmn-table searchable saved-searches>  its own box with a ★ (needs dbmn-saved-searches.js): orders.savedSearches =
  *                                     [{ name, text }]; dbmn-saved-change { searches } after a save, rename or delete
  *   orders.searchFields = [{ id: 'body', name: 'body', get: row => row.request.body }];
@@ -331,9 +332,14 @@
             // (the fields a search has asked the screen to add: asked again once the columns change)
             this._asked = new Set();
             this._sort = null;
+            // A column given again keeps its width, measured or set (James, 2026-11-24: a filter click redrew Query's
+            // headings and every column was measured again on the rows left: "the button moves"). Measured afresh only
+            // when a column is new
+            const was = this._widths || {}, wasSet = this._set || {};
             this._widths = {};
             this._set = {};
-            this._sized = false;
+            this._all.forEach(c => { if (was[c.id] > 0) { this._widths[c.id] = was[c.id]; if (wasSet[c.id]) this._set[c.id] = true; } });
+            this._sized = !this._sizedEmpty && this._columns.length > 0 && this._columns.every(c => this._widths[c.id] > 0);
             this._refresh();
         }
         get columns() { return this._columns.filter(c => !own(c.id)); }
@@ -1364,9 +1370,12 @@
                 const heading = th ? Math.ceil(th.getBoundingClientRect().width / scale) : 80;
                 return Math.min(window.ColumnHead.MAX_FIT, Math.max(heading, cellsNeed[i]));
             });
-            let widths = asks.map(w => Math.min(420, w));
+            // (`natural`: every column as wide as it asks, up to the fit limit, and the table as wide as its columns,
+            // centred, never stretched to fill its box: Query's Results on a wide window, James 2026-11-24)
+            const natural = this.hasAttribute('natural');
+            let widths = asks.map(w => (natural ? w : Math.min(420, w)));
             const sum = widths.reduce((a, b) => a + b, 0);
-            const room = this._scroll.clientWidth;
+            const room = natural ? 0 : this._scroll.clientWidth;
             // A table narrower than its box fills it: the room goes to the data columns. A pinned
             // column (a status, a key, the row numbers) or one given its width keeps what it needs:
             // stretched in proportion, the widest (a status of many tags) would grow the most
@@ -1397,6 +1406,7 @@
 
         /** The box grew after the table was sized: a table narrower than it fills it again, the room to the data columns (not pinned, not given a width, not resized by hand). */
         _fill() {
+            if (this.hasAttribute('natural')) return;
             const room = this._scroll.clientWidth;
             if (!room || !this._sized) return;
             const ids = this._columns.map(c => c.id);

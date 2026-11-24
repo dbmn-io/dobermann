@@ -37,10 +37,14 @@ dbmn-footer {
     gap: 6px 20px;
     box-sizing: border-box;
     padding: 4px 10px;
+    /* (the screen band, core.css's --dbmn-band: on a wide window its contents sit in the centred band, on every
+       screen that wears it; the element itself stays the window's width) */
+    padding-inline: max(10px, calc((100% - var(--dbmn-band, 1280px)) / 2 + 10px));
     font-size: 13px;
 }
 /* (in a gallery or a dialog the footer sits where it is put, not on the window's bottom edge) */
 dbmn-footer[inline] {
+    padding-inline: 10px;
     position: static;
     box-shadow: none;
     border: 1px solid var(--foot-line);

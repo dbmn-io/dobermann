@@ -159,6 +159,11 @@ export function buildDesignSystemPage(asset: AssetUrl): string {
     <section class="ds-section" id="footer">
         <h2>Footer <span class="ds-chip is-component">Component</span></h2>
         <p>Every main screen ends in this footer. Left: standard buttons, the main one last. Right: one box, one height, showing how far along: steps when the tasks are yours, a progress bar when they are the system's, or a few words. One of them at a time.</p>
+        <p><b>The screen band.</b> On a wide window the footer's contents sit in the centred band, <code>--dbmn-band</code> (1280px, core.css), on every screen that wears it; the footer itself stays the window's width. The area above a screen's table (its name line, lanes and controls) takes the same band with <code>.dbmn-band</code>, and lanes grow from the middle with <code>.dbmn-lanes.is-centred</code>. A table keeps its own width outside the band. One property, so the footer and the controls never drift apart.</p>
+        <pre class="ds-code"><code>:root { --dbmn-band: 1280px; }                     (core.css: the one width)
+&lt;div class="dbmn-band"&gt; … name line, lanes, controls … &lt;/div&gt;
+&lt;div class="dbmn-lanes is-centred"&gt; … &lt;/div&gt;          lanes grow from the middle
+&lt;dbmn-footer&gt; … &lt;/dbmn-footer&gt;                       carries the band itself: nothing to add</code></pre>
 
         <h3>Steps</h3>
         <p>Try it: Next walks on and the highlight slides to the step that takes over; a finished step takes you back. On the last step the results are worked out, then the steps shrink away behind a summary of what is on screen. Click the summary for the steps.</p>

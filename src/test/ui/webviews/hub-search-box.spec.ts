@@ -136,10 +136,16 @@ test.describe('Hub search box (#444)', () => {
         const box = page.locator('#catalogueSearch');
         const star = page.locator('#catalogueSaved');
         // Inside the box at its right, beside the builder, the text kept clear of it (a typical search stays one line)
-        const b = (await box.boundingBox())!, s = (await star.locator('.dbmn-saved-btn').boundingBox())!;
-        const builder = (await page.locator('#catalogueFilterBtn').boundingBox())!;
+        // (measured in one frame once the list has slid in: measured apart, the box and the star were caught at
+        // different points of the slide, round 31)
+        await page.waitForFunction(() => document.getAnimations().every(a => a.playState !== 'running'));
+        const [b, s, builder] = await page.evaluate(() => ['#catalogueSearch', '#catalogueSaved .dbmn-saved-btn', '#catalogueFilterBtn'].map(q => {
+            const r = document.querySelector(q)!.getBoundingClientRect();
+            return { x: r.x, y: r.y, width: r.width, height: r.height };
+        }));
         expect(s.x + s.width).toBeLessThanOrEqual(builder.x + 1);
-        expect(s.x).toBeGreaterThan(b.x + b.width - 52 - 1);
+        expect(s.x + s.width).toBeGreaterThan(builder.x - 8);   // right beside the builder (the star and its caret, one look)
+        expect(s.x).toBeGreaterThan(b.x + b.width / 2);
         expect(s.y).toBeGreaterThanOrEqual(b.y);
         expect(s.y + s.height).toBeLessThanOrEqual(b.y + b.height);
         await box.click();

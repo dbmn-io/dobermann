@@ -17,14 +17,14 @@ const SCRIPTS = ['shared/icons.js', 'shared/search-matcher.js', 'shared/value-fo
     'shared/virtual-window.js', 'shared/dbmn-context-menu.js', 'shared/column-drag.js', 'shared/column-head.js', 'shared/dbmn-table.js'];
 
 /** A table in a box `width` wide: a key, a column the screen draws itself (a value and a 260px pill), a short one. */
-const tablePage = (width, others = 0) => `<!doctype html><html><head>
+const tablePage = (width, others = 0, attrs = '') => `<!doctype html><html><head>
 <style>:root{--vscode-foreground:#ccc;--vscode-editor-background:#1e1e1e;--vscode-panel-border:#444;--vscode-input-background:#2a2a2a}
 ${STYLES.map(read).join('\n')}
 body{margin:0;padding:16px;background:#1e1e1e;color:#ccc;font:13px sans-serif}
 #box{width:${width}px}
 .pill{display:inline-block;width:260px;margin-left:8px;background:#cca700;color:#222}</style>
 ${SCRIPTS.map(rel => `<script>${read(rel)}</script>`).join('\n')}</head><body>
-<div id="box"><dbmn-table id="t" label="Results" removable></dbmn-table></div>
+<div id="box"><dbmn-table id="t" label="Results" removable ${attrs}></dbmn-table></div>
 <script>
   const t = document.getElementById('t');
   t.columns = [
@@ -88,3 +88,34 @@ test('a column resized by hand keeps its width when the box widens', async ({ pa
     await page.waitForTimeout(300);
     expect(await widthOf(page, 'uom')).toBe(set);
 });
+
+test('natural: the table as wide as its columns, centred in a wide box, never stretched; past the box it scrolls', async ({ page }) => {
+    // James, 2026-11-24: "make sure the columns are always centred and then they grow to the full width… a horizontal scroll as needed"
+    await page.setContent(tablePage(2400, 0, 'natural'));
+    await expect(page.locator('#t .dbmn-table-body tr').first()).toBeVisible();
+    const box = await page.locator('#box').boundingBox();
+    const host = await page.locator('#t').boundingBox();
+    const grid = await page.locator('#t table').first().boundingBox();
+    expect(grid.width).toBeLessThan(1400);                                  // not stretched to 2400
+    expect(Math.abs((host.x - box.x) - (box.x + box.width - (host.x + host.width)))).toBeLessThanOrEqual(2);   // centred
+    expect(Math.abs((host.x + host.width) - (grid.x + grid.width))).toBeLessThanOrEqual(24);  // its edge is the table's, give or take its scrollbar
+    // Wider than its box: the whole box, and it scrolls sideways
+    await page.locator('#box').evaluate(b => { b.style.width = '500px'; });
+    await expect.poll(() => page.locator('#t .dbmn-table-scroll').first().evaluate(el => el.scrollWidth > el.clientWidth)).toBe(true);
+});
+
+test('the same columns given again keep their widths (a filter redrawing the headings moves nothing)', async ({ page }) => {
+    // James, 2026-11-24: "column widths change when I click the 3 to filter"
+    await page.setContent(tablePage(1400));
+    await expect(page.locator('#t .dbmn-table-body tr').first()).toBeVisible();
+    const widths = () => page.locator('#t thead th').evaluateAll(ths => ths.map(th => Math.round(th.getBoundingClientRect().width)));
+    const before = await widths();
+    await page.evaluate(() => {
+        const t = document.getElementById('t');
+        t.columns = t.columns.map(c => ({ ...c }));
+        t.rows = t.rows.slice(0, 3);                                         // a filter: fewer rows, the same columns
+    });
+    await page.waitForTimeout(200);
+    expect(await widths()).toEqual(before);
+});
+

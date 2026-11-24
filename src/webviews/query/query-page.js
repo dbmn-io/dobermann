@@ -254,6 +254,9 @@
         bar.folded = ui.step === 4 && !!ui.settled && !!ui.arrived;
         const next = $('queryNextBtn');
         next.classList.toggle('hidden', ui.step === 4);
+        // Results: what you do with the rows (Chain, Export) is the footer's Actions, where Next was
+        $('queryActionsBtn').classList.toggle('hidden', ui.step !== 4);
+        $('queryActionsBtn').disabled = !!ui.busy;
         next.textContent = ui.step < 4 ? `Next: ${STEPS[ui.step].label}` : 'Next';
         next.disabled = !!waitsFor(ui.step + 1) || !!ui.busy;
         next.title = ui.step === 3 && reportEmpty() ? EMPTY_REPORT : ui.step === 2 && notJoined() ? notJoined() : '';
@@ -486,13 +489,17 @@
             if (old) name.prepend(old);
             const part = incompleteIcon(v);
             if (part) name.prepend(part);
-            inner.append(name, what);
+            // On Results the slots fold to one line of chips (James, 2026-11-24): the label, its date and its warning mark
+            const date = el('span', 'query-slot-date', day(v.executedAt) || '');
+            inner.append(name, date, what);
             // Where it comes from and how old it is: on the slot, quietly; whole on Views, and on hover here
             // (the whole of it is the click's summary, not the hover: James, 2026-11-22. Until the menu can show a
             // summary, DbmnContextMenu.takesSummary, the hover still says it, so it is never nowhere)
             inner.title = window.DbmnContextMenu && window.DbmnContextMenu.takesSummary
                 ? `${v.run || v.name}: click for its details`
                 : (() => { const sum = slotSummary(v); return [sum.title, ...sum.lines.map(l => `${l[0]}: ${l[1]}`)].join('\n'); })();
+            // (the row count on hover, on Results: the chip has no room for it)
+            if (ui.step === 4 && !v.reading && v.rows !== undefined) inner.title += `\nRows: ${count(v.rows)}`;
             if (old) inner.title += `\n${old.title}`;
             if (part) inner.title += `\n${INCOMPLETE_SAYS}`;
             if (out) inner.title += v.off ? '\nHidden: left out of the report. Its menu shows it again.' : '\nNot joined yet: left out of the report until its columns are picked on Join.';
@@ -546,10 +553,17 @@
         [...box.children].forEach(c => { if (c !== lead) c.remove(); });
         if (lead && box.firstElementChild !== lead) box.prepend(lead);
         box.append(...lanes, end);
+        $('queryTop').classList.toggle('query-top-chips', ui.step === 4);
         // A view just added: its lane grows open from nothing (DbmnLanes), and the pair after it is carried right as it
         // opens, by the grid itself, on its own line (James, 2026-11-23: "The view needs to expand… These buttons need
         // to move across as the view comes in"; before, the pair was slid separately and came in from above)
         ['queryTop', 'queryViewRows', 'queryJoins', 'queryColumns'].forEach(id => applyLanes($(id)));
+        // The band as wide as the lanes need (the name's gutter, every view, the place after), when that is more than the
+        // band: the band grows while the window has room, so nothing scrolls sideways that would fit (core.css --band-fit).
+        // (Too narrow, the lines scrolled sideways each time Add a view's pair was brought into sight, and the names'
+        // gutter slid under the band's left edge: query-looks, 2026-11-24, "Not used" at -34)
+        const lanesMin = parseFloat($('queryTop').style.getPropertyValue('--lanes-min')) || 0;
+        document.querySelector('.query-page').style.setProperty('--band-fit', `${Math.ceil(lanesMin) + 20}px`);
         placeAdds();
         // The slot row and the step's lines under it scroll sideways as one (the step's bar moves both)
         const stepBox = { 1: 'queryViewRows', 2: 'queryJoins', 3: 'queryColumns' }[ui.step] || '';
@@ -2541,15 +2555,23 @@
         'query:back': () => goTo(ui.step - 1),
         'query:next': () => goTo(ui.step + 1),
         // The rows Results shows now (its search and sort), as a workbook
-        'query:export': () => {
-            setBusy('Exporting…');
-            // (what Results shows: its search and sort, and a compare's Status filters and hidden results)
-            // (and the Status menu's counts as shown, for the file's summary: #13)
-            post({ type: 'query.export', search: ui.search, sort: ui.sort, ...(hasStatus() ? { filter: ui.filter, counts: ui.counts || null, diffsOnly: !!ui.diffsOnly } : {}) });
-        },
-        // The rows Results shows become a Run Batch's input: the Console's Chain (its dialog answers console.chainOptions)
-        'query:chain': () => post({ type: 'console.chain', payload: {} })
+        'query:export': () => exportRows(),
+        'query:chain': () => post({ type: 'console.chain', payload: {} }),
+        // The footer's Actions on Results (James, 2026-11-24): what you do with the rows, opening upward
+        'query:actions': (arg, event, button) => {
+            window.DbmnContextMenu.show(button, [
+                { id: 'chain', label: 'Chain to a Run Batch…', icon: 'link' },
+                { id: 'export', label: 'Export to Excel', icon: 'download' }
+            ], id => id === 'chain' ? post({ type: 'console.chain', payload: {} }) : exportRows());
+        }
     });
+
+    function exportRows() {
+        setBusy('Exporting…');
+        // (what Results shows: its search and sort, and a compare's Status filters and hidden results)
+        // (and the Status menu's counts as shown, for the file's summary: #13)
+        post({ type: 'query.export', search: ui.search, sort: ui.sort, ...(hasStatus() ? { filter: ui.filter, counts: ui.counts || null, diffsOnly: !!ui.diffsOnly } : {}) });
+    }
 
     // + Add a file: the file picked is read and sent (a workbook's sheets are asked about next)
     addsEl('queryAddFile').addEventListener('change', () => {

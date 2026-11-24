@@ -50,6 +50,9 @@
     min-width: var(--lanes-min, 0);
     align-items: stretch;
 }
+/* .is-centred: the tracks centred in the row, so lanes grow from the middle as views are added (James, 2026-11-24);
+   every container on the same screen takes it, so the slots and each step's lines stay on one column grid */
+.dbmn-lanes.is-centred .dbmn-lanes-row { justify-content: safe center; }   /* (safe: a row wider than its box starts at its left, never cut) */
 
 /* A lane growing open (DbmnLanes.apply, a view just added): its cells show only what fits so far */
 .dbmn-lanes.is-growing .dbmn-lanes-row > .dbmn-lane,

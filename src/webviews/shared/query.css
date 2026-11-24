@@ -152,9 +152,12 @@
 /* Results' tools on ONE line, across the whole width with room between each (James, 2026-11-22) */
 /* Three groups (James, 2026-11-22): what the report shows hard left, evenly spaced; Search in the middle, centred in the
    room between; Chain and Export (what goes to other things) hard right */
-#queryResultsControls { flex: 1 1 100%; min-width: 0; flex-wrap: nowrap; gap: 16px; justify-content: flex-start; }
-#queryResultsControls > .search-container { flex: 1 1 0; min-width: 140px; display: flex; justify-content: center; margin: 0; }
-#queryResultsControls > .search-container .search-input-wrapper { width: 100%; max-width: 440px; }
+/* (James, 2026-11-24: "all controls centred as one, with no LARGE gap between filter and Search box": the switches,
+   the icons and the box together in the middle of the row, 16px apart) */
+/* (one centred group, the box a set width: the design system's .dbmn-toolbar, core.css; Query's own is only its line) */
+#queryResultsControls { flex: 1 1 100%; }
+/* (Chain and Export went to the footer's Actions, 2026-11-24: the box takes their room) */
+#queryResultsControls > .search-container .search-input-wrapper { width: 100%; max-width: 760px; }
 /* Saved searches' ★, inside the box at its right end (as the Hub's Build a search is): the box keeps its width and its
    place, centred, and Chain its room at 900px. `compact` (the component's): star and caret only, its name in the tooltip.
    The text, and its highlight, stop short of it */
@@ -169,8 +172,6 @@
 /* Every control in the row one height, the toggles' (dbmn-toggle, 34px): "the same height as any other button" (James, 2026-11-22) */
 #queryResultsControls { --query-tool-h: 34px; align-items: center; }
 #queryResultsControls .search-input { height: var(--query-tool-h); }
-#queryResultsControls #queryChainBtn { height: var(--query-tool-h); box-sizing: border-box; display: inline-flex; align-items: center; }
-#queryResultsControls #queryExportBtn { width: var(--query-tool-h); height: var(--query-tool-h); box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; }
 #queryResultsControls .query-status-tools { flex-wrap: nowrap; }
 /* Totals stay in sight under the rows */
 .query-page tfoot td { position: sticky; bottom: 0; background: var(--vscode-editor-background); border-top: 1px solid var(--vscode-panel-border); }
@@ -502,3 +503,32 @@ dbmn-table.is-reading .dbmn-table-none { visibility: hidden; }
 .compare-record-head-line { display: block; font-weight: normal; font-size: 0.85em; color: var(--vscode-descriptionForeground); white-space: nowrap; }
 .compare-json .compare-json-line { white-space: pre; padding-top: 0; padding-bottom: 0; }
 .compare-json .compare-json-record td { padding-top: 8px; }
+
+/* Results on a wide screen (James, 2026-11-24, layout B): the header, its controls and the footer in a centred
+   1440px band; the table keeps the whole width, so many columns still have room */
+/* (James, 2026-11-24: "the whole query needs to move to the middle", every step): the header and every step's lines in
+   one centred band, the same padding each side so the slots and the lines under them stay on one grid; the lanes grow
+   from the middle (safe: a row wider than its box starts at the left and scrolls, never cut on the left).
+   Results' table keeps its own width, outside the band. The band is the design system's (.dbmn-band, on the header
+   and the steps above the table in query-page.ts), the centring dbmn-lanes' (.is-centred) */
+#csvBatchContainer.query-page > .compare-results-tools,
+#csvBatchContainer.query-page > .csv-step:not(#queryResultsStep) { padding-left: 10px; padding-right: 10px; }
+/* The footer's Actions (Chain, Export), opening upward over the table */
+/* (not while hidden: this file loads after the shared .hidden, which it would beat) */
+.query-actions-btn:not(.hidden) { display: inline-flex; align-items: center; gap: 4px; }
+.query-actions-btn .inline-icon svg { width: 14px; height: 14px; }
+
+/* Results: the views' header as one line (James, 2026-11-24): each slot on its own place in the grid, as on every step
+   ("they must NOT SHIFT… they can shrink, but their position left/right must not move"), only shorter: its label,
+   date and warning mark on one line; where it came from on hover and in its menu */
+.query-slot-date { display: none; }
+#queryTop.query-top-chips .query-slot-what { display: none; }
+#queryTop.query-top-chips .query-slot-head { padding-top: 0; padding-bottom: 2px; }
+#queryTop.query-top-chips .compare-result-btn { display: flex; align-items: center; gap: 6px; }
+#queryTop.query-top-chips .query-slot-date { display: inline; font-size: 12px; color: var(--vscode-descriptionForeground); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+#queryTop.query-top-chips .query-slot-empty { display: none; }
+#queryTop.query-top-chips .query-adds { flex-direction: row; }
+/* (James, 2026-11-24, on the first look) The name and chips line closer to the top, a little more room under it, and a
+   quiet rule across the band joining the controls (the table's centring is dbmn-table's `natural`) */
+.query-page:has(#queryResultsStep:not(.hidden)) > .compare-results-tools { padding-top: 2px; row-gap: 8px; }
+.query-page:has(#queryResultsStep:not(.hidden)) #queryResultsControls { border-top: 1px solid var(--vscode-panel-border); padding-top: 6px; }

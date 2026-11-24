@@ -87,21 +87,35 @@ test('a save, rename or delete in the ★: the whole list goes to the host', asy
 });
 
 for (const width of [900, 1280]) {
-    test(`Results at ${width}px: the ★ inside the box; the box centred between the filter and Chain; Chain whole`, async ({ page: p }) => {
-        // (round 19, 2026-11-23: beside the box, the ★ pushed Chain past the toolbar at 900 and took the box off centre)
+    test(`Results at ${width}px: the ★ inside the box; the controls and the box centred as one group; Chain in the footer's Actions`, async ({ page: p }) => {
+        // (round 19, 2026-11-23: beside the box, the ★ pushed Chain past the toolbar at 900 and took the box off centre;
+        // 2026-11-24: Chain and Export moved to the footer's Actions, the box takes the row's room)
         await p.setViewportSize({ width, height: 700 });
         expect(await open(p)).toEqual([]);
         await p.evaluate(() => window.postMessage({ type: 'query.goTo', start: 'results' }, '*'));
         await expect(p.locator('#queryResultsControls')).toBeVisible();
         const box = sel => p.locator(sel).boundingBox();
-        const [filter, search, chain, star, bar] = await Promise.all(['#queryClearFilters', '#querySearch', '#queryChainBtn', '#querySaved', '#queryResultsControls'].map(box));
+        const [filter, search, star, bar] = await Promise.all(['#queryClearFilters', '#querySearch', '#querySaved', '#queryResultsControls'].map(box));
+        await expect(p.locator('#queryChainBtn, #queryExportBtn')).toHaveCount(0);
         // the ★ within the box
         expect(star.x).toBeGreaterThan(search.x);
         expect(star.x + star.width).toBeLessThanOrEqual(search.x + search.width + 1);
-        // centred in the room between the controls and Chain (query-compare.spec's measure)
-        expect(Math.abs((search.x - (filter.x + filter.width)) - (chain.x - (search.x + search.width)))).toBeLessThanOrEqual(40);
-        // Chain whole, inside the toolbar
-        expect(chain.x + chain.width).toBeLessThanOrEqual(bar.x + bar.width + 1);
+        // the controls and the box one group, centred in the row, the box just after the filter (James, 2026-11-24:
+        // "all controls centred as one, with no LARGE gap between filter and Search box")
+        const group = await p.locator('#queryResultsControls .query-view-tools').boundingBox();
+        expect(search.x - (filter.x + filter.width), 'no large gap before the box').toBeLessThanOrEqual(40);
+        expect(Math.abs((group.x - bar.x) - ((bar.x + bar.width) - (search.x + search.width))), 'the group centred').toBeLessThanOrEqual(40);
+        expect(search.x + search.width).toBeLessThanOrEqual(bar.x + bar.width + 1);
+        // Chain and Export: the footer's Actions, whole in the window, its menu naming both
+        const actions = p.locator('#queryActionsBtn');
+        await expect(actions).toBeVisible();
+        const a = await actions.boundingBox();
+        expect(a.x + a.width).toBeLessThanOrEqual(width);
+        await actions.click();
+        const menu = p.locator('.dbmn-context-menu');
+        await expect(menu).toContainText('Chain to a Run Batch');
+        await expect(menu).toContainText('Export to Excel');
+        await p.keyboard.press('Escape');
         // typed text stops short of the ★
         const pad = await p.locator('#querySearch').evaluate(el => parseFloat(getComputedStyle(el).paddingRight));
         expect(pad).toBeGreaterThanOrEqual(star.width);

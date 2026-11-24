@@ -14,6 +14,9 @@ dbmn-table {
     min-width: 0;
 }
 dbmn-table [hidden] { display: none !important; }
+/* natural (dbmn-table.js): the table as wide as its columns, centred in its place, and its scrollbars its own: the
+   vertical one on the table's right edge; past the window it scrolls sideways (the screen band, James 2026-11-24) */
+dbmn-table[natural] { width: fit-content; max-width: 100%; margin-inline: auto; }
 
 .dbmn-table-tools {
     display: flex;

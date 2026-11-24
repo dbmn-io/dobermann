@@ -33,12 +33,12 @@ export function buildQueryPage(asset: AssetUrl, config: { queryId: string; name:
 
     <div id="csvBatchContainer" class="query-page">
         <!-- The query's name and its views, each in its colour, on every step -->
-        <header class="report-toolbar compare-results-tools">
+        <header class="report-toolbar compare-results-tools dbmn-band">
             <!-- Compare's slots, one per view, first: the match table on Join sits on their grid -->
             <!-- The gutter the lines' headings sit in (Request, View, ... on Views; the joins on Join): the same width on every step, so the slots never move -->
             <!-- ...and it holds the query's name (shared/dbmn-name.js): click it to rename, from the first step on -->
             <!-- The slots' row is a row of the grid every step's lines share (dbmn-lanes): the name in its gutter, a lane per view, its runs under one heading -->
-            <div id="queryTop" class="dbmn-lanes query-top">
+            <div id="queryTop" class="dbmn-lanes is-centred query-top">
                 <div id="queryViews" class="dbmn-lanes-row query-slots" data-line="slots" role="group" aria-label="The views joined">
                     <span id="queryHeadLead" class="dbmn-lanes-gutter query-lead query-head-lead" data-gutter><dbmn-name id="queryName" placeholder="Name this query" label="Query name" max="30" value="${attr(config.name)}"></dbmn-name><span id="queryKindLabel" class="query-kind-label" role="status"></span></span>
                 </div>
@@ -52,7 +52,7 @@ export function buildQueryPage(asset: AssetUrl, config: { queryId: string; name:
             <input type="file" id="queryAddFile" class="hidden" accept=".csv,.tsv,.txt,.xlsx,.xls" aria-label="A CSV or Excel file">
             </span>
             <!-- Results' tools join the views, as Compare's join its slots: find, Distinct, Totals, the SQL, Export. The count of rows is the footer's (its summary): one place -->
-            <div id="queryResultsControls" class="compare-results-controls hidden">
+            <div id="queryResultsControls" class="compare-results-controls dbmn-toolbar hidden">
                 <!-- What the report shows, on the left (James, 2026-11-22): a compare's two switches, then Totals, hidden
                      characters and Filter as full-size icon toggles (the design system's dbmn-toggle: aria-pressed is the state),
                      their words on hover; Distinct when rows repeat. Search, Chain and Export on the right, the gap between growing -->
@@ -88,18 +88,16 @@ export function buildQueryPage(asset: AssetUrl, config: { queryId: string; name:
                         <dbmn-saved-searches id="querySaved"></dbmn-saved-searches>
                     </div>
                 </div>
-                <button type="button" id="queryChainBtn" class="export-button" data-click="query:chain" title="Send these rows to another API as its Run Batch input">Chain <span class="inline-icon" data-icon="chevron-right"></span></button>
-                <button type="button" class="compare-tool-btn icon" id="queryExportBtn" data-click="query:export" title="Export to Excel" aria-label="Export to Excel" data-icon="download"></button>
             </div>
         </header>
         <!-- The search in words, while a column is asked for: "Reading this as: poDate (date) after 12 Nov 2026" -->
         <p id="queryReads" class="form-hint query-reads hidden" role="status"></p>
 
         <!-- Step 1: Views: each a saved result, read through one of its endpoint's Views -->
-        <div id="queryViewsStep" class="csv-step hidden">
+        <div id="queryViewsStep" class="csv-step dbmn-band hidden">
             <section class="execution-section">
                 <!-- On the slots' grid, as Join is: a line per thing a view says, each view's under its slot -->
-                <div id="queryViewRows" class="dbmn-lanes query-views"></div>
+                <div id="queryViewRows" class="dbmn-lanes is-centred query-views"></div>
             </section>
         </div>
 
@@ -108,16 +106,16 @@ export function buildQueryPage(asset: AssetUrl, config: { queryId: string; name:
              from one view's to the other's), LEFT JOIN or JOIN, and how the rows meet, a count
              under the view it counts. A count is a button: it lists the values it counts. A join's
              stats fold away -->
-        <div id="queryJoinStep" class="csv-step hidden">
-            <div id="queryJoins" class="dbmn-lanes query-joins"></div>
+        <div id="queryJoinStep" class="csv-step dbmn-band hidden">
+            <div id="queryJoins" class="dbmn-lanes is-centred query-joins"></div>
         </div>
 
         <!-- Step 3: Columns: every column of every view comes in; untick and order them here -->
-        <div id="queryColumnsStep" class="csv-step hidden">
+        <div id="queryColumnsStep" class="csv-step dbmn-band hidden">
             <!-- On the slots' grid: each view's columns under its slot, ticked to show, each with a value of its own -->
             <!-- Every column taken out: said here, on the step, as Results waits (the step bar carries no reasons) -->
             <dbmn-status id="queryColumnsEmpty" class="query-columns-empty" tone="warn" inline hidden></dbmn-status>
-            <div id="queryColumns" class="dbmn-lanes query-cols"></div>
+            <div id="queryColumns" class="dbmn-lanes is-centred query-cols"></div>
         </div>
 
         <!-- Step 4: Results -->
@@ -129,7 +127,7 @@ export function buildQueryPage(asset: AssetUrl, config: { queryId: string; name:
             <!-- (the working line lies over the table's top while it works: the table never jumps for it) -->
             <div class="query-results-wrap">
                 <dbmn-progress id="queryReading" class="query-engine-note hidden" inline stop></dbmn-progress>
-                <dbmn-table id="queryTable" class="query-results" label="Results" removable></dbmn-table>
+                <dbmn-table id="queryTable" class="query-results" label="Results" removable natural></dbmn-table>
             </div>
         </div>
 
@@ -138,6 +136,8 @@ export function buildQueryPage(asset: AssetUrl, config: { queryId: string; name:
         <dbmn-footer>
             <dbmn-actions>
                 <button type="button" id="queryBackBtn" class="btn btn-secondary" data-click="query:back" disabled>Back</button>
+                <!-- What you do with the rows, on Results (James, 2026-11-24: "save the top for the controls"): Chain, Export -->
+                <button type="button" id="queryActionsBtn" class="btn btn-primary query-actions-btn hidden" data-click="query:actions" aria-haspopup="menu" title="What you can do with these rows">Actions <span class="inline-icon" data-icon="chevron-up"></span></button>
                 <button type="button" id="queryNextBtn" class="btn btn-primary" data-click="query:next" disabled>Next</button>
                 <!-- The Join step, once a join has a column: every join back to "Pick a column", after a confirm (a stuck query's way out) -->
             </dbmn-actions>

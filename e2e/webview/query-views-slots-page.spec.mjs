@@ -92,19 +92,23 @@ test('a view added: its lane opens from nothing where it goes, and the pair move
         window.postMessage(s, '*');
         const t0 = performance.now();
         const tick = () => {
-            const lane = document.querySelectorAll('#queryViews > .dbmn-lane')[1];
+            const lanes = document.querySelectorAll('#queryViews > .dbmn-lane'), lane = lanes[1];
             const adds = document.getElementById('queryAdds').getBoundingClientRect();
-            if (lane) out.push({ t: performance.now() - t0, laneX: lane.getBoundingClientRect().left, laneW: lane.getBoundingClientRect().width, x: adds.left, y: adds.top });
+            if (lane) out.push({ t: performance.now() - t0, laneX: lane.getBoundingClientRect().left, laneW: lane.getBoundingClientRect().width,
+                x: adds.left, y: adds.top, firstX: lanes[0].getBoundingClientRect().left, firstRight: lanes[0].getBoundingClientRect().right });
             if (performance.now() - t0 < 600) requestAnimationFrame(tick); else done(out);
         };
         requestAnimationFrame(tick);
     }), state([view('vA', 'Stock'), view('vB', 'Bins')]));
     expect(frames.length).toBeGreaterThan(5);
     const first = frames[0], last = frames[frames.length - 1];
-    // Opens from (near) nothing to a slot's width, where it ends up: never coming in from elsewhere
+    // Opens from (near) nothing to a slot's width, where it ends up: never coming in from elsewhere. The lanes are
+    // centred (.dbmn-lanes.is-centred, the screen band), so the row grows from the middle: the first lane steps left by
+    // half as the new one opens, and the new lane opens right beside it, never apart from it
     expect(first.laneW).toBeLessThan(60);
     expect(Math.round(last.laneW)).toBe(200);
-    for (const f of frames) expect(Math.abs(f.laneX - last.laneX)).toBeLessThan(1);
+    for (const f of frames) expect(Math.abs(f.laneX - f.firstRight - (last.laneX - last.firstRight))).toBeLessThan(1);
+    for (let i = 1; i < frames.length; i++) expect(frames[i].firstX).toBeLessThanOrEqual(frames[i - 1].firstX + 0.5);
     // Some frames part-way open: it is seen opening
     expect(frames.filter(f => f.laneW > 20 && f.laneW < 180).length).toBeGreaterThan(1);
     // The pair: right of the opening lane at every frame, moving only right, never up or down
@@ -114,7 +118,9 @@ test('a view added: its lane opens from nothing where it goes, and the pair move
         expect(Math.abs(f.y - before.y)).toBeLessThan(1);
         if (i) expect(f.x).toBeGreaterThanOrEqual(frames[i - 1].x - 0.5);
     }
-    expect(last.x - before.x).toBeGreaterThanOrEqual(200);
+    // Across by a slot from the first lane (half of it from the screen's middle, the row being centred)
+    expect(last.x - last.firstX - (before.x - frames[0].firstX)).toBeGreaterThanOrEqual(199);
+    expect(last.x - before.x).toBeGreaterThanOrEqual(99);
     // Mid-way, part of the way across: it moves, it doesn't jump
     expect(frames.some(f => f.x > before.x + 20 && f.x < last.x - 20)).toBe(true);
 });
