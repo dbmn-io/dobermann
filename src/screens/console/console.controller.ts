@@ -122,12 +122,15 @@ import { flattenHeaders, flattenQueryParams } from '../../utils/jwt-validation';
 import * as consoleTableBuilderScript from '../../webviews/shared/console-table-builder.js';
 import * as searchMatcherScript from '../../webviews/shared/search-matcher.js';
 import * as inputRowStatusScript from '../../webviews/shared/input-row-status.js';
+import * as consoleErrorReasonScript from '../../webviews/shared/console-error-reason.js';
 import { sharedScript } from '../../utils/shared-script';
 const { createConsoleTableBuilder } = sharedScript<typeof consoleTableBuilderScript>(consoleTableBuilderScript, 'ConsoleTableBuilder');
 // GitHub Issue #227: Import shared search matcher for multi-term, wildcard, and negation search
 const { parseSearchExpression, matchesRow } = sharedScript<typeof searchMatcherScript>(searchMatcherScript, 'SearchMatcher');
 // Issue #304: input row → transaction status, shared with the Input tab
 const InputRowStatus = sharedScript<typeof inputRowStatusScript>(inputRowStatusScript, 'InputRowStatus');
+// #428: the Error tab's Reason column, as the tab draws it (an export writes what the tab shows)
+const ConsoleErrorReason = sharedScript<typeof consoleErrorReasonScript>(consoleErrorReasonScript, 'ConsoleErrorReason');
 
 export interface ConsoleWebviewConfig {
     type: 'individual' | 'batch';
@@ -2089,6 +2092,13 @@ export class ConsoleController {
         // explicit subset wins over the saved view if supplied.
         if (visibleColumnIds && visibleColumnIds.length > 0) {
             exportColumns = exportColumns.filter(col => visibleColumnIds.includes(col.id));
+        }
+
+        // Step 5b (#428): the Error tab shows a Reason column first, whatever its View, and its
+        // search reads it; the page's visible columns are the View's, so it is added here, before
+        // the search, as the tab adds it (2026-11-24: an export writes what the tab shows).
+        if (tab === 'errors') {
+            exportColumns = ConsoleErrorReason.withReasonColumn(rows, exportColumns) as ColumnDefinition[];
         }
 
         // Step 6: Apply search filter (GitHub Issue #227) against the flat rows.
