@@ -529,6 +529,11 @@ export class HubController {
         // History and the header's "2 paused" waited for everything to stop. Found 2026-11-12.)
         // (No disposable; the listener just posts to a page that may be gone.)
         executions?.metadata.onExecutionChanged.event(execution => {
+            // A batch's request: nothing the Hub draws from its state changes with one (public issue 1). History, the
+            // activity chip and the rail list runs, never a batch's requests, and a request never writes its batch's
+            // row; a running batch's bar and its tab's "n/total" come from the Console's progress (setTabStatus). Each
+            // request used to rebuild the whole state and re-read every run, four times a second for the whole batch
+            if (execution?.executionType === 'batch_member') return;
             this.followRunName(execution);
             if (this.transactionsTimer) return;
             this.transactionsTimer = setTimeout(() => {

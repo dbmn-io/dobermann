@@ -180,6 +180,26 @@ describe('HubController', () => {
         expect(h.of('hubState').length - before, 'and once after the last').to.be.greaterThan(during);
     });
 
+    // Public issue 1: a batch's request changes nothing the Hub draws; the batch's own row (and any other run) does
+    it('a batch\'s request does not refresh the Hub; a change to a run\'s own row still does', async () => {
+        let fire: (execution: unknown) => void = () => undefined;
+        const executions = {
+            metadata: {
+                getAllTransactions: async () => [],
+                onExecutionChanged: { event: (listener: (execution: unknown) => void) => { fire = listener; return { dispose: () => undefined }; } }
+            }
+        } as unknown as HubPorts['executions'];
+        const h = hub({ executions });
+        await h.controller.handle({ type: 'ready' });
+        const before = h.of('hubState').length;
+        for (let i = 0; i < 20; i++) fire({ id: `m-${i}`, executionType: 'batch_member', batchId: 'b-1', status: 'completed' });
+        await new Promise(r => setTimeout(r, 350));
+        expect(h.of('hubState').length - before, 'no refresh for the requests').to.equal(0);
+        fire({ id: 'b-1', executionType: 'batch', status: 'completed' });
+        await new Promise(r => setTimeout(r, 350));
+        expect(h.of('hubState').length - before, 'the batch finishing refreshes').to.equal(1);
+    });
+
     it('#438: a run that ends in error turns its tab to the error status, as the Console footer does', async () => {
         let consoleChannel: TabChannel | undefined;
         const page = (): HubTab => ({ html: '<p>tab</p>', handle: async () => undefined, dispose: () => undefined });
