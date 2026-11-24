@@ -391,6 +391,9 @@
         if (add) add.addEventListener('click', () => host && host.postMessage({ type: 'newQuery' }));
         const addLookup = document.getElementById('newLookupEmpty');
         if (addLookup) addLookup.addEventListener('click', newLookup);
+        // (Import a query with no reports yet: the list and its add row are hidden then, so the empty state has it too)
+        const importEmpty = document.getElementById('importQueryEmpty');
+        if (importEmpty) importEmpty.addEventListener('click', () => importQuery());
         const select = document.getElementById('compareSelectMode');
         if (select) select.addEventListener('change', () => { selectMode = select.checked; if (!selectMode) selectedIds.clear(); render(); });
         const bulk = document.getElementById('compareBulkDelete');
