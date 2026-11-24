@@ -90,29 +90,30 @@ test('a save, rename or delete in the ★: the whole list goes to the host', asy
 
 
 const BAND = 1280, W = 2560;
-/** The footer's contents' left and right edges, the band area's edges, and the rule lines just above the footer. */
+/** The footer's contents' left and right edges, the band area's edges, and every line in the 30px above the footer (a border or a shadow, marked whether it is the footer's own). */
 const measure = p => p.evaluate(() => {
     const foot = document.querySelector('dbmn-footer');
     const fb = foot.getBoundingClientRect();
     const kids = [...foot.children].filter(k => k.getBoundingClientRect().width > 0).map(k => k.getBoundingClientRect());
     const left = Math.min(...kids.map(k => k.left)), right = Math.max(...kids.map(k => k.right));
-    // rule lines: a visible horizontal border, over 200px long, on the footer's top edge or within 8px above it
+    // lines: a visible horizontal border or a shadow, over 200px long, on the footer's top edge or within 30px above it
     const lines = [];
+    const near = y => y <= fb.top + 1 && y >= fb.top - 30;
+    const seen = c => c && c !== 'transparent' && !/rgba\([^)]*,\s*0\)$/.test(c);
     document.querySelectorAll('body *').forEach(el => {
         const b = el.getBoundingClientRect(); if (b.width < 200 || b.height === 0) return;
         const cs = getComputedStyle(el);
-        const top = parseFloat(cs.borderTopWidth) > 0 && cs.borderTopStyle !== 'none' ? b.top : null;
-        const bottom = parseFloat(cs.borderBottomWidth) > 0 && cs.borderBottomStyle !== 'none' ? b.bottom : null;
-        if (top !== null && top <= fb.top + 1 && top >= fb.top - 8) lines.push(Math.round(top));
-        if (bottom !== null && bottom <= fb.top + 1 && bottom >= fb.top - 8) lines.push(Math.round(bottom));
+        if (parseFloat(cs.borderTopWidth) > 0 && cs.borderTopStyle !== 'none' && seen(cs.borderTopColor) && near(b.top)) lines.push({ y: Math.round(b.top), footer: el === foot, el: el.id || el.tagName });
+        if (parseFloat(cs.borderBottomWidth) > 0 && cs.borderBottomStyle !== 'none' && seen(cs.borderBottomColor) && near(b.bottom)) lines.push({ y: Math.round(b.bottom), footer: false, el: el.id || el.className });
+        if (cs.boxShadow !== 'none' && el !== foot && near(b.bottom)) lines.push({ y: Math.round(b.bottom), footer: false, el: `shadow ${el.id || el.className}` });
     });
     const band = document.querySelector('.query-page .dbmn-band:not(.hidden)');
     const bb = band && band.getBoundingClientRect();
-    return { left, right, lines: [...new Set(lines)], band: bb && bb.width ? { left: bb.left, right: bb.right } : null };
+    return { left, right, lines, band: bb && bb.width ? { left: bb.left, right: bb.right } : null };
 });
 
 for (const step of ['Views', 'Join', 'Columns', 'Results']) {
-    test(`${step} at 2560: the footer and the area above the table in the centred 1280 band, one rule above the footer`, async ({ page: p }) => {
+    test(`${step} at 2560: the footer and the area above the table in the centred 1280 band, one line above the footer, the footer's own`, async ({ page: p }) => {
         await p.setViewportSize({ width: W, height: 900 });
         await open(p);
         if (step === 'Results') await p.evaluate(() => window.postMessage({ type: 'query.goTo', start: 'results' }, '*'));
@@ -131,7 +132,9 @@ for (const step of ['Views', 'Join', 'Columns', 'Results']) {
             expect(m.band.left).toBeGreaterThanOrEqual(lo - 1);
             expect(m.band.right).toBeLessThanOrEqual(hi + 1);
         }
-        expect(m.lines.length, `rule lines above the footer at ${m.lines.join(', ')}`).toBeLessThanOrEqual(1);
+        // Exactly one line above the footer: the footer's own (<dbmn-footer> draws it, so no screen doubles or loses it)
+        expect(m.lines, `lines above the footer: ${JSON.stringify(m.lines)}`).toHaveLength(1);
+        expect(m.lines[0].footer, 'the one line is the footer\'s').toBe(true);
     });
 }
 

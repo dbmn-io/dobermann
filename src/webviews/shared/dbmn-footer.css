@@ -42,6 +42,14 @@ dbmn-footer {
     padding-inline: max(10px, calc((100% - var(--dbmn-band, 1280px)) / 2 + 10px));
     font-size: 13px;
 }
+/* One faint divider above the footer, the window's width, on every screen: the footer owns it, so it neither
+   doubles nor vanishes with what sits above (2026-11-24). A divider, not a border. (:not([inline]) so it outranks
+   core.css's legacy .webview-footer line, which the element also wears; width and style apart from the colour, so a
+   theme missing its line colour cannot void the line) */
+dbmn-footer:not([inline]) {
+    border-top: 1px solid rgba(128, 128, 128, 0.2);
+    border-top-color: color-mix(in srgb, var(--foot-line, rgba(128, 128, 128, 0.35)) 55%, transparent);
+}
 /* (in a gallery or a dialog the footer sits where it is put, not on the window's bottom edge) */
 dbmn-footer[inline] {
     padding-inline: 10px;
