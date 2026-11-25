@@ -114,3 +114,35 @@ test.describe('Endpoint editor before its code editor is ready', () => {
         await expect(page.locator('#save-endpoint-btn')).toBeDisabled();
     });
 });
+
+// 2026-11-25: replaces the web spec endpoint-headers-warning, which walked the Hub, a save and a reload for this
+test.describe('Endpoint editor: a header kept on the endpoint is warned about', () => {
+    const WARNING = 'The DBMN way: keep headers on the environment, not the endpoint. DBMN adds them to each request.';
+
+    test('none until a header row is added; the warning links to the docs; the row removed, it goes', async ({ dbmn, page }) => {
+        await dbmn.openEndpointEditor();
+        await dbmn.waitForReceived('systemsList');
+        const warning = page.locator('#endpointHeadersWarning');
+        await expect(warning, 'no header of its own: nothing to warn about').toBeHidden();
+        await page.locator('#addHeaderBtn').click();
+        await expect(warning, 'as soon as the endpoint has a header row').toBeVisible();
+        await expect(warning).toContainText(WARNING);
+        const link = warning.locator('a');
+        await expect(link).toHaveText('Environment headers');
+        await expect(link).toHaveAttribute('data-help-doc', 'environments');
+        await expect(link).toHaveAttribute('data-help-section', 'headers');
+        await page.locator('#headersContainer .header-row:not(.inherited) .remove-btn').click();
+        await expect(warning, 'the header removed: the warning goes').toBeHidden();
+    });
+
+    test('an endpoint saved with a header of its own is warned about when it opens', async ({ dbmn, page }) => {
+        const endpoint = dbmn.seed.endpoints.find(e => e.id === 'test-endpoint-002');
+        if (!endpoint) throw new Error('the seed has no test-endpoint-002');
+        // (as the editor saves a header: its value and whether it is on)
+        endpoint.headers = { 'X-Trace': { value: 'on', enabled: true } } as unknown as typeof endpoint.headers;
+        await dbmn.openEndpointEditor('test-endpoint-002');
+        await dbmn.waitForReceived('populateEndpointData');
+        await expect(page.locator('#headersContainer .header-row:not(.inherited) .header-key')).toHaveValue('X-Trace', { timeout: 15_000 });
+        await expect(page.locator('#endpointHeadersWarning')).toBeVisible();
+    });
+});
