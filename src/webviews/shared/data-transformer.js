@@ -3619,16 +3619,18 @@
             timezoneOptions += `<option value="${tz}" ${selected}>${label}</option>`;
         });
 
-        // GitHub Issue #162: Build timezone subheader row (only if datetime variables exist)
+        // GitHub Issue #162: Build timezone subheader row (only if datetime variables exist). The file's times are read in
+        // the picked zone and sent in the environment's (2026-11-25: DTTypeCoercion.changeTimeZone, on the way to Validate)
+        const escapeZone = zone => String(zone).replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch]);
         const timezoneSubheader = hasDateTimeVariables ? `
                     <tr class="timezone-subheader">
                         <td colspan="4">
-                            <span class="timezone-label">Source timezone</span>
+                            <span class="timezone-label">File's timezone</span>
                             <select id="sourceTimezone" data-change="updateSourceTimezone" class="timezone-select">
                                 ${timezoneOptions}
                             </select>
-                            <span class="timezone-label">Target</span>
-                            <span class="timezone-value" id="targetTimezoneDisplay">${csvState.currentEnvironment?.targetTimezone || 'UTC'} (from Environment)</span>
+                            <span class="timezone-label">sent in</span>
+                            <span class="timezone-value" id="targetTimezoneDisplay">${escapeZone(csvState.currentEnvironment?.targetTimezone || 'UTC')} (from Environment)</span>
                         </td>
                     </tr>` : '';
 
@@ -4093,10 +4095,11 @@
         // Apply source format conversion first: what the run will send (a date as its calendar day, YYYY-MM-DD)
         let convertedValue = convertValueBySourceFormat(rawValue, sourceFormat);
 
-        // For datetime types only, apply timezone conversion if configured
-        // Date-only values don't have timezone - they represent a calendar date
-        if (targetType === 'datetime' && csvState.sourceTimezone) {
-            convertedValue = applyTimezoneConversion(convertedValue, targetType);
+        // A datetime: its time moved from the file's timezone to the Target's, as on the way to Validate (one function)
+        if (targetType === 'datetime') {
+            const variable = (csvState.templateVariables || []).find(v => v.name === variableName);
+            const zones = window.DTTypeCoercion.zonesFor(variable);
+            convertedValue = window.DTTypeCoercion.changeTimeZone(convertedValue, zones.from, zones.to);
         }
 
         // GitHub Issue #175: Apply modifiers (transforms) to show final value
@@ -4216,104 +4219,6 @@
         }
 
         return value;
-    }
-
-    /**
-     * GitHub Issue #162: Apply timezone conversion for datetime values
-     * Converts from source timezone to Environment's target timezone (or UTC as fallback)
-     *
-     * The input datetime string (e.g., "2024-01-05T09:00:00") is interpreted as
-     * being in the SOURCE timezone, and we convert it to the target timezone.
-     */
-    function applyTimezoneConversion(value, targetType) {
-        if (!value || value === '-') {
-            return value;
-        }
-
-        try {
-            const sourceTimezone = csvState.sourceTimezone || 'UTC';
-            // Get target timezone from Environment, fall back to UTC
-            const targetTimezone = csvState.currentEnvironment?.targetTimezone || 'UTC';
-
-            // If source and target are the same, no conversion needed
-            if (sourceTimezone === targetTimezone) {
-                return value;
-            }
-
-            // Parse datetime: YYYY-MM-DDTHH:MM:SS or YYYY-MM-DD HH:MM:SS
-            const match = value.match(/^(\d{4})-(\d{2})-(\d{2})(?:T|\s)(\d{2}):(\d{2}):(\d{2})/);
-            if (!match) {
-                return value;
-            }
-
-            const [, year, month, day, hour, minute, second] = match;
-
-            // Calculate timezone offsets using a fixed reference point
-            const testUtc = new Date(Date.UTC(2024, 0, 1, 12, 0, 0));
-
-            // Get source timezone offset
-            const sourceFormatter = new Intl.DateTimeFormat('en-US', {
-                timeZone: sourceTimezone,
-                hour: 'numeric',
-                hour12: false
-            });
-            const sourceHourTest = parseInt(sourceFormatter.format(testUtc), 10) || 0;
-
-            // Get target timezone offset (with fallback for invalid timezone)
-            let targetHourTest;
-            try {
-                const targetFormatter = new Intl.DateTimeFormat('en-US', {
-                    timeZone: targetTimezone,
-                    hour: 'numeric',
-                    hour12: false
-                });
-                targetHourTest = parseInt(targetFormatter.format(testUtc), 10) || 0;
-            } catch (tzError) {
-                // Invalid target timezone, fall back to UTC
-                console.warn('[CSV Handler] Invalid target timezone, using UTC:', targetTimezone);
-                targetHourTest = 12; // UTC at our reference point
-            }
-
-            // Calculate offsets from UTC (using 12:00 UTC reference)
-            let sourceOffset = sourceHourTest - 12;
-            let targetOffset = targetHourTest - 12;
-
-            // Normalize offsets to -12 to +12 range
-            if (sourceOffset > 12) sourceOffset -= 24;
-            if (sourceOffset < -12) sourceOffset += 24;
-            if (targetOffset > 12) targetOffset -= 24;
-            if (targetOffset < -12) targetOffset += 24;
-
-            // Convert: source → UTC → target
-            // Net effect: add (targetOffset - sourceOffset) hours
-            const netOffset = targetOffset - sourceOffset;
-
-            const convertedDate = new Date(Date.UTC(
-                parseInt(year, 10),
-                parseInt(month, 10) - 1,
-                parseInt(day, 10),
-                parseInt(hour, 10) + netOffset,
-                parseInt(minute, 10),
-                parseInt(second, 10)
-            ));
-
-            if (isNaN(convertedDate.getTime())) {
-                return value;
-            }
-
-            // Format result
-            const resultYear = convertedDate.getUTCFullYear();
-            const resultMonth = String(convertedDate.getUTCMonth() + 1).padStart(2, '0');
-            const resultDay = String(convertedDate.getUTCDate()).padStart(2, '0');
-            const resultHour = String(convertedDate.getUTCHours()).padStart(2, '0');
-            const resultMinute = String(convertedDate.getUTCMinutes()).padStart(2, '0');
-            const resultSecond = String(convertedDate.getUTCSeconds()).padStart(2, '0');
-
-            return `${resultYear}-${resultMonth}-${resultDay}T${resultHour}:${resultMinute}:${resultSecond}`;
-        } catch (e) {
-            console.error('[CSV Handler] Timezone conversion error:', e);
-            return value;
-        }
     }
 
     /**

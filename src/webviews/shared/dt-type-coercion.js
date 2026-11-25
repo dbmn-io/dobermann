@@ -404,6 +404,12 @@
                     // Apply modifiers to the coerced value for display
                     const targetType = variable.dataType || 'string';
                     let displayValue = String(firstSuccess.coerced);
+                    // A datetime: its time as sent, moved from the file's timezone to the Target's, as on the way to
+                    // Validate (the type check answers with the file's time: it was written over the converted sample)
+                    if (targetType === 'datetime') {
+                        const zones = zonesFor(variable);
+                        displayValue = String(changeTimeZone(displayValue, zones.from, zones.to));
+                    }
                     const finalValue = window.CSVHandler.applyModifiersForDisplay(displayValue, variable.name, targetType);
 
                     targetSampleCell.textContent = finalValue;
@@ -788,24 +794,170 @@
         return formats;
     }
 
+    // ---------------------------------------------------------------------------------------------------------
+    // Change time zone (2026-11-25, James: "we translate BEFORE we generate our Input file... Then the execution does
+    // not need to do anything"). A datetime column's times are moved once, on the way to Validate, from the file's
+    // timezone (Map's picker, by default this computer's) to the environment's Target timezone. Validate's grid, the
+    // run's input file and the requests then hold the same time, and Execute's type transform is not asked to touch
+    // the column again (filterNonStringTypes): it read a zoneless time in the computer's zone and wrote UTC, so the
+    // two together would move it twice. Going Back and Next again starts from the file's rows, never from the grid.
+    // Written as a function of one value, so a per-column "Change time zone" on Map can use it as it is.
+    // ---------------------------------------------------------------------------------------------------------
+
+    /** This computer's timezone (the page's: VS Code's or the browser's, the computer's own either way). */
+    function computerTimezone() {
+        return new Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+    }
+
+    function isKnownTimezone(zone) {
+        if (!zone) return false;
+        try { new Intl.DateTimeFormat('en-US', { timeZone: zone }); return true; } catch (e) { return false; }
+    }
+
+    var zoneFormatters = {};
+    /** The wall clock a zone shows at an instant, whole seconds. */
+    function wallAt(instantMs, zone) {
+        var f = zoneFormatters[zone] || (zoneFormatters[zone] = new Intl.DateTimeFormat('en-US', {
+            timeZone: zone, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit'
+        }));
+        var p = {};
+        f.formatToParts(new Date(instantMs)).forEach(function (x) { if (x.type !== 'literal') p[x.type] = parseInt(x.value, 10); });
+        return { year: p.year, month: p.month, day: p.day, hour: p.hour % 24, minute: p.minute, second: p.second };
+    }
+
+    function offsetMinutesAt(instantMs, zone) {
+        var whole = Math.floor(instantMs / 1000) * 1000;
+        var w = wallAt(whole, zone);
+        return Math.round((Date.UTC(w.year, w.month - 1, w.day, w.hour, w.minute, w.second) - whole) / 60000);
+    }
+
+    /**
+     * The instant a wall-clock time in a zone is, daylight saving right. A time the clocks skip (spring forward) is read
+     * with the offset from before the change; one they show twice (fall back) is the first of the two.
+     */
+    function instantInZone(w, zone) {
+        var asUtc = Date.UTC(w.year, w.month - 1, w.day, w.hour, w.minute, w.second);
+        var before = offsetMinutesAt(asUtc - 86400000, zone);
+        var after = offsetMinutesAt(asUtc + 86400000, zone);
+        var found = [before, after].map(function (off) { return asUtc - off * 60000; })
+            .filter(function (t) { return offsetMinutesAt(t, zone) * 60000 === asUtc - t; });
+        return found.length ? Math.min.apply(null, found) : asUtc - before * 60000;
+    }
+
+    /** YYYY-MM-DD, a time (T or a space), seconds and a fraction optional; no zone. */
+    var ZONELESS_ISO = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{1,2}):(\d{2})(?::(\d{2})(?:[.,](\d{1,9}))?)?$/;
+    /** YYYY-MM-DD and a time, ending in a zone of its own: Z, ±HH:MM, ±HHMM or ±HH. */
+    var ZONED_ISO = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{1,2}):(\d{2})(?::(\d{2})(?:[.,](\d{1,9}))?)?\s*(Z|[+-]\d{2}(?::?\d{2})?)$/i;
+    /** Ends in a zone of its own: Z, ±HH:MM, ±HHMM, ±HH, or names GMT/UTC. */
+    var OWN_ZONE = /(?:[0-9.]\s*Z|[+-]\d{2}(?::?\d{2})?|\b(?:GMT|UTC)\b.*)$/i;
+
+    /** A zoneless datetime's wall clock, or null: a value with its own zone, a date alone, or no datetime at all. */
+    function zonelessWallClock(text) {
+        var m = ZONELESS_ISO.exec(text);
+        if (m) {
+            var w = { year: +m[1], month: +m[2], day: +m[3], hour: +m[4], minute: +m[5], second: m[6] ? +m[6] : 0, fraction: m[7] || '' };
+            var check = new Date(Date.UTC(w.year, w.month - 1, w.day));
+            if (w.month < 1 || w.month > 12 || w.hour > 23 || w.minute > 59 || w.second > 59 || check.getUTCDate() !== w.day) return null;
+            return w;
+        }
+        // Another way of writing one with a time ("2024/01/05 10:00", "Jan 5 2024 10:00"): read as the clock it shows,
+        // as Execute read it before (in no zone of its own)
+        if (!/\d:\d\d/.test(text) || OWN_ZONE.test(text)) return null;
+        var d = new Date(text);
+        if (isNaN(d.getTime())) return null;
+        return { year: d.getFullYear(), month: d.getMonth() + 1, day: d.getDate(), hour: d.getHours(), minute: d.getMinutes(), second: d.getSeconds(), fraction: '' };
+    }
+
+    /** A datetime written with its own zone (Z or an offset): its instant and fraction, or null. */
+    function zonedInstant(text) {
+        var m = ZONED_ISO.exec(text);
+        if (!m) return null;
+        var offset = 0;
+        if (m[8].toUpperCase() !== 'Z') {
+            var digits = m[8].replace(':', '');
+            offset = (digits[0] === '-' ? -1 : 1) * (parseInt(digits.slice(1, 3), 10) * 60 + (digits.length > 3 ? parseInt(digits.slice(3, 5), 10) : 0));
+        }
+        var hour = +m[4], minute = +m[5], second = m[6] ? +m[6] : 0;
+        if (+m[2] < 1 || +m[2] > 12 || hour > 23 || minute > 59 || second > 59) return null;
+        return { instant: Date.UTC(+m[1], +m[2] - 1, +m[3], hour, minute, second) - offset * 60000, fraction: m[7] || '' };
+    }
+
+    /**
+     * Change time zone: a datetime as `toZone`'s wall clock "YYYY-MM-DDTHH:mm:ss" (a fraction of a second kept), so
+     * everything sent to an environment is in its timezone. With no zone of its own it is read in `fromZone`; with one
+     * (Z or an offset) it is the moment it says, from any computer. Anything else is returned as it is: a date alone,
+     * a blank, a value that isn't a datetime (Validate stops it), or an unknown zone.
+     */
+    function changeTimeZone(value, fromZone, toZone) {
+        var text = value === null || value === undefined ? '' : String(value).trim();
+        if (!text || !isKnownTimezone(fromZone) || !isKnownTimezone(toZone)) return value;
+        var w = zonelessWallClock(text);
+        var zoned = w ? null : zonedInstant(text);
+        if (!w && !zoned) return value;
+        var t = wallAt(w ? instantInZone(w, fromZone) : zoned.instant, toZone);
+        if (zoned) w = { fraction: zoned.fraction };
+        var pad = function (n, width) { return String(n).padStart(width || 2, '0'); };
+        return pad(t.year, 4) + '-' + pad(t.month) + '-' + pad(t.day) + 'T' + pad(t.hour) + ':' + pad(t.minute) + ':' + pad(t.second) +
+            (w.fraction ? '.' + w.fraction : '');
+    }
+
+    /** A variable whose modifiers ask for an ISO instant (`|iso`) keeps UTC, as before: its column goes to UTC. */
+    function keepsUtc(formatModifier) {
+        return /(^|\|)\s*iso\s*(\||$)/i.test(String(formatModifier || ''));
+    }
+
+    /** The zones a datetime variable's times are moved between: the file's (Map's picker) to the Target. */
+    function zonesFor(variable) {
+        var from = csvState.sourceTimezone || computerTimezone();
+        var to = keepsUtc(variable && variable.formatModifier) ? 'UTC' : ((csvState.currentEnvironment && csvState.currentEnvironment.targetTimezone) || 'UTC');
+        return { from: from, to: to };
+    }
+
+    /**
+     * Column index → the zones its times move between, for the mapped datetime variables. Remembered by variable
+     * (csvState.zonedVariables): Execute's type transform leaves those columns alone.
+     */
+    function columnZones(headers, templateVars) {
+        var zones = new Map();
+        csvState.zonedVariables = [];
+        (templateVars || []).forEach(function (v) {
+            if (!v.mappedTo || (v.dataType || 'string') !== 'datetime') return;
+            var colIdx = headers.indexOf(v.mappedTo);
+            if (colIdx < 0) return;
+            zones.set(colIdx, zonesFor(v));
+            csvState.zonedVariables.push(v.name);
+        });
+        return zones;
+    }
+
+    /** One row: each column's Source format, then each datetime column's Change time zone. */
+    function convertRow(row, columnConversions, zones) {
+        const converted = row.slice();
+        columnConversions.forEach((sourceFormat, colIdx) => {
+            if (colIdx < converted.length && converted[colIdx]) {
+                converted[colIdx] = convertValueBySourceFormat(converted[colIdx], sourceFormat);
+            }
+        });
+        zones.forEach((zone, colIdx) => {
+            if (colIdx < converted.length && converted[colIdx]) {
+                converted[colIdx] = changeTimeZone(converted[colIdx], zone.from, zone.to);
+            }
+        });
+        return converted;
+    }
+
     function applySourceFormatToRows(headers, rows, templateVars) {
         if (!rows || rows.length === 0 || !templateVars || !csvState.sourceTypes) {
             return rows;
         }
 
         const columnConversions = columnFormats(headers, rows, templateVars);
+        // (then each datetime column's times: Change time zone, once)
+        const zones = columnZones(headers, templateVars);
 
-        if (columnConversions.size === 0) return rows;
+        if (columnConversions.size === 0 && zones.size === 0) return rows;
 
-        return rows.map(row => {
-            const converted = [...row];
-            columnConversions.forEach((sourceFormat, colIdx) => {
-                if (colIdx < converted.length && converted[colIdx]) {
-                    converted[colIdx] = convertValueBySourceFormat(converted[colIdx], sourceFormat);
-                }
-            });
-            return converted;
-        });
+        return rows.map(row => convertRow(row, columnConversions, zones));
     }
 
     /**
@@ -825,8 +977,9 @@
 
         // (the same as the sync version: an Auto-detect date column decided by all its rows)
         var columnConversions = columnFormats(headers, rows, templateVars);
+        var zones = columnZones(headers, templateVars);
 
-        if (columnConversions.size === 0) {
+        if (columnConversions.size === 0 && zones.size === 0) {
             if (onProgress) onProgress(rows.length, rows.length);
             if (onComplete) onComplete(rows);
             return;
@@ -840,13 +993,7 @@
         function processBatch() {
             var end = Math.min(offset + BATCH_SIZE, totalRows);
             for (var r = offset; r < end; r++) {
-                var converted = rows[r].slice();
-                columnConversions.forEach(function (sourceFormat, colIdx) {
-                    if (colIdx < converted.length && converted[colIdx]) {
-                        converted[colIdx] = convertValueBySourceFormat(converted[colIdx], sourceFormat);
-                    }
-                });
-                result[r] = converted;
+                result[r] = convertRow(rows[r], columnConversions, zones);
             }
             offset = end;
             if (onProgress) onProgress(offset, totalRows);
@@ -1500,8 +1647,10 @@
      */
     function filterNonStringTypes(columnTypes) {
         const filtered = {};
+        // (a datetime column whose times were moved on the way to Validate is final: not read again, see changeTimeZone)
+        const zoned = (csvState && csvState.zonedVariables) || [];
         Object.entries(columnTypes).forEach(([col, type]) => {
-            if (type !== 'string') {
+            if (type !== 'string' && !(type === 'datetime' && zoned.includes(col))) {
                 filtered[col] = type;
             }
         });
@@ -1553,6 +1702,9 @@
 
         // GitHub Issue #218: STRING filter
         filterNonStringTypes: filterNonStringTypes,
+        changeTimeZone: changeTimeZone,
+        zonesFor: zonesFor,
+        computerTimezone: computerTimezone,
 
         // GitHub Issue #223: Batched source format conversion
         applySourceFormatToRows: applySourceFormatToRows,

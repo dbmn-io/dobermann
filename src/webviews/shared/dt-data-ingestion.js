@@ -220,6 +220,7 @@
         // Reset type detection flag for new file upload (GitHub Issue #106)
         csvState.typeDetectionCompleted = false;
         csvState.selectedColumnTypes = {};
+        csvState.zonedVariables = []; // (a new file: no column's times moved yet)
 
         // GitHub Issue #202: Show progress in the dropzone inside the grid panel
         const dropzone = document.getElementById('csvDropzone');
@@ -406,6 +407,7 @@
                 // Reset type detection flag for new file upload (GitHub Issue #106)
                 csvState.typeDetectionCompleted = false;
                 csvState.selectedColumnTypes = {};
+        csvState.zonedVariables = []; // (a new file: no column's times moved yet)
                 csvState.fileDetailsShown = false; // GitHub Issue #111: Reset for new file
 
                 // GitHub Issue #202: Show progress in dropzone inside grid panel

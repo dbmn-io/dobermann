@@ -137,6 +137,23 @@ describe('Run Batch Map & Transform — sample raw and result are the same row',
         expect(sections).to.deep.equal(['Body', 'lines[]']);
     });
 
+    it('a datetime: Sample shows the file\'s time and the time sent, in the environment\'s timezone, after the type check', () => {
+        // (2026-11-26, the tester's pictures: Map's Sample showed only "2024-01-05 10:00" while Validate and the run sent
+        //  2024-01-04T23:00:00; the type check's answer was written over the converted sample)
+        const { win, posted } = load();
+        const headers = ['sku', 'createdAt'];
+        win.CSVHandler.setState({
+            endpointId: 'ep-1', endpointConfig: { id: 'ep-1', dataLoadingConfig: {} },
+            currentHeaders: headers, currentParsedData: { headers, rows: [['SKU-1', '2024-01-05 10:00']] },
+            currentEnvironment: { targetTimezone: 'UTC' }, sourceTimezone: 'Australia/Sydney',
+            templateVariables: [{ name: 'sku', dataType: 'string', mapped: false, mappedTo: null, column: null },
+                { name: 'createdAt', dataType: 'datetime', mapped: false, mappedTo: null, column: null }]
+        });
+        win.CSVHandler.populateColumnMappingTable();
+        answer(win, posted);
+        expect(samples(win).createdAt).to.deep.equal({ raw: '2024-01-05 10:00', result: '2024-01-04T23:00:00' });
+    });
+
     it('an unmapped variable: no footer warning; Next stays enabled and says what is missing', () => {
         // Next used to be disabled with nothing in the footer saying why. Now it re-checks.
         const { win, posted } = load();
