@@ -196,7 +196,7 @@
         ['DbmnModal', 'Dialogs: a question, a form, an alert; headerless, a body with its own top line (a request in full, <dbmn-transaction>, size "transaction")', M, 'Every screen', 'shared/dbmn-modal.js'],
         ['Lanes', 'One grid every line shares: a gutter, a lane per view split into its runs, an end column; spreadsheet cells', S, 'Design system; Query next', 'shared/dbmn-lanes.css, shared/dbmn-lanes.js'],
         ['<dbmn-map>', 'Which column in each source is which, a line at a time: key, functions, how many agree', C, 'Design system; Run Batch next', 'shared/dbmn-map.js'],
-        ['DbmnFunctions', 'Functions on a column as steps, tried on its values; a calculated column in the same window; the fx button', M, 'Design system; Query and Run Batch next', 'shared/dbmn-functions.js'],
+        ['DbmnFunctions', 'Functions on a column as steps, tried on its values; a calculated column in the same window; the fx button', M, 'Run Batch (Map); Query next', 'shared/dbmn-functions.js'],
         ['LookupNew', 'New lookup table: a name, then up to 5 columns, each named differently, all equal', M, 'Hub (Reporting), Query (the functions\' table picker)', 'shared/lookup-new.js'],
         ['DbmnToast', 'Messages in the corner', M, 'Every screen', 'shared/dbmn-toast.js'],
         ['DbmnContextMenu', 'A right-click menu, or a menu under a button; an item may carry a picture and a quiet second line; a summary of what it is about may come first', M, 'Hub lists, tables; Query\'s join kind and slots', 'shared/dbmn-context-menu.js'],
