@@ -222,6 +222,8 @@ export function columnFnSql(sql: string, fns: ColumnFn[] | undefined): string {
             case 'first': out = `SUBSTR(${out}, 1, ${wholeNumber(f.n)})`; break;
             case 'last': out = `SUBSTR(${out}, -${wholeNumber(f.n)})`; break;
             case 'replace': out = `REPLACE(${out}, ${quoteText(f.from)}, ${quoteText(f.to)})`; break;
+            // Remove line breaks (column-functions.ts columnFnCall): \r\n, then \n, then \r, each a space
+            case 'breaks': out = `REPLACE(REPLACE(REPLACE(${out}, char(13) || char(10), ' '), char(10), ' '), char(13), ' ')`; break;
             case 'translate': {
                 const col = (id: string): string => `"${String(id).replace(/"/g, '""')}"`;
                 out = `COALESCE((SELECT ${col(f.to)} FROM ${lookupTableSql(f.table)} WHERE ${col(f.from)} = CAST(${out} AS TEXT) LIMIT 1), ${out})`;

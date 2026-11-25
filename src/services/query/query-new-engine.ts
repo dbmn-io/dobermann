@@ -7,7 +7,7 @@
  * Results' columns and each view's key), the engine's rows back into what Results reads (rows and
  * key values), and the engine's stats into the fields the Join step reads (QueryJoinStats).
  */
-import { asColumnValue, wholeNumber, type ColumnFn } from '../column-functions/column-functions';
+import { asColumnValue, callExpr, columnFnCall, type ColumnFn } from '../column-functions/column-functions';
 import { QueryEngine } from '../engine/engine';
 import { localEngineHost, type EngineHost } from '../engine/engine-host';
 import type { CompareStats, Expr, FunctionName, JoinStats, Progress, Query, StatsWindow, Table, Value } from '../engine/engine-types';
@@ -117,20 +117,12 @@ function compareKeys(spec: QuerySpec): QueryKey[] {
     return compareKeysByView(spec).flatMap(v => v.keys);
 }
 
-/** A column function as an engine Expr around `x` (column-functions.ts columnFnSql, function for function). */
-export function fnExpr(x: Expr, f: ColumnFn): Expr {
-    switch (f.fn) {
-        case 'trim': return { fn: 'TRIM', args: [x] };
-        case 'upper': return { fn: 'UPPER', args: [x] };
-        case 'lower': return { fn: 'LOWER', args: [x] };
-        case 'text': return { fn: 'TEXT', args: [x] };
-        case 'number': return { fn: 'NUMERIC', args: [x] };
-        case 'ltrimZeros': return { fn: 'LTRIM', args: [x, { value: '0' }] };
-        case 'first': return { fn: 'SUBSTR', args: [x, { value: 1 }, { value: wholeNumber(f.n) }] };
-        case 'last': return { fn: 'SUBSTR', args: [x, { value: -wholeNumber(f.n) }] };
-        case 'replace': return { fn: 'REPLACE', args: [x, { value: f.from }, { value: f.to }] };
-        case 'translate': return { fn: 'TRANSLATE', args: [x, { value: lookupTableName(f.table) }, { value: f.from }, { value: f.to }] };
-    }
+/**
+ * A column function as an engine Expr around `x`: its call (column-functions.ts columnFnCall), the one
+ * definition the in-memory run uses too. `col` gives another column's Expr, for a step that names one.
+ */
+export function fnExpr(x: Expr, f: ColumnFn, col: (id: string) => Expr = () => { throw new Error('A step names another column, and nothing here gives columns'); }): Expr {
+    return callExpr(columnFnCall(f), x, col, id => ({ value: lookupTableName(id) }));
 }
 
 /** A lookup table's name in the engine. */
