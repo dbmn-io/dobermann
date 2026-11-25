@@ -157,7 +157,10 @@
             }
         });
         input.addEventListener('blur', close);
-        return { close };
+        // refresh(): the tags in use changed while the list is open (they arrive from the host after the field got
+        // focus, and a fast typist's first letters come first): drawn again from them. A closed list stays closed
+        const refresh = () => { if (!list.classList.contains('hidden')) open(true); };
+        return { close, refresh };
     }
 
     const api = { suggest, canonical, attach, LIMIT };

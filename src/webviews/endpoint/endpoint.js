@@ -3326,6 +3326,8 @@
                 break;
             case 'tagsList':
                 knownTags = Array.isArray(message.tags) ? message.tags : [];
+                // (asked when the field got focus: letters typed before the answer see it now, not at the next key)
+                if (tagSuggestField && tagSuggestField.refresh) tagSuggestField.refresh();
                 break;
             case 'tagsChanged':
                 // #432: Manage Tags renamed, merged or deleted tags: what is saved now
@@ -3427,6 +3429,8 @@
      */
     /** #432: the tags already in use on endpoints, most used first (the host's `tagsList`). */
     let knownTags = [];
+    /** The tags field's suggestions (TagSuggest.attach): drawn again when the tags in use come in. */
+    let tagSuggestField = null;
 
     function normaliseTagClient(raw) {
         if (typeof raw !== 'string') return null;
@@ -3542,7 +3546,7 @@
         // #432: suggestions from the tags already in use, as you type. Attached before the
         // Enter/comma handler below, so Enter or Tab picks the highlighted suggestion first.
         if (window.TagSuggest) {
-            window.TagSuggest.attach(input, {
+            tagSuggestField = window.TagSuggest.attach(input, {
                 getKnown: () => knownTags,
                 getCurrent: getTagChipValues,
                 onPick: tag => {

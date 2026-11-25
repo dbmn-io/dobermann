@@ -49,6 +49,7 @@ All notable changes to Dobermann are documented here.
 - **The Compare screen** — Query took its place (see **Compare is part of Query**), and the **Compare** button on the Console's Completed tab is now the database button. [Docs](https://dbmn.io/docs/query/#from-compare)
 
 ### Fixed
+- **Tag suggestions include a tag saved a moment ago in another editor** — Typing the first letters of a tag straight away now offers a tag just saved in another open endpoint; before, it showed only **New tag** until the next key.
 - **Run Batch sends each date as the day your file means** — A date column is read in its Source format on Map, or in this computer's date order when Auto-detect can't tell, and Map says which. **Behaviour change:** DD/MM/YYYY dates were sent with day and month swapped, other dates a day early east of UTC, and Excel dates as 1905. [Docs](https://dbmn.io/docs/batch-preparation/#source-format-configuration)
 - **A date that can't be read stops on Validate** — A day over 12, a Unix timestamp or an impossible date used to fail when sent. When every date in a column could be day-first or month-first, Map asks you to choose. [Docs](https://dbmn.io/docs/batch-preparation/#source-format-configuration)
 - **Leading zeros are kept** — A number with leading zeros, such as a GTIN, is sent as written, as text. **Behaviour change:** it was sent as a number without them. `active`, `enabled`, `inactive` and `disabled` are now accepted as booleans. [Docs](https://dbmn.io/docs/template-variables/)

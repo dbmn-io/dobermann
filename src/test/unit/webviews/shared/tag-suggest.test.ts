@@ -39,6 +39,37 @@ describe('Tag suggestions: what is offered (#432)', () => {
     });
 });
 
+describe('Tag suggestions: the tags in use arrive after typing has begun (#432)', () => {
+    // The editor asks the host for the tags in use when the field gets focus (getTagsList); a fast typist's first
+    // letters come before the answer. The list then showed only "New tag …" until the next key (2026-11-25: a tag
+    // saved in another open editor wasn't offered, the #432 web spec red 3 runs in 4)
+    it('the open list is drawn again when the tags in use come in', () => {
+        const dom = new JSDOM('<!DOCTYPE html><body><div id="box"><input id="tag"></div></body>', { runScripts: 'outside-only' });
+        const w = dom.window as unknown as Window & { TagSuggest: { attach: Function } };
+        dom.window.eval(SCRIPT);
+        const input = dom.window.document.getElementById('tag') as HTMLInputElement;
+        let known: string[] = [];
+        const field = w.TagSuggest.attach(input, { getKnown: () => known, getCurrent: () => [], onPick: () => undefined }) as { refresh?: () => void };
+        input.value = 'inv';
+        input.dispatchEvent(new dom.window.Event('input'));
+        const options = () => Array.from(dom.window.document.querySelectorAll('.tag-suggest li')).map(li => li.textContent);
+        expect(options(), 'before the answer').to.deep.equal(['New tag inv']);
+        known = ['inventory-load'];
+        expect(field.refresh, 'attach gives the screen a way to draw the list again').to.be.a('function');
+        field.refresh!();
+        expect(options(), 'after it').to.deep.equal(['inventory-load', 'New tag inv']);
+    });
+    it('a closed list stays closed when they come in', () => {
+        const dom = new JSDOM('<!DOCTYPE html><body><div id="box"><input id="tag"></div></body>', { runScripts: 'outside-only' });
+        const w = dom.window as unknown as Window & { TagSuggest: { attach: Function } };
+        dom.window.eval(SCRIPT);
+        const input = dom.window.document.getElementById('tag') as HTMLInputElement;
+        const field = w.TagSuggest.attach(input, { getKnown: () => ['inventory-load'], getCurrent: () => [], onPick: () => undefined }) as { refresh?: () => void };
+        field.refresh?.();
+        expect((dom.window.document.querySelector('.tag-suggest') as HTMLElement).classList.contains('hidden')).to.equal(true);
+    });
+});
+
 describe('Tag suggestions: the keys (#432)', () => {
     function field(current: string[] = []) {
         const dom = new JSDOM('<!DOCTYPE html><body><div id="box"><input id="tag"></div></body>', { runScripts: 'outside-only' });
