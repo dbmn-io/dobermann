@@ -1728,5 +1728,6 @@ dbmn-run-details { display: block; min-width: min(560px, 100%); }
 .dbmn-run-details-pairs dd { font-family: var(--dbmn-editor-font-family, monospace); font-size: 12px; }
 .dbmn-run-details-heading { margin: 14px 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--dbmn-descriptionForeground); }
 .dbmn-run-details-none { margin: 0; color: var(--dbmn-descriptionForeground); }
-.dbmn-run-details-more { margin-top: 14px; padding: 0; border: none; background: none; font: inherit; color: var(--dbmn-textLink-foreground); cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+.dbmn-run-details-link { padding: 0; border: none; background: none; font: inherit; color: var(--dbmn-textLink-foreground); cursor: pointer; text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--dbmn-textLink-foreground) 40%, transparent); text-underline-offset: 3px; text-align: left; }
+.dbmn-run-details-link:hover, .dbmn-run-details-link:focus-visible { text-decoration-color: currentColor; }
 .dbmn-run-details-prod { margin-left: 8px; padding: 0 6px; border-radius: 8px; font-size: 11px; color: var(--dbmn-editorWarning-foreground); border: 1px solid currentColor; }

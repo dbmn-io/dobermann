@@ -7,14 +7,16 @@
  *
  *   <dbmn-run-details></dbmn-run-details>
  *   el.details = {                                  // screens/console/run-details.ts RunDetails, as the host sends it
- *       name, environment: { name, production }, endpoint: { name, method }, url,
+ *       name, environment: { name, id, production }, endpoint: { name, id, method }, url,
  *       kind: 'batch' | 'single', executionId, started, durationMs, planned (true: before the run, Run Batch's ⓘ),
  *       threads: { current, max } | null, errorHandling: 'continue' | 'stopOnFirst' | null,
  *       headers: [{ name, value }], variables: [{ name, value }],   // secret values come masked from the host
  *       lineage: { copiedFrom?: { runId, environment, at }, reprocessedFrom? } | null
  *   };
  *
- *   el.more = 'Files and every setting';         // a link at the end: fires dbmn-run-details-more (none when unset)
+ * The Endpoint is a link when it has an id: a click fires dbmn-run-details-open { what: 'endpoint', id } and the
+ * screen opens it (James, 2026-11-26: "i really just need to see the endpoint quickly. just do link to endpoint for now"). (No "Files and every setting" link any more: the old Settings panel it opened is gone from
+ * reach, James: "get rid of that, it's useless".)
  *
  * It only draws: what may change while a run goes (Threads, Stop on next error) is changed in the footer's box, and
  * the name on the heading. Every value can be selected and copied. Draws in the page (no shadow root); styles in
@@ -41,7 +43,6 @@
 
     class DbmnRunDetails extends HTMLElement {
         set details(d) { this._d = d || null; this._draw(); }
-        set more(text) { this._more = text || ''; this._draw(); }
         get details() { return this._d; }
         connectedCallback() { this._draw(); }
 
@@ -51,16 +52,24 @@
             this.replaceChildren();
             if (!d) { this.append(make('p', 'dbmn-run-details-none', 'Loading the run’s details…')); return; }
             const where = make('dl', 'dbmn-run-details-list');
-            const row = (label, value, extra) => {
+            const row = (label, value, extra, open) => {
                 if (value === undefined || value === null || value === '') return;
                 where.append(make('dt', '', label));
-                const dd = make('dd', '', value);
+                const dd = make('dd', '');
+                // (a link when the screen can open it: it only says what was clicked)
+                if (open && open.id) {
+                    const link = make('button', 'dbmn-run-details-link', value);
+                    link.type = 'button';
+                    link.addEventListener('click', () => this.dispatchEvent(new CustomEvent('dbmn-run-details-open', { bubbles: true, detail: open })));
+                    dd.append(link);
+                } else dd.textContent = value;
                 if (extra) dd.append(extra);
                 where.append(dd);
             };
             const prod = d.environment && d.environment.production ? make('span', 'dbmn-run-details-prod', 'production') : null;
             row('Environment', d.environment && d.environment.name, prod);
-            row('Endpoint', d.endpoint ? `${d.endpoint.method ? d.endpoint.method + ' ' : ''}${d.endpoint.name || ''}`.trim() : '');
+            row('Endpoint', d.endpoint ? `${d.endpoint.method ? d.endpoint.method + ' ' : ''}${d.endpoint.name || ''}`.trim() : '', null,
+                d.endpoint && { what: 'endpoint', id: d.endpoint.id });
             row('URL', d.url);
             row('Run', d.kind === 'single' ? 'One request' : `Batch${d.requests ? ` of ${Number(d.requests).toLocaleString()} requests` : ''}`);
             row('Started', when(d.started));
@@ -75,12 +84,6 @@
             // (before a run, as Run Batch's ⓘ shows it: what will be sent)
             this._pairs('Headers', d.headers, d.planned ? 'No header values will be sent.' : 'No header values were sent with this run.');
             if (Array.isArray(d.variables) && d.variables.length) this._pairs('Variables', d.variables);
-            if (this._more) {
-                const more = make('button', 'dbmn-run-details-more', this._more);
-                more.type = 'button';
-                more.addEventListener('click', () => this.dispatchEvent(new CustomEvent('dbmn-run-details-more', { bubbles: true })));
-                this.append(more);
-            }
         }
 
         _pairs(title, list, none) {

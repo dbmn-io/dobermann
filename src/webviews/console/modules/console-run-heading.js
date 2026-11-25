@@ -76,11 +76,12 @@
     function openDetails() {
         const el = document.createElement('dbmn-run-details');
         el.details = state.details;
-        // (the Settings panel, unseen since #464, still holds the run's files and every setting: a link reaches it)
-        el.more = 'Files and every setting';
-        el.addEventListener('dbmn-run-details-more', () => {
+        // The Endpoint: opened, the window closed so it is in front
+        el.addEventListener('dbmn-run-details-open', event => {
+            const { what, id } = event.detail || {};
+            if (!id || what !== 'endpoint') return;
             if (window.DbmnModal && window.DbmnModal.requestDismiss) window.DbmnModal.requestDismiss();
-            if (window.dynamicReportManager) window.dynamicReportManager.switchTab('info');
+            post({ type: 'console.openEndpoint', payload: { endpointId: id } });
         });
         state.open = el;
         if (window.DbmnModal && window.DbmnModal.alert) {

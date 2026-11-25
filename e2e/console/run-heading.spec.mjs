@@ -98,6 +98,24 @@ test('console.details names the run and its environment; ⓘ opens them; the env
     expect(await page.evaluate(() => window.__posted.filter(m => m.type === 'console.openEnvironment'))).toEqual([{ type: 'console.openEnvironment', payload: { environmentId: 'env-1' } }]);
 });
 
+test('ⓘ: no "Files and every setting"; its Endpoint is a link that asks the host to open it', async ({ page }) => {
+    // (James, 2026-11-25: "there's this files in every setting which opens up the old settings tab, get rid of that";
+    //  2026-11-26: "i really just need to see the endpoint quickly. just do link to endpoint for now")
+    await open(page);
+    await page.evaluate(d => window.postMessage({ type: 'console.details', details: d }, '*'), DETAILS);
+    await page.locator('#run-heading .dbmn-run-info').click();
+    const details = page.locator('dbmn-run-details');
+    await expect(details).toContainText('POST Inventory');
+    await expect(details).not.toContainText('Files and every setting');
+    // (the environment stays words)
+    await expect(details.locator('button', { hasText: 'DBMN Local' })).toHaveCount(0);
+    await details.locator('button', { hasText: 'POST Inventory' }).click();
+    // (the window closes, so the endpoint is in front)
+    await expect(details).toHaveCount(0);
+    const asked = await page.evaluate(() => window.__posted.filter(m => m.type === 'console.openEndpoint'));
+    expect(asked).toEqual([{ type: 'console.openEndpoint', payload: { endpointId: 'ep-1' } }]);
+});
+
 test('a rename on the heading asks the host, and the name it keeps is shown', async ({ page }) => {
     await open(page);
     await page.evaluate(d => window.postMessage({ type: 'console.details', details: d }, '*'), DETAILS);
