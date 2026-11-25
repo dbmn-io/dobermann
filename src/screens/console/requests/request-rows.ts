@@ -22,6 +22,8 @@ export interface BodySummary {
     items: number | null;
     bytes: number | null;
     contentType?: string | null;
+    /** Not built yet (Review, past its samples): `preview` says when it will be. */
+    later?: boolean;
 }
 
 /** One request as the table shows it. A header pulled out as its own column is a flat key (headerKey). */

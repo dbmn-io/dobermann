@@ -218,3 +218,35 @@ test('Esc closes the window from wherever focus is: the page under it, the windo
     await p.keyboard.press('Escape');
     await expect(p.locator('dbmn-transaction')).toHaveCount(0);
 });
+
+/** Detached nodes in a heap snapshot (it collects thoroughly first: one forced GC over-counts, 2026-11-25), by tag. */
+async function detached(p, tags) {
+    const cdp = await p.context().newCDPSession(p);
+    await cdp.send('HeapProfiler.enable');
+    const chunks = [];
+    cdp.on('HeapProfiler.addHeapSnapshotChunk', e => chunks.push(e.chunk));
+    await cdp.send('HeapProfiler.takeHeapSnapshot', { reportProgress: false });
+    const snap = JSON.parse(chunks.join(''));
+    const m = snap.snapshot.meta, nf = m.node_fields.length, iName = m.node_fields.indexOf('name'), iDet = m.node_fields.indexOf('detachedness');
+    const counts = Object.fromEntries(tags.map(t => [t, 0]));
+    for (let i = 0; i < snap.nodes.length; i += nf) {
+        if (snap.nodes[i + iDet] !== 2) continue;
+        const name = snap.strings[snap.nodes[i + iName]];
+        for (const t of tags) if (name.startsWith(`<${t}`)) counts[t]++;
+    }
+    return counts;
+}
+
+test('opened and closed 20 times, nothing is kept: no window, backdrop, editor or model left, and none of them held in memory', async ({ page: p }) => {
+    await withMonaco(p);
+    const before = await p.evaluate(() => live());
+    for (let i = 0; i < 20; i++) {
+        await open(p);
+        if (i % 2) await p.locator('dbmn-transaction .dbmn-tx-close').click();
+        else await p.keyboard.press('Escape');
+        await expect(p.locator('dbmn-transaction')).toHaveCount(0);
+    }
+    expect(await p.evaluate(() => live()), 'the page as before the first open').toEqual(before);
+    // Each window's Input table was kept by the column drag's listeners on window (column-drag.js), and the window with it
+    expect(await detached(p, ['dbmn-transaction', 'dbmn-table']), 'closed windows and their tables held in memory').toEqual({ 'dbmn-transaction': 0, 'dbmn-table': 0 });
+});

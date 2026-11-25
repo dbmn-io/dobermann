@@ -125,6 +125,9 @@ export interface BatchPlanInput {
     previewCount?: number;
     /** The requests from this one on (0-based): Review's Requests table pages through a batch (planRequests). */
     previewOffset?: number;
+    /** Only where each request's rows are, never its body (planRanges): Review lists every planned request without
+     *  building them (James, 2026-11-25: "All rows, first 5 built"; the engine builds the rest as it sends). */
+    rangesOnly?: boolean;
     groupTableSize?: number;
 }
 
@@ -157,6 +160,16 @@ export async function planRequests(input: BatchPlanInput, offset: number, limit:
         return (await planBatch({ ...input, previewOffset: 0, previewCount: from + count })).requests.slice(from, from + count);
     }
     return (await planBatch({ ...input, previewOffset: from, previewCount: count })).requests;
+}
+
+/**
+ * `limit` of a batch's requests from `offset` (0-based) as PLANNED: their numbers and the rows behind each, with no
+ * body built (body null, size 0). Review lists every request this way and builds only its first few (planRequests).
+ */
+export async function planRanges(input: BatchPlanInput, offset: number, limit: number): Promise<PlanRequest[]> {
+    const from = Math.max(0, Math.floor(offset));
+    const count = Math.max(0, Math.floor(limit));
+    return (await planBatch({ ...input, previewOffset: from, previewCount: count, rangesOnly: true })).requests;
 }
 
 /** {{A8:sequence}} (or :global) anywhere in the body: a number drawn on through the batch (`:local` starts again per request). */
@@ -429,11 +442,24 @@ export async function planBatch(input: BatchPlanInput): Promise<BatchPlan> {
         }
         return starts;
     };
-    if (previewOffset > 0) {
+    if (previewOffset > 0 || input.rangesOnly) {
         const starts = requestStarts(previewOffset + previewCount + 1);
         const from = starts[previewOffset];
         const page: PlanRequest[] = [];
-        if (from !== undefined && previewCount > 0) {
+        if (input.rangesOnly) {
+            // (where each request's rows are, nothing built: the generator is never called)
+            const keyVars = shape === 'grouped' ? outer : shape === 'single' ? [] : rootVars;
+            for (let k = previewOffset; k < previewOffset + previewCount && k < starts.length; k++) {
+                const at = starts[k], to = starts[k + 1] ?? rows.length;
+                const inputRows = rows.slice(at, to);
+                const filled = fillUrl(inputRows[0] || [], queryParams);
+                page.push({
+                    index: k + 1, key: keyVars.map(v => ({ variable: v, value: valueOf(inputRows[0] || [], v) })),
+                    rowCount: inputRows.length, rowRange: { start: at + 1, end: to }, inputRows,
+                    method, url: filled.url, queryParams: filled.params, body: null, size: 0
+                });
+            }
+        } else if (from !== undefined && previewCount > 0) {
             const to = starts[previewOffset + previewCount] ?? rows.length;
             const slice = rows.slice(from, to);
             const sliceCsv = [input.headers, ...slice].map(r => r.map(csvCell).join(',')).join('\n');

@@ -2,11 +2,12 @@
 // Copyright (C) 2026 Flexion Tech Pty Ltd
 /**
  * Run Batch's Review as the Requests table (#466/#470, slice 4): a batch's requests before anything is sent, Ready
- * rows made from the batch plan a page at a time, as Execute will send them.
+ * Every request listed, PLANNED; only the first SAMPLE built, as samples (James, 2026-11-25: "All rows, first 5 built",
+ * "PLANNED"; the engine builds the rest as it sends).
  */
 import { expect } from 'chai';
-import { planBatch, type BatchPlanInput } from '../../../data-loading/batch-plan';
-import { PlannedBatchRequests, SEARCH_MAX } from '../../../screens/console/requests/planned-batch-requests';
+import { planBatch, planRanges, planRequests, type BatchPlanInput } from '../../../data-loading/batch-plan';
+import { BUILT_LATER, PlannedBatchRequests, SAMPLE } from '../../../screens/console/requests/planned-batch-requests';
 
 const input = (count: number): BatchPlanInput => ({
     endpoint: { method: 'POST', path: '/stock', body: '{"sku":"{{sku}}","qty":"{{qty:number}}"}' },
@@ -26,21 +27,26 @@ async function source(count: number) {
 }
 
 describe('Review\'s Ready rows (the planned batch)', () => {
-    it('a page of Ready rows, as Execute will send them: no response, no HTTP, no time', async () => {
+    it('every request listed, Planned; the first 5 built as samples, the rest not built and saying so', async () => {
         const s = await source(120);
-        const page = await s.page({ offset: 50, limit: 3 });
+        expect(SAMPLE).to.equal(5);
+        const page = await s.page({ offset: 3, limit: 4 });
         expect([page.total, page.of]).to.deep.equal([120, 120]);
-        expect(page.rows.map(r => [r.id, r.n, r.status, r.rowStart, r.rowEnd])).to.deep.equal([['plan-51', 51, 'ready', 51, 51], ['plan-52', 52, 'ready', 52, 52], ['plan-53', 53, 'ready', 53, 53]]);
+        expect(page.rows.map(r => [r.id, r.n, r.status, r.rowStart, r.rowEnd])).to.deep.equal([
+            ['plan-4', 4, 'planned', 4, 4], ['plan-5', 5, 'planned', 5, 5], ['plan-6', 6, 'planned', 6, 6], ['plan-7', 7, 'planned', 7, 7]]);
+        expect(page.rows[0].request?.preview, 'a sample: its body').to.equal('{ "sku": "SKU-4", "qty": 4 }');
+        expect(page.rows[2].request, 'past the samples: not built').to.deep.equal({ preview: BUILT_LATER, items: null, bytes: null, later: true });
+        const far = await s.page({ offset: 100, limit: 2 });
+        expect(far.rows.map(r => [r.n, r.rowStart, r.status, r.request?.later])).to.deep.equal([[101, 101, 'planned', true], [102, 102, 'planned', true]]);
         const [row] = page.rows;
         expect({ http: row.http, timeMs: row.timeMs, sent: row.sent, response: row.response, url: row.url, method: row.method }).to.deep.equal({
             http: null, timeMs: null, sent: null, response: null, url: 'https://api.example.test/stock', method: 'POST'
         });
-        expect(row.request?.preview).to.equal('{ "sku": "SKU-51", "qty": 51 }');
         expect(row.requestHeaders, 'the enabled ones, the secret masked').to.deep.equal([{ name: 'Content-Type', value: 'application/json' }, { name: 'Authorization', value: '••••' }]);
     });
 
-    it('the counts: every request Ready', async () => {
-        expect(await (await source(7)).counts()).to.deep.equal({ total: 7, counts: { ready: 7 } });
+    it('the counts: every request Planned', async () => {
+        expect(await (await source(7)).counts()).to.deep.equal({ total: 7, counts: { planned: 7 } });
     });
 
     it('one request in full, for the transaction window: its body as sent, its input rows', async () => {
@@ -50,22 +56,21 @@ describe('Review\'s Ready rows (the planned batch)', () => {
         expect(detail!.rows).to.deep.equal([4, 4]);
         expect(detail!.input, 'its input rows, from the plan').to.deep.equal({ columns: ['sku', 'qty'], rows: [['SKU-4', '4']] });
         expect(await (await source(10)).detail('plan-99')).to.equal(undefined);
+        const later = await (await source(10)).detail('plan-8');
+        expect(later!.requestBody, 'past the samples: not built, and it says so').to.equal(BUILT_LATER);
+        expect(later!.input, 'its input rows all the same').to.deep.equal({ columns: ['sku', 'qty'], rows: [['SKU-8', '8']] });
     });
 
-    it('a search reaches the planned bodies', async () => {
-        const page = await (await source(40)).page({ offset: 0, limit: 50, search: 'SKU-37' });
-        expect(page.rows.map(r => r.n)).to.deep.equal([37]);
+    it('a search: the samples by their bodies, every row by its input rows; nothing past the samples is built', async () => {
+        const s = await source(40);
+        const page = await s.page({ offset: 0, limit: 50, search: 'SKU-37' });
+        expect(page.rows.map(r => [r.n, r.request?.later])).to.deep.equal([[37, true]]);
         expect([page.total, page.of]).to.deep.equal([1, 40]);
     });
 
-    it('a search of a batch too big to plan whole says so, plainly', async () => {
-        const page = await (await source(SEARCH_MAX + 1)).page({ offset: 0, limit: 50, search: 'SKU-7' });
-        expect(page.rows).to.deep.equal([]);
-        expect(page.error).to.match(/search the Input tab/);
-    });
-
-    it('a Status filter without Ready shows none', async () => {
+    it('a Status filter without Planned shows none', async () => {
         const page = await (await source(5)).page({ offset: 0, limit: 50, statuses: ['error'] });
+        expect((await (await source(5)).page({ offset: 0, limit: 50, statuses: ['planned'] })).rows).to.have.length(5);
         expect([page.rows.length, page.total]).to.deep.equal([0, 0]);
     });
 
@@ -73,6 +78,17 @@ describe('Review\'s Ready rows (the planned batch)', () => {
         const s = new PlannedBatchRequests({ input: () => undefined, total: () => 0, headers: () => ({}), bodyText: b => String(b) });
         expect(await s.page({ offset: 0, limit: 5 })).to.deep.equal({ rows: [], total: 0, of: 0 });
         expect(await s.counts()).to.deep.equal({ total: 0, counts: {} });
+    });
+});
+
+describe('planRanges: where each request\'s rows are, nothing built', () => {
+    it('the same rows as the requests built, for a batch packing rows into an array (3 a request), from any offset', async () => {
+        const packed: BatchPlanInput = { ...input(10), endpoint: { method: 'POST', path: '/stock', body: '[{"sku":"{{sku}}","qty":"{{qty:number}}"}]' }, reps: 3 };
+        const built = await planRequests(packed, 0, 4);
+        const ranges = await planRanges(packed, 0, 4);
+        expect(ranges.map(r => [r.index, r.rowRange.start, r.rowRange.end, r.inputRows.length, r.body])).to.deep.equal(
+            built.map(r => [r.index, r.rowRange.start, r.rowRange.end, r.inputRows.length, null]));
+        expect((await planRanges(packed, 2, 2)).map(r => [r.index, r.rowRange.start, r.rowRange.end])).to.deep.equal([[3, 7, 9], [4, 10, 10]]);
     });
 });
 
@@ -88,10 +104,11 @@ describe('Review\'s Ready rows: through the Run Batch controller', () => {
         const kept = controller as unknown as { lastPlanInput: BatchPlanInput; lastPlan: unknown };
         kept.lastPlanInput = i;
         kept.lastPlan = await planBatch(i);
-        await controller.handleMessage({ type: 'console.requests.page', seq: 4, offset: 10, limit: 2 } as never);
+        await controller.handleMessage({ type: 'console.requests.page', seq: 4, offset: 1, limit: 2 } as never);
         const answer = posted.find(m => m.type === 'console.requests.rows')!;
-        expect({ seq: answer.seq, total: answer.total, ns: answer.rows.map((r: { n: number }) => r.n), status: answer.rows[0].status }).to.deep.equal({ seq: 4, total: 30, ns: [11, 12], status: 'ready' });
+        expect({ seq: answer.seq, total: answer.total, of: answer.of, ns: answer.rows.map((r: { n: number }) => r.n), status: answer.rows[0].status })
+            .to.deep.equal({ seq: 4, total: 30, of: 30, ns: [2, 3], status: 'planned' });
         await controller.handleMessage({ type: 'console.requests.counts' } as never);
-        expect(posted.find(m => m.type === 'console.requests.counts')).to.deep.include({ total: 30, counts: { ready: 30 } });
+        expect(posted.find(m => m.type === 'console.requests.counts')).to.deep.include({ total: 30, counts: { planned: 30 } });
     });
 });

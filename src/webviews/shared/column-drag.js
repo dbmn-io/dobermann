@@ -187,15 +187,10 @@
             setTimeout(commit, SETTLE_MS);
         }
 
-        table.addEventListener('pointerdown', event => {
-            if (event.button !== 0 || drag) return;
-            const th = event.target.closest && event.target.closest('thead th');
-            if (!th || !table.contains(th) || event.target.closest('button, input, select, a')) return;
-            // Which part of a heading drags is the table's to say (canDrag)
-            if (opts.canDrag && !opts.canDrag(th, event)) return;
-            press = { th, x: event.clientX, y: event.clientY, pointerId: event.pointerId };
-        });
-        window.addEventListener('pointermove', event => {
+        // The page's pointer and key listeners live only from a press on a heading to its release. Kept on `window` for
+        // good, their closures held this table and everything around it after the table was gone: every dbmn-table
+        // ever drawn (a closed transaction window's Input rows, each time: 2026-11-25, found by heap snapshot)
+        const onMove = event => {
             if (press && event.pointerId === press.pointerId) {
                 if (Math.abs(event.clientX - press.x) < THRESHOLD) return;
                 begin(event);
@@ -204,18 +199,46 @@
                 drag.x = event.clientX;
                 event.preventDefault();
             }
-        });
-        window.addEventListener('pointerup', () => {
+        };
+        const onUp = () => {
             press = null;
+            unlisten();
             if (!drag) return;
             // The release ends a drag: it is not also a click on the heading
             const swallow = ev => { ev.stopPropagation(); ev.preventDefault(); };
             window.addEventListener('click', swallow, { capture: true, once: true });
             setTimeout(() => window.removeEventListener('click', swallow, { capture: true }), 0);
             release(false);
+        };
+        const onCancel = () => { press = null; unlisten(); release(true); };
+        const onKey = event => { if (event.key === 'Escape' && drag) { event.preventDefault(); release(true); } };
+        let listening = false;
+        function listen() {
+            if (listening) return;
+            listening = true;
+            window.addEventListener('pointermove', onMove);
+            window.addEventListener('pointerup', onUp);
+            window.addEventListener('pointercancel', onCancel);
+            window.addEventListener('keydown', onKey);
+        }
+        function unlisten() {
+            if (!listening) return;
+            listening = false;
+            window.removeEventListener('pointermove', onMove);
+            window.removeEventListener('pointerup', onUp);
+            window.removeEventListener('pointercancel', onCancel);
+            window.removeEventListener('keydown', onKey);
+        }
+
+        table.addEventListener('pointerdown', event => {
+            if (event.button !== 0 || drag) return;
+            const th = event.target.closest && event.target.closest('thead th');
+            if (!th || !table.contains(th) || event.target.closest('button, input, select, a')) return;
+            // Which part of a heading drags is the table's to say (canDrag)
+            if (opts.canDrag && !opts.canDrag(th, event)) return;
+            press = { th, x: event.clientX, y: event.clientY, pointerId: event.pointerId };
+            listen();
         });
-        window.addEventListener('pointercancel', () => { press = null; release(true); });
-        window.addEventListener('keydown', event => { if (event.key === 'Escape' && drag) { event.preventDefault(); release(true); } });
         // A drag is the column's, never a text selection or the browser's own drag
         table.addEventListener('dragstart', event => { if (event.target.closest && event.target.closest('thead')) event.preventDefault(); });
 

@@ -5,12 +5,15 @@
  * Ready rows, made from the batch plan a page at a time (data-loading/batch-plan.ts planRequests), as Execute will
  * send them. No response, no HTTP, no time, no sent: the Console's stored-run source takes over at Execute.
  *
- * Light, as the stored source is: a page plans only its own requests. A search reaches the planned requests
- * themselves, so it plans the batch whole, up to SEARCH_MAX requests (a bigger batch is searched on its Input tab).
+ * Every request is listed, PLANNED: its number and the rows behind it (planRanges, nothing built). Only the first
+ * SAMPLE are built, with their bodies, as samples (James, 2026-11-25, by question: "All rows, first 5 built" and
+ * "PLANNED"; "Execution engine is responsible for this": the engine builds the rest as it sends them). A planned row
+ * past the samples says so in its Request cell; its window shows its input rows and says the same. A search looks
+ * through the samples' bodies and every row's number and input rows.
  */
 import * as searchMatcherScript from '../../../webviews/shared/search-matcher.js';
 import { sharedScript } from '../../../utils/shared-script';
-import { planRequests, type BatchPlanInput, type PlanRequest } from '../../../data-loading/batch-plan';
+import { planRanges, planRequests, type BatchPlanInput, type PlanRequest } from '../../../data-loading/batch-plan';
 import {
     REQUEST_COLUMNS, RESPONSE_COLUMNS, RUN_COLUMNS, bodySummary, headerKey, headerPairs, type HeaderPair,
     type RequestColumn, type RequestColumnTree, type RequestDetail, type RequestPage, type RequestPageQuery, type RequestRow, type RequestSource
@@ -22,8 +25,10 @@ interface SearchPlan {
 }
 const { parseSearchExpression, planSearch } = sharedScript<{ parseSearchExpression(text: string): unknown; planSearch(parsed: unknown, columns: unknown[]): SearchPlan }>(searchMatcherScript, 'SearchMatcher');
 
-/** The most planned requests a search plans to look through. */
-export const SEARCH_MAX = 2000;
+/** How many requests Review builds, as samples. */
+export const SAMPLE = 5;
+/** What a planned request past the samples says where its body would be. */
+export const BUILT_LATER = 'Built when the batch runs';
 
 export interface PlannedBatchPorts {
     /** The plan's input as Review last planned it; undefined before Review has. */
@@ -46,7 +51,7 @@ export class PlannedBatchRequests implements RequestSource {
 
     async counts(): Promise<{ total: number; counts: Record<string, number> }> {
         const total = this.ports.input() ? this.ports.total() : 0;
-        return { total, counts: total ? { ready: total } : {} };
+        return { total, counts: total ? { planned: total } : {} };
     }
 
     async page(query: RequestPageQuery): Promise<RequestPage & { error?: string }> {
@@ -54,21 +59,30 @@ export class PlannedBatchRequests implements RequestSource {
         if (!input) return { rows: [], total: 0, of: 0 };
         const of = this.ports.total();
         const offset = Math.max(0, query.offset || 0);
-        const limit = Math.max(0, query.limit || 0);
-        // (every planned request is Ready: a Status filter without Ready shows none)
-        if (Array.isArray(query.statuses) && !query.statuses.includes('ready')) return { rows: [], total: 0, of };
+        const limit = Math.max(0, Math.min(query.limit || 0, of - offset));
+        // (every request on Review is Planned: a Status filter without Planned shows none)
+        if (Array.isArray(query.statuses) && !query.statuses.includes('planned')) return { rows: [], total: 0, of };
         const search = (query.search || '').trim();
-        if (!search) {
-            const rows = (await planRequests(input, offset, limit)).map(r => this.row(r));
-            return { rows, total: of, of };
-        }
-        if (of > SEARCH_MAX) return { rows: [], total: 0, of, error: `A search of the requests looks through up to ${SEARCH_MAX.toLocaleString()} before they are sent: search the Input tab for this batch's ${of.toLocaleString()}.` };
+        if (!search) return { rows: await this.rows(input, offset, limit), total: of, of };
+        // A search: the samples by their bodies, every row by its number and input rows (nothing more is built)
         const columns = query.columns && query.columns.length ? query.columns : DEFAULT_COLUMNS;
         const plan = planSearch(parseSearchExpression(search), columns.map(c => ({ id: c.id, name: c.name, type: 'string', hidden: !!c.hidden })));
-        const all = (await planRequests(input, 0, of)).map(r => this.row(r, true));
+        const all = await this.rows(input, 0, of, true);
         const kept = all.filter(row => plan.rowMatches(i => plan.terms[i].columns.some(id => plan.terms[i].test(searchValue(row, id)))));
-        kept.forEach(r => { delete r.__requestText; });
+        kept.forEach(r => { delete r.__requestText; delete r.__inputText; });
         return { rows: kept.slice(offset, offset + limit), total: kept.length, of };
+    }
+
+    /** Rows from `offset`: the samples built (planRequests), the rest planned only (planRanges). */
+    private async rows(input: BatchPlanInput, offset: number, limit: number, search = false): Promise<RequestRow[]> {
+        if (limit <= 0) return [];
+        const out: RequestRow[] = [];
+        const builtEnd = Math.min(SAMPLE, offset + limit);
+        if (offset < SAMPLE) (await planRequests(input, offset, builtEnd - offset)).forEach(r => out.push(this.row(r, search)));
+        const from = Math.max(offset, SAMPLE);
+        const left = offset + limit - from;
+        if (left > 0) (await planRanges(input, from, left)).forEach(r => out.push(this.row(r, search, false)));
+        return out;
     }
 
     async columnTree(): Promise<RequestColumnTree> {
@@ -82,31 +96,34 @@ export class PlannedBatchRequests implements RequestSource {
     async detail(id: string): Promise<RequestDetail | undefined> {
         const input = this.ports.input();
         const n = Number(String(id).replace(/^plan-/, ''));
-        if (!input || !Number.isFinite(n) || n < 1) return undefined;
-        const [r] = await planRequests(input, n - 1, 1);
+        if (!input || !Number.isFinite(n) || n < 1 || n > this.ports.total()) return undefined;
+        const built = n <= SAMPLE;
+        const [r] = built ? await planRequests(input, n - 1, 1) : await planRanges(input, n - 1, 1);
         if (!r) return undefined;
-        const row = this.row(r);
+        const row = this.row(r, false, built);
         return {
             id, method: row.method, url: row.url, query: row.query, requestHeaders: row.requestHeaders, responseHeaders: [],
-            requestBody: r.body === null ? '' : this.ports.bodyText(r.body), responseBody: null,
+            // (past the samples: not built, and it says so where its body would be)
+            requestBody: !built ? BUILT_LATER : r.body === null ? '' : this.ports.bodyText(r.body), responseBody: null,
             rows: [r.rowRange.start, r.rowRange.end],
             // (its input rows from the plan: nothing else holds them before Execute)
             input: { columns: input.headers.slice(), rows: r.inputRows.map(row => row.slice()) }
         };
     }
 
-    /** A planned request as a Ready row (`search`: with its whole body, for a search to read). */
-    private row(r: PlanRequest, search = false): RequestRow {
+    /** A planned request as a row (`search`: with its whole body and input rows, for a search to read; `built`: a
+     *  sample, with its body, or a planned one past them, which says it is built when the batch runs). */
+    private row(r: PlanRequest, search = false, built = true): RequestRow {
         const requestHeaders: HeaderPair[] = headerPairs(enabledOnly(this.ports.headers()));
-        const text = r.body === null ? null : this.ports.bodyText(r.body);
+        const text = built && r.body !== null ? this.ports.bodyText(r.body) : null;
         const row: RequestRow = {
-            id: `plan-${r.index}`, n: r.index, status: 'ready', http: null, httpText: null, timeMs: null, sent: null,
+            id: `plan-${r.index}`, n: r.index, status: 'planned', http: null, httpText: null, timeMs: null, sent: null,
             rowStart: r.rowRange.start, rowEnd: r.rowRange.end, method: r.method, url: r.url, query: { ...r.queryParams },
-            request: text === null ? null : bodySummary(text, r.size), response: null,
+            request: !built ? { preview: BUILT_LATER, items: null, bytes: null, later: true } : text === null ? null : bodySummary(text, r.size), response: null,
             requestHeaders, responseHeaders: [], reason: null, reprocessCount: 0, hasLogs: false
         };
         for (const h of requestHeaders) row[headerKey('request', h.name)] = h.value;
-        if (search) row.__requestText = text ?? '';
+        if (search) { row.__requestText = text ?? ''; row.__inputText = r.inputRows.map(x => x.join(' ')).join('\n'); }
         return row;
     }
 }
@@ -128,7 +145,7 @@ function searchValue(row: RequestRow, id: string): unknown {
     switch (id) {
         case 'request': return row.__requestText ?? row.request?.preview ?? '';
         case 'requestHeaders': return row.requestHeaders.map(h => `${h.name}: ${h.value}`).join('\n');
-        case 'rowStart': return row.rowStart === null ? '' : `${row.rowStart}–${row.rowEnd}`;
+        case 'rowStart': return [row.rowStart === null ? '' : `${row.rowStart}–${row.rowEnd}`, row.__inputText ?? ''].join('\n');
         default: return row[id] ?? '';
     }
 }

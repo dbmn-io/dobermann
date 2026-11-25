@@ -32,7 +32,7 @@
 
     const pad = n => String(n ?? '').padStart(3, '0');
     const FAILED = new Set(['error', 'test_failed', 'cancelled']);
-    const STATUS_LABEL = { ready: 'Ready', pending: 'Pending', running: 'Running', completed: 'Completed', error: 'Error', test_failed: 'Test failed', cancelled: 'Cancelled', split: 'Split' };
+    const STATUS_LABEL = { planned: 'Planned', ready: 'Ready', pending: 'Pending', running: 'Running', completed: 'Completed', error: 'Error', test_failed: 'Test failed', cancelled: 'Cancelled', split: 'Split' };
     /** Where a cell's click goes: its piece in the cell window; any other opens the transaction. */
     const PIECES = { request: 'Request', response: 'Response', rowStart: 'Input' };
 
@@ -45,7 +45,7 @@
     /** A request's state as the design system's status pill, the same as Compare's SAME / DIFF (James, 2026-11-25:
         "This should look identical"): its tone from core.css. (raw-status-badge stays for the specs; the solid
         status-… colours of Raw's cards are not used here, so nothing outranks the tone.) */
-    const TONE = { completed: 'is-ok', error: 'is-bad', test_failed: 'is-outlined-bad', cancelled: 'is-quiet', split: 'is-quiet', ready: 'is-quiet', pending: 'is-quiet', running: 'is-quiet' };
+    const TONE = { planned: 'is-quiet', completed: 'is-ok', error: 'is-bad', test_failed: 'is-outlined-bad', cancelled: 'is-quiet', split: 'is-quiet', ready: 'is-quiet', pending: 'is-quiet', running: 'is-quiet' };
     function badge(status) {
         const b = el('span', `raw-status-badge status-pill-generic ${TONE[status] || 'is-quiet'}`, STATUS_LABEL[status] || status || 'Pending');
         b.dataset.status = String(status || 'pending');
@@ -59,6 +59,8 @@
     }
     function body(summary) {
         if (!summary) return el('span', 'requests-none', '—');
+        // (a planned request past Review's samples: not built yet, and the cell says when it will be)
+        if (summary.later) return el('span', 'requests-later', summary.preview);
         const wrap = el('span', 'requests-body');
         wrap.append(el('span', 'requests-preview', summary.preview || '(no body)'));
         if (summary.items !== null && summary.items !== undefined) wrap.append(el('span', 'requests-items', `${summary.items.toLocaleString()} item${summary.items === 1 ? '' : 's'}`));
@@ -224,7 +226,7 @@
             return tx;
         }
         /** A request still to settle: not finished, or its response not read yet. */
-        const SETTLED = new Set(['completed', 'error', 'test_failed', 'cancelled', 'split', 'ready']);
+        const SETTLED = new Set(['completed', 'error', 'test_failed', 'cancelled', 'split', 'ready', 'planned']);
         async function openTransaction(row, index) {
             const tx = windowFor();
             state.txIndex = index;
@@ -252,7 +254,7 @@
                 requestBody: detail.requestBody, responseBody: detail.responseBody === null ? undefined : detail.responseBody
             });
             // (Ready rows are Review's, never sent from there: settled as they are)
-            state.txSettled = row.status === 'ready' || (SETTLED.has(row.status) && detail.responseBody !== null);
+            state.txSettled = row.status === 'ready' || row.status === 'planned' || (SETTLED.has(row.status) && detail.responseBody !== null);
             // A finished request whose response isn't in yet (written a moment after it ends): asked again by
             // itself, sooner then slower, for up to ~20 s, as no more word of the run may come
             clearTimeout(state.txRetry);
