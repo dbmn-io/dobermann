@@ -205,6 +205,17 @@ export class ConsoleController {
     // Static map to track all active reports across instances
     private static activeConsoles: Map<string, ConsoleController> = new Map();
     private static missedStatusUpdates = new MissedStatusBuffer<ConsoleStatusUpdate>();
+    /**
+     * Runs whose requests finished (or changed status) while no Console was registered on them: the result is in
+     * storage, but nothing showed it. A Console registering on such a run, still going, reloads its data once
+     * (replayMissedStatusUpdate). Before, the live tables lost them: a run read "20/20" over a Completed of 19, the
+     * first requests missing (a busy machine, the Console's frame slower than the run's first answers; or a Console
+     * closed and opened again mid-run). Only a run that had ENDED was reloaded.
+     */
+    private static missedResults = new MissedStatusBuffer<true>();
+    /** Between registering and the first table: results told now can be overwritten by the older first load. */
+    private loadingFirstTable = false;
+    private resultsDuringFirstLoad = false;
 
     /**
      * GitHub Issue #217: Close any open Console webview tied to a given executionId or batchId.
@@ -333,6 +344,8 @@ export class ConsoleController {
         // activeConsoles and reaches the iframe. Without this, the engine's
         // member-completion events during the load window were silently
         // dropped because the lookup returned undefined.
+        this.loadingFirstTable = true;
+        this.resultsDuringFirstLoad = false;
         try {
             await this.attachLiveUpdates(this.currentConfig);
         } catch (err) {
@@ -370,6 +383,7 @@ export class ConsoleController {
                 });
             } catch { /* swallow */ }
         }
+        this.loadingFirstTable = false;
         await this.replayMissedStatusUpdate(this.currentConfig);
     }
 
@@ -380,9 +394,17 @@ export class ConsoleController {
         const id = config.executionId || config.batchId;
         if (!id) return;
         const missed = ConsoleController.missedStatusUpdates.take(id);
-        if (!missed) return;
-        const ended = missed.status === 'completed' || missed.status === 'error' || missed.status === 'stopped';
-        await ConsoleController.sendStatusUpdate(id, ended ? { ...missed, forceReload: true } : missed);
+        const missedResults = ConsoleController.missedResults.take(config.batchId || id) === true || this.resultsDuringFirstLoad;
+        this.resultsDuringFirstLoad = false;
+        const ended = !!missed && (missed.status === 'completed' || missed.status === 'error' || missed.status === 'stopped');
+        if (missed) await ConsoleController.sendStatusUpdate(id, ended ? { ...missed, forceReload: true } : missed);
+        // Results the live tables never got (no Console yet, or told during the first load), in a run still going:
+        // its data from storage, once, as an ended run's is (an ended one was just reloaded above)
+        if (missedResults && !ended) {
+            await this.reloadFromStorage(config.type === 'batch' && config.batchId ? config.batchId : id, true);
+            this.requestsChanged();
+            this.runChanged(true);
+        }
     }
 
     /**
@@ -5353,72 +5375,7 @@ export class ConsoleController {
                 // GitHub Issue #152: Also reload when batch stops due to error
                 // This ensures export works for reports opened during PREPARING
                 const shouldReloadData = (statusUpdate.forceReload || statusUpdate.status === 'completed' || statusUpdate.status === 'stopped' || statusUpdate.status === 'error') && reportManager.currentConfig;
-                if (shouldReloadData) {
-                    // currentConfig is guaranteed to be defined here (checked in shouldReloadData condition)
-                    const currentConfig = reportManager.currentConfig!;
-
-                    // Get execution metadata to find actual response file paths
-                    const executionMetadataService = reportManager.ports.metadata;
-                    if (executionMetadataService) {
-                        if (currentConfig.type === 'individual') {
-                            // Individual execution: Single response file
-                            const executionMetadata = await executionMetadataService.getExecution(executionId);
-                            if (executionMetadata?.responseFile) {
-                                currentConfig.responseFiles = [executionMetadata.responseFile];
-                            }
-                        } else if (currentConfig.type === 'batch') {
-                            // Batch execution: Multiple response files from batch members
-                            // Use ServiceTokens directly since BatchExecutionEngine isn't in ExecutionServiceTokens
-                            try {
-                                const batchEngine = (reportManager.ports.batchEngine as unknown) as any;
-                                if (batchEngine && typeof batchEngine.getBatchMembers === 'function') {
-                                    const batchMembers = await batchEngine.getBatchMembers(executionId);
-                                    const responseFiles = batchMembers
-                                        .map((member: any) => member.responseFile)
-                                        .filter((file: string | undefined) => !!file);
-                                    currentConfig.responseFiles = responseFiles;
-
-                                    // Update status map so classification reflects current member statuses
-                                    const responseFileStatusMap: Record<string, string> = {};
-                                    const responseFileDetails: Record<string, ResponseFileDetail> = {};
-                                    batchMembers.forEach((member: { responseFile?: string; status?: string; errorMessage?: string; testStatus?: string }) => {
-                                        if (member.responseFile && member.status) {
-                                            responseFileStatusMap[member.responseFile] = member.status;
-                                        }
-                                        if (member.responseFile && (member.errorMessage || member.testStatus)) {
-                                            responseFileDetails[member.responseFile] = { errorMessage: member.errorMessage, testStatus: member.testStatus };
-                                        }
-                                    });
-                                    currentConfig.responseFileStatusMap = responseFileStatusMap;
-                                    currentConfig.responseFileDetails = responseFileDetails;
-                                }
-                            } catch (error) {
-                                // Silently handle batch member retrieval errors
-                            }
-                        }
-                    }
-
-                    // Create default report config
-                    const reportConfig = {
-                        viewMode: 'auto' as const,
-                        maxRows: 10000,
-                        flattenNested: true,
-                        arrayStrategy: 'concatenate' as const
-                    };
-
-                    // NOW reload raw data with updated config
-                    const refreshedData = await reportManager.extractRawData(currentConfig, reportConfig);
-                    reportManager.loadedRawData = refreshedData;
-
-                    // When forceReload, send refreshed data to webview so tables update
-                    if (statusUpdate.forceReload && refreshedData) {
-                        await reportManager.post({
-                            ...createResponseMessage(`refresh_${Date.now()}`, true),
-                            type: ConsoleMessageTypes.TABLE_DATA_RESPONSE,
-                            payload: { rawData: refreshedData }
-                        });
-                    }
-                }
+                if (shouldReloadData) await reportManager.reloadFromStorage(executionId, !!statusUpdate.forceReload);
 
                 await reportManager.post({
                     type: 'status_update',
@@ -5434,6 +5391,79 @@ export class ConsoleController {
         }
     }
 
+
+    /**
+     * The run's data again from storage (its members' response files, statuses and errors, GitHub Issue #99/#152), and,
+     * when `sendTable`, to the page as a new table. A status that ends a run uses it, and a Console that registered
+     * after results it never got (missedResults).
+     */
+    private async reloadFromStorage(executionId: string, sendTable: boolean): Promise<void> {
+        if (!this.currentConfig) return;
+        const currentConfig = this.currentConfig;
+
+        // Get execution metadata to find actual response file paths
+        const executionMetadataService = this.ports.metadata;
+        if (executionMetadataService) {
+            if (currentConfig.type === 'individual') {
+                // Individual execution: Single response file
+                const executionMetadata = await executionMetadataService.getExecution(executionId);
+                if (executionMetadata?.responseFile) {
+                    currentConfig.responseFiles = [executionMetadata.responseFile];
+                }
+            } else if (currentConfig.type === 'batch') {
+                // Batch execution: Multiple response files from batch members
+                // Use ServiceTokens directly since BatchExecutionEngine isn't in ExecutionServiceTokens
+                try {
+                    const batchEngine = (this.ports.batchEngine as unknown) as any;
+                    if (batchEngine && typeof batchEngine.getBatchMembers === 'function') {
+                        const batchMembers = await batchEngine.getBatchMembers(executionId);
+                        const responseFiles = batchMembers
+                            .map((member: any) => member.responseFile)
+                            .filter((file: string | undefined) => !!file);
+                        currentConfig.responseFiles = responseFiles;
+
+                        // Update status map so classification reflects current member statuses
+                        const responseFileStatusMap: Record<string, string> = {};
+                        const responseFileDetails: Record<string, ResponseFileDetail> = {};
+                        batchMembers.forEach((member: { responseFile?: string; status?: string; errorMessage?: string; testStatus?: string }) => {
+                            if (member.responseFile && member.status) {
+                                responseFileStatusMap[member.responseFile] = member.status;
+                            }
+                            if (member.responseFile && (member.errorMessage || member.testStatus)) {
+                                responseFileDetails[member.responseFile] = { errorMessage: member.errorMessage, testStatus: member.testStatus };
+                            }
+                        });
+                        currentConfig.responseFileStatusMap = responseFileStatusMap;
+                        currentConfig.responseFileDetails = responseFileDetails;
+                    }
+                } catch (error) {
+                    // Silently handle batch member retrieval errors
+                }
+            }
+        }
+
+        // Create default report config
+        const reportConfig = {
+            viewMode: 'auto' as const,
+            maxRows: 10000,
+            flattenNested: true,
+            arrayStrategy: 'concatenate' as const
+        };
+
+        // NOW reload raw data with updated config
+        const refreshedData = await this.extractRawData(currentConfig, reportConfig);
+        this.loadedRawData = refreshedData;
+
+        // When forceReload, send refreshed data to webview so tables update
+        if (sendTable && refreshedData) {
+            await this.post({
+                ...createResponseMessage(`refresh_${Date.now()}`, true),
+                type: ConsoleMessageTypes.TABLE_DATA_RESPONSE,
+                payload: { rawData: refreshedData }
+            });
+        }
+    }
+
     /**
      * Static method to send batch member status updates (e.g. pending → running) to any active Console
      */
@@ -5445,6 +5475,8 @@ export class ConsoleController {
         memberEndpointInfo?: Record<string, { endpointPath?: string; requestHeaders?: Record<string, string>; requestQueryParams?: Record<string, string> }>
     ): Promise<void> {
         const consoleManager = ConsoleController.activeConsoles.get(batchId);
+        if (!consoleManager) ConsoleController.missedResults.record(batchId, true);
+        else if (consoleManager.loadingFirstTable) consoleManager.resultsDuringFirstLoad = true;
         if (consoleManager) {
             await consoleManager.post({
                 type: 'batch_member_status_update',
@@ -5470,6 +5502,9 @@ export class ConsoleController {
     }): Promise<void> {
 
         const reportManager = ConsoleController.activeConsoles.get(batchId);
+        // (no Console on the run: kept for the one that registers; during its first load: reloaded after it)
+        if (!reportManager) ConsoleController.missedResults.record(batchId, true);
+        else if (reportManager.loadingFirstTable) reportManager.resultsDuringFirstLoad = true;
 
         if (reportManager) {
             reportManager.requestsChanged();
