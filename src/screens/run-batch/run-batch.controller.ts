@@ -40,6 +40,8 @@ import { stripJsonCommentsSafe } from '../../utils/json-comment-stripper';
 import * as templateRenameScript from '../../webviews/shared/template-rename.js';
 import { sharedScript } from '../../utils/shared-script';
 import { JsonGenerator } from '../../data-loading/json-generator';
+import { COLUMN_FUNCTION_DEFAULTS, MAP_FUNCTIONS } from '../../services/column-functions/column-functions';
+import { knownSteps, mapSample, mapTranslate, type MapTranslateAsk } from './map-functions';
 import { ArrayRepetitionHelper } from '../../services/transaction-preparation/helpers/array-repetition.helper';
 import { TemplateParser } from '../../data-loading/template-parser';
 import { ConsoleViewsStore } from '../../services/console/console-views-store';
@@ -69,6 +71,8 @@ export interface RunBatchMessage extends WebviewMessage {
     'console.requests.page' | 'console.requests.detail' | 'console.requests.counts' | 'console.requests.columns' | 'console.requests.shown' |
     // Slice 5: Validate's ★, the Input tab's saved searches (kept with the Console's)
     'runBatch.inputSearches.load' | 'runBatch.inputSearches.save' |
+    // Map's functions (one Functions window; James 2026-11-25): what it offers, and a column's steps on its first rows
+    'map.functions' | 'map.functionsSample' | 'map.translate' |
     'getEndpointTemplate' | 'generateJsonPreview' | 'generateBulkJson' | 'verifyCSV' |
     'getCurrentEnvironment' |
     'validateWorkspaceForBatch' | 'openFileDialog' | 'detectFileFormat' | 'convertFileFormat' |
@@ -285,6 +289,30 @@ export class RunBatchController {
             case 'saveEndpoint':
                 await this.handleSaveEndpoint(message);
                 break;
+
+            // Map's functions: the list (once), and a column's In and each step's value on its first rows (map-functions.ts)
+            case 'map.functions':
+                this.session.post({ type: 'map.functionsList', functions: MAP_FUNCTIONS, defaults: COLUMN_FUNCTION_DEFAULTS });
+                break;
+            case 'map.functionsSample': {
+                const m = message as unknown as { seq?: number; variable?: string; column?: string; fns?: unknown; headers?: unknown; rows?: unknown };
+                const headers = Array.isArray(m.headers) ? m.headers.map(String) : [];
+                const rows = Array.isArray(m.rows) ? (m.rows as unknown[]).filter(Array.isArray) as unknown[][] : [];
+                this.session.post({ type: 'map.functionsSample', seq: m.seq, variable: m.variable, rows: mapSample(knownSteps(m.fns), String(m.column || ''), headers, rows) });
+                break;
+            }
+
+            // Next to Validate: every row of each column with steps, through its steps (the translated input)
+            case 'map.translate': {
+                const m = message as unknown as { seq?: number } & Partial<MapTranslateAsk>;
+                // (always an answer: the page lets Next go and says why, never waits on a throw)
+                try {
+                    this.session.post({ type: 'map.translated', seq: m.seq, ...mapTranslate({ variables: Array.isArray(m.variables) ? m.variables : [], columns: m.columns || {} }) });
+                } catch (error) {
+                    this.session.post({ type: 'map.translated', seq: m.seq, error: error instanceof Error ? error.message : String(error) });
+                }
+                break;
+            }
 
             // GitHub Issue #135: Coercion validation
             case 'validateSampleCoercion':

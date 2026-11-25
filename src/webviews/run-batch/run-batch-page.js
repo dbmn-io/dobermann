@@ -114,6 +114,10 @@
             case 'typeTransformationsError':
             case 'endpointSaved':
             case 'endpointSaveError':
+            // Map's functions (map-functions.ts): the list, and a column's steps on its first rows
+            case 'map.functionsList':
+            case 'map.functionsSample':
+            case 'map.translated':
             // GitHub Issue #135: Coercion validation results
             case 'sampleCoercionResult':
             case 'fullCoercionResult':

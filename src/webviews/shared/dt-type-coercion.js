@@ -775,6 +775,7 @@
         csvState.dateFormats = csvState.dateFormats || {};
         templateVars.forEach(v => {
             if (!v.mappedTo) return;
+            if (hasSteps(v.name)) return;   // (its steps decide: translateStepColumns, once)
             const dataType = v.dataType || 'string';
             if (dataType === 'string') return; // STRING never gets converted
             let sourceFormat = csvState.sourceTypes[v.name] || getDefaultSourceFormat(dataType);
@@ -922,6 +923,9 @@
         csvState.zonedVariables = [];
         (templateVars || []).forEach(function (v) {
             if (!v.mappedTo || (v.dataType || 'string') !== 'datetime') return;
+            // A column with Map's functions: its times were moved after its steps (stepOutAsSent, at translateStepColumns),
+            // so not again here; Execute's type transform leaves it alone too, as it does a zoned one
+            if (hasSteps(v.name)) { csvState.zonedVariables.push(v.name); return; }
             var colIdx = headers.indexOf(v.mappedTo);
             if (colIdx < 0) return;
             zones.set(colIdx, zonesFor(v));
@@ -944,6 +948,105 @@
             }
         });
         return converted;
+    }
+
+    /* ---------- The translated input: Map's functions, once, at Next to Validate ----------
+     * James, 2026-11-25: "we translate BEFORE we generate our Input file… Then the execution does not need to do anything".
+     * Each column with steps (csvState.functionSteps) goes to the host, which runs every row through the steps
+     * (map-functions.ts mapTranslate, the one definition of each step) and sends back what is stored and sent. The
+     * values as the file had them are kept (csvState.inputOriginals, by variable) for the Input tab's _IN. Columns
+     * without steps are untouched here: the per-cell pass below converts them as before. */
+    function hasSteps(variableName) {
+        const fns = csvState.functionSteps && csvState.functionSteps[variableName];
+        return Array.isArray(fns) && fns.length > 0;
+    }
+    /**
+     * A stepped column's value as it is stored and sent. A datetime's time is still moved from the file's timezone to the
+     * Target's, after its steps (James, 2026-11-25: "map from Computers Timezone, to Environment Timezone"): the steps
+     * read the file's value (Read date, Trim), they don't stand in for the move. Once, here; columnZones then leaves
+     * the column alone, and so does Execute's type transform. Map's Out shows the same.
+     */
+    function stepOutAsSent(variable, value) {
+        if (!variable || (variable.dataType || 'string') !== 'datetime') return value;
+        if (value === null || value === undefined || value === '') return value;
+        var zones = zonesFor(variable);
+        return changeTimeZone(String(value), zones.from, zones.to);
+    }
+    const translateWaiting = new Map();
+    let translateSeq = 0;
+    /** How long Next to Validate waits for the host's translation before saying so (a test shortens it). */
+    let translateLimitMs = 120000;
+    function translateTimeLimit(ms) { translateLimitMs = ms; }
+    function handleMapTranslated(message) {
+        const done = translateWaiting.get(message.seq);
+        if (!done) return;
+        translateWaiting.delete(message.seq);
+        done(message);
+    }
+    /**
+     * Next to Validate's data with each column with steps translated: a COPY of the file's rows (the file's own rows are
+     * never written: Back and Next again start from them; Map's In reads them), where each variable with steps has a
+     * column of its own (`fx:<variable>`, its mapping pointed at it in the copy of the variables handed on), so a column
+     * feeding two variables gives each its own value (steps belong to the variable). onDone({ data, vars }); onFail(why)
+     * when the host says it couldn't, or doesn't answer in time.
+     */
+    function translateStepColumns(parsedData, templateVars, onDone, onFail) {
+        const headers = parsedData.headers || [];
+        const rows = parsedData.rows || [];
+        const vars = templateVars || [];
+        const withSteps = vars.filter(v => v.mappedTo && hasSteps(v.name) && headers.indexOf(v.mappedTo) >= 0);
+        csvState.inputOriginals = {};
+        if (!withSteps.length || !rows.length) { onDone({ data: parsedData, vars }); return; }
+        // Only the columns the steps read: each one's own, and any other a step names
+        const needed = new Set();
+        withSteps.forEach(v => {
+            needed.add(v.mappedTo);
+            csvState.functionSteps[v.name].forEach(f => { if (f && typeof f.col === 'string') needed.add(f.col); });
+        });
+        const columns = {};
+        needed.forEach(name => { const at = headers.indexOf(name); if (at >= 0) columns[name] = rows.map(r => r[at]); });
+        translateSeq += 1;
+        const seq = translateSeq;
+        let settled = false;
+        const fail = why => {
+            if (settled) return;
+            settled = true;
+            translateWaiting.delete(seq);
+            if (typeof onFail === 'function') onFail(why);
+        };
+        const timer = setTimeout(() => fail("The functions on the mapped columns didn't answer in time. Try Next again."), translateLimitMs);
+        translateWaiting.set(seq, answer => {
+            if (settled) return;
+            clearTimeout(timer);
+            if (answer.error) { fail(`The functions on the mapped columns couldn't be applied: ${answer.error}`); return; }
+            settled = true;
+            // The copy: the file's rows, then a column per variable with steps, holding what is stored and sent
+            const added = withSteps.map(v => `fx:${v.name}`);
+            const outHeaders = headers.concat(added);
+            const outRows = rows.map(r => r.concat(added.map(() => '')));
+            withSteps.forEach((v, k) => {
+                const at = headers.length + k;
+                const out = answer.values && answer.values[v.name];
+                csvState.inputOriginals[v.name] = columns[v.mappedTo];
+                for (let r = 0; r < outRows.length; r++) {
+                    const value = Array.isArray(out) ? out[r] : columns[v.mappedTo][r];
+                    outRows[r][at] = value === null || value === undefined ? '' : String(stepOutAsSent(v, value));
+                }
+            });
+            csvState.translatedUnread = answer.unread || {};
+            const outVars = vars.map(v => (withSteps.indexOf(v) >= 0 ? Object.assign({}, v, { mappedTo: `fx:${v.name}`, column: `fx:${v.name}` }) : v));
+            onDone({ data: { headers: outHeaders, rows: outRows }, vars: outVars });
+        });
+        getVscode().postMessage({ type: 'map.translate', seq,
+            variables: withSteps.map(v => ({ variable: v.name, column: v.mappedTo, fns: csvState.functionSteps[v.name] })), columns });
+    }
+    /** Next to Validate couldn't translate: Next is free again, and Map says why. */
+    function translateFailed(why) {
+        const nextBtn = document.getElementById('csvNextBtn');
+        if (nextBtn) nextBtn.disabled = false;
+        csvState.navigationInProgress = false;
+        if (window.DTDataIngestion && window.DTDataIngestion.updateFileProgress) window.DTDataIngestion.updateFileProgress(0, '');
+        if (window.CSVHandler && window.CSVHandler.showModalNotification) window.CSVHandler.showModalNotification('error', why, { persistent: true });
     }
 
     function applySourceFormatToRows(headers, rows, templateVars) {
@@ -1033,11 +1136,13 @@
             if (!useBatched) {
                 if (nextBtn) nextBtn.disabled = true;
                 requestAnimationFrame(function () {
-                    var parsedData = getParsedDataForStep3();
-                    parsedData.rows = applySourceFormatToRows(parsedData.headers, parsedData.rows, templateVars);
-                    DTGrid.populateGridFromMappedData(parsedData, templateVars);
-                    window.CSVHandler.showCSVStep(csvState.modalStep + 1);
-                    csvState.navigationInProgress = false;
+                    translateStepColumns(getParsedDataForStep3(), templateVars, function (translated) {
+                        var parsedData = translated.data, vars = translated.vars;
+                        parsedData.rows = applySourceFormatToRows(parsedData.headers, parsedData.rows, vars);
+                        DTGrid.populateGridFromMappedData(parsedData, vars);
+                        window.CSVHandler.showCSVStep(csvState.modalStep + 1);
+                        csvState.navigationInProgress = false;
+                    }, translateFailed);
                 });
                 return;
             }
@@ -1061,10 +1166,14 @@
                 var parsedData = getParsedDataForStep3();
                 fpUpdate(30, 'Parsing data...');
 
-                // Stage 3: Converting formats (batched, non-blocking)
+                // Stage 3: Map's functions (on the host), then converting formats (batched, non-blocking)
+                fpUpdate(30, 'Applying functions...');
+                translateStepColumns(parsedData, templateVars, function (translated) {
+                parsedData = translated.data;
+                var vars = translated.vars;
                 fpUpdate(30, 'Converting formats...');
 
-                applySourceFormatToRowsBatchedImpl(parsedData.headers, parsedData.rows, templateVars,
+                applySourceFormatToRowsBatchedImpl(parsedData.headers, parsedData.rows, vars,
                     function (processed, total) {
                         var pct = total > 0 ? Math.round((processed / total) * 100) : 100;
                         fpUpdate(footerPct(30, 60, pct), 'Converting formats...');
@@ -1076,7 +1185,7 @@
                         // Stage 4: Building grid (batched, non-blocking)
                         fpUpdate(60, 'Building grid...');
 
-                        DTGrid.populateGridFromMappedDataBatched(parsedData, templateVars,
+                        DTGrid.populateGridFromMappedDataBatched(parsedData, vars,
                             function (processed, total) {
                                 var pct = total > 0 ? Math.round((processed / total) * 100) : 100;
                                 fpUpdate(footerPct(60, 85, pct), 'Building grid...');
@@ -1106,6 +1215,7 @@
                         );
                     }
                 );
+                }, translateFailed);
             });
 
             return;
@@ -1250,7 +1360,8 @@
         });
 
         userVariables.forEach(variable => {
-            if (variable.mappedTo) {
+            // (a column with steps is checked by its steps instead: Map's tick, then Validate on what they give)
+            if (variable.mappedTo && !hasSteps(variable.name)) {
                 mappings.push({
                     variableName: variable.name,
                     csvColumn: variable.mappedTo,
@@ -1613,6 +1724,10 @@
     }
 
     window.DTTypeCoercion = {
+        handleMapTranslated: handleMapTranslated,
+        hasSteps: hasSteps,
+        translateStepColumns: translateStepColumns,
+        translateTimeLimit: translateTimeLimit,
         init: init,
 
         // Transformation (Validate and Review's sample values)
@@ -1650,6 +1765,7 @@
         filterNonStringTypes: filterNonStringTypes,
         changeTimeZone: changeTimeZone,
         zonesFor: zonesFor,
+        stepOutAsSent: stepOutAsSent,
         computerTimezone: computerTimezone,
 
         // GitHub Issue #223: Batched source format conversion

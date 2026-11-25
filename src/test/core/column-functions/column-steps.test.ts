@@ -10,6 +10,10 @@
 import * as assert from 'assert';
 import { applyColumnFns, callExpr, columnFnCall, columnsIn, COLUMN_FUNCTIONS, type ColumnFn } from '../../../services/column-functions/column-functions';
 import { fnExpr } from '../../../services/query/query-new-engine';
+import { applyColumnStep, type ReadDateAs, type ReadNumberAs } from '../../../services/column-functions/column-functions';
+import { convertValueBySourceFormat } from '../../../utils/source-format-converter';
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const DateRead = require('../../../webviews/shared/date-read.js') as { readDate(text: unknown, format: string): string | null };
 
 /** The other columns of the row, by id. */
 const ROW: Record<string, unknown> = { qty: '52', reserved: 120, damaged: '8', onHand: 1428, base: 100, name: 'Acme', blank: null };
@@ -86,5 +90,51 @@ describe('Column steps (Map and calculated columns)', () => {
         const ids = COLUMN_FUNCTIONS.map(f => f.id);
         for (const id of ['lower', 'breaks', 'ifblank', 'ifis', 'plus', 'minus', 'times', 'divide', 'subfrom', 'divinto', 'pct', 'round', 'jointext']) assert.ok(ids.includes(id as never), id);
         assert.deepStrictEqual(columnsIn([{ fn: 'trim' }, { fn: 'minus', col: 'qty' }, { fn: 'plus', value: 1 }, { fn: 'jointext', between: '', col: 'name' }]), ['qty', 'name']);
+    });
+
+    /* ---------- Read number and Read date: today's Transform options as steps (Run Batch's Map) ---------- */
+
+    it('Read number sends what the Transform option sent, for each option (the same converter)', () => {
+        const values: Record<ReadNumberAs, string[]> = {
+            standard: ['1,428', '42', '-7.5', '0.10'],
+            cobol: ['+000000099.9900', '-000000001.0000', '+000000000.0000'],
+            currency: ['$1,234.56', '(12.50)', '€99'],
+            scientific: ['1.5E3', '2e-2', '-4.2E1']
+        };
+        (Object.keys(values) as ReadNumberAs[]).forEach(as => values[as].forEach(v => {
+            const before = convertValueBySourceFormat(v, as, 'number');
+            const now = applyColumnFns(v, [{ fn: 'readnum', as }]);
+            assert.strictEqual(String(now), before, `${as} ${v}`);
+        }));
+    });
+
+    it('Read date sends what the Transform option sent, for each order (the same reader), as YYYY-MM-DD', () => {
+        const values: Record<ReadDateAs, string[]> = {
+            'dd-mm-yyyy': ['05/01/2026', '28/02/2026', '1.3.2026'],
+            'mm-dd-yyyy': ['01/05/2026', '02/28/2026'],
+            'yyyy-mm-dd': ['2026/01/05', '2026.2.28'],
+            iso_8601: ['2026-01-05', '2026-01-05T08:00:00Z'],
+            unix_timestamp: ['1767571200', '1767571200000'],
+            excel_serial: ['45663', '46027']
+        };
+        (Object.keys(values) as ReadDateAs[]).forEach(as => values[as].forEach(v => {
+            const before = DateRead.readDate(v, as);
+            assert.ok(before, `${as} ${v} reads`);
+            assert.strictEqual(applyColumnFns(v, [{ fn: 'readdate', as }]), before, `${as} ${v}`);
+        }));
+        // a day already YYYY-MM-DD is that day in every order (reading twice changes nothing)
+        assert.strictEqual(applyColumnFns('2026-01-05', [{ fn: 'readdate', as: 'mm-dd-yyyy' }]), '2026-01-05');
+    });
+
+    it('a value a Read step can\'t read stops the chain and says why; a blank stays blank', () => {
+        assert.deepStrictEqual(applyColumnStep('31/02/2026', { fn: 'readdate', as: 'dd-mm-yyyy' }), { failed: '31/02/2026 is not a date written DD/MM/YYYY' });
+        assert.deepStrictEqual(applyColumnStep('abc', { fn: 'readnum', as: 'cobol' }), { failed: 'abc is not COBOL' });
+        assert.strictEqual(applyColumnFns('31/02/2026', [{ fn: 'readdate', as: 'dd-mm-yyyy' }, { fn: 'upper' }]), null);
+        assert.deepStrictEqual(applyColumnStep(null, { fn: 'readdate', as: 'dd-mm-yyyy' }), { value: null });
+        assert.deepStrictEqual(applyColumnStep('', { fn: 'readnum', as: 'standard' }), { value: '' });
+    });
+
+    it('Read number and Read date are Map\'s only: Query\'s engine refuses them, plainly', () => {
+        assert.throws(() => fnExpr({ column: 'x' }, { fn: 'readdate', as: 'dd-mm-yyyy' }), /Map only/);
     });
 });

@@ -46,6 +46,7 @@
  *   - a piece { key: 'other', kind: 'other', label } is another column of the row or a value typed in: a picker of
  *     `columns: [{ id, label }]` (or names) and "A value…"; its step's params are { col } or { value };
  *   - a number piece's `min` is its least (Round's places: 0; else 1);
+ *   - a piece { key, label, kind: 'choice', options: [{ id, label }] } is a picker of fixed choices (Read date's Written as);
  *   - a sample row may say a step couldn't read its value: { failedAt, failed } (shown at that step, nothing after);
  *   - `calc: { name, start, starts: [{ id, label }] }` opens it for a calculated column: Name and Start from above
  *     the chain, Apply only with a name; the answer is then { name, start, steps } (steps as above).
@@ -80,6 +81,7 @@
                 if (typeof piece === 'string') return piece;
                 const value = a.params ? a.params[piece.key] : '';
                 if (piece.kind === 'other') return a.params && a.params.col !== undefined ? colName(a.params.col) : show(a.params ? a.params.value : '');
+                if (piece.kind === 'choice') { const c = (piece.options || []).find(x => x.id === value); return c ? c.label : show(value); }
                 if (piece.kind === 'lookup') {
                     const option = (piece.options || []).find(o => o.id === value);
                     // (a table that has gone is said to be missing: nothing is looked up in its place)
@@ -121,6 +123,7 @@
                     return;
                 }
                 params[piece.key] = was !== undefined ? was : defaults[piece.key] !== undefined ? defaults[piece.key] : '';
+                if (piece.kind === 'choice' && !(piece.options || []).some(c => c.id === params[piece.key])) params[piece.key] = ((piece.options || [])[0] || {}).id || '';
                 if (piece.kind === 'lookup') {
                     const table = (piece.options || []).find(t => t.id === params[piece.key]);
                     const cols = table && Array.isArray(table.columns) ? table.columns : [];
@@ -194,6 +197,17 @@
         function fieldsOf(step, def) {
             const fields = el('div', 'dbmn-fx-fields');
             pieces(def).forEach(piece => {
+                if (piece.kind === 'choice') {
+                    const field = el('label', 'dbmn-fx-field');
+                    const pick = el('select', 'dbmn-modal-input dbmn-fx-choice');
+                    (piece.options || []).forEach(c => { const op = el('option', '', c.label); op.value = c.id; pick.appendChild(op); });
+                    pick.value = step.params[piece.key];
+                    pick.dataset.fnValue = piece.key;
+                    pick.addEventListener('change', () => { step.params[piece.key] = pick.value; ask(); });
+                    field.append(el('span', '', piece.label || piece.key), pick);
+                    fields.append(field);
+                    return;
+                }
                 if (piece.kind === 'other') {
                     const field = el('label', 'dbmn-fx-field');
                     const pick = el('select', 'dbmn-modal-input dbmn-fx-other');

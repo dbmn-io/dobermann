@@ -2320,7 +2320,8 @@
             variable: variable.name,
             column: variable.column || variable.mappedTo || null,
             dataType: variable.dataType || 'string',
-            sourceFormat: csvState.sourceTypes?.[variable.name] || getDefaultSourceFormat(variable.dataType || 'string')
+            // (a column with steps was translated once at Next to Validate: the host's own conversion leaves it alone)
+            sourceFormat: stepsOf(variable.name).length ? 'passthrough' : (csvState.sourceTypes?.[variable.name] || getDefaultSourceFormat(variable.dataType || 'string'))
         }));
 
         return mappings;
@@ -2504,7 +2505,10 @@
             if (v && v.name && v.mappedTo && !/^(A8|ENV):/i.test(v.name)) { used[v.name] = v.mappedTo; }
         });
         if (Object.keys(used).length === 0) { return {}; }
-        return { columnMappings: { ...(saved.columnMappings || {}), ...used } };
+        // (each mapped variable's steps, or none: a variable whose steps were all removed forgets them)
+        const steps = { ...(saved.columnFunctions || {}) };
+        Object.keys(used).forEach(name => { const fns = stepsOf(name); if (fns.length) { steps[name] = fns; } else { delete steps[name]; } });
+        return { columnMappings: { ...(saved.columnMappings || {}), ...used }, columnFunctions: steps };
     }
 
     /**
@@ -2517,7 +2521,8 @@
         if (!csvState.endpointConfig || !csvState.endpointId) { return; }
         const saved = csvState.endpointConfig.dataLoadingConfig || {};
         const update = rememberedMappingUpdate();
-        if (!update.columnMappings || JSON.stringify(update.columnMappings) === JSON.stringify(saved.columnMappings || {})) { return; }
+        if (!update.columnMappings || (JSON.stringify(update.columnMappings) === JSON.stringify(saved.columnMappings || {}) &&
+            JSON.stringify(update.columnFunctions || {}) === JSON.stringify(saved.columnFunctions || {}))) { return; }
         getVscode().postMessage({
             type: 'saveEndpoint',
             endpoint: { ...csvState.endpointConfig, dataLoadingConfig: { ...saved, ...update } }
@@ -2993,7 +2998,8 @@
             const headerFormatMap = {};
             if (csvState.sourceType !== 'grid' && csvState.templateVariables && csvState.sourceTypes) {
                 csvState.templateVariables.forEach(variable => {
-                    if (variable.mappedTo && csvState.sourceTypes[variable.name]) {
+                    // (never a column with steps: translated once at Next to Validate)
+                    if (variable.mappedTo && csvState.sourceTypes[variable.name] && !stepsOf(variable.name).length) {
                         headerFormatMap[variable.mappedTo] = csvState.sourceTypes[variable.name];
                     }
                 });
@@ -3189,6 +3195,8 @@
         // Type coercion utilities (exposed for split modules)
         applyModifiersForDisplay,
         computeTargetSample,
+        // (the mapping the host's conversions read: a column with steps is passthrough)
+        getCurrentMappings,
         // A date column Auto-detect read by this computer's date order (Map says so; the walk stops on Map to show it)
         dateReadBySystem: (variableName) => {
             const variable = csvState.templateVariables?.find(v => v.name === variableName);
@@ -3245,6 +3253,16 @@
                     break;
                 case 'csvCompatibilityError':
                     handleCSVCompatibilityError(message);
+                    break;
+                // Map's functions: the list, and a column's steps on its first rows (map-functions.ts)
+                case 'map.functionsList':
+                    handleMapFunctionsList(message);
+                    break;
+                case 'map.functionsSample':
+                    handleMapFunctionsSample(message);
+                    break;
+                case 'map.translated':
+                    window.DTTypeCoercion.handleMapTranslated(message);
                     break;
                 // GitHub Issue #135: Coercion validation results
                 case 'sampleCoercionResult':
@@ -3504,6 +3522,9 @@
      * Collects sample values and sends to backend
      */
     function triggerSampleCoercionValidation(...args) {
+        drawFxSlot(args[0]);
+        // (a column with steps: its In, Out and tick come from its steps, on the host)
+        if (stepsOf(args[0]).length) { refreshMapFunctions(args[0]); return undefined; }
         return window.DTTypeCoercion.triggerSampleCoercionValidation(...args);
     }
 
@@ -3795,11 +3816,6 @@
             }
             const currentSourceFormat = csvState.sourceTypes[variable.name];
 
-            // Build Source Format dropdown options based on target type
-            const formatOptions = getSourceFormatOptions(targetType);
-            const sourceFormatOptions = formatOptions.map(opt =>
-                `<option value="${opt.value}" ${opt.value === currentSourceFormat ? 'selected' : ''}>${opt.label}</option>`
-            ).join('');
 
             // GitHub Issue #175: Parse modifiers for display in Template Variable column
             let mods = variable.modifiers;
@@ -3833,9 +3849,7 @@
                 `<option value="${header}">${header}</option>`
             ).join('')}
                     </select>
-                    <select class="source-format-select${currentSourceFormat === 'passthrough' ? ' format-none' : ''}" data-target-type="${targetType}" title="Source format" data-change="updateSourceType" data-arg="${escapedVarName}">
-                        ${sourceFormatOptions}
-                    </select>
+                    <span class="map-fx-slot"></span>
                 </td>
                 <td class="map-sample-cell sample-same">
                     <div class="source-sample-cell">-</div>
@@ -3844,6 +3858,8 @@
                 <td class="status-cell"></td>
             `;
             mappingTableBody.appendChild(row);
+            // Functions this endpoint remembered for the variable (kept with its column), unless this run has its own
+            rememberStepsFor(variable.name);
 
             // Preserve existing mapping if available (issue #75 - don't reset mappings when going back)
             if (variable.mappedTo && csvState.currentHeaders.includes(variable.mappedTo)) {
@@ -4249,6 +4265,159 @@
         });
     }
 
+    /* ---------- Map's functions (fx): a column's steps, worked out on the host ----------
+     * James, 2026-11-25: one fx and one Functions window for Map, the Join and calculated columns; the Transform
+     * drop-down goes. A variable's steps (csvState.functionSteps[name], as the host's ColumnFn: { fn, ...values }) are
+     * worked out by the host (map-functions.ts, the one definition of each step), so the Sample's In and Out are what
+     * is sent. A variable with no steps keeps today's conversion for its type (sourceTypes' default). */
+    let mapFunctionsList = null;
+    const mapFunctionsWaiting = [];
+    const mapSampleWaiting = new Map();
+    let mapSampleSeq = 0;
+    /** How many of the file's first rows the window and the tick try. */
+    const MAP_SAMPLE_ROWS = 10;
+
+    function stepsOf(variableName) {
+        return (csvState.functionSteps && csvState.functionSteps[variableName]) || [];
+    }
+    /** The host's steps ({ fn, ...values }) as the window's ({ id, params }), and back. */
+    function stepsToDialog(fns) {
+        return fns.map(f => { const params = {}; Object.keys(f).forEach(k => { if (k !== 'fn') { params[k] = f[k]; } }); return { id: f.fn, params }; });
+    }
+    function stepsFromDialog(applied) {
+        return applied.map(a => Object.assign({ fn: a.id }, a.params || {}));
+    }
+    /** What this endpoint remembered for a variable: its steps come back with its column, unless this run set its own. */
+    function rememberStepsFor(variableName) {
+        const remembered = csvState.endpointConfig?.dataLoadingConfig?.columnFunctions;
+        if (!remembered || !Array.isArray(remembered[variableName]) || !remembered[variableName].length) { return; }
+        if (!csvState.functionSteps) { csvState.functionSteps = {}; }
+        if (!(variableName in csvState.functionSteps)) { csvState.functionSteps[variableName] = remembered[variableName]; }
+    }
+    function mapFunctions() {
+        if (mapFunctionsList) { return Promise.resolve(mapFunctionsList); }
+        return new Promise(resolve => {
+            mapFunctionsWaiting.push(resolve);
+            if (mapFunctionsWaiting.length === 1) { getVscode().postMessage({ type: 'map.functions' }); }
+        });
+    }
+    function handleMapFunctionsList(message) {
+        mapFunctionsList = { functions: message.functions || [], defaults: message.defaults || {} };
+        mapFunctionsWaiting.splice(0).forEach(resolve => resolve(mapFunctionsList));
+    }
+    /** The file's first rows, as Map has them (arrays under csvState.currentHeaders). */
+    function mapSampleRows() {
+        const rows = (csvState.currentParsedData && csvState.currentParsedData.rows) || window.currentParsedCsvData || [];
+        return rows.slice(0, MAP_SAMPLE_ROWS);
+    }
+    function askMapSample(variableName, column, fns) {
+        return new Promise(resolve => {
+            mapSampleSeq += 1;
+            mapSampleWaiting.set(mapSampleSeq, resolve);
+            getVscode().postMessage({ type: 'map.functionsSample', seq: mapSampleSeq, variable: variableName, column, fns, headers: csvState.currentHeaders || [], rows: mapSampleRows() });
+        });
+    }
+    function handleMapFunctionsSample(message) {
+        const resolve = mapSampleWaiting.get(message.seq);
+        if (!resolve) { return; }
+        mapSampleWaiting.delete(message.seq);
+        resolve(message.rows || []);
+    }
+    function mapRowOf(variableName) {
+        const mappingTable = document.querySelector('#columnMappingTable tbody');
+        return mappingTable ? mappingTable.querySelector(`tr[data-variable="${variableName}"]`) : null;
+    }
+    /** The row's fx button: white to add a function, yellow with steps (which on hover); none until a column is picked. */
+    function drawFxSlot(variableName) {
+        const row = mapRowOf(variableName);
+        const slot = row && row.querySelector('.map-fx-slot');
+        if (!slot || !window.DbmnFunctions || !window.DbmnFunctions.button) { return; }
+        const variable = (csvState.templateVariables || []).find(v => v.name === variableName);
+        if (!variable || !variable.mappedTo) { slot.replaceChildren(); return; }
+        const fns = stepsOf(variableName);
+        const words = mapFunctionsList && fns.length ? window.DbmnFunctions.written(mapFunctionsList.functions, stepsToDialog(fns), variable.mappedTo, csvState.currentHeaders) : '';
+        slot.replaceChildren(window.DbmnFunctions.button({ steps: fns.length, words, label: `Functions on ${variable.mappedTo}`, onClick: () => openMapFunctions(variableName) }));
+    }
+    /** A value as the Sample shows it ('' and blank said so). */
+    function sampleText(value) {
+        return value === null || value === undefined ? '(blank)' : value === '' ? '(empty)' : String(value);
+    }
+    /** The Sample's In and Out, and the tick, from the column's steps on its first rows (the host's answer). */
+    async function refreshMapFunctions(variableName) {
+        const variable = (csvState.templateVariables || []).find(v => v.name === variableName);
+        const row = mapRowOf(variableName);
+        if (!variable || !variable.mappedTo || !row) { return; }
+        const fns = stepsOf(variableName);
+        if (!fns.length) { return; }
+        if (!mapFunctionsList) { await mapFunctions(); drawFxSlot(variableName); }
+        const rows = (await askMapSample(variableName, variable.mappedTo, fns)).map(r => (r.failedAt !== undefined || !window.DTTypeCoercion ? r
+            // (a datetime's Out is its time as sent: moved to the Target's timezone after the steps, as at Next to Validate)
+            : Object.assign({}, r, { after: window.DTTypeCoercion.stepOutAsSent(variable, r.after) })));
+        const cell = row.querySelector('.map-sample-cell');
+        const inCell = row.querySelector('.source-sample-cell');
+        const outCell = row.querySelector('.target-sample-cell');
+        const first = rows[0];
+        if (cell && inCell && outCell && first) {
+            cell.classList.remove('sample-same');
+            cell.classList.add('has-fx');
+            const label = text => { const l = document.createElement('span'); l.className = 'map-io'; l.textContent = text; return l; };
+            const val = (text, cls) => { const v = document.createElement('span'); v.className = 'map-io-v' + (cls ? ' ' + cls : ''); v.textContent = text; v.title = text; return v; };
+            const out = first.failedAt !== undefined ? first.failed : sampleText(first.after);
+            inCell.replaceChildren(label('In'), val(sampleText(first.before)));
+            outCell.replaceChildren(label('Out'), val(out, first.failedAt !== undefined ? 'is-bad' : String(first.after) !== String(first.before) ? 'is-changed' : ''));
+        }
+        // The tick: every first row read by its steps, and what comes out the template's type
+        const type = (variable.dataType || 'string').toLowerCase();
+        const wrong = rows.map((r, n) => {
+            if (r.failedAt !== undefined) { return `row ${n + 1}: ${r.failed}`; }
+            const v = r.after;
+            if (v === null || v === undefined || v === '') { return ''; }
+            if ((type === 'number' || type === 'integer' || type === 'int') && !Number.isFinite(Number(v))) { return `row ${n + 1}: ${v} is not a number`; }
+            if (type === 'date' && !/^\d{4}-\d{2}-\d{2}/.test(String(v))) { return `row ${n + 1}: ${v} is not a date (add Read date)`; }
+            return '';
+        }).filter(Boolean);
+        const status = row.querySelector('.status-cell');
+        if (status) {
+            status.className = 'status-cell';
+            row.classList.remove('has-warning', 'has-error');
+            const mark = document.createElement('span');
+            if (!wrong.length) { mark.className = 'status-indicator status-ok'; mark.textContent = '✓'; mark.title = `All ${rows.length} samples are read by the steps`; }
+            else {
+                const all = wrong.length === rows.length;
+                mark.className = 'status-indicator ' + (all ? 'status-error' : 'status-warning');
+                mark.textContent = all ? '✕' : '!';
+                mark.title = `${wrong[0]} (${rows.length - wrong.length}/${rows.length} samples OK)`;
+                row.classList.add(all ? 'has-error' : 'has-warning');
+            }
+            status.replaceChildren(mark);
+        }
+    }
+    /** fx: the Functions window (shared/dbmn-functions.js), the column's steps, tried on its first rows by the host. */
+    async function openMapFunctions(variableName) {
+        const variable = (csvState.templateVariables || []).find(v => v.name === variableName);
+        if (!variable || !variable.mappedTo || !window.DbmnFunctions) { return; }
+        const list = await mapFunctions();
+        const applied = await window.DbmnFunctions.open({
+            column: variable.mappedTo,
+            functions: list.functions,
+            defaults: list.defaults,
+            applied: stepsToDialog(stepsOf(variableName)),
+            // (a step that takes another column: the file's other columns)
+            columns: (csvState.currentHeaders || []).filter(h => h !== variable.mappedTo).map(h => ({ id: h, label: h })),
+            sample: async applied => ({ rows: await askMapSample(variableName, variable.mappedTo, stepsFromDialog(applied)) })
+        });
+        if (!applied) { return; }
+        if (!csvState.functionSteps) { csvState.functionSteps = {}; }
+        csvState.functionSteps[variableName] = stepsFromDialog(applied);
+        drawFxSlot(variableName);
+        if (applied.length) { refreshMapFunctions(variableName); return; }
+        // No steps now: the Sample and tick as for any column (its type's conversion)
+        const row = mapRowOf(variableName);
+        const cell = row && row.querySelector('.map-sample-cell');
+        if (cell) { cell.classList.remove('has-fx'); }
+        updateVariableMapping(variableName, variable.mappedTo);
+    }
+
     // GitHub Issue #135: Update source format for a variable
     function updateSourceType(variableName, sourceFormat) {
         if (!csvState.sourceTypes) {
@@ -4289,6 +4458,8 @@
     function updateRowStatus(variableName) {
         const mappingTable = document.querySelector('#columnMappingTable tbody');
         if (!mappingTable) return;
+        drawFxSlot(variableName);
+        if (stepsOf(variableName).length) { refreshMapFunctions(variableName); return; }
 
         const row = mappingTable.querySelector(`tr[data-variable="${variableName}"]`);
         if (!row) return;

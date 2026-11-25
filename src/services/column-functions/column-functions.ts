@@ -19,6 +19,12 @@
 import { callFunction, type FunctionContext } from '../engine/engine-functions';
 import type { Expr, FunctionName } from '../engine/engine-types';
 import { fromValue, toValue, type V } from '../engine/engine-values';
+import { convertValueBySourceFormat } from '../../utils/source-format-converter';
+import { sharedScript } from '../../utils/shared-script';
+import * as dateReadScript from '../../webviews/shared/date-read.js';
+
+/** The one date reader (date-read.js: Map's conversion at Next to Validate reads with it too). */
+const DateRead = sharedScript<typeof dateReadScript>(dateReadScript, 'DateRead');
 
 /** One function on a column, with its values. */
 export type ColumnFn =
@@ -57,7 +63,23 @@ export type ColumnFn =
     /** Round to so many decimal places (0 or more). */
     | { fn: 'round'; places: number }
     /** Join text: x, then `between`, then the other column or value. */
-    | ({ fn: 'jointext'; between: string } & OtherValue);
+    | ({ fn: 'jointext'; between: string } & OtherValue)
+    /*
+     * Reading a file's value (Run Batch's Map only: Query reads results, not files). They read as
+     * the Map's Transform options did: Read number by the host's source-format converter, Read date
+     * by the one date reader (date-read.js). A value they can't read stops the chain (applyColumnStep).
+     */
+    /** Read number: written as COBOL (+000000099.9900), Currency ($1,234.56, (12.50)), Scientific (1.5E3), or plain with commas. */
+    | { fn: 'readnum'; as: ReadNumberAs }
+    /** Read date: written in this order; gives YYYY-MM-DD. */
+    | { fn: 'readdate'; as: ReadDateAs };
+
+/** How Read number reads (the Map's number Transform options). */
+export type ReadNumberAs = 'standard' | 'cobol' | 'currency' | 'scientific';
+/** How Read date reads (the Map's date Transform options; date-read.js). */
+export type ReadDateAs = 'dd-mm-yyyy' | 'mm-dd-yyyy' | 'yyyy-mm-dd' | 'iso_8601' | 'unix_timestamp' | 'excel_serial';
+/** The steps only Run Batch's Map offers. */
+export const MAP_ONLY_FNS: ReadonlySet<ColumnFnId> = new Set(['readnum', 'readdate']);
 
 /** The arithmetic steps, each with another column or a value. */
 export type OtherFnId = 'plus' | 'minus' | 'times' | 'divide' | 'subfrom' | 'divinto' | 'pct';
@@ -69,13 +91,14 @@ export type ColumnFnId = ColumnFn['fn'];
 
 /** A piece of a function as the dialog writes it: 'x' (the column), text, or a value typed in place. */
 export type ColumnFnPiece = 'x' | string | {
-    key: 'n' | 'from' | 'to' | 'table' | 'use' | 'is' | 'then' | 'else' | 'places' | 'between' | 'other';
+    key: 'n' | 'from' | 'to' | 'table' | 'use' | 'is' | 'then' | 'else' | 'places' | 'between' | 'other' | 'as';
     label: string;
     number?: boolean;
     /** A whole number at least this (Count: 1; Places: 0). */
     min?: number;
-    /** lookup: a lookup table (Table, From, To); other: another column of the row, or a value (col / value). */
-    kind?: 'lookup' | 'other';
+    /** lookup: a lookup table (Table, From, To); other: another column of the row, or a value (col / value); choice: one of `options`. */
+    kind?: 'lookup' | 'other' | 'choice';
+    options?: { id: string; label: string }[];
 };
 
 export interface ColumnFnDefinition {
@@ -108,6 +131,17 @@ export const COLUMN_FUNCTIONS: ColumnFnDefinition[] = [
     { id: 'pct', label: '% change from', sql: ['PCT(', 'x', ', ', { key: 'other', label: 'From', kind: 'other' }, ')'] },
     { id: 'round', label: 'Round', sql: ['ROUND(', 'x', ', ', { key: 'places', label: 'Places', number: true, min: 0 }, ')'] },
     { id: 'jointext', label: 'Join text', sql: ['CONCAT(', 'x', ', ', { key: 'between', label: 'Between' }, ', ', { key: 'other', label: 'With', kind: 'other' }, ')'] }
+];
+
+/** What Run Batch's Map offers: reading a file's number or date first, then every function (James, 2026-11-25: one list). */
+export const MAP_FUNCTIONS: ColumnFnDefinition[] = [
+    { id: 'readnum', label: 'Read number', sql: ['READ_NUMBER(', 'x', ', ', { key: 'as', label: 'Read as', kind: 'choice', options: [
+        { id: 'standard', label: 'A number (1,428)' }, { id: 'cobol', label: 'COBOL (+000000099.9900)' },
+        { id: 'currency', label: 'Currency ($1,234.56)' }, { id: 'scientific', label: 'Scientific (1.5E3)' }] }, ')'] },
+    { id: 'readdate', label: 'Read date', sql: ['READ_DATE(', 'x', ', ', { key: 'as', label: 'Written as', kind: 'choice', options: [
+        { id: 'dd-mm-yyyy', label: 'DD/MM/YYYY' }, { id: 'mm-dd-yyyy', label: 'MM/DD/YYYY' }, { id: 'yyyy-mm-dd', label: 'YYYY/MM/DD' },
+        { id: 'iso_8601', label: 'ISO 8601' }, { id: 'unix_timestamp', label: 'Unix timestamp' }, { id: 'excel_serial', label: 'Excel serial' }] }, ')'] },
+    ...COLUMN_FUNCTIONS
 ];
 
 /** A value's starting value in the dialog, by key. */
@@ -247,6 +281,8 @@ export function columnFnCall(f: ColumnFn): FnCall {
         case 'pct': return call('*', call('/', call('-', 'x', other(f)), other(f)), val(100));
         case 'round': return call('ROUND', 'x', val(Math.max(0, Math.floor(Number(f.places)) || 0)));
         case 'jointext': return call('CONCAT', 'x', val(f.between), other(f));
+        // (a file's value, read: Map only, run in memory by applyColumnStep; Query never offers them)
+        case 'readnum': case 'readdate': throw new Error(`${f.fn} reads a file's value: Run Batch's Map only`);
     }
 }
 
@@ -285,19 +321,44 @@ function runCall(c: FnCall, x: V, col: (id: string) => unknown): V {
     return callFunction(c.fn, c.args.map(arg), NO_TABLES);
 }
 
+/** Words for how a value is read, as the step's choice says them. */
+const READ_NUMBER_WORDS: Record<ReadNumberAs, string> = { standard: 'a number', cobol: 'COBOL', currency: 'currency', scientific: 'scientific' };
+const READ_DATE_WORDS: Record<ReadDateAs, string> = {
+    'dd-mm-yyyy': 'DD/MM/YYYY', 'mm-dd-yyyy': 'MM/DD/YYYY', 'yyyy-mm-dd': 'YYYY/MM/DD', iso_8601: 'ISO 8601',
+    unix_timestamp: 'a Unix timestamp', excel_serial: 'an Excel serial'
+};
+
+/** One step on one value: its value, or why it couldn't read it (a Read number or Read date step; the chain stops there). */
+export function applyColumnStep(value: ColumnValue, f: ColumnFn, col: (id: string) => unknown = () => null): { value: ColumnValue } | { failed: string } {
+    if (f.fn === 'readnum' || f.fn === 'readdate') {
+        if (value === null) return { value: null };
+        const text = asText(value);
+        if (text.trim() === '') return { value: text };
+        if (f.fn === 'readnum') {
+            const out = convertValueBySourceFormat(text, f.as, 'number');
+            const n = Number(out);
+            return out.trim() !== '' && Number.isFinite(n) ? { value: n } : { failed: `${text} is not ${READ_NUMBER_WORDS[f.as] || f.as}` };
+        }
+        const day = DateRead.readDate(text, f.as);
+        return day ? { value: day } : { failed: `${text} is not a date written ${READ_DATE_WORDS[f.as] || f.as}` };
+    }
+    if (isSqliteFn(f)) return { value: applyOne(value, f) };
+    const out = toValue(runCall(columnFnCall(f), fromValue(value), col));
+    return { value: typeof out === 'number' && !Number.isFinite(out) ? null : out };
+}
+
 /**
  * A value through the functions, in order. The first functions give what `columnFnSql` gives in
  * SQLite; the others what Query's engine gives (they are its functions). `col` gives another
- * column's value of the same row, for the steps that use one (no `col`: they read blank).
+ * column's value of the same row, for the steps that use one (no `col`: they read blank). A value a
+ * Read step can't read is blank here (Map's sample says why: applyColumnStep).
  */
 export function applyColumnFns(value: unknown, fns: ColumnFn[] | undefined, col: (id: string) => unknown = () => null): ColumnValue {
     let v = asColumnValue(value);
     for (const f of fns ?? []) {
-        if (isSqliteFn(f)) v = applyOne(v, f);
-        else {
-            const out = toValue(runCall(columnFnCall(f), fromValue(v), col));
-            v = typeof out === 'number' && !Number.isFinite(out) ? null : out;
-        }
+        const r = applyColumnStep(v, f, col);
+        if ('failed' in r) return null;
+        v = r.value;
     }
     return v;
 }

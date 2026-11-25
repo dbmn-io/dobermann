@@ -132,7 +132,9 @@ export const DataLoadingConfigSchema = z.object({
 
     // GitHub Issue #307: Run Batch remembers the last mapping — template variable → source
     // column — and pre-maps it next time a file has that column. The template is untouched.
-    columnMappings: z.record(z.string(), z.string()).optional()
+    columnMappings: z.record(z.string(), z.string()).optional(),
+    // Map's functions: each variable's steps (column-functions.ts ColumnFn: { fn, ...values }), remembered with its column
+    columnFunctions: z.record(z.string(), z.array(z.object({ fn: z.string() }).passthrough())).optional()
 });
 
 // Header Configuration Schema

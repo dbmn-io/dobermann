@@ -159,7 +159,8 @@
                 variable: variable.name,
                 column: columnName,
                 dataType: variable.dataType || 'string',
-                sourceFormat: csvState.sourceTypes?.[variable.name] || window.DTTypeCoercion.getDefaultSourceFormat(variable.dataType || 'string')
+                // (a column with steps is translated by them, once: no Source format on top)
+                sourceFormat: window.DTTypeCoercion.hasSteps && window.DTTypeCoercion.hasSteps(variable.name) ? 'passthrough' : (csvState.sourceTypes?.[variable.name] || window.DTTypeCoercion.getDefaultSourceFormat(variable.dataType || 'string'))
             };
         }).filter(mapping => mapping.column) : [];
 
