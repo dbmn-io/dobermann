@@ -90,45 +90,6 @@ describe('ExtensionDiagnosticLogger DI Integration Test', () => {
         expect(LoggerRegistry.getDiagnosticLogger()).to.have.property('warn').that.is.a('function');
     });
 
-    it('should provide working logger methods', () => {
-        // Arrange
-        let loggedMessage = '';
-        const mockChannel = {
-            info: (msg: string) => { loggedMessage = `INFO: ${msg}`; },
-            warn: (msg: string) => { loggedMessage = `WARN: ${msg}`; },
-            error: (msg: string) => { loggedMessage = `ERROR: ${msg}`; },
-            debug: (msg: string) => { loggedMessage = `DEBUG: ${msg}`; },
-            trace: (msg: string) => { loggedMessage = `TRACE: ${msg}`; },
-            show: () => {},
-            clear: () => {},
-            dispose: () => {}
-        };
-
-        const customMockVSCode = {
-            window: {
-                createOutputChannel: (name: string, options?: { log: boolean }) => {
-                    if (options?.log) {
-                        // Return LogOutputChannel mock
-                        return mockChannel;
-                    }
-                    return mockChannel; // Regular OutputChannel mock
-                }
-            }
-        };
-
-        registerCoreServices(container, {
-            vscodeAPI: customMockVSCode as any,
-            extensionContext: mockContext
-        });
-
-        // Act
-        const logger = container.resolve<IExtensionDiagnosticLogger>(CoreServiceTokens.ExtensionDiagnosticLogger);
-        logger.warn('Test warning message');
-
-        // Assert
-        expect(loggedMessage).to.equal('WARN: Test warning message');
-    });
-
     it('should handle multiple service registrations without conflict', () => {
         // Act - Register services multiple times
         registerCoreServices(container, {

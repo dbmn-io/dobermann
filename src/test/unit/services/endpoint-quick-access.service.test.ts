@@ -7,7 +7,6 @@
 
 import { expect } from 'chai';
 import * as sinon from 'sinon';
-import * as vscode from 'vscode';
 import { EndpointQuickAccessService } from '../../../services/quick-access/endpoint-quick-access.service';
 import { APIEndpointManager } from '../../../apiEndpointManager';
 import { IExtensionDiagnosticLogger } from '../../../services/logging/extension-diagnostic-logger.interface';
@@ -249,30 +248,37 @@ describe('EndpointQuickAccessService - Unit Tests', () => {
     });
 
     describe('Error Handling', () => {
+        // The service tells the user through DBMN's toasts (getToast), not VS Code's message boxes
+        const toasts: Array<{ kind: string; message: string }> = [];
+        const record = (kind: string) => (message: string) => { toasts.push({ kind, message }); };
+        beforeEach(() => {
+            toasts.length = 0;
+            (global as Record<string, unknown>).dbmnToastService = { info: record('info'), warn: record('warn'), error: record('error') };
+        });
+        afterEach(() => { delete (global as Record<string, unknown>).dbmnToastService; });
+
         it('should handle empty endpoint list gracefully', async () => {
             mockEndpointManager.getAllEndpoints.resolves([]);
-
-            const showInfoStub = sinon.stub(vscode.window, 'showInformationMessage');
 
             const result = await service.showQuickPick();
 
             expect(result.action).to.equal('cancelled');
             expect(result.endpoint).to.be.undefined;
-            expect(showInfoStub.calledOnce).to.be.true;
-            expect(showInfoStub.firstCall.args[0]).to.include('No endpoints available');
+            expect(toasts).to.have.length(1);
+            expect(toasts[0].kind).to.equal('info');
+            expect(toasts[0].message).to.include('No endpoints available');
         });
 
         it('should handle errors during endpoint retrieval', async () => {
             const error = new Error('Database error');
             mockEndpointManager.getAllEndpoints.rejects(error);
 
-            const showErrorStub = sinon.stub(vscode.window, 'showErrorMessage');
-
             const result = await service.showQuickPick();
 
             expect(result.action).to.equal('cancelled');
             expect(mockLogger.error.calledOnce).to.be.true;
-            expect(showErrorStub.calledOnce).to.be.true;
+            expect(toasts.map(t => t.kind)).to.deep.equal(['error']);
+            expect(toasts[0].message).to.include('Database error');
         });
     });
 

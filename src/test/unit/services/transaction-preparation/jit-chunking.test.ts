@@ -10,6 +10,8 @@
 import { expect } from 'chai';
 import { stub, SinonStub } from 'sinon';
 import { TransactionPreparationService } from '../../../../services/transaction-preparation/transaction-preparation.service';
+import { ArrayRepetitionHelper } from '../../../../services/transaction-preparation/helpers/array-repetition.helper';
+import { JsonGenerator } from '../../../../data-loading/json-generator';
 import { createMockLogger } from '../../../helpers/logging/mock-logger';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -36,40 +38,14 @@ describe('TransactionPreparationService - JIT Chunking Unit Tests', () => {
                     requestFilePath: '/test/request.json'
                 })
             },
-            arrayRepetitionHelper: {
-                analyzeArrayRepetition: stub().returns({
-                    totalTransactions: 9,
-                    rowGroups: [
-                        { startRow: 1, endRow: 1, rows: [{ col1: 'val1' }] },
-                        { startRow: 2, endRow: 2, rows: [{ col1: 'val2' }] },
-                        { startRow: 3, endRow: 3, rows: [{ col1: 'val3' }] },
-                        { startRow: 4, endRow: 4, rows: [{ col1: 'val4' }] },
-                        { startRow: 5, endRow: 5, rows: [{ col1: 'val5' }] },
-                        { startRow: 6, endRow: 6, rows: [{ col1: 'val6' }] },
-                        { startRow: 7, endRow: 7, rows: [{ col1: 'val7' }] },
-                        { startRow: 8, endRow: 8, rows: [{ col1: 'val8' }] },
-                        { startRow: 9, endRow: 9, rows: [{ col1: 'val9' }] }
-                    ]
-                }),
-                groupRowsForTransactions: stub().callsFake((rows: any[], arrays: any[]) => {
-                    // Return rowGroups for JIT chunking
-                    return [
-                        { startRow: 1, endRow: 1, rows: [{ col1: 'val1' }] },
-                        { startRow: 2, endRow: 2, rows: [{ col1: 'val2' }] },
-                        { startRow: 3, endRow: 3, rows: [{ col1: 'val3' }] },
-                        { startRow: 4, endRow: 4, rows: [{ col1: 'val4' }] },
-                        { startRow: 5, endRow: 5, rows: [{ col1: 'val5' }] },
-                        { startRow: 6, endRow: 6, rows: [{ col1: 'val6' }] },
-                        { startRow: 7, endRow: 7, rows: [{ col1: 'val7' }] },
-                        { startRow: 8, endRow: 8, rows: [{ col1: 'val8' }] },
-                        { startRow: 9, endRow: 9, rows: [{ col1: 'val9' }] }
-                    ];
-                })
-            },
+            // The real grouping and request builder (2026-11-25): the stubs here had drifted (grouping in an old shape, no
+            // jsonGenerator since #147's analyzeNestedArrays), so these cases failed in setup, not on chunking
+            arrayRepetitionHelper: new ArrayRepetitionHelper(),
             executionLoggingService: {
                 logBatchEvent: stub().resolves()
             },
-            transactionCreator: {}
+            transactionCreator: {},
+            jsonGenerator: new JsonGenerator()
         };
 
         service = new TransactionPreparationService(mockDependencies, mockLogger);

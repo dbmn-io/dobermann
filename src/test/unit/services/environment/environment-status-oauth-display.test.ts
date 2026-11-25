@@ -281,7 +281,7 @@ describe('EnvironmentStatusService - OAuth Authentication Display', () => {
             const statusText = await environmentStatusService.getCurrentEnvironmentText();
 
             // Assert
-            expect(statusText).to.include('[!]'); // JWT warning indicator
+            expect(statusText).to.include('⚠️'); // JWT warning indicator
             expect(statusText).to.not.include('🛡️'); // Should NOT have OAuth indicators
         });
     });
@@ -351,9 +351,8 @@ describe('EnvironmentStatusService - OAuth Authentication Display', () => {
             await environmentManager.setEnvironmentToken(jwtEnv.id, jwtToken);
             await environmentManager.updateEnvironment(jwtEnv.id, { variables: { org: 'JWT-ORG' }, variableSettings: { org: { showInHeader: true } } });
 
-            // Test OAuth environment as active
-            oauthEnv.isActive = true;
-            jwtEnv.isActive = false;
+            // Test OAuth environment as active (EnvironmentManager keeps its own copies: switch through it)
+            await environmentManager.setActiveEnvironment(oauthEnv.id);
 
             let statusText = await environmentStatusService.getCurrentEnvironmentText();
             expect(statusText).to.include('🛡️'); // OAuth indicator
@@ -361,8 +360,7 @@ describe('EnvironmentStatusService - OAuth Authentication Display', () => {
             expect(statusText).to.include('OAuth User');
 
             // Test JWT environment as active
-            oauthEnv.isActive = false;
-            jwtEnv.isActive = true;
+            await environmentManager.setActiveEnvironment(jwtEnv.id);
 
             statusText = await environmentStatusService.getCurrentEnvironmentText();
             expect(statusText).to.not.include('🛡️'); // Should not have OAuth indicators

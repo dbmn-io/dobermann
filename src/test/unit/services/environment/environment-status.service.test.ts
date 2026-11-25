@@ -16,6 +16,8 @@ describe('EnvironmentStatusService', () => {
 
     beforeEach(() => {
         globalState = new Map();
+        // Secret storage that keeps what is stored (it returned nothing, so no test could read a token back)
+        const secrets = new Map<string, string>();
         
         mockContext = {
             globalState: {
@@ -26,9 +28,9 @@ describe('EnvironmentStatusService', () => {
                 }
             },
             secrets: {
-                get: () => Promise.resolve(undefined),
-                store: () => Promise.resolve(),
-                delete: () => Promise.resolve()
+                get: (key: string) => Promise.resolve(secrets.get(key)),
+                store: (key: string, value: string) => { secrets.set(key, value); return Promise.resolve(); },
+                delete: (key: string) => { secrets.delete(key); return Promise.resolve(); }
             },
             subscriptions: []
         } as any;
