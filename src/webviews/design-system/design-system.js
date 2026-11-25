@@ -208,7 +208,8 @@
         ['ColumnHead', 'A table heading: sort, remove, resize, its menu', M, 'Query, Console', 'shared/column-head.js'],
         ['ColumnDrag', 'Drag a column to another place', M, 'Query, Console', 'shared/column-drag.js'],
         ['VirtualWindow', 'Draw only the rows in view', M, 'Query, Console', 'shared/virtual-window.js'],
-        ['CellDetail', 'A cell\'s whole value, opened from the cell', M, 'Query, Console', 'shared/cell-detail.js'],
+        ['CellDetail', 'A cell\'s whole value, opened from the cell (JSON coloured); or a request\'s input rows as a table (openRows)', M, 'Query, Console, Run Batch (Review)', 'shared/cell-detail.js'],
+        ['Status pill', 'A row\'s state as one pill everywhere: .status-pill-generic with a tone (is-quiet, is-ok, is-bad, is-warn, is-outlined-bad), Compare\'s SAME / DIFF recipe', S, 'Query (Compare), Console (Requests), Run Batch (Validate, Review)', 'shared/core.css'],
         ['SearchMatcher', 'The one search: words, -not, a,b, @column=value, the coloured box and its @ list; @@word in the Hub\'s lists only', M, 'Hub lists, Console, Query (Add a view, Results), <dbmn-table>', 'shared/search-matcher.js, shared/search.css'],
         ['SearchWords', 'The Hub lists\' fields and filter dialogs, over SearchMatcher (@tag=, @system=current, @ran>7d)', M, 'Hub lists', 'shared/search-words.js'],
         ['ThemePicker', 'Choosing a theme', M, 'Hub', 'shared/theme-picker.js'],
@@ -220,7 +221,7 @@
         ['Rename dialog', 'Right-click → Rename in the Hub\'s lists: reports, endpoints, environments, runs', M, 'Hub lists', 'hub/hub-tabs.js (askRename)'],
         ['Tabs in a screen', 'A screen\'s own tabs (Environment, Console)', S, 'Environment, Console', 'shared/tabs.css'],
 
-        ['<dbmn-table>', 'A table of rows: search, sort, move, resize, only the rows in view drawn; rows the page holds, or asked for as they scroll; hidden characters shown or not; a count and a filter on a heading (count, filter)', C, 'Query, Console, Run Batch (Validate), the request card\'s INPUT rows, Design system, <dbmn-log>', 'shared/dbmn-table.js'],
+        ['<dbmn-table>', 'A table of rows: search, sort, move, resize, only the rows in view drawn; rows the page holds, or asked for as they scroll; hidden characters shown or not; a count and a filter on a heading (count, filter); the screen\'s own controls on its search line (addTools)', C, 'Query, Console, Run Batch (Validate), the request card\'s INPUT rows, Design system, <dbmn-log>', 'shared/dbmn-table.js'],
         ['Request card', 'One request: its header, the INPUT rows behind it, Body or Details, and the response. Retired with Raw: <dbmn-transaction> is every screen\'s full request (0.5.0)', R, 'Console (the Raw window, a fallback only)', 'console/modules/raw-tab-handler.js, shared/request-preview.js'],
         ['<dbmn-transaction>', 'One request in full: its reason, Input rows, Request (Body, Details), Response (Body, Headers; JSON Lines as Lines / Pretty; HTML as Raw / Render / Text), search, copy, fill the window, Logs, Reprocess; ↑ ↓ to the next; the screen\'s Monaco through its editor hook', C, 'Console (Requests, every tab\'s View full transaction), Run Batch (Review)', 'shared/dbmn-transaction.js, shared/dbmn-code-pane.js, shared/transaction-card.css'],
         ['<dbmn-view-editor>', 'Edit a View: its name, the columns picked from a tree, their order, the rows they are read from; Save, Save As, Delete (#468)', P, 'Console (Completed, Error, Requests)', 'shared/dbmn-view-editor.js'],

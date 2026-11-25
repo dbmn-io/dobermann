@@ -75,6 +75,11 @@ test('the run heading: one line, the tabs with their counts, no Settings tab', a
     await expect(page.locator('#run-heading .tab-item[data-tab="raw"]')).toHaveCount(0);
     await page.locator('#run-heading .tab-item[data-tab="requests"]').click();
     await expect(page.locator('#run-heading .tab-item[data-tab="requests"]')).toHaveClass(/active/);
+    // (the data tabs' "N rows • N columns" line is not on Requests: its table says its own count. This page has no
+    //  stylesheets, so the check is the page's mark that hides it: body.is-requests-tab .report-footer in console.css)
+    await expect(page.locator('body')).toHaveClass(/\bis-requests-tab\b/);
+    await page.locator('#run-heading .tab-item[data-tab="success"]').click();
+    await expect(page.locator('body')).not.toHaveClass(/\bis-requests-tab\b/);
     expect(errors).toEqual([]);
 });
 

@@ -8,7 +8,7 @@
  *   <dbmn-run-details></dbmn-run-details>
  *   el.details = {                                  // screens/console/run-details.ts RunDetails, as the host sends it
  *       name, environment: { name, production }, endpoint: { name, method }, url,
- *       kind: 'batch' | 'single', executionId, started, durationMs,
+ *       kind: 'batch' | 'single', executionId, started, durationMs, planned (true: before the run, Run Batch's ⓘ),
  *       threads: { current, max } | null, errorHandling: 'continue' | 'stopOnFirst' | null,
  *       headers: [{ name, value }], variables: [{ name, value }],   // secret values come masked from the host
  *       lineage: { copiedFrom?: { runId, environment, at }, reprocessedFrom? } | null
@@ -72,7 +72,8 @@
             if (l.reprocessedFrom) row('Reprocessed from', 'an earlier run');
             row('Run id', d.executionId);
             this.append(where);
-            this._pairs('Headers', d.headers, 'No header values were sent with this run.');
+            // (before a run, as Run Batch's ⓘ shows it: what will be sent)
+            this._pairs('Headers', d.headers, d.planned ? 'No header values will be sent.' : 'No header values were sent with this run.');
             if (Array.isArray(d.variables) && d.variables.length) this._pairs('Variables', d.variables);
             if (this._more) {
                 const more = make('button', 'dbmn-run-details-more', this._more);

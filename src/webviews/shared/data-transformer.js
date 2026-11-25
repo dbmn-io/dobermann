@@ -1934,7 +1934,7 @@
         const plan = csvState.batchPlan;
         const shown = !!(plan && plan.shape === 'flat' && plan.arrayPath && plan.arrayCandidates.length === 1);
         const display = document.getElementById('repeatedArrayDisplay');
-        if (display && shown) { display.textContent = plan.arrayPath === '$root' ? '[ ] top level' : plan.arrayPath; }
+        if (display && shown) { display.textContent = plan.arrayPath === '$root' ? '[ ] top level' : plan.arrayPath; display.title = display.textContent; }
         setStatVisible('repeatedArrayGroup', shown);
     }
 
@@ -2050,6 +2050,9 @@
         // rows become requests beside them; with no grouping the ⓘ stays on API calls.
         const groupColumns = plan.groups && plan.groups.columns.length > 0 ? plan.groups.columns : [];
         set('groupedByDisplay', groupColumns.join(', '));
+        // (its whole text in its hover: the line cuts a long one with "…", #17)
+        const groupedBy = document.getElementById('groupedByDisplay');
+        if (groupedBy) groupedBy.title = groupColumns.join(', ');
         setStatVisible('groupedByGroup', groupColumns.length > 0);
         const explainBtn = document.getElementById('explainRequestsBtn');
         const explainHome = document.getElementById(groupColumns.length > 0 ? 'groupedByLabel' : 'apiCallsLabel');

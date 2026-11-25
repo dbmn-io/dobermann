@@ -41,6 +41,8 @@
  *                           dbmn-table-filter { id, values } (null: every line); a funnel after the ▾ while any
  *                           line is off. A Status column's filter (DIFF / SAME, INVALID / VALID). The screen filters
  *   table.clearFilters()    every count off and every filter back to all, as those events (a toolbar's funnel)
+ *   table.addTools(node)    the screen's own controls on the search line, between the box and the count (Run Batch's
+ *                           Review: Rows per request and its other settings, as the mock has them; James 2026-11-25)
  *   head(th)                adds what the screen wants to the column's heading (a count, a filter)
  *   sortable: false         no sort for it (a status the screen filters instead)
  *   removable: false        it stays (no x, no Remove): the screen's own column (the Console's Reason)
@@ -626,7 +628,7 @@
             container.append(wrapper);
             this._count = make('span', 'search-results dbmn-table-count');
             this._count.setAttribute('role', 'status');
-            this._tools.append(container, this._count);
+            this._tools.append(container, ...(this._extraTools || []), this._count);
             // `saved-searches`: the box's ★ beside it (shared/dbmn-saved-searches.js), for a table with its own box
             // (James, 2026-11-23: "that saved search should be everywhere where we have a search box"). The screen
             // keeps the list: savedSearches = [{ name, text }], and dbmn-saved-change tells it of a change
@@ -1209,6 +1211,12 @@
             this._filterMenu.replaceChildren(head, ...lines);
         }
         /** Every count off and every filter back to all (a toolbar's funnel): the screen hears each as its own event. */
+        addTools(node) {
+            if (!node) return;
+            (this._extraTools = this._extraTools || []).push(node);
+            if (this._tools && this._count) this._tools.insertBefore(node, this._count);
+        }
+
         clearFilters() {
             this._all.forEach(c => {
                 if (c.count && c.count.on) this.dispatchEvent(new CustomEvent('dbmn-table-count', { bubbles: true, detail: { id: c.id, on: false } }));

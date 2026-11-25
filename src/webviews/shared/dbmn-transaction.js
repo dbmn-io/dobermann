@@ -119,6 +119,7 @@
             this._max = null;
             this._editors = [];
             this._onKey = e => this._key(e);
+            this._onPageKey = e => this._pageKey(e);
         }
         set transaction(t) { this._tx = t || null; this._max = null; this._draw(); }
         get transaction() { return this._tx; }
@@ -137,9 +138,34 @@
             this.setAttribute('aria-label', 'Transaction');
             if (!this.hasAttribute('tabindex')) this.tabIndex = -1;
             this.addEventListener('keydown', this._onKey);
+            // As a window, Esc from anywhere on the page: focus is often left on the row clicked to open it, or on the
+            // page after a redraw, and the window's own keydown never heard it (Esc failed 18 times in 20, 2026-11-25)
+            if (this.hasAttribute('window')) document.addEventListener('keydown', this._onPageKey, true);
+            this._backdropFor();
             this._draw();
         }
-        disconnectedCallback() { this.removeEventListener('keydown', this._onKey); this._dropEditors(); }
+        disconnectedCallback() {
+            this.removeEventListener('keydown', this._onKey);
+            document.removeEventListener('keydown', this._onPageKey, true);
+            this._dropEditors();
+            this._backdropFor(true);
+        }
+
+        /**
+         * As a window it is a modal (James, 2026-11-25: "modal has gotta be a modal and block all the under buttons"):
+         * a dim layer over the whole page, its footer too, takes every click outside the window and closes it, as the
+         * app's other windows do. Gone with the window (removed, or no longer a window).
+         */
+        _backdropFor(gone) {
+            const want = !gone && this.isConnected && this.hasAttribute('window');
+            if (!want) { if (this._backdrop) { this._backdrop.remove(); this._backdrop = null; } return; }
+            if (this._backdrop && this._backdrop.isConnected) return;
+            this._backdrop = make('div', 'dbmn-tx-backdrop');
+            this._backdrop.setAttribute('aria-hidden', 'true');
+            this._backdrop.addEventListener('mousedown', e => e.preventDefault());
+            this._backdrop.addEventListener('click', () => this._say('dbmn-transaction-close'));
+            this.before(this._backdrop);
+        }
 
         /** Focus inside the window (a button about to be drawn again)? Then it stays in the window, so Esc and ↑ ↓
             still reach it (a redrawn button takes focus away to the page: Esc did nothing after a Show toggle). */
@@ -156,11 +182,39 @@
             return true;
         }
 
+        /**
+         * Esc, heard on the page before anything else while this is a window: a full-window pane goes back first (the
+         * docs say so), then the window closes. Not when a window opened over this one has it (a modal, a cell's detail:
+         * Esc closes the one on top), nor in the editor's own find box (Esc closes that first).
+         */
+        _pageKey(e) {
+            if (e.key !== 'Escape' || !this.isConnected || !this.hasAttribute('window')) return;
+            const at = e.target && e.target.closest ? e.target : null;
+            if (at && !this.contains(at) && at.closest('[role="dialog"], [aria-modal="true"]')) return;
+            if (at && at.closest('.find-widget')) return;
+            if (document.querySelector('[aria-modal="true"]:not(dbmn-transaction)')) return;
+            e.preventDefault();
+            e.stopPropagation();
+            if (this._max) { this._zoom(null); return; }
+            this._say('dbmn-transaction-close');
+        }
+
         _key(e) {
             const typing = e.target && (e.target.closest('input, textarea, select, [contenteditable="true"]') || e.target.closest('.dbmn-tx-editor'));
             if (e.key === 'Escape') {
-                if (this._max) { this._zoom(null); e.stopPropagation(); return; }
-                if (this.hasAttribute('window')) { e.stopPropagation(); this._say('dbmn-transaction-close'); }
+                // (a window hears Esc on the page: _pageKey)
+                if (this.hasAttribute('window')) return;
+                if (this._max) { this._zoom(null); e.stopPropagation(); }
+                return;
+            }
+            // (Tab stays in the window: it never walks out to the page's buttons under it)
+            if (e.key === 'Tab' && this.hasAttribute('window')) {
+                const stops = [...this.querySelectorAll('button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex="-1"])')].filter(el => el.offsetParent !== null);
+                if (stops.length) {
+                    const at = stops.indexOf(document.activeElement);
+                    const next = e.shiftKey ? (at <= 0 ? stops.length - 1 : at - 1) : (at === -1 || at === stops.length - 1 ? 0 : at + 1);
+                    if ((e.shiftKey && at <= 0) || (!e.shiftKey && (at === -1 || at === stops.length - 1))) { e.preventDefault(); stops[next].focus(); }
+                }
                 return;
             }
             if (typing) return;

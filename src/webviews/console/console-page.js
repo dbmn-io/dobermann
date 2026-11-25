@@ -2181,6 +2181,9 @@ class DynamicReportManager {
 
         // GitHub Issue #247: the Links tab is console-chain.js's; it also shows Chain on Completed
         if (window.ConsoleChain && window.ConsoleChain.onSwitchTab(tabName)) return;
+        // (the data tabs' "N rows • N columns" line is theirs: the Requests table says its own count, and that line was
+        //  left showing the last data tab's figures there. The manager, 2026-11-25)
+        document.body.classList.toggle('is-requests-tab', tabName === 'requests');
         // #466: the Requests tab is requests-tab.js's
         if (window.ConsoleRequests && window.ConsoleRequests.onSwitchTab(tabName)) return;
 

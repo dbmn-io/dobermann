@@ -151,5 +151,34 @@
         }
     }
 
-    window.CellDetail = { open, worthOpening, paint };
+    /**
+     * The cell window holding rows, not a value (James, 2026-11-25: "If I hit input rows… I only wanna see the input
+     * rows"): the same window, size and keys as open(), with the rows in a searchable <dbmn-table>.
+     *   window.CellDetail.openRows({ columns: ['gtin', …], rows: [['0001…', …], …] }, { title: '#001 · Input' });
+     */
+    function openRows(data, opts) {
+        const options = opts || {};
+        const columns = data && Array.isArray(data.columns) ? data.columns : [];
+        const rows = data && Array.isArray(data.rows) ? data.rows : [];
+        const body = document.createElement('div');
+        body.className = 'cell-detail cell-detail-rows';
+        if (!rows.length || !customElements.get('dbmn-table')) {
+            const none = document.createElement('p');
+            none.className = 'cell-detail-none';
+            none.textContent = rows.length ? `${rows.length} rows` : (options.empty || 'No rows.');
+            body.appendChild(none);
+        } else {
+            const table = document.createElement('dbmn-table');
+            table.setAttribute('searchable', '');
+            table.setAttribute('label', options.title || 'Rows');
+            body.appendChild(table);
+            table.columns = columns.map((name, i) => ({ id: String(i), name: String(name) }));
+            table.rows = rows.map(row => columns.map((c, i) => String(row[i] ?? '')));
+        }
+        if (window.DbmnModal && window.DbmnModal.show) {
+            window.DbmnModal.show({ title: options.title || 'Rows', body, size: 'cell-detail', dismissible: true, over: true, actions: [] });
+        }
+    }
+
+    window.CellDetail = { open, openRows, worthOpening, paint };
 })();

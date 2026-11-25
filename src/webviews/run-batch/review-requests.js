@@ -32,6 +32,10 @@
             // (the run heading's Requests tab counts them: its own count reads Review's totals)
             counts: () => { if (window.RunBatchHeading) window.RunBatchHeading.refresh(); }
         });
+        // (the settings that shape the requests on the table's search line, as the agreed mock has them: James,
+        //  2026-11-25. They stay live: a change rebuilds the plan and the table asks again)
+        const settings = document.getElementById('reviewSettings');
+        if (settings && state.requests.table && typeof state.requests.table.addTools === 'function') state.requests.table.addTools(settings);
         return state.requests;
     }
 

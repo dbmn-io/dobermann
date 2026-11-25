@@ -1609,6 +1609,33 @@ body:has(#csvBatchContainer) .footer-content {
     min-width: 0;
 }
 
+/* The agreed mock (frame 4, James 2026-11-25): one column, the Requests table the whole width; the old column is
+   in the page but hidden (its values feed the Execute window and ⓘ) */
+/* (each box in the chain as wide as the step, never its table's columns: a wide table scrolls inside, and the
+   search line keeps its count in view) */
+.review-layout { display: flex; flex-direction: column; flex: 1 1 0; min-height: 0; min-width: 0; width: 100%; }
+.review-layout > .review-requests { flex: 1 1 0; min-height: 0; min-width: 0; max-width: 100%; display: flex; flex-direction: column; margin-bottom: 0; }
+.review-requests-table, .review-requests-table > dbmn-table { min-width: 0; max-width: 100%; }
+.review-layout > .review-sections[hidden] { display: none; }
+.review-requests.has-requests-table #requestPreviewHead { display: none; }
+
+/* The settings on the table's search line: each a label and its control or value, on one line, no card */
+.review-settings { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 16px; }
+.review-settings .stat-item {
+    display: inline-flex; flex-direction: row; align-items: center; gap: 6px;
+    padding: 0; margin: 0; background: none; border: none; min-height: 0;
+}
+.review-settings .stat-item.hidden { display: none; }
+.review-settings .stat-label { margin: 0; font-size: 12px; color: var(--vscode-descriptionForeground); white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; }
+/* (a long unbroken value, a Grouped by or an Array path, is cut with "…", its whole text in its hover: it never
+   pushes the page sideways. Public issue #17) */
+.review-settings .stat-item > :last-child { font-size: 13px; font-weight: 600; white-space: nowrap; min-width: 0; max-width: 40ch; overflow: hidden; text-overflow: ellipsis; }
+.review-settings .stat-item { min-width: 0; max-width: 100%; }
+.review-settings { min-width: 0; }
+.review-settings input[type="number"] { width: 64px; height: 26px; padding: 0 6px; box-sizing: border-box; }
+.review-settings select { height: 26px; padding: 0 6px; }
+.review-requests .execution-warning { margin: 0 0 8px; }
+
 /* Narrow: one column again, the settings above the samples */
 @media (max-width: 640px) {
     .review-layout {
@@ -2156,7 +2183,9 @@ body:has(#csvBatchContainer) .webview-footer.named-footer .footer-content {
 .review-requests.has-requests-table #requestPreviewShow { display: none; }
 /* (a bounded box: the table scrolls inside it. Unbounded, its scroll box grew with every row it drew and it asked for
    the next page, and the next, until it held all 67,000 of lesson 2's requests: 5 GB, 2026-11-25) */
-.review-requests-table { display: flex; flex-direction: column; min-height: 320px; height: min(70vh, 640px); }
+/* (bounded by the step's own height, which is bounded by the window: flex:1 down to the footer, never its rows'
+   height; the memory fix needs a bounded box, not a fixed one. Manager / James 2026-11-25: fill the height) */
+.review-requests-table { display: flex; flex-direction: column; flex: 1 1 0; min-height: 320px; }
 .review-requests-table > dbmn-table { flex: 1; min-height: 0; gap: 0; }
 .review-requests-table > dbmn-table .dbmn-table-scroll { flex: 1; min-height: 0; max-height: none; }
 
@@ -2166,10 +2195,7 @@ body:has(#csvBatchContainer) .webview-footer.named-footer .footer-content {
 .grid-tools .grid-row-count { color: var(--vscode-descriptionForeground); font-size: 12px; white-space: nowrap; }
 /* Status's pills and a heading's count, in the mock's colours (James's v18): INVALID and the counts amber, filled;
    VALID quiet, outlined; each column to fix as an amber-outlined tag in its own case. The theme's warning colour */
-/* (the same pill as Compare's and the Requests table's: app font, soft tint, its border) */
-.grid-status-pill { display: inline-flex; align-items: center; font-family: var(--vscode-font-family); font-size: 11px; font-weight: 600; border-radius: 10px; padding: 2px 10px; line-height: 14px; white-space: nowrap; border: 1px solid transparent; }
-.grid-status-pill.is-invalid { color: var(--vscode-foreground); background: color-mix(in srgb, var(--vscode-editorWarning-foreground) 22%, transparent); border-color: color-mix(in srgb, var(--vscode-editorWarning-foreground) 65%, transparent); }
-.grid-status-pill.is-valid { color: var(--vscode-descriptionForeground); border-color: var(--vscode-panel-border); }
+/* (the pill is .status-pill-generic with its tone, as Compare's: core.css) */
 .grid-status-col { font-family: var(--vscode-editor-font-family, monospace); font-size: 10px; color: var(--vscode-editorWarning-foreground);
     border: 1px solid color-mix(in srgb, var(--vscode-editorWarning-foreground) 55%, transparent); border-radius: 3px; padding: 0 4px; white-space: nowrap; }
 #validateGrid .dbmn-head-count:not(.is-active) { color: var(--vscode-editor-background); background: var(--vscode-editorWarning-foreground); font-weight: 600; }

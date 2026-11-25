@@ -60,15 +60,37 @@
             box.dispatchEvent(new Event('change', { bubbles: true }));
             draw();
         });
-        h.addEventListener('dbmn-run-heading-info', () => {
-            const where = document.querySelector('#csvJsonPreviewStep .execution-section');
-            if (where && state.step === 4) where.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-        });
+        h.addEventListener('dbmn-run-heading-info', openDetails);
         // (the environment's link: Run Batch's host opens nothing yet, so it shows where the run goes)
         h.addEventListener('dbmn-run-heading-environment', () => h.dispatchEvent(new CustomEvent('dbmn-run-heading-info', { bubbles: true })));
         const box = nameBox();
         if (box) box.addEventListener('input', draw);
         draw();
+    }
+
+    /**
+     * ⓘ: where the run will go, in the same window as the Console's ⓘ (<dbmn-run-details>; the agreed mock, frame 4:
+     * "Sending To is under ⓘ"). Read from what Review shows of it (data-transformer.js fills these on
+     * currentEnvironmentData): the environment, the URL, the header values it sends, how many requests.
+     */
+    function openDetails() {
+        const text = id => { const e = document.getElementById(id); return e ? (e.textContent || '').trim() : ''; };
+        const warning = document.getElementById('executionWarning');
+        const total = Number(text('totalApiCallsDisplay').replace(/[^0-9]/g, '')) || null;
+        const headers = [...document.querySelectorAll('.execution-variable-stat')].map(item => ({
+            name: (item.querySelector('.stat-label') || {}).textContent || '',
+            value: (item.lastElementChild || {}).textContent || ''
+        })).filter(pair => pair.name);
+        const box = nameBox();
+        const el = document.createElement('dbmn-run-details');
+        el.details = {
+            name: box ? box.value : '',
+            environment: { name: (state.environment && state.environment.name) || text('executionEnvironment'), production: !!warning && !warning.classList.contains('hidden') },
+            url: text('executionFullUrl'),
+            kind: 'batch', requests: total, planned: true,
+            headers
+        };
+        if (window.DbmnModal && window.DbmnModal.alert) window.DbmnModal.alert({ title: 'Sending to', body: el, okLabel: 'Close' });
     }
 
     window.addEventListener('message', event => {

@@ -970,7 +970,7 @@
         const box = document.createElement('span');
         box.className = 'grid-status';
         const pill = document.createElement('span');
-        pill.className = `grid-status-pill ${names.length ? 'is-invalid' : 'is-valid'}`;
+        pill.className = `grid-status-pill status-pill-generic ${names.length ? 'is-invalid is-warn' : 'is-valid is-quiet'}`;
         pill.textContent = names.length ? 'INVALID' : 'VALID';
         box.appendChild(pill);
         names.forEach(name => { const t = document.createElement('span'); t.className = 'grid-status-col'; t.textContent = name; box.appendChild(t); });

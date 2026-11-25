@@ -1718,6 +1718,15 @@ dbmn-actions .execution-button-group,
     color: var(--vscode-editor-background);
 }
 
+/* The status pill's tones (design system, James 2026-11-25: "This should look identical"): Compare's SAME / MISSING /
+   DIFF recipe, for every table's status (Run Batch's Requests and Validate, the Console's Requests). Quiet is outlined;
+   the others a soft tint of their colour with its border; the words always the theme's text colour. */
+.status-pill-generic.is-quiet { background: transparent; border: 1px solid var(--vscode-panel-border); color: var(--vscode-descriptionForeground); }
+.status-pill-generic.is-ok { background: color-mix(in srgb, var(--vscode-charts-green, #89d185) 22%, transparent); border: 1px solid color-mix(in srgb, var(--vscode-charts-green, #89d185) 65%, transparent); color: var(--vscode-foreground); }
+.status-pill-generic.is-bad { background: color-mix(in srgb, var(--vscode-charts-red, #e06c75) 22%, transparent); border: 1px solid color-mix(in srgb, var(--vscode-charts-red, #e06c75) 65%, transparent); color: var(--vscode-foreground); }
+.status-pill-generic.is-warn { background: color-mix(in srgb, var(--vscode-editorWarning-foreground) 22%, transparent); border: 1px solid color-mix(in srgb, var(--vscode-editorWarning-foreground) 65%, transparent); color: var(--vscode-foreground); }
+.status-pill-generic.is-outlined-bad { background: transparent; border: 1px solid var(--vscode-errorForeground); color: var(--vscode-errorForeground); }
+
 /* ===== TOGGLE GROUP ===== */
 /* Segmented control for switching between views (e.g., Encoded/Decoded) */
 .toggle-group {

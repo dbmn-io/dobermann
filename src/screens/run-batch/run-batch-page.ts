@@ -209,12 +209,75 @@ export function buildRunBatchPage(asset: AssetUrl, batchConfig: { endpointId: st
                  filled from the batch plan (data-loading/batch-plan.ts) by renderStep4. -->
             <!-- #435: Configure and Summary in a column on the left; the samples beside them get the
                  rest of the width and all of the height. -->
+            <!-- James, 2026-11-25, the agreed mock (frame 4): the Requests table the whole width, the settings that shape
+                 the requests on its search line (#reviewSettings, moved there by review-requests.js), the count and
+                 size beside them; Sending To under the heading's ⓘ; the Name on the heading; Error handling and Threads
+                 in the Execute window. The old column stays in the page, hidden: its values are what the Execute window
+                 starts from and what ⓘ shows. -->
             <div class="review-layout">
-            <div class="review-sections">
+            <div class="review-sections" hidden>
                 <div class="execution-section" id="reviewConfigureSection">
                     <h3>Configure</h3>
                     <!-- Changing a setting rebuilds the samples below by itself (schedulePreviewRebuild) -->
                     <div class="table-stats">
+                        <!-- #435: the run's own settings, here since Review is the last step (Execute is the footer's button).
+                             Its name first: after the file and the time until the user names it; its tab shows it -->
+                        <div class="stat-item is-stacked">
+                            <label class="stat-label" for="batchNameInput">Name</label>
+                            <input type="text" id="batchNameInput" placeholder="Batch name" maxlength="100" spellcheck="false" autocomplete="off" data-1p-ignore="true" data-lpignore="true" data-bwignore="true" data-form-type="other" data-help="batch-preparation#batch-name" data-input="csv:updateBatchName" data-change="csv:refreshBatchName">
+                        </div>
+                        <div class="stat-item is-stacked">
+                            <label class="stat-label" for="batchErrorModeSelect">Error Handling</label>
+                            <select id="batchErrorModeSelect">
+                                <option value="continue">Continue processing</option>
+                                <option value="stopOnFirst">Stop on first error</option>
+                            </select>
+                        </div>
+                        <div class="stat-item is-stacked">
+                            <label class="stat-label" for="processingModeDropdown">Threads</label>
+                            <select id="processingModeDropdown" data-change="csv:onProcessingModeChange">
+                                <option value="1">1 (one at a time)</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="execution-section">
+                    <h3>Summary</h3>
+                    <div class="table-stats">
+                        <div class="stat-item">
+                            <span class="stat-label">Rows</span>
+                            <span id="batchRowsDisplay">-</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Source</span>
+                            <span id="executionSource" class="stat-value-cut">-</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Where the rows go, beside Execute -->
+                <div class="execution-section">
+                    <h3>Sending To</h3>
+                    <div class="table-stats">
+                        <div class="stat-item">
+                            <span class="stat-label">Environment</span>
+                            <span id="executionEnvironment" class="stat-value-cut">Loading...</span>
+                        </div>
+                        <!-- #424: one stat per variable the environment's header shows (data-transformer.js) -->
+                        <div class="stat-item is-stacked">
+                            <span class="stat-label">Endpoint</span>
+                            <span id="executionFullUrl" class="font-mono stat-value-wrap">Loading...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="execution-section review-requests">
+                <div class="execution-warning hidden" id="executionWarning">
+                    <strong>Warning:</strong> this is a production environment.
+                </div>
+                <div id="reviewSettings" class="review-settings">
                         <!-- GitHub Issue #354: what starts a new request, for grouped and nested templates.
                              The ⓘ that explains it moves here from API calls (renderStep4). -->
                         <div class="stat-item hidden" id="groupedByGroup">
@@ -263,74 +326,18 @@ export function buildRunBatchPage(asset: AssetUrl, batchConfig: { endpointId: st
                             <span class="stat-label">Body</span>
                             <button id="encodingToggleBtn" type="button" data-click="csv:toggleEncodingPreview" class="btn btn-secondary font-size-12 p-6 px-12"><span id="encodingToggleLabel">Show unencoded</span></button>
                         </div>
-                        <!-- #435: the run's own settings, here since Review is the last step (Execute is the footer's button).
-                             Its name first: after the file and the time until the user names it; its tab shows it -->
-                        <div class="stat-item is-stacked">
-                            <label class="stat-label" for="batchNameInput">Name</label>
-                            <input type="text" id="batchNameInput" placeholder="Batch name" maxlength="100" spellcheck="false" autocomplete="off" data-1p-ignore="true" data-lpignore="true" data-bwignore="true" data-form-type="other" data-help="batch-preparation#batch-name" data-input="csv:updateBatchName" data-change="csv:refreshBatchName">
-                        </div>
-                        <div class="stat-item is-stacked">
-                            <label class="stat-label" for="batchErrorModeSelect">Error Handling</label>
-                            <select id="batchErrorModeSelect">
-                                <option value="continue">Continue processing</option>
-                                <option value="stopOnFirst">Stop on first error</option>
-                            </select>
-                        </div>
-                        <div class="stat-item is-stacked">
-                            <label class="stat-label" for="processingModeDropdown">Threads</label>
-                            <select id="processingModeDropdown" data-change="csv:onProcessingModeChange">
-                                <option value="1">1 (one at a time)</option>
-                            </select>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="execution-section">
-                    <h3>Summary</h3>
-                    <div class="table-stats">
                         <div class="stat-item">
                             <span class="stat-label" id="apiCallsLabel">API calls
                                 <span id="explainRequestsBtn" class="help-icon" role="button" tabindex="0" data-click="csv:explainRequests" data-keydown="csv:explainRequestsByKey" title="How your rows become API requests" aria-label="How your rows become API requests"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg></span>
                             </span>
                             <span id="totalApiCallsDisplay">-</span>
                         </div>
-                        <div class="stat-item">
-                            <span class="stat-label">Rows</span>
-                            <span id="batchRowsDisplay">-</span>
-                        </div>
                         <div class="stat-item" title="First request size only">
                             <span class="stat-label">Size</span>
                             <span id="requestFileSizeDisplay">-</span>
                         </div>
-                        <div class="stat-item">
-                            <span class="stat-label">Source</span>
-                            <span id="executionSource" class="stat-value-cut">-</span>
-                        </div>
-                    </div>
                 </div>
-
-                <!-- Where the rows go, beside Execute -->
-                <div class="execution-section">
-                    <h3>Sending To</h3>
-                    <div class="table-stats">
-                        <div class="stat-item">
-                            <span class="stat-label">Environment</span>
-                            <span id="executionEnvironment" class="stat-value-cut">Loading...</span>
-                        </div>
-                        <!-- #424: one stat per variable the environment's header shows (data-transformer.js) -->
-                        <div class="stat-item is-stacked">
-                            <span class="stat-label">Endpoint</span>
-                            <span id="executionFullUrl" class="font-mono stat-value-wrap">Loading...</span>
-                        </div>
-                    </div>
-                    <div class="execution-warning hidden" id="executionWarning">
-                        <strong>Warning:</strong> this is a production environment.
-                    </div>
-                </div>
-            </div>
-
-            <div class="execution-section review-requests">
-                <div class="flex align-center justify-between gap-12 flex-wrap">
+                <div class="flex align-center justify-between gap-12 flex-wrap" id="requestPreviewHead">
                     <!-- "Requests", or "Request samples" when the batch has more than it shows (renderStep4) -->
                     <h3 id="requestPreviewTitle">Requests</h3>
                     <!-- The Raw tab's Show chips: Input / Request on every card at once -->
@@ -408,6 +415,7 @@ export function buildRunBatchPage(asset: AssetUrl, batchConfig: { endpointId: st
     <script src="${asset('run-batch/run-batch-confirm.js')}"></script>
     <script src="${asset('shared/dbmn-name.js')}"></script>
     <script src="${asset('shared/dbmn-run-heading.js')}"></script>
+    <script src="${asset('shared/dbmn-run-details.js')}"></script>
     <script src="${asset('shared/dbmn-code-pane.js')}"></script>
     <script src="${asset('run-batch/run-batch-heading.js')}"></script>
     <script src="${asset('shared/dbmn-saved-searches.js')}"></script>

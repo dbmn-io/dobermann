@@ -1185,6 +1185,11 @@
 .dbmn-modal-lg { max-width: min(calc(100vw - 48px), 820px); }
 /* Issue #271: wide viewer for the console cell-detail modal (maximised text). */
 .dbmn-modal-cell-detail { max-width: min(calc(100vw - 48px), 1120px); }
+/* The cell window holding rows (an Input rows cell): the table as tall as the window allows, scrolling inside */
+.cell-detail-rows { display: flex; flex-direction: column; height: min(65vh, 640px); min-height: 240px; }
+.cell-detail-rows > dbmn-table { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.cell-detail-rows > dbmn-table .dbmn-table-scroll { flex: 1; min-height: 0; max-height: none; }
+.cell-detail-rows .cell-detail-none { color: var(--dbmn-descriptionForeground); }
 /* JSON coloured as the editor colours it, in the cell window and the transaction window */
 .dbmn-tok-key { color: var(--dbmn-debugTokenExpression-name, #9cdcfe); }
 .dbmn-tok-str { color: var(--dbmn-debugTokenExpression-value, #ce9178); }

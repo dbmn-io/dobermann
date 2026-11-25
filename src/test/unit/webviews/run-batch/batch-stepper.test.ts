@@ -72,6 +72,14 @@ describe('Run Batch step bar', () => {
         expect(line.textContent).to.equal('');
     });
 
+    it('a finished check ("Complete", 100%) shows nowhere: Review opens with no stray line and Validate not turning', () => {
+        const { w } = load({ modalStep: 4, maxStepReached: 4, stepProgress: { step: 3, percent: 100, text: 'Complete', seconds: 0 } });
+        const line = w.document.getElementById('batchWorking');
+        expect(w.document.querySelector('.dbmn-step[data-step="3"]').classList.contains('is-checking')).to.equal(false);
+        expect(line.classList.contains('hidden')).to.equal(true);
+        expect(line.textContent).to.equal('');
+    });
+
     it('Map with unmapped variables: every later step waits for Map', () => {
         const { steps } = load({ modalStep: 2, maxStepReached: 2 }, { unmapped: 2 });
         expect(steps().map(s => s.status)).to.deep.equal(['done', 'current', 'blocked', 'blocked']);

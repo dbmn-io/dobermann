@@ -18,6 +18,10 @@ dbmn-table [hidden] { display: none !important; }
    vertical one on the table's right edge; past the window it scrolls sideways (the screen band, James 2026-11-24) */
 dbmn-table[natural] { width: fit-content; max-width: 100%; margin-inline: auto; }
 
+/* A table with its own search line: the rows line up under it (the scroll box also carries the Console's
+   .table-container, whose side margins pushed the rows 20 px in from the box above them: the manager, 2026-11-25) */
+dbmn-table[searchable] > .dbmn-table-scroll { margin-left: 0; margin-right: 0; }
+
 .dbmn-table-tools {
     display: flex;
     align-items: center;
@@ -27,6 +31,7 @@ dbmn-table[natural] { width: fit-content; max-width: 100%; margin-inline: auto; 
 .dbmn-table-glass { display: inline-flex; }
 .dbmn-table-glass svg { width: 14px; height: 14px; }
 .dbmn-table-count { flex: 0 0 auto; white-space: nowrap; }
+.dbmn-table-tools > :not(.search-container):not(.dbmn-table-count) { flex: 0 0 auto; }
 
 /* The rows scroll inside the table's own height: set --table-height on the element */
 .dbmn-table-scroll {

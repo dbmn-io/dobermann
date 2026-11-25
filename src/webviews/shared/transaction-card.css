@@ -1119,8 +1119,11 @@
 /* <dbmn-transaction> (dbmn-transaction.js): one request in full, the same window for the Console and Run Batch's
    Review. The badges and the Body / Details buttons are the card's own (above); `window` draws it over the screen */
 dbmn-transaction { display: flex; flex-direction: column; gap: 8px; min-height: 0; color: var(--dbmn-foreground); outline: none; }
+/* The window's backdrop: the page under it dimmed and out of reach (clicks close the window) */
+/* (above the screen's footer, 1000–1002, so Back and Execute are covered too; under menus and the app's windows) */
+.dbmn-tx-backdrop { position: fixed; inset: 0; z-index: 1010; background-color: rgba(0, 0, 0, 0.5); }
 dbmn-transaction[window] {
-    position: fixed; inset: 64px max(24px, calc((100% - var(--dbmn-band, 1280px)) / 2)) 72px; z-index: 900; padding: 10px 14px 12px;
+    position: fixed; inset: 64px max(24px, calc((100% - var(--dbmn-band, 1280px)) / 2)) 72px; z-index: 1011; padding: 10px 14px 12px;
     background: var(--dbmn-editor-background); border: 1px solid var(--dbmn-panel-border); border-radius: 6px;
     box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.45), 0 12px 32px rgba(0, 0, 0, 0.4);
 }

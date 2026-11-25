@@ -57,9 +57,15 @@
         return null;
     }
 
+    /** Work still going (reading a file, checking rows). At 100% it is done: its "Complete" is cleared a second later by
+     *  whoever set it, and in that second it showed on the next step (a stray "Complete" above the footer on Review and
+     *  Validate still turning: the tester, 2026-11-25). Done work is shown nowhere. */
+    function live(s) { const p = s.stepProgress; return p && !(p.percent >= 100) ? p : null; }
+
     function summaryOf(n, s, status) {
         // #435: reading a file or checking rows says how far it has got here, in the step
-        if (s.stepProgress && n === s.stepProgress.step && s.stepProgress.text) return s.stepProgress.text;
+        const going = live(s);
+        if (going && n === going.step && going.text) return going.text;
         const reached = s.maxStepReached || 1;
         const rows = rowCount(s);
         if (n === 1) {
@@ -132,7 +138,7 @@
             const st = stepState(n, s, w);
             // Reading a file or checking rows: the step it belongs to turns (steps and a progress
             // bar never show together); how far it has got is said in the screen (below)
-            const working = !!(s.stepProgress && n === s.stepProgress.step);
+            const working = !!(live(s) && n === live(s).step);
             const status = st.checking || working ? 'checking' : st.status;
             // What the step decided ("replenishment.csv · 295 rows", "6 of 6 mapped") is its hover text
             const summary = st.status === 'blocked' ? `Waits for ${st.waitsFor}` : summaryOf(n, s, status);
@@ -142,7 +148,7 @@
         });
         bar.render(states, current);
         // "Reading rows · 1,200 of 5,000", in the screen while it lasts
-        const says = s.stepProgress && s.stepProgress.text ? s.stepProgress.text : '';
+        const says = live(s) && live(s).text ? live(s).text : '';
         const line = document.getElementById('batchWorking');
         if (line) {
             line.classList.toggle('hidden', !says);

@@ -42,8 +42,14 @@
         if (text !== undefined && text !== null) node.textContent = text;
         return node;
     }
+    /** A request's state as the design system's status pill, the same as Compare's SAME / DIFF (James, 2026-11-25:
+        "This should look identical"): its tone from core.css. (raw-status-badge stays for the specs; the solid
+        status-… colours of Raw's cards are not used here, so nothing outranks the tone.) */
+    const TONE = { completed: 'is-ok', error: 'is-bad', test_failed: 'is-outlined-bad', cancelled: 'is-quiet', split: 'is-quiet', ready: 'is-quiet', pending: 'is-quiet', running: 'is-quiet' };
     function badge(status) {
-        return el('span', `raw-status-badge status-${String(status || 'pending').replace(/_/g, '-')}`, STATUS_LABEL[status] || status || 'Pending');
+        const b = el('span', `raw-status-badge status-pill-generic ${TONE[status] || 'is-quiet'}`, STATUS_LABEL[status] || status || 'Pending');
+        b.dataset.status = String(status || 'pending');
+        return b;
     }
     function httpBadge(code) {
         if (code === null || code === undefined || code === '') return el('span', 'requests-none', '—');
@@ -189,7 +195,8 @@
             const title = `#${pad(row.n)} · ${piece}`;
             if (piece === 'Input') {
                 const input = await inputFor(row);
-                window.CellDetail.open(input ? JSON.stringify(input.rows.map(values => Object.fromEntries(input.columns.map((c, i) => [c, values[i]]))), null, 2) : 'No input rows for this request.', { title });
+                // (its rows as rows, in a table, not as JSON: James, 2026-11-25)
+                window.CellDetail.openRows(input, { title, empty: 'No input rows for this request.' });
                 return;
             }
             const detail = await detailOf(row.id);
