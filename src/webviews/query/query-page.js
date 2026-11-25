@@ -20,20 +20,11 @@
     const STEPS = [{ label: 'Views' }, { label: 'Join' }, { label: 'Columns' }, { label: 'Results' }];
     const PANELS = ['queryViewsStep', 'queryJoinStep', 'queryColumnsStep', 'queryResultsStep'];
     const PAGE = 200;
-    /** What ƒ offers: each a standard SQLite function around the column. `sql` is the function as
-     * it is written, in pieces: 'x' is the column, { n } a number typed in place, { text } some text. */
-    const FNS = [
-        { id: 'trim', label: 'Trim spaces', sql: ['TRIM(', 'x', ')'] },
-        { id: 'upper', label: 'Upper case', sql: ['UPPER(', 'x', ')'] },
-        { id: 'number', label: 'As a number', sql: ['CAST(', 'x', ' AS NUMERIC)'] },
-        { id: 'text', label: 'As text', sql: ['CAST(', 'x', ' AS TEXT)'] },
-        { id: 'ltrimZeros', label: 'Drop leading zeros', sql: ['LTRIM(', 'x', ", '0')"] },
-        // (each value box labelled, James 2026-11-23, the Functions dialog mock v5: labelled fields, not words)
-        { id: 'first', label: 'First characters', sql: ['SUBSTR(', 'x', ', 1, ', { key: 'n', number: true, label: 'How many' }, ')'] },
-        { id: 'last', label: 'Last characters', sql: ['SUBSTR(', 'x', ', -', { key: 'n', number: true, label: 'How many' }, ')'] },
-        { id: 'replace', label: 'Replace text', sql: ['REPLACE(', 'x', ", '", { key: 'from', label: 'Replace' }, "', '", { key: 'to', label: 'With' }, "')"] }
-    ];
-    const FN_DEFAULTS = { n: 4, from: '-', to: '' };
+    /** What fx offers: the one list of functions (Map's, the Join's and calculated columns'), from the host
+     * (column-functions.ts, query.state's columnFunctions); `sql` is the function in pieces: 'x' the value, a piece a value
+     * typed in, `kind: 'other'` another column or a value (James, 2026-11-25: one window, steps, no formulas). */
+    const fnList = () => (ui.state && ui.state.columnFunctions) || [];
+    const fnDefaults = () => (ui.state && ui.state.functionDefaults) || {};
     /** Shared classes: a SQL word, and quiet text. */
     const KW = 'font-mono font-bold font-size-12 text-link';
     /** A join's relationship: Compare's name and picture for it (relation-glyph.js). */
@@ -995,10 +986,10 @@
                 const table = lookupTables().find(t => t.id === f.table);
                 return table ? `Translate values (${table.name})` : 'Translate values';
             }
-            const def = FNS.find(d => d.id === f.fn);
+            const def = fnList().find(d => d.id === f.fn);
             if (!def) return '';
             // (the values typed for it, as the dialog asks for them; a lookup table's id says nothing to a person)
-            const values = def.sql.filter(p => p && typeof p === 'object' && p.kind !== 'lookup').map(p => String(f[p.key] ?? '')).filter(v => v !== '');
+            const values = def.sql.filter(p => p && typeof p === 'object' && p.kind !== 'lookup').map(p => String((p.kind === 'other' ? (f.col !== undefined ? f.col.split('\n').pop() : f.value) : f[p.key]) ?? '')).filter(v => v !== '');
             return values.length ? `${def.label} (${values.join(' → ')})` : def.label;
         }).filter(Boolean);
         return said.length ? `${name}: ${said.join(', then ')}` : name;
@@ -1033,13 +1024,10 @@
         // ƒ belongs to the column picked: a box that is waiting has none
         if (!mine && ref.column) return wrap;
         // ƒ says how many functions the column has; which ones, in order, on hover
+        // The shared fx (white to add, yellow with steps; which ones on hover): James, 2026-11-25, one fx everywhere
         const has = (ref.fns || []).length;
-        const fx = el('button', 'compare-tool-btn font-mono' + (has ? ' text-link font-bold' : ''), has ? `ƒ ${has}` : 'ƒ');
+        const fx = window.DbmnFunctions.button({ steps: has, words: has ? fnWords(ref.fns, ref.column) : 'Functions on this column before it joins', label: 'Functions on this column', onClick: () => pickFns(join, ref) });
         fx.dataset.fx = side;
-        fx.type = 'button';
-        fx.title = has ? fnWords(ref.fns, ref.column) : 'Functions on this column before it joins';
-        fx.setAttribute('aria-label', 'Functions on this column');
-        fx.addEventListener('click', () => pickFns(join, ref));
         wrap.appendChild(fx);
         return wrap;
     }
@@ -1056,7 +1044,7 @@
         const plain = ref.column || 'column';
         const shared = views().some(o => o.id !== viewId && (o.columns || []).some(c => c.name === plain));
         const name = shared && v ? `${plain} (${v.run || v.name})` : plain;
-        const known = id => FNS.some(d => d.id === id) || id === 'translate';
+        const known = id => fnList().some(d => d.id === id) || id === 'translate';
         const toQuery = applied => applied.filter(a => known(a.id)).map(a => Object.assign({ fn: a.id }, a.params || {}));
         const fromQuery = fns => (fns || []).filter(f => known(f.fn)).map(f => {
             const params = {};
@@ -1083,10 +1071,12 @@
             column: name,
             // Translate values, always (with no lookup table yet, "+ New lookup table…" makes one): the table, its from and to columns
             // (Translate values first: James 2026-11-23, the Functions dialog mock)
-            functions: [{ id: 'translate', label: 'Translate values', sql: ['TRANSLATE(', 'x', ', ', { key: 'table', label: 'Lookup table', kind: 'lookup', options: lookupTables() }, ')'] }].concat(FNS)
+            functions: [{ id: 'translate', label: 'Translate values', sql: ['TRANSLATE(', 'x', ', ', { key: 'table', label: 'Lookup table', kind: 'lookup', options: lookupTables() }, ')'] }].concat(fnList())
                 .map(d => ({ id: d.id, label: d.label, sql: d.sql })),
-            defaults: FN_DEFAULTS,
+            defaults: fnDefaults(),
             applied: fromQuery(ref.fns),
+            // (a step's other column: one of the same view's, as the engine reads it)
+            columns: v ? (v.columns || []).map(c => ({ id: c.name, label: c.name })) : [],
             asLabel: join ? 'Joins as' : 'Shows as',
             // A lookup table opens in its own tab, from Reporting
             onOpenLookup: id => post({ type: 'query.openLookup', id }),
@@ -1134,7 +1124,7 @@
             }));
             const of = view(join.view);
             said = gone.length ? `${gone.join(' ')} Pick another column.` : ui.state && ui.state.error ? 'Not counted: the query can\'t run (above).' : of && of.off ? 'Hidden: left out of the report.' : join.on.some(p => p.left.column && p.right.column) ? 'Joins to a view that is left out.' : 'Not joined yet: pick the columns it joins on, or hide it.';
-        } else if (stats.typeMismatch) said = 'One side is numbers and the other text, so they never match. Try ƒ: As text.';
+        } else if (stats.typeMismatch) said = 'One side is numbers and the other text, so they never match. Try fx: As text.';
         if (!said) return null;
         const line = el('span', 'query-row form-hint query-counts');
         const warn = el('span', 'query-warn', said);
@@ -2071,27 +2061,61 @@
 
     /* ---------- Columns ---------- */
 
-    /* The Columns step (query-columns.js) and the calculation builder (query-calc.js), drawn with this page's own pieces */
+    /* The Columns step (query-columns.js), drawn with this page's own pieces; calculated columns in the shared Functions window */
     const columnsStep = window.QueryColumns.create({
         // Columns tells the step bar when its report becomes empty or not (Next: Results waits while it is)
         stepsChanged: () => renderBar(),
         el, at, line, views, view, viewAt, colour, post, setBusy, count, injectIcons, CALC_VIEW: '',
         state: () => ui.state,
         openCalc: calc => openCalc(calc),
-        pickFns: (ref, done) => pickFns(null, ref, done)
+        pickFns: (ref, done) => pickFns(null, ref, done),
+        fnWords: (fns, name) => fnWords(fns, name)
     });
     ui.columnsStep = columnsStep;
     function renderColumns() { columnsStep.render(); }
-    /** A calculated column, in the builder: its name and formula; the host reads it and keeps it. */
-    function openCalc(calc) {
-        window.QueryCalc.open({
-            el, post, colour, state: () => ui.state,
-            onCheck: handler => { ui.calcCheck = handler; }
-        }, calc).then(made => {
-            if (!made) return;
-            setBusy('Updating…');
-            post({ type: 'query.setCalc', name: made.name, formula: made.formula, was: made.was });
+    /**
+     * A calculated column, in the shared Functions window (James, 2026-11-25: steps only, no typed formulas): its Name, what
+     * it starts from (any view's column, or another calculation), then steps, each one Map's and the Join's; its sample on
+     * the first rows, step by step, from the host (query.calcSample). A typed formula saved before opens empty under its
+     * name, to be rebuilt; the host keeps it read-only until then.
+     */
+    async function openCalc(calc) {
+        if (!window.DbmnFunctions) return;
+        const s = ui.state || {};
+        const name = calc ? calc.name : '';
+        const starts = views().flatMap(v => (v.columns || []).map(c => ({ id: `${v.id}\n${c.name}`, label: `${v.run || v.name}.${c.name}` })))
+            .concat((s.calc || []).filter(c => c.start && c.name !== name).map(c => ({ id: `calc:${c.name}`, label: c.name })));
+        const label = id => { const hit = starts.find(c => c.id === id); return hit ? hit.label : id; };
+        const known = id => fnList().some(d => d.id === id);
+        const toQuery = applied => applied.filter(a => known(a.id)).map(a => Object.assign({ fn: a.id }, a.params || {}));
+        const fromQuery = fns => (fns || []).filter(f => known(f.fn)).map(f => { const params = {}; Object.keys(f).forEach(k => { if (k !== 'fn') params[k] = f[k]; }); return { id: f.fn, params }; });
+        let asked = 0;
+        const waiting = new Map();
+        ui.calcSample = m => {
+            const resolve = waiting.get(m.seq);
+            if (!resolve) return;
+            waiting.delete(m.seq);
+            if (!m.ok) { resolve({ rows: [], error: m.error }); return; }
+            // (each row: the record's key, the start, then after each step; the last is what the column shows)
+            resolve({ rows: (m.rows || []).map(r => ({ before: r[1], steps: r.slice(2), after: r[r.length - 1] })), agree: null });
+        };
+        const made = await window.DbmnFunctions.open({
+            column: label(calc && calc.start && calc.start.col !== undefined ? calc.start.col : (starts[0] || {}).id),
+            functions: fnList(),
+            defaults: fnDefaults(),
+            applied: fromQuery(calc && calc.steps),
+            columns: starts,
+            calc: { name, start: calc && calc.start && calc.start.col !== undefined ? calc.start.col : (starts[0] || {}).id, starts },
+            sample: (list, opts) => new Promise(resolve => {
+                const seq = ++asked;
+                waiting.set(seq, resolve);
+                post({ type: 'query.calcSample', seq, name, start: { col: opts && opts.start !== undefined ? opts.start : (starts[0] || {}).id }, steps: toQuery(list) });
+            })
         });
+        ui.calcSample = null;
+        if (!made) return;
+        setBusy('Updating…');
+        post({ type: 'query.setCalcSteps', name: made.name, ...(calc ? { was: calc.name } : {}), start: { col: made.start }, steps: toQuery(made.steps || []) });
     }
 
     /* ---------- Results ---------- */
@@ -2862,7 +2886,7 @@
             case 'query.idle': setBusy(''); break;
             case 'query.fnSample': if (ui.fnSample) ui.fnSample(m); break;
             case 'query.lookupRowAdded': if (ui.lookupRowAdded) ui.lookupRowAdded(m); break;
-            case 'query.calcCheck': if (ui.calcCheck) ui.calcCheck(m); break;
+            case 'query.calcSample': if (ui.calcSample) ui.calcSample(m); break;
             case 'query.recordDetail': compareResults.recordDetail(m); break;
             case 'query.viewRowsData': if (ui.viewRows) ui.viewRows(m); break;
             case 'query.error':

@@ -24,7 +24,8 @@ import { buildCompareSide, CompareView } from '../../services/compare/compare-si
 import { isComparableRun } from '../../services/compare/compare-store';
 import { allColumns, compareKeyViews, defaultColumns, formulaColumns, joinKeyColumns, lookupsUsed, resultColumns as resultColumnRefs, tableNames } from '../../services/query/query-columns';
 import type { QueryRowData, TooManyRows } from '../../services/query/query-types';
-import { FORMULA_FUNCTIONS, fullRef, fullText, parseFormula, shortRef, shortText } from '../../services/query/formula';
+import { parseFormula } from '../../services/query/formula';
+import { CalcLoopError, calcExprs, stepExprs, type Step, type StepStart } from '../../services/query/calc-steps';
 import type { FormulaNode } from '../../services/query/formula';
 import { reportNameProblem } from '../../services/compare/report-name';
 import { loadQueryFolder } from '../../services/query/query-folder';
@@ -35,7 +36,7 @@ import { comparableRuns, type RequestTemplates, type RunHeaderValue } from '../.
 import { alignCompareJoins, groupCompare, isCompare, MAX_COMPARE_VIEWS, queryCompare, runJoin, sameShape, type CompareViewShape } from '../../services/query/query-compare';
 import { columnCellDiffs, columnCellHidden, comparedGroups, otherFilters, passes, rowStatus, statusCounts, statusMenuCounts, type RowStatus, type StatusCounts, type StatusFilter } from '../../services/query/query-status';
 import { resultWorkbook } from '../../services/query/query-export';
-import { asColumnValue, lookupsIn } from '../../services/column-functions/column-functions';
+import { asColumnValue, columnsIn, COLUMN_FUNCTION_DEFAULTS, COLUMN_FUNCTIONS, lookupsIn } from '../../services/column-functions/column-functions';
 import { lookupValue, type LookupTablesReader, type LookupTableSummary } from '../../services/lookup-tables/lookup-tables';
 import type { ColumnRef, QueryFn, QueryJoin, QueryJoinKind, QueryJoinStats, QueryKey, QuerySpec } from '../../services/query/query-types';
 import { ConsoleExportService } from '../../services/console/export.service';
@@ -48,8 +49,8 @@ import type { QueryFileStore } from '../../services/query/query-file-store';
 import { localEngineHost, type EngineHost } from '../../services/engine/engine-host';
 import { QueryEngine } from '../../services/engine/engine';
 import { QUERY_ROW_TESTS, searchColumns, searchTest, type SearchArg } from './query-search';
-import { compareKeyExprs, resultsKey, sampleQueries, pagedCounts, readPagedRow, readStatusPage, type PagedStatus, eachPage, runHeld, holdStatus, countAlike, fromKeptCompare, compareStepKey, buildQuery, SAMPLE_ROWS, type FullFigures, type SampleFacts, type StatusLayout, fnSampleQueries, formulaExpr, labelExpr, loadLookupInto, loadViewInto, pagedTotals, readPage, runPaged, spreadPage, type NotNumbers, type PagedResult, type ShownSort, queryWithColumns, recordQuery, compareKeyPartExprs, runOnEngine, TooManyOnEngine, joinCountPlan, joinCountOf, joinKeysTwice, joinCountRowsQuery, JOIN_STATUS, type JoinCount, type JoinCountKind } from '../../services/query/query-new-engine';
-import type { CompareStats, Progress, Query as EngineQuery, TableWindow } from '../../services/engine/engine-types';
+import { compareKeyExprs, resultsKey, sampleQueries, pagedCounts, readPagedRow, readStatusPage, type PagedStatus, eachPage, runHeld, holdStatus, countAlike, fromKeptCompare, compareStepKey, buildQuery, SAMPLE_ROWS, type FullFigures, type SampleFacts, type StatusLayout, fnSampleQueries, labelExpr, loadLookupInto, lookupTableName, loadViewInto, pagedTotals, readPage, runPaged, spreadPage, type NotNumbers, type PagedResult, type ShownSort, queryWithColumns, recordQuery, compareKeyPartExprs, runOnEngine, TooManyOnEngine, joinCountPlan, joinCountOf, joinKeysTwice, joinCountRowsQuery, JOIN_STATUS, type JoinCount, type JoinCountKind } from '../../services/query/query-new-engine';
+import type { CompareStats, Expr, Progress, Query as EngineQuery, TableWindow } from '../../services/engine/engine-types';
 
 
 /** Query needs what Compare's ports gave it (runs, endpoints, Views, state). It runs on its own engine (src/services/engine). */
@@ -501,8 +502,9 @@ export class QueryController {
                 });
                 case 'query.moveColumn': return await this.moveColumn(Number(message.from), Number(message.to));
                 case 'query.distinct': return await this.change(q => { q.distinct = !!message.on; });
-                case 'query.setCalc': return await this.setCalc(String(message.name ?? ''), String(message.expr ?? ''), typeof message.was === 'string' ? message.was : undefined, typeof message.formula === 'string' ? message.formula : undefined);
-                case 'query.calcCheck': return this.calcCheck(String(message.formula ?? ''), Number(message.seq));
+                // A calculated column as steps (James, 2026-11-25): saved, and its sample as the window builds it
+                case 'query.setCalcSteps': return await this.setCalcSteps(message as unknown as { name: string; was?: string; start: StepStart; steps: Step[] });
+                case 'query.calcSample': return await this.calcSample(message as unknown as { start: StepStart; steps: Step[]; seq: number; name?: string });
                 case 'query.removeCalc': return await this.change(q => {
                     q.calc = q.calc?.filter(c => c.name !== message.name);
                     q.select = q.select?.filter(c => !(c.view === CALC_VIEW && c.column === message.name));
@@ -1142,83 +1144,73 @@ export class QueryController {
         this.post({ type: 'query.fnSample', seq: message.seq, rows, error, ...(message.steps ? { steps: true } : {}), ...(lookupTable ? { table: lookupTable, value: rows[0]?.[0] ?? null } : {}) });
     }
 
-    /** Every column a formula can name: its key, its whole @ path, the shortest that is unique, and a value from it. */
-    private formulaColumnsFor(): { key: string; full: string; short: string; path: string[]; view: string; sample: string }[] {
+
+    /**
+     * Add a calculated column as steps, or change the one named `was` (renamed: its place in the columns and every other
+     * calculation that uses it follow). Refused in words: no name, a name taken, nothing to start from, a column the query
+     * hasn't, or a loop through other calculations.
+     */
+    private async setCalcSteps(message: { name: string; was?: string; start: StepStart; steps: Step[] }): Promise<void> {
+        const query = this.query;
+        if (!query) return;
+        const name = String(message.name ?? '').trim();
+        const was = typeof message.was === 'string' ? message.was : undefined;
+        const start = message.start;
+        const steps = Array.isArray(message.steps) ? message.steps : [];
+        if (!name) throw new Error('A calculated column needs a name.');
+        if (!start || (start.col === undefined && start.value === undefined)) throw new Error('A calculated column starts from a column or a value.');
+        const others = (query.calc ?? []).filter(c => c.name !== was);
+        if (others.some(c => c.name.toLowerCase() === name.toLowerCase())) throw new Error(`There is already a calculated column called ${name}.`);
         const { spec } = this.spec();
-        const columns = formulaColumns(spec);
-        return columns.map(c => {
-            const at = c.key.indexOf('\n');
-            const view = c.key.slice(0, at);
-            const loaded = this.loaded.get(view);
-            if (loaded?.dropped) return { key: c.key, full: fullRef(c), short: shortRef(c, columns), path: c.path, view, sample: loaded.dropped.samples.get(c.key.slice(at + 1)) ?? '' };
-            const value = loaded?.rows.find(r => r[c.key.slice(at + 1)] !== null && r[c.key.slice(at + 1)] !== undefined && r[c.key.slice(at + 1)] !== '')?.[c.key.slice(at + 1)];
-            return { key: c.key, full: fullRef(c), short: shortRef(c, columns), path: c.path, view, sample: value === undefined ? '' : typeof value === 'object' ? JSON.stringify(value) : String(value) };
+        const keys = new Set(formulaColumns({ ...spec, calc: [] }).map(c => c.key));
+        const calcNames = new Set([...others.map(c => c.name), name]);
+        const missing = [start.col, ...columnsIn(steps)].find(id => id !== undefined && (id.startsWith('calc:') ? !calcNames.has(id.slice(5)) : !keys.has(id)));
+        if (missing) throw new Error(`${missing.startsWith('calc:') ? missing.slice(5) : missing.split('\n').pop()} isn't in the query.`);
+        const renamed = (id: string | undefined) => (was && was !== name && id === `calc:${was}` ? `calc:${name}` : id);
+        const next = [...others.map(c => (c.start ? { ...c, start: (c.start.col !== undefined ? { col: renamed(c.start.col)! } : c.start), steps: (c.steps ?? []).map(s => ('col' in s && s.col !== undefined ? { ...s, col: renamed(s.col)! } : s)) } : c)), { name, start, steps }];
+        // (a loop through others is refused before anything is saved)
+        calcExprs(next.filter(c => !!c.start).map(c => ({ name: c.name, start: c.start!, steps: c.steps ?? [] })), () => ({ value: null }));
+        await this.change(q => {
+            const at = was ? (q.calc ?? []).findIndex(c => c.name === was) : -1;
+            const mine = next[next.length - 1];
+            const calc = next.slice(0, -1);
+            calc.splice(at >= 0 ? at : calc.length, 0, mine);
+            q.calc = calc;
+            if (at >= 0) q.select?.forEach(c => { if (c.view === CALC_VIEW && c.column === was) c.column = name; });
+            else if (q.select?.length) q.select.push({ view: CALC_VIEW, column: name });
         });
     }
 
-    /**
-     * The calculation builder's check, as the user types: the formula read (formula.ts) and its
-     * value on the first few rows; or what is wrong, where, and the columns to pick from.
-     */
-    private async calcCheck(formula: string, seq: number): Promise<void> {
-        const { spec } = this.spec();
-        const columns = formulaColumns(spec);
+    /** The window's sample for a calculated column: the record's key, the start, then the value after each step, on the first rows. */
+    private async calcSample(message: { start: StepStart; steps: Step[]; seq: number; name?: string }): Promise<void> {
+        const seq = Number(message.seq);
         try {
-            const parsed = parseFormula(formula, columns);
-            const sides = parsed.compare ?? [parsed.tree];
-            // Beside each result, the record's key (the first join's, a compare's from whichever view has it), so you know which record each line is
+            const { spec } = this.spec();
             const first = spec.views[0];
             const keyPart = spec.joins.find(j => j.on.length)?.on[0]?.left.parts[0];
             const key = keyPart && spec.views.some(v => v.id === keyPart.view && v.columns.includes(keyPart.column))
                 ? { view: keyPart.view, column: keyPart.column }
                 : first ? { view: first.id, column: first.columns[0] } : undefined;
+            const byKey = (k: string): Expr => { const at = k.indexOf('\n'); return { column: k.slice(at + 1), of: k.slice(0, at) }; };
+            const lookup = (id: string): Expr => ({ value: lookupTableName(id) });
+            // (other calculations by their own steps; this one, being edited, by what the window has now)
+            const others = calcExprs((spec.calc ?? []).filter(c => !!c.start && c.name !== message.name).map(c => ({ name: c.name, start: c.start!, steps: c.steps ?? [] })), byKey, lookup);
+            const col = (id: string): Expr => {
+                if (!id.startsWith('calc:')) return byKey(id);
+                const got = others.get(id.slice(5));
+                if (!got) throw new Error(`${id.slice(5)} can't be used here.`);
+                return got;
+            };
+            const values = stepExprs(message.start, Array.isArray(message.steps) ? message.steps : [], col, lookup);
             let rows: unknown[][] = [];
             if (spec.views.length) {
-                // The formula's Expr on the query's first rows, the key beside each
-                const byKey = (k: string) => { const at = k.indexOf('\n'); return { column: k.slice(at + 1), of: k.slice(0, at) }; };
                 await this.loadEngineLookups(await this.engineFor(spec), lookupsUsed(spec));
-                const window = await this.engineWindow(spec, queryWithColumns(spec, [key ? labelExpr(spec, key) : { value: '' }, ...sides.map(side => formulaExpr(side, byKey))]), 4);
-                rows = window.rows;
+                rows = (await this.engineWindow(spec, queryWithColumns(spec, [key ? labelExpr(spec, key) : { value: '' }, ...values]), 4)).rows;
             }
-            this.post({ type: 'query.calcCheck', seq, ok: true, compare: !!parsed.compare, label: key?.column ?? '', rows, used: parsed.columns });
+            this.post({ type: 'query.calcSample', seq, ok: true, label: key?.column ?? '', rows });
         } catch (error) {
-            const e = error as { message?: string; at?: number; choices?: string[] };
-            this.post({ type: 'query.calcCheck', seq, ok: false, error: e.message ?? String(error), at: e.at ?? -1, choices: e.choices ?? [] });
+            this.post({ type: 'query.calcSample', seq, ok: false, error: error instanceof Error ? error.message : String(error) });
         }
-    }
-
-    /**
-     * Add a calculated column, or change the one named `was`. Its formula (the builder's) is read
-     * first, and kept with every column as its whole path.
-     */
-    private async setCalc(nameIn: string, exprIn: string, was?: string, formulaIn?: string): Promise<void> {
-        const query = this.query;
-        if (!query) return;
-        const name = nameIn.trim();
-        if (formulaIn !== undefined) {
-            if (!name || !formulaIn.trim()) throw new Error('A calculated column needs a name and a calculation.');
-            if ((query.calc ?? []).some(c => c.name.toLowerCase() === name.toLowerCase() && c.name !== was)) throw new Error(`There is already a calculated column called ${name}.`);
-            const columns = formulaColumns(this.spec().spec);
-            parseFormula(formulaIn, columns);
-            const formula = fullText(formulaIn.trim(), columns);
-            await this.change(q => {
-                const calc = q.calc ?? [];
-                const at = was ? calc.findIndex(c => c.name === was) : -1;
-                const made = { name, expr: shortText(formula, columns), formula };
-                if (at >= 0) {
-                    calc[at] = made;
-                    q.select?.forEach(c => { if (c.view === CALC_VIEW && c.column === was) c.column = name; });
-                } else {
-                    calc.push(made);
-                    if (q.select?.length) q.select.push({ view: CALC_VIEW, column: name });
-                }
-                q.calc = calc;
-            });
-            return;
-        }
-        // (a calculation written as SQL, from before + fx: Query no longer runs SQL)
-        void exprIn;
-        throw new Error('A calculated column needs a calculation: write it with + fx.');
     }
 
     /** Read a view from its endpoint's newest result in the same environment. Nothing is sent. */
@@ -1523,12 +1515,28 @@ export class QueryController {
         // the whole query failing for it (James, 2026-11-22; as agreed 2026-11-20: such a calculation is flagged)
         const broken = new Map<string, string>();
         const allCalc = query.calc ?? [];
-        const named = formulaColumns({ views, joins, select, distinct: query.distinct, calc: allCalc });
-        const calc = allCalc.filter(c => {
-            // (one written as SQL, before + fx: the engine runs formulas only, so it is set aside and said on Columns)
-            if (!c.formula) { broken.set(c.name, 'Written as SQL, which Query no longer runs: make it again with + fx.'); return false; }
-            try { parseFormula(c.formula, named); return true; } catch (e) { broken.set(c.name, e instanceof Error ? e.message : String(e)); return false; }
-        });
+        // (a typed formula, or SQL from before formulas: kept, not run; James, 2026-11-25: "Steps only", rebuilt by hand)
+        allCalc.filter(c => !c.start).forEach(c => broken.set(c.name, 'Typed formula: rebuild it as steps.'));
+        // Steps that name a column no view has now, or come back to themselves: set aside, each said in words
+        const columnKeys = new Set(formulaColumns({ views, joins, select, distinct: query.distinct, calc: [] }).map(c => c.key));
+        let calc = allCalc.filter(c => !!c.start);
+        for (;;) {
+            const names = new Set(calc.map(c => c.name));
+            const bad = calc.find(c => {
+                const ids = [c.start?.col, ...columnsIn(c.steps)].filter((id): id is string => !!id);
+                const missing = ids.find(id => (id.startsWith('calc:') ? !names.has(id.slice(5)) : !columnKeys.has(id)));
+                if (missing) { broken.set(c.name, `It uses ${missing.startsWith('calc:') ? missing.slice(5) : missing.split('\n').pop()}, which isn't in the query now.`); return true; }
+                return false;
+            });
+            if (!bad) break;
+            calc = calc.filter(c => c !== bad);
+        }
+        try { calcExprs(calc.map(c => ({ name: c.name, start: c.start!, steps: c.steps ?? [] })), () => ({ value: null })); } catch (e) {
+            if (!(e instanceof CalcLoopError)) throw e;
+            const loop = e;
+            loop.loop.forEach(name => broken.set(name, loop.message));
+            calc = calc.filter(c => !broken.has(c.name));
+        }
         this.brokenCalcs = broken;
         const shown = broken.size ? select.filter(c => !(c.view === CALC_VIEW && broken.has(c.column))) : select;
         return { spec: { views, joins, select: shown, distinct: query.distinct, calc }, waiting };
@@ -1853,8 +1861,9 @@ export class QueryController {
             // Results' columns: the steps', or what the user's own SQL makes
             resultColumns: (now.resultColumns ?? now.columns ?? []).map((c, i) => ({ view: c.view, column: c.column, type: now.resultTypes?.[i] ?? 'text', ...(c.group ? { group: c.group } : {}) })),
             // What the calculation builder offers: every column by its @ path, and the functions
-            formulaColumns: this.formulaColumnsFor(),
-            formulaFunctions: FORMULA_FUNCTIONS.map(f => ({ ...f, max: Number.isFinite(f.max) ? f.max : null })),
+            // The one list of functions (Map's, the Join's and calculated columns'), for the shared Functions window
+            columnFunctions: COLUMN_FUNCTIONS,
+            functionDefaults: COLUMN_FUNCTION_DEFAULTS,
             calc: query.calc ?? [],
             // (each calculated column left out, and why: Columns says so, with Change and Delete)
             brokenCalcs: [...this.brokenCalcs].map(([name, error]) => ({ name, error })),

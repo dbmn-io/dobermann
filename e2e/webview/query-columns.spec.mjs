@@ -14,8 +14,8 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const read = rel => readFileSync(join(ROOT, 'src/webviews', rel), 'utf8');
-const STYLES = ['shared/atomic.css', 'shared/core.css', 'shared/buttons.css', 'shared/compare.css', 'shared/dbmn-lanes.css', 'shared/query.css', 'shared/query-columns.css'];
-const SCRIPTS = ['shared/icons.js', 'shared/dbmn-context-menu.js', 'shared/relation-glyph.js', 'shared/dbmn-lanes.js', 'query/query-columns.js'];
+const STYLES = ['shared/atomic.css', 'shared/core.css', 'shared/buttons.css', 'shared/compare.css', 'shared/dbmn-lanes.css', 'shared/query.css', 'shared/query-columns.css', 'shared/dbmn-functions.css'];
+const SCRIPTS = ['shared/icons.js', 'shared/dbmn-context-menu.js', 'shared/relation-glyph.js', 'shared/dbmn-lanes.js', 'shared/dbmn-functions.js', 'query/query-columns.js'];
 
 const VIEWS = [
     { id: 's1', name: 'Stock', run: '', runOf: '', columns: ['sku', 'gtin', 'description', 'quantityOnHand', 'uom', 'status'] },

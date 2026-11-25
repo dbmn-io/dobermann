@@ -146,6 +146,6 @@ test('a note beside the join\'s counts (numbers against text) wraps onto more li
     const stats = { leftRows: 3, leftMatched: 0, rowsAfter: 3, rightRows: 3, rightMatched: 0, relationship: 'oneToOne', typeMismatch: true };
     expect(await joinStep(p, 860, { ...STATE, joins: [{ ...STATE.joins[0], stats }, STATE.joins[1]] })).toEqual([]);
     const note = p.locator('.query-made-line .query-warn', { hasText: 'One side is numbers' });
-    await expect(note).toHaveText('One side is numbers and the other text, so they never match. Try ƒ: As text.');
+    await expect(note).toHaveText('One side is numbers and the other text, so they never match. Try fx: As text.');
     expect(await note.evaluate((n, f) => new Function(`return (${f})`)()(n), cutText.toString())).toBe('');
 });

@@ -15,9 +15,9 @@ import { ROW_LIMIT } from '../engine/engine-types';
 import { FUNCTIONS } from '../engine/engine-types';
 import type { FormulaNode } from './formula';
 import { isCompare, queryCompare } from './query-compare';
-import { formulaColumns, resultColumns } from './query-columns';
+import { resultColumns } from './query-columns';
 import { comparedGroups, type RelationKind, type RowStatus, type StatusCounts, type StatusFilter } from './query-status';
-import { parseFormula } from './formula';
+import { calcExprs, type StepsCalc } from './calc-steps';
 import { CALC_VIEW, type ColumnRef, type QueryFn, type QueryJoinStats, type QueryKey, type QuerySpec } from './query-types';
 
 /** The compare's views, the Baseline first, and each one's key: one QueryKey per pair (+ AND). */
@@ -58,7 +58,7 @@ export interface JoinCount {
 export function joinCountPlan(spec: QuerySpec): { baseline: string; pairs: { view: string; query: Query }[]; whole: Query; key: string } | undefined {
     const byView = compareKeysByView(spec);
     if (byView.length < 2 || byView.some(v => !v.keys.length || v.keys.some(k => !k.parts.length || k.parts.some(p => !p.column)))) return undefined;
-    const exprs = (v: { keys: QueryKey[] }): Expr[] => v.keys.flatMap(k => k.parts.map(p => (k.fns ?? []).reduce<Expr>((x, f) => fnExpr(x, f), refExpr(p))));
+    const exprs = (v: { keys: QueryKey[] }): Expr[] => v.keys.flatMap(k => k.parts.map(p => (k.fns ?? []).reduce<Expr>((x, f) => fnExpr(x, f, sameView(p.view)), refExpr(p))));
     const base = byView[0];
     return {
         baseline: base.view,
@@ -153,8 +153,12 @@ export function formulaExpr(node: FormulaNode, column: (key: string) => Expr): E
 }
 
 /** A view's column with its functions, the first innermost. */
+/** A step that names another column, on a key or a cell: that column of the same view. */
+const sameView = (view: string) => (id: string): Expr => ({ column: id, of: view });
+
 export function refExpr(ref: ColumnRef): Expr {
-    return (ref.fns ?? []).reduce<Expr>((x, f) => fnExpr(x, f), { column: ref.column, of: ref.view });
+    // (a step naming another column reads it from the same view)
+    return (ref.fns ?? []).reduce<Expr>((x, f) => fnExpr(x, f, sameView(ref.view)), { column: ref.column, of: ref.view });
 }
 
 /** How Results' rows come out of the engine's select: which of its columns is what. */
@@ -177,7 +181,7 @@ export function compareQuery(spec: QuerySpec): { query: Query; layout: CompareLa
     const places = byView.map(v => v.view);
     const columns = resultColumns(spec);
     // A key part per column of each pair's key (a key of two columns is two parts: they match as both)
-    const keyExprs = byView.map(v => v.keys.flatMap(k => k.parts.map(p => (k.fns ?? []).reduce<Expr>((x, f) => fnExpr(x, f), refExpr(p)))));
+    const keyExprs = byView.map(v => v.keys.flatMap(k => k.parts.map(p => (k.fns ?? []).reduce<Expr>((x, f) => fnExpr(x, f, sameView(p.view)), refExpr(p)))));
     const select: { name: string; value: Expr }[] = columns.map((c, i) => ({ name: `c${i}`, value: refExpr(c) }));
     const keyParts = byView.map((v, p) => {
         const at = keyExprs[p].map((e, i) => { select.push({ name: `k${p}_${i}`, value: e }); return select.length - 1; });
@@ -521,7 +525,7 @@ export function keyExpr(key: QueryKey): Expr {
         const known = parts.length === 1 ? { fn: '=' as const, args: [parts[0], parts[0]] } : { fn: 'AND' as const, args: parts.map(p => ({ fn: '=' as const, args: [p, p] })) };
         joined = { fn: 'IF', args: [known, { fn: 'CONCAT', args: pieces }] };
     }
-    return (key.fns ?? []).reduce<Expr>((x, f) => fnExpr(x, f), joined);
+    return (key.fns ?? []).reduce<Expr>((x, f) => fnExpr(x, f, sameView(key.parts[0]?.view ?? '')), joined);
 }
 
 /**
@@ -535,7 +539,7 @@ export function buildQuery(spec: QuerySpec, options?: { status?: StatusPlaces; s
     const byView = compareKeysByView(spec);
     const places = byView.map(v => v.view);
     let base = spec.views[0].id;
-    const keyExprs = byView.map(v => v.keys.flatMap(k => k.parts.map(p => (k.fns ?? []).reduce<Expr>((x, f) => fnExpr(x, f), refExpr(p)))));
+    const keyExprs = byView.map(v => v.keys.flatMap(k => k.parts.map(p => (k.fns ?? []).reduce<Expr>((x, f) => fnExpr(x, f, sameView(p.view)), refExpr(p)))));
     // (a compare's status: its compared columns compared by the compare step itself when it can, nativeCompared)
     const native = options?.status && byView.length ? nativeCompared(spec, places, options.status) : undefined;
     if (byView.length) {
@@ -547,8 +551,10 @@ export function buildQuery(spec: QuerySpec, options?: { status?: StatusPlaces; s
         base = `join${i + 1}`;
     });
     const columns = resultColumns(spec);
-    const formulaCols = formulaColumns(spec);
     const byKey = (key: string): Expr => { const at = key.indexOf('\n'); return { column: key.slice(at + 1), of: key.slice(0, at) }; };
+    // (every calculated column with steps, once, in order of use: the controller has left out any it can't run)
+    let made: Map<string, Expr> | undefined;
+    const calcs = () => (made ??= calcExprs((spec.calc ?? []).filter(x => !!x.start).map((x): StepsCalc => ({ name: x.name, start: x.start as StepsCalc['start'], steps: x.steps ?? [] })), byKey, id => ({ value: lookupTableName(id) })));
     const first = spec.joins.find(j => j.kind === 'compare');
     const keyColumnOf = columns.map(c => {
         if (c.view === CALC_VIEW || c.fns?.length || !first) return undefined;
@@ -563,11 +569,10 @@ export function buildQuery(spec: QuerySpec, options?: { status?: StatusPlaces; s
             return refExpr(c);
         }
         // A calculated column (a COMPARE formula a column per side: "name 1", "name 2"…)
-        const calc = spec.calc?.find(x => x.name === c.column) ?? spec.calc?.find(x => c.group === x.name);
-        if (!calc?.formula) throw new Error(`Query: no calculated column "${c.column}"`);
-        const parsed = parseFormula(calc.formula, formulaCols);
-        const side = c.group === calc.name && parsed.compare ? parsed.compare[Number(/ (\d+)$/.exec(c.column)?.[1] ?? 1) - 1] : parsed.tree;
-        return formulaExpr(side, byKey);
+        // A calculated column: its steps (calc-steps.ts), each other column it names by its key
+        const made = calcs().get(c.column);
+        if (!made) throw new Error(`Query: no calculated column "${c.column}"`);
+        return made;
     };
     const select: { name: string; value: Expr }[] = columns.map((c, i) => ({ name: `c${i}`, value: valueOf(c, i) }));
     const keyParts = byView.map((v, p) => {
@@ -805,7 +810,7 @@ export function loadLookupTable(engine: QueryEngine, table: { id: string; column
  * found nothing by its first alone, 2026-11-22).
  */
 export function compareKeyPartExprs(spec: QuerySpec): { view: string; exprs: Expr[] }[] {
-    return compareKeysByView(spec).filter(v => v.keys.length).map(v => ({ view: v.view, exprs: v.keys.flatMap(k => k.parts.map(p => (k.fns ?? []).reduce<Expr>((x, f) => fnExpr(x, f), refExpr(p)))) }));
+    return compareKeysByView(spec).filter(v => v.keys.length).map(v => ({ view: v.view, exprs: v.keys.flatMap(k => k.parts.map(p => (k.fns ?? []).reduce<Expr>((x, f) => fnExpr(x, f, sameView(p.view)), refExpr(p)))) }));
 }
 
 /** Each compare view's key (its first pair's, as compareKeySql), as an Expr over that view alone. */
@@ -842,7 +847,7 @@ export function fnSampleQueries(view: string, column: string, fns: ColumnFn[], r
     // (`steps`: the value after each function in turn, the dialog's chain of steps (James, 2026-11-23, mock v6); the last
     // column is the value after them all either way)
     const after: Expr[] = [];
-    fns.reduce<Expr>((x, f) => { const next = fnExpr(x, f); after.push(next); return next; }, plain);
+    fns.reduce<Expr>((x, f) => { const next = fnExpr(x, f, sameView(view)); after.push(next); return next; }, plain);
     const made = after.length ? after[after.length - 1] : plain;
     const outs = steps && after.length ? after.map((value, i) => ({ name: `s${i + 1}`, value })) : [{ name: 'made', value: made }];
     const pick = { select: 'kept', columns: [{ name: 'plain', value: plain }, ...outs] };

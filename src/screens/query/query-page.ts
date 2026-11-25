@@ -173,7 +173,6 @@ export function buildQueryPage(asset: AssetUrl, config: { queryId: string; name:
     <script src="${asset('query/query-join-rules.js')}"></script>
     <!-- New lookup table: its name and columns asked in the shared dialog (shared/lookup-new.js), as the Hub does -->
     <script src="${asset('shared/lookup-new.js')}"></script>
-    <script src="${asset('query/query-calc.js')}"></script>
     <script src="${asset('query/query-compare-results.js')}"></script>
     <script src="${asset('query/query-page.js')}" data-query-id="${attr(config.queryId)}"></script>
 </body>

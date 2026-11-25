@@ -258,14 +258,14 @@ describe('Query compare on the new engine', () => {
             await same({ views: two, joins: [{ view: 'prod', kind: 'left', on: [{ left: { parts: [{ view: 'inv', column: 'gtin' }, { view: 'inv', column: 'part' }], separator: '-' }, right: key('prod', 'code') }] }], select: [{ view: 'inv', column: 'sku' }, { view: 'prod', column: 'name' }] }, 'two columns');
         });
 
-        it('calculated columns by their formula (a COMPARE a column per side); Distinct', async () => {
+        // (steps on the engine; the same sum as a formula for the SQLite reference, which reads formulas: one checks the other)
+        it('calculated columns by their steps; Distinct', async () => {
             const spec: QuerySpec = {
                 views: two, joins: [{ view: 'prod', kind: 'left', on: [{ left: key('inv', 'gtin'), right: key('prod', 'gtin') }] }],
-                select: [{ view: 'inv', column: 'sku' }, { view: '', column: 'double' }, { view: '', column: 'label' }, { view: '', column: 'both' }],
+                select: [{ view: 'inv', column: 'sku' }, { view: '', column: 'double' }, { view: '', column: 'label' }],
                 calc: [
-                    { name: 'double', expr: '', formula: '@inv.qty * 2 + 1' },
-                    { name: 'label', expr: '', formula: 'IF(@inv.qty > 2, CONCAT(@prod.name, "!"), IFBLANK(@prod.name, "none"))' },
-                    { name: 'both', expr: '', formula: 'COMPARE(@inv.gtin, @prod.gtin)' }
+                    { name: 'double', start: { col: 'inv\nqty' }, steps: [{ fn: 'times', value: 2 }, { fn: 'plus', value: 1 }], formula: '@inv.qty * 2 + 1' },
+                    { name: 'label', start: { col: 'prod\nname' }, steps: [{ fn: 'ifblank', use: 'none' }, { fn: 'jointext', between: '', value: '!' }], formula: 'CONCAT(IFBLANK(@prod.name, "none"), "", "!")' }
                 ]
             };
             await same(spec, 'calc');
@@ -532,15 +532,13 @@ describe('Query compare on the new engine', () => {
             assert.strictEqual(statusMenuCounts(st.rows, every, { columns: ['qty'] }).columns.qty, statusMenuCounts(st.rows, every, { columns: ['qty'] }).all);
         });
 
-        it('compared columns of every kind: a view joined beside the compare, a COMPARE calculation\'s sides', async () => {
+        it('compared columns of every kind: a view joined beside the compare', async () => {
             const spec = runsSpec();
             spec.views.push({ id: 'ref', name: 'reference', columns: ['sku', 'qty'] });
             spec.joins.push({ view: 'ref', kind: 'left', on: [{ left: { parts: [{ view: 'bl', column: 'sku' }] }, right: { parts: [{ view: 'ref', column: 'sku' }] } }] });
             // (a compared column's cells side by side: the reference's qty beside the runs')
             spec.select.splice(4, 0, { view: 'ref', column: 'qty', group: 'qty' });
-            spec.select.push({ view: '', column: 'both' });
             spec.views.forEach(v => { if (v.run) v.runOfName = 'stock'; });
-            spec.calc = [{ name: 'both', expr: '', formula: 'COMPARE(@stock.BL.qty, @stock.C1.qty)' }];
             const ref = data.bl.filter((_, i) => i % 3).map((r, i) => ({ sku: r.sku, qty: i % 4 ? r.qty : 999 }));
             const engine = new QueryEngine();
             for (const v of spec.views) loadView(engine, v.id, v.columns, v.id === 'ref' ? ref : data[v.id as keyof typeof data]);
@@ -554,7 +552,7 @@ describe('Query compare on the new engine', () => {
             const page = await readStatusPage(engine, paged, 0, paged.total, st);
             assert.deepStrictEqual(page.rows, all.rows);
             assert.deepStrictEqual(page.status.map(same), want.rows.map(same));
-            assert.ok(page.status.some(x => x.groups.includes('both')) && page.status.some(x => x.diff.includes('reference')), JSON.stringify([columns, page.status.slice(0, 5)]));
+            assert.ok(page.status.some(x => x.diff.includes('reference')), JSON.stringify([columns, page.status.slice(0, 5)]));
         });
 
         it('a blank key is No key (James, 2026-11-21): counted apart from Same, DIFF and Missing, a filter of its own; a hidden holder\'s is not', async () => {
@@ -590,7 +588,7 @@ describe('Query compare on the new engine', () => {
         const spec: QuerySpec = {
             views: [{ id: 'inv', name: 'inv', columns: ['sku', 'qty'] }], joins: [],
             select: [{ view: 'inv', column: 'sku' }, { view: 'inv', column: 'qty' }, { view: '', column: 'double' }],
-            calc: [{ name: 'double', expr: '', formula: '@inv.qty * 2' }]
+            calc: [{ name: 'double', start: { col: 'inv\nqty' }, steps: [{ fn: 'times', value: 2 }] }]
         };
         const rows: Row[] = [{ sku: 'A', qty: 1 }, { sku: 'B', qty: 'n/a' }, { sku: 'C', qty: '' }, { sku: 'D', qty: '3' }, { sku: 'E', qty: 'TBC' }];
         const handlers: [((m: unknown) => void)[], ((m: unknown) => void)[]] = [[], []];

@@ -9,6 +9,7 @@
  * (query-sql.ts) and SQLite runs it (query-engine.ts): what the user reads is what runs.
  */
 import type { ColumnFn } from '../column-functions/column-functions';
+import type { Step, StepStart } from './calc-steps';
 
 /** A view in the query: `name` is what the user sees and the table's name in the SQL. */
 export interface QueryView {
@@ -89,7 +90,11 @@ export interface QueryJoin {
  */
 export interface QueryCalc {
     name: string;
-    expr: string;
+    /** Steps (James, 2026-11-25, "Steps only"): where it starts, a column (`view\ncolumn`, or `calc:name`) or a value, then its steps. */
+    start?: StepStart;
+    steps?: Step[];
+    /** A typed formula or SQL from before steps: kept, not run, shown as "Typed formula: rebuild it as steps". */
+    expr?: string;
     formula?: string;
 }
 

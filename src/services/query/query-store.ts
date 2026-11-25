@@ -211,7 +211,7 @@ function renamed(text: string, was: string, now: string): string {
 }
 
 function rewrite(query: SavedQuery, change: (text: string) => string): void {
-    query.calc?.forEach(c => { c.expr = change(c.expr); });
+    query.calc?.forEach(c => { if (c.expr) c.expr = change(c.expr); });
     if (query.search) query.search = change(query.search);
 }
 

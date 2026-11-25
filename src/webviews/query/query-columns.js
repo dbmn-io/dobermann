@@ -12,7 +12,7 @@
  * (that view's or that run's columns to put in it); a right-click on a cell gives its functions or
  * takes it out of the column; × takes the whole column back below. A row is dragged to another
  * place, or onto another row to compare them as one column. Calculated columns sit among them,
- * made in the calculation builder (query-calc.js). With none yet: "Nothing here yet".
+ * made in the shared Functions window (calculated columns as steps). With none yet: "Nothing here yet".
  *
  * Below the line, every column not used (never a key), a row per name across the views, like a
  * spreadsheet: a click on a cell brings it up, shown (a run's is named "sku (C1)"); the Compare
@@ -174,14 +174,31 @@
             const cell = at(viewId, `dbmn-cell${more ? ' ' + more : ''}`);
             return cell;
         }
-        /** The ƒ on a cell: on the cell's hover, or ƒ1 where a function is on. Its click opens the functions. */
+        /** A calculated column in words: where it starts, then its steps (the shared window's way of writing them). */
+        function calcWords(calc) {
+            if (!calc) return '';
+            if (!calc.start) return calc.formula || calc.expr || '';
+            const s = ctx.state() || {};
+            const vs = ctx.views ? ctx.views() : [];
+            const nameOf = id => {
+                if (id === undefined) return '';
+                if (String(id).startsWith('calc:')) return String(id).slice(5);
+                const at = String(id).indexOf('\n');
+                const v = vs.find(x => x.id === String(id).slice(0, at));
+                return v ? `${v.run || v.name}.${String(id).slice(at + 1)}` : String(id).slice(at + 1);
+            };
+            const start = calc.start.col !== undefined ? nameOf(calc.start.col) : String(calc.start.value ?? '');
+            const columns = vs.flatMap(v => (v.columns || []).map(c => ({ id: `${v.id}\n${c.name}`, label: nameOf(`${v.id}\n${c.name}`) }))).concat((s.calc || []).map(c => ({ id: `calc:${c.name}`, label: c.name })));
+            const applied = (calc.steps || []).map(f => { const params = {}; Object.keys(f).forEach(k => { if (k !== 'fn') params[k] = f[k]; }); return { id: f.fn, params }; });
+            return window.DbmnFunctions && window.DbmnFunctions.written ? window.DbmnFunctions.written(s.columnFunctions || [], applied, start, columns) : start;
+        }
+        /** The fx on a cell: on the cell's hover, or yellow where a function is on. Its click opens the functions. */
         function fxButton(entry, list) {
+            // The shared fx: white to add, yellow with steps, which ones on hover (James, 2026-11-25: one fx everywhere).
+            // Its place on the cell stays this step's (shown on the cell's hover while it has none)
             const has = (entry.fns || []).length;
-            const b = el('button', 'dbmn-cell-fx query-rep-fx' + (has ? ' is-on' : ' is-quiet'), has ? `ƒ${has}` : 'ƒ');
-            b.type = 'button';
-            b.title = has ? 'Functions on this cell: click to see or change them' : 'Functions on this cell';
-            b.setAttribute('aria-label', `Functions on ${entry.column}`);
-            b.addEventListener('click', e => { e.stopPropagation(); functions(entry, list); });
+            const b = window.DbmnFunctions.button({ steps: has, words: has && ctx.fnWords ? ctx.fnWords(entry.fns, entry.column) : 'Functions on this cell', label: `Functions on ${entry.column}`, onClick: () => functions(entry, list) });
+            b.classList.add('dbmn-cell-fx', 'query-rep-fx', has ? 'is-on' : 'is-quiet');
             return b;
         }
         function functions(entry, list) {
@@ -350,10 +367,13 @@
                 said.setAttribute('inline', '');
                 said.setAttribute('tone', 'warn');
                 said.className = 'query-calc-broken';
-                said.append(`${b.name} is left out of Results: ${b.error.replace(/^There is no column /, 'there is no column ')}. `);
-                const change = el('button', 'text-link query-calc-broken-act', 'Change it');
+                // (a typed formula from before steps: its text, so it can be rebuilt by hand; James, 2026-11-25)
+                const was = (s.calc || []).find(c => c.name === b.name) || null;
+                const typed = was && !was.start ? (was.formula || was.expr || '') : '';
+                said.append(`${b.name} is left out of Results. ${b.error}${typed ? ` It was: ${typed}` : ''} `);
+                const change = el('button', 'text-link query-calc-broken-act', typed || (was && !was.start) ? 'Rebuild it' : 'Change it');
                 change.type = 'button';
-                change.addEventListener('click', () => ctx.openCalc((s.calc || []).find(c => c.name === b.name) || null));
+                change.addEventListener('click', () => ctx.openCalc(was));
                 const drop = el('button', 'text-link query-calc-broken-act', 'Delete it');
                 drop.type = 'button';
                 drop.addEventListener('click', () => { ctx.setBusy('Updating…'); ctx.post({ type: 'query.removeCalc', name: b.name }); });
@@ -388,7 +408,13 @@
                 const grip = el('span', 'query-rep-grip', '⋮⋮');
                 grip.title = 'Drag to another place, or onto another column to compare them as one';
                 lead.push(grip);
-                if (row.kind === 'calc') lead.push(el('span', 'query-rep-what is-calc', 'fx'));
+                // (a calculated column: the yellow fx, its steps on hover; a click opens them)
+                if (row.kind === 'calc') {
+                    const n = row.calc && row.calc.steps ? row.calc.steps.length : 0;
+                    const fx = window.DbmnFunctions.button({ steps: Math.max(1, n), words: calcWords(row.calc), label: `${row.name}: its steps`, onClick: () => ctx.openCalc(row.calc || null) });
+                    fx.classList.add('query-rep-what', 'is-calc');
+                    lead.push(fx);
+                }
                 const name = el('input', 'query-rep-name');
                 name.value = row.name;
                 name.title = row.name;
@@ -397,7 +423,12 @@
                 name.addEventListener('change', () => {
                     const heading = name.value.trim();
                     if (!heading || heading === row.name) { name.value = row.name; return; }
-                    if (row.kind === 'calc') { ctx.post({ type: 'query.setCalc', name: heading, formula: row.calc && row.calc.formula !== undefined ? row.calc.formula : undefined, expr: row.calc ? row.calc.expr : '', was: row.name }); return; }
+                    if (row.kind === 'calc') {
+                        // (renamed as steps; a typed one isn't run, so it keeps its name until it is rebuilt)
+                        if (!row.calc || !row.calc.start) { name.value = row.name; return; }
+                        ctx.post({ type: 'query.setCalcSteps', name: heading, was: row.name, start: row.calc.start, steps: row.calc.steps || [] });
+                        return;
+                    }
                     row.name = heading;
                     row.group = heading;
                     send(flatten(rows, list));
@@ -409,7 +440,7 @@
                     const calc = el('button', 'dbmn-cell is-calc query-rep-calc');
                     calc.type = 'button';
                     calc.title = 'Click to change the calculation';
-                    calc.append(el('span', 'dbmn-cell-value', row.calc ? (row.calc.expr || row.calc.formula || '') : ''));
+                    calc.append(el('span', 'dbmn-cell-value', calcWords(row.calc)));
                     calc.addEventListener('click', () => ctx.openCalc(row.calc || null));
                     cells.__span = calc;
                 } else {
@@ -465,7 +496,7 @@
             const calcBtn = el('button', 'query-calc-add', '+ fx');
             calcBtn.type = 'button';
             calcBtn.id = 'queryCalcBtn';
-            calcBtn.title = 'Add a calculated column: IF, ROUND, CONCAT… over @columns';
+            calcBtn.title = 'Add a calculated column: a column or value, then steps';
             calcBtn.setAttribute('aria-label', 'Add a calculated column');
             calcBtn.addEventListener('click', () => ctx.openCalc(null));
             lines.push(line('query-rep-rule query-rep-rule-full', { __span: el('div', 'dbmn-lanes-rule') }, [], [calcBtn]));
