@@ -244,7 +244,7 @@
             state.tx = tx;
             if (window.DbmnModal && window.DbmnModal.show) {
                 Promise.resolve(window.DbmnModal.show({ title: 'Transaction', headerless: true, body: tx, size: 'transaction', actions: [], dismissible: true }))
-                    .finally(() => { if (state.tx === tx) state.tx = null; tx.remove(); });
+                    .finally(() => { if (state.tx === tx) state.tx = null; tx.remove(); caughtUp(); });
             } else document.body.appendChild(tx);
             // (focused, so Esc and ↑ ↓ work at once: its keys are its own)
             setTimeout(() => tx.focus(), 0);
@@ -252,8 +252,20 @@
         }
         /** A request still to settle: not finished, or its response not read yet. */
         const SETTLED = new Set(['completed', 'error', 'test_failed', 'cancelled', 'split', 'ready', 'planned']);
-        async function openTransaction(row, index) {
+        /** The run moved on while a window was open: the table behind it, once, now it has closed. */
+        function caughtUp() {
+            if (!state.staleBehind) return;
+            state.staleBehind = false;
+            if (state.shown) table.reload({ keep: true, total: state.total });
+        }
+        /**
+         * `given`: its detail already asked (a refresh of the open request): the window drawn once, from the row and the
+         * detail together, and only when what it shows has changed. James, 2026-11-25: "a running batch shouldn't
+         * interrupt the modal. We shouldn't be refreshing anything".
+         */
+        async function openTransaction(row, index, given) {
             const tx = windowFor();
+            const same = !!given && !!state.txRow && state.txRow.id === row.id;
             state.txIndex = index;
             state.txRow = row;
             state.txSettled = false;
@@ -267,17 +279,21 @@
                 reprocess: !!o.reprocess && o.canReprocess(row), logs: !!o.logs && !!row.hasLogs,
                 previous: index > 0, next: index >= 0 && index < state.total - 1
             };
-            // (the window opens at once from the row; the bodies follow)
-            tx.transaction = base;
-            const given = typeof o.input === 'function' ? o.input(row) : null;
-            if (given) tx.input = given;
-            const detail = await detailOf(row.id);
-            if (!detail || state.txIndex !== index || state.tx !== tx) return;
-            if (!given && detail.input) tx.input = detail.input;
-            tx.transaction = Object.assign({}, base, {
+            // (the window opens at once from the row; the bodies follow. A refresh: both at once)
+            if (!same) tx.transaction = base;
+            const pageInput = !same && typeof o.input === 'function' ? o.input(row) : null;
+            if (pageInput) tx.input = pageInput;
+            const detail = given || await detailOf(row.id);
+            if (!detail || state.txRow !== row || state.tx !== tx) return;
+            if (!same && !pageInput && detail.input) tx.input = detail.input;
+            const full = Object.assign({}, base, {
                 requestHeaders: detail.requestHeaders, responseHeaders: row.response || detail.responseBody !== null ? detail.responseHeaders : null,
                 requestBody: detail.requestBody, responseBody: detail.responseBody === null ? undefined : detail.responseBody
             });
+            // (drawn again only when the request shows something new: its status, figures or bodies)
+            // (compared with what this window was last given: the component's own copy of it is not the same text)
+            const drawn = JSON.stringify(full);
+            if (!same || drawn !== state.txDrawn) { tx.transaction = full; state.txDrawn = drawn; }
             // (Ready rows are Review's, never sent from there: settled as they are)
             state.txSettled = row.status === 'ready' || row.status === 'planned' || (SETTLED.has(row.status) && detail.responseBody !== null);
             // A finished request whose response isn't in yet (written a moment after it ends): asked again by
@@ -293,8 +309,10 @@
         }
         /**
          * The run moved on while a window is open on a request still to settle (a single run's window opens as it
-         * starts, before its response is written): the request asked again, and its window drawn from it, what it
-         * shows kept. At most once a second.
+         * starts, before its response is written): that request asked again BY ITS ID (its row now comes with its
+         * detail), and its window drawn from it, what it shows kept. Never by its place in the table: the run re-orders
+         * and re-pages rows, and the window jumped to whatever request was in that place (James, 2026-11-25: "I had like
+         * transaction 300 and something open … then it opened up transaction 10"). At most once a second.
          */
         let refreshing = 0;
         async function refreshOpen() {
@@ -302,11 +320,13 @@
             const now = Date.now();
             if (now - refreshing < 1000) return;
             refreshing = now;
-            const index = state.txIndex;
-            let row = state.txRow;
-            if (index >= 0) row = (await askPage(index, 1, {})).rows[0] || row;
-            if (state.txIndex !== index || !state.tx) return;
-            await openTransaction(row, index);
+            const asked = state.txRow;
+            const detail = await detailOf(asked.id);
+            if (!detail || state.txRow !== asked || !state.tx) return;
+            const row = detail.row && detail.row.id === asked.id ? detail.row : asked;
+            // (its place for ↑ ↓: where the table holds it now, if it does)
+            const at = state.txIndex >= 0 ? indexOf(row) : -1;
+            await openTransaction(row, at >= 0 ? at : state.txIndex, detail);
         }
         async function move(by) {
             const next = state.txIndex + (by > 0 ? 1 : -1);
@@ -337,7 +357,10 @@
                 case 'console.requests.counts': setCounts(message); refreshOpen(); break;
                 case 'console.requests.changed':
                     setCounts(message);
-                    if (state.shown) table.reload({ keep: true, total: message.total });
+                    // (a window open over the table: the table waits until it closes, and only the open request is
+                    //  followed; nothing behind the window is drawn again while it is up)
+                    if (state.tx && state.tx.isConnected) state.staleBehind = true;
+                    else if (state.shown) table.reload({ keep: true, total: message.total });
                     refreshOpen();
                     break;
                 default: break;

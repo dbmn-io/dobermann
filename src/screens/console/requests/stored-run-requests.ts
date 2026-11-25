@@ -173,7 +173,8 @@ export class StoredRunRequests implements RequestSource {
             id, method: row.method, url: row.url, query: row.query,
             requestHeaders: row.requestHeaders, responseHeaders: files.responseHeaders,
             requestBody: files.requestBody, responseBody: files.responseBody,
-            rows: row.rowStart !== null && row.rowEnd !== null ? [row.rowStart, row.rowEnd] : null
+            rows: row.rowStart !== null && row.rowEnd !== null ? [row.rowStart, row.rowEnd] : null,
+            row
         };
     }
 

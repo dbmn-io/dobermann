@@ -89,6 +89,8 @@ export interface RequestDetail {
     rows: [number, number] | null;
     /** Its input rows, when the source holds them (a planned batch: from the plan); else the page's own. */
     input?: { columns: string[]; rows: string[][] };
+    /** The request's row as it stands now (a stored run): an open window follows its request by id with it. */
+    row?: RequestRow;
 }
 
 /** Rows that come from somewhere: a stored run, or a planned batch. */

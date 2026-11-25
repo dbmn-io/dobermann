@@ -118,7 +118,7 @@ const REQUESTS_HOST = `window.__requestsHost = (function () {
     const status = m.testStatus === 'failed' ? 'test_failed' : st === 'success' ? 'completed' : (st || 'completed');
     const body = bodyOf(x);
     const req = text(x.request !== undefined ? x.request : m.request);
-    return { id: m.executionId || 'req-' + (i + 1), n: i + 1, status, http: typeof x.httpStatus === 'number' ? x.httpStatus : null,
+    return { id: m.executionId || 'req-' + (i + 1), n: m.memberIndex ?? i + 1, status, http: typeof x.httpStatus === 'number' ? x.httpStatus : null,
       httpText: x.httpStatusText || null, timeMs: m.responseTime ?? null, sent: m.timestamp || null,
       rowStart: m.rowStart ?? null, rowEnd: m.rowEnd ?? null, method: m.method || 'POST', url: m.url || '', query: {},
       request: req === null ? null : { preview: req.slice(0, 200), items: null, bytes: req.length },
@@ -140,8 +140,10 @@ const REQUESTS_HOST = `window.__requestsHost = (function () {
       reply({ type: 'console.requests.rows', seq: m.seq, rows: page, total: rows.length, of: all.length });
     } else if (m.type === 'console.requests.detail') {
       const r = all.find(x => x.id === m.id);
+      // (by its id, with its row as it stands now, as the host answers: the open window follows it)
+      const { __req, __body, ...rowNow } = r || {};
       reply({ type: 'console.requests.detail', seq: m.seq, detail: r ? { id: r.id, method: r.method, url: r.url, query: {}, requestHeaders: [], responseHeaders: r.responseHeaders,
-        requestBody: r.__req, responseBody: r.__body, rows: r.rowStart ? [r.rowStart, r.rowEnd] : null } : undefined });
+        requestBody: r.__req, responseBody: r.__body, rows: r.rowStart ? [r.rowStart, r.rowEnd] : null, row: rowNow } : undefined });
     }
   };
 })();`;
