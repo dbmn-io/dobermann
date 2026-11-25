@@ -52,7 +52,10 @@
         h._consoleWired = true;
         h.addEventListener('dbmn-run-heading-tab', e => {
             const manager = window.dynamicReportManager;
-            if (manager && e.detail && e.detail.id) manager.switchTab(e.detail.id);
+            if (!manager || !e.detail || !e.detail.id) return;
+            // (the person picked a tab: the first result no longer moves them to Completed, console-page.js)
+            manager._userPickedTab = true;
+            manager.switchTab(e.detail.id);
         });
         h.addEventListener('dbmn-name-change', e => {
             const name = e.detail && e.detail.name;

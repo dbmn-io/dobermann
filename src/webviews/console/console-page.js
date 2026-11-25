@@ -4169,8 +4169,9 @@ class DynamicReportManager {
         // completion lands AND the user is still on the default
         // landing tab (raw / input). Subsequent results don't
         // bounce the user around — if they've navigated elsewhere
-        // (settings, info), respect that.
-        if (!this._autoSwitchedOnFirstResult
+        // (settings, info), respect that. A tab the person clicked counts as navigating, Requests included: they stay
+        // where they chose (2026-11-26, James on this screen: "a running batch shouldn't interrupt").
+        if (!this._autoSwitchedOnFirstResult && !this._userPickedTab
             && (this.currentTab === 'raw' || this.currentTab === 'requests' || this.currentTab === 'input')) {
             const target = payload.classification === 'success' ? 'success' : 'errors';
             // Defer one tick so the tabs created/updated below exist
