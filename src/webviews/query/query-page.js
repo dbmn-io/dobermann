@@ -295,7 +295,7 @@
         const missing = c ? Object.values(c.missing || {}).reduce((a, b) => a + b, 0) : 0;
         return [
             `${count(results)} results`,
-            c ? `${count(c.diff || 0)} DIFF` : '',
+            c ? `${count(c.diff || 0)} Diff` : '',
             c ? `${count(missing)} missing` : '',
             shown
         ];

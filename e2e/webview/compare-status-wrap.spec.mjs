@@ -22,7 +22,7 @@ test('a row with DIFF and Missing wraps to two lines; one-line rows keep one lin
     await page.setContent(`<!doctype html><html><head><style>body{margin:0;font:13px sans-serif}${css}</style></head><body>
         <table class="data-table" id="t"><tbody>
             ${row([group('missing', 'Missing', [0, 1, 2])])}
-            ${row([group('diff', 'DIFF', [2]), group('missing', 'Missing', [3])])}
+            ${row([group('diff', 'Diff', [2]), group('missing', 'Missing', [3])])}
         </tbody></table></body></html>`);
     // As sizeStatus does: the widest one line
     const oneLine = await page.locator('tr').first().locator('.compare-status').evaluate(el => Math.ceil(el.getBoundingClientRect().width));

@@ -83,7 +83,7 @@
     }
     function foundInQuery(f) {
         if (!f.diff && !f.missing) return 'no differences';
-        return [f.diff ? `${f.diff.toLocaleString()} DIFF` : '', f.missing ? `${f.missing.toLocaleString()} missing` : ''].filter(Boolean).join(' · ');
+        return [f.diff ? `${f.diff.toLocaleString()} Diff` : '', f.missing ? `${f.missing.toLocaleString()} missing` : ''].filter(Boolean).join(' · ');
     }
     function found(c) {
         if (!c.comparedAt) return 'not compared yet';

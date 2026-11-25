@@ -141,10 +141,10 @@
         }
         function renderStatusMenu() {
             const options = statusOptions();
-            const nameOf = o => (o.value === 'noKey' ? 'No key' : o.place === undefined ? (o.value === 'diff' ? 'DIFF' : 'Same') : `Missing ${o.place}`);
+            const nameOf = o => (o.value === 'noKey' ? 'No key' : o.place === undefined ? (o.value === 'diff' ? 'Diff' : 'Same') : `Missing ${o.place}`);
             const pillOf = o => {
                 if (o.value === 'noKey') return noKeyPill();
-                if (o.place === undefined) return el('span', `status-pill-generic compare-${o.value}`, o.value === 'diff' ? 'DIFF' : 'Same');
+                if (o.place === undefined) return el('span', `status-pill-generic compare-${o.value}`, o.value === 'diff' ? 'Diff' : 'Same');
                 const box = el('span', 'compare-status');
                 box.append(el('span', 'status-pill-generic compare-missing', 'Missing'), tag(o.place));
                 return box;
@@ -199,7 +199,7 @@
             const many = shownPlaces().length > 2;
             if (st.diff.length) {
                 const g = el('span', 'compare-status-group');
-                g.appendChild(el('span', 'status-pill-generic compare-diff', 'DIFF'));
+                g.appendChild(el('span', 'status-pill-generic compare-diff', 'Diff'));
                 if (many) st.diff.forEach(p => g.appendChild(tag(p)));
                 box.appendChild(g);
             }
@@ -527,7 +527,7 @@
             show(ui.recordView || 'table');
             // (the whole key from the host, every part of it; else the first field's value, as before)
             const key = m.keyText || (m.fields[0] && m.fields[0].values.map(v => v[0]).find(v => v !== undefined && v !== null)) || 'Record';
-            const said = m.status ? (m.status.diff.length ? `DIFF ${m.status.diff.join(' ')}` : m.status.missing.length ? `Missing ${m.status.missing.join(' ')}` : m.status.noKey ? `No key ${m.status.noKey}` : 'Same') : '';
+            const said = m.status ? (m.status.diff.length ? `Diff ${m.status.diff.join(' ')}` : m.status.missing.length ? `Missing ${m.status.missing.join(' ')}` : m.status.noKey ? `No key ${m.status.noKey}` : 'Same') : '';
             window.DbmnModal.show({ title: `${key}${said ? `: ${said}` : ''}`, body: wrap, size: 'large', maximisable: true, actions: [{ id: 'close', label: 'Close', variant: 'secondary' }] });
         }
 
