@@ -4841,15 +4841,23 @@ export class ConsoleController {
             switch (message.type) {
                 case 'console.requests.page': {
                     const started = Date.now();
+                    // (the table asking: whatever it was told, it has heard)
+                    this.requestsStale = false;
                     const page = await source.page(message as unknown as RequestPageQuery);
                     this.lastRequestsPageMs = Date.now() - started;
                     await this.post({ type: 'console.requests.rows', seq, ...page });
+                    this.watchRequestsInFlight();
                     return;
                 }
                 case 'console.requests.shown':
                     // The tab on screen or not: off screen the table isn't reloaded; shown, it catches up at once
                     this.requestsShown = message.shown !== false;
-                    if (this.requestsShown && this.requestsStale) {
+                    // (also when the requests as last read hold one not finished: a result is told before its status
+                    // is stored, and the last request of a run that doesn't end (a Run API of a paged endpoint: page
+                    // one, more to ask for) has no later word: its row said Running under "Execution Complete".
+                    // James, 2026-11-26. A run all finished is not read again: its pages cost its files)
+                    if (this.requestsShown && (this.requestsStale || source.heldUnfinished())) {
+                        if (!this.requestsStale) source.changed();
                         this.requestsStale = false;
                         this.tellRequestsReload(true);
                     }
@@ -4876,6 +4884,7 @@ export class ConsoleController {
      * to ask again (keeping its place) only while it is on screen, paced by what its pages cost.
      */
     requestsChanged(): void {
+        this.requestsWordAt = Date.now();
         if (!this.requestsSource) return;   // the tab hasn't asked yet: nothing to tell
         this.requestsSource.changed();
         if (!this.requestsCountsTimer) {
@@ -4893,6 +4902,32 @@ export class ConsoleController {
         this.tellRequestsReload(false);
     }
 
+    private requestsInFlightTimer?: ReturnType<typeof setTimeout>;
+    /** When a request's change was last told (requestsChanged): a run being told needs no looking. */
+    private requestsWordAt = 0;
+    static readonly REQUESTS_IN_FLIGHT_CHECK_MS = 1000;
+    /**
+     * A page that held a request in flight: its end is looked for each second while the tab is on screen, and the
+     * table told only when a status has changed. A result is told before its status is stored, and the last request
+     * of a run that doesn't end (a Run API; a paged one's page one) has no later word: its row said Running under
+     * "Execution Complete" (James, 2026-11-26). Quiet otherwise: nothing is posted while nothing changed.
+     * Only a run gone quiet is read: while changes are being told (a batch running: a word per request), they drive the
+     * table and nothing is read here, however many requests the run has.
+     */
+    private watchRequestsInFlight(): void {
+        const source = this.requestsSource;
+        if (this.requestsInFlightTimer || !source || !this.requestsShown || !source.heldUnfinished()) return;
+        this.requestsInFlightTimer = setTimeout(() => {
+            this.requestsInFlightTimer = undefined;
+            const current = this.requestsSource;
+            if (!current || !this.requestsShown) return;
+            if (Date.now() - this.requestsWordAt < ConsoleController.REQUESTS_IN_FLIGHT_CHECK_MS) { this.watchRequestsInFlight(); return; }
+            void current.readAgainForChange().then(changed => {
+                if (changed) this.tellRequestsReload(true); else this.watchRequestsInFlight();
+            }).catch(() => undefined);
+        }, ConsoleController.REQUESTS_IN_FLIGHT_CHECK_MS);
+    }
+
     /** console.requests.changed: the table asks again. `now`: at once (it was off screen and missed changes). */
     private tellRequestsReload(now: boolean): void {
         if (this.requestsReloadTimer) {
@@ -4903,6 +4938,11 @@ export class ConsoleController {
             this.requestsReloadTimer = undefined;
             const source = this.requestsSource;
             if (!source) return;
+            // (gone off screen meanwhile: the table doesn't reload while hidden, so the word would be lost. Kept for
+            // when it is shown. A Run API's Console shows Requests for a moment, then Completed: its row stayed Running)
+            if (!this.requestsShown) { this.requestsStale = true; return; }
+            // (and until the table asks for its page, the word isn't known to have been heard: it may be hidden first)
+            this.requestsStale = true;
             void source.counts().then(({ total, counts }) => this.post({ type: 'console.requests.changed', total, counts })).catch(() => undefined);
         }, now ? 0 : ConsoleController.requestsReloadDelay(this.lastRequestsPageMs));
     }
@@ -5135,6 +5175,11 @@ export class ConsoleController {
                 }
             }
 
+            // (the web app writes a run's files a moment behind: a log asked for as its request ends is looked for a
+            // few times before "No log file available" is said. James, 2026-11-26: none at first, there later)
+            for (let tries = 0; resolvedLogPath && !runFileExists(resolvedLogPath) && tries < 6; tries++) {
+                await new Promise(resolve => setTimeout(resolve, 300));
+            }
             if (resolvedLogPath && runFileExists(resolvedLogPath)) {
                 const rawContent = readRunFile(resolvedLogPath);
 
@@ -5835,6 +5880,8 @@ export class ConsoleController {
         this.figuresTimer = undefined;
         if (this.requestsCountsTimer) clearTimeout(this.requestsCountsTimer);
         if (this.requestsReloadTimer) clearTimeout(this.requestsReloadTimer);
+        if (this.requestsInFlightTimer) clearTimeout(this.requestsInFlightTimer);
+        this.requestsInFlightTimer = undefined;
         this.requestsCountsTimer = undefined;
         this.requestsReloadTimer = undefined;
         this.requestsSource = undefined;

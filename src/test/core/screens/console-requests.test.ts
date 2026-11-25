@@ -143,11 +143,54 @@ describe('Console Requests (host): a row per request', () => {
         const scanned = reads.length;
         expect(scanned).to.equal(50 * 2 + 2);
         await source.page({ offset: 0, limit: 50, search: 'SKU-WOOF-007' });
-        expect(reads.length - scanned, 'the kept answer: only the row shown').to.equal(2);
+        expect(reads.length - scanned, 'the kept answer, and the row shown is held: nothing read').to.equal(0);
         records[6].status = 'error';
         source.changed();
         await source.page({ offset: 0, limit: 50, search: 'SKU-WOOF-007' });
-        expect(reads.length - scanned - 2, 'scanned again after the change').to.equal(50 * 2 + 2);
+        expect(reads.length - scanned, 'scanned again after the change').to.equal(50 * 2 + 2);
+    });
+
+    it('a column name still being typed ("@status") is not a search: every row, and no file opened for it', async () => {
+        const { source, reads } = run(30);
+        const first = await source.page({ offset: 0, limit: 5 });
+        const held = reads.length;
+        for (const typed of ['@', '@st', '@status']) {
+            const page = await source.page({ offset: 0, limit: 5, search: typed });
+            expect(page.total, typed).to.equal(first.total);
+        }
+        expect(reads.length, 'nothing opened while the name is typed').to.equal(held);
+        // (with its operator and value it is a search)
+        expect((await source.page({ offset: 0, limit: 5, search: '@status=error' })).total).to.equal(3);
+    });
+
+    it('a finished request\'s files are read once for its row: drawn again, nothing is read; sent again, they are', async () => {
+        // (James, 2026-11-26: 487 requests of 500 records each; every page read and parsed each row's whole files
+        //  again, so switching to the tab, scrolling and typing dragged)
+        const { source, reads, records } = run(20);
+        await source.page({ offset: 0, limit: 20 });
+        expect(reads.length, 'each row\'s two files, once').to.equal(40);
+        await source.page({ offset: 0, limit: 20 });
+        await source.page({ offset: 0, limit: 20, sort: { id: 'n', dir: 'desc' } });
+        expect(reads.length, 'drawn again: nothing read').to.equal(40);
+        // Sent again: its files are new
+        records[2].reprocessCount = 1;
+        source.changed();
+        const again = await source.page({ offset: 0, limit: 20 });
+        expect(reads.length, 'only the one sent again').to.equal(42);
+        expect(again.rows[2].response?.preview).to.contain('created');
+    });
+
+    it('a request still going, or whose response isn\'t written yet, is read each time until it is', async () => {
+        const { source, reads, records, files } = run(1);
+        const response = files.get('/run/m-0001.response.json')!;
+        files.delete('/run/m-0001.response.json');
+        expect((await source.page({ offset: 0, limit: 5 })).rows[0].response).to.equal(null);
+        files.set('/run/m-0001.response.json', response);
+        expect((await source.page({ offset: 0, limit: 5 })).rows[0].response?.preview, 'there now: shown').to.contain('created');
+        const held = reads.length;
+        await source.page({ offset: 0, limit: 5 });
+        expect(reads.length, 'and held from then').to.equal(held);
+        expect(records[0].status).to.equal('completed');
     });
 
     it('a response header can be searched by its column', async () => {

@@ -126,9 +126,84 @@ describe('Console Requests (host): through the controller', () => {
             await h.controller.handle({ type: 'console.requests.shown', shown: true });
             await wait(20);
             expect(h.of('console.requests.changed')).to.deep.equal([{ type: 'console.requests.changed', total: 3, counts: { completed: 1, pending: 2 } }]);
+            // Hidden before it asked for its page (a Run API's Console shows Requests for a moment, then Completed): the
+            // word isn't known to be heard, so shown again it is told again (James, 2026-11-26: the row stayed Running)
+            await h.controller.handle({ type: 'console.requests.shown', shown: false });
             await h.controller.handle({ type: 'console.requests.shown', shown: true });
             await wait(20);
-            expect(h.of('console.requests.changed'), 'nothing missed: nothing more').to.have.length(1);
+            expect(h.of('console.requests.changed'), 'told again: it never asked').to.have.length(2);
+            // It asks for its page: heard. Shown again with nothing missed: nothing more
+            await h.controller.handle({ type: 'console.requests.page', seq: 2, offset: 0, limit: 50 });
+            await h.controller.handle({ type: 'console.requests.shown', shown: true });
+            await wait(20);
+            expect(h.of('console.requests.changed'), 'nothing missed: nothing more').to.have.length(2);
+        } finally { h.done(); }
+    });
+
+    it('a request read while in flight, its end never told (a paged Run API\'s page one): shown again, the table is told to ask again', async () => {
+        // (James, 2026-11-26: the row said Running under "Execution Complete"; the result is told before its status is stored)
+        const h = batch(1);
+        try {
+            h.members[0].status = 'running';
+            // (as storage answers: a reading of its own each time, not the rows themselves)
+            h.metadata.getBatchMemberExecutions = async () => h.members.map(m => ({ ...m }));
+            await h.controller.handle({ type: 'console.requests.page', seq: 1, offset: 0, limit: 50 });
+            await h.controller.handle({ type: 'console.requests.shown', shown: false });
+            h.members[0].status = 'completed';   // stored, with no word to the Console
+            await h.controller.handle({ type: 'console.requests.shown', shown: true });
+            await wait(20);
+            expect(h.of('console.requests.changed')).to.deep.equal([{ type: 'console.requests.changed', total: 1, counts: { completed: 1 } }]);
+            // (all finished now: showing it again reads nothing more)
+            await h.controller.handle({ type: 'console.requests.page', seq: 2, offset: 0, limit: 50 });
+            await h.controller.handle({ type: 'console.requests.shown', shown: true });
+            await wait(20);
+            expect(h.of('console.requests.changed'), 'a finished run is not read again').to.have.length(1);
+        } finally { h.done(); }
+    });
+
+    it('a request in flight on the page shown, its end never told: looked for each second, told once it has changed, quiet until then', async () => {
+        const h = batch(1);
+        try {
+            h.members[0].status = 'running';
+            h.metadata.getBatchMemberExecutions = async () => h.members.map(m => ({ ...m }));
+            await h.controller.handle({ type: 'console.requests.shown', shown: true });
+            await h.controller.handle({ type: 'console.requests.page', seq: 1, offset: 0, limit: 50 });
+            await wait(1300);
+            expect(h.of('console.requests.changed'), 'still in flight: nothing told').to.have.length(0);
+            h.members[0].status = 'completed';   // stored, with no word to the Console
+            await wait(1300);
+            expect(h.of('console.requests.changed')).to.deep.equal([{ type: 'console.requests.changed', total: 1, counts: { completed: 1 } }]);
+            await h.controller.handle({ type: 'console.requests.page', seq: 2, offset: 0, limit: 50 });
+            await wait(1300);
+            expect(h.of('console.requests.changed'), 'finished: no more looking').to.have.length(1);
+        } finally { h.done(); }
+    });
+
+    it('a batch being told of its changes is not read by the in-flight look, whatever its size: only a run gone quiet is', async () => {
+        const h = batch(3);
+        try {
+            let reads = 0;
+            h.members[0].status = 'running';
+            h.metadata.getBatchMemberExecutions = async () => { reads++; return h.members.map(m => ({ ...m })); };
+            await h.controller.handle({ type: 'console.requests.shown', shown: true });
+            await h.controller.handle({ type: 'console.requests.page', seq: 1, offset: 0, limit: 50 });
+            const after = reads;
+            // Words keep coming for 2.5 s (a batch running), with the table not asking again: nothing is read
+            for (let i = 0; i < 10; i++) { (h.controller as unknown as { requestsWordAt: number }).requestsWordAt = Date.now(); await wait(250); }
+            expect(reads, 'no reading while it is being told').to.equal(after);
+            // Quiet for over a second: looked at (the look comes round each second; allow two)
+            await wait(2300);
+            expect(reads, 'gone quiet: looked').to.be.greaterThan(after);
+        } finally { h.done(); }
+    });
+
+    it('a request with its files offers Logs (the window opened from this tab had no Logs button for a batch\'s requests)', async () => {
+        const h = batch(2);
+        try {
+            await h.controller.handle({ type: 'console.requests.page', seq: 1, offset: 0, limit: 50 });
+            const rows = (h.of('console.requests.rows')[0] as unknown as { rows: { hasLogs: boolean }[] }).rows;
+            // (no log path on the record: the Logs window finds the .log beside the request file)
+            expect(rows.map(r => r.hasLogs)).to.deep.equal([true, true]);
         } finally { h.done(); }
     });
 

@@ -114,6 +114,29 @@ export class StoredRunRequests implements RequestSource {
         this.records = null;
     }
 
+    /**
+     * Whether the requests as last read include one in flight. Such a reading can be behind: a result is told before
+     * its status is stored, and the last request of a run that doesn't end has no later word.
+     */
+    heldUnfinished(): boolean {
+        return !!this.records && this.records.list.some(r => r.status === 'running');
+    }
+
+    /**
+     * Reads the run's requests again and says whether a status differs from the last reading (then that reading is
+     * the new one). For a request last read in flight whose end was never told.
+     */
+    async readAgainForChange(): Promise<boolean> {
+        const held = this.records;
+        if (!held) return false;
+        const now = await this.ports.requests();
+        if (this.records !== held) return false;   // read again meanwhile
+        const was = new Map(held.list.map(r => [r.id, r.status]));
+        const differs = now.length !== held.list.length || now.some(r => was.get(r.id) !== r.status);
+        if (differs) this.changed();
+        return differs;
+    }
+
     /** How many requests have each status (the live `changed` message, the Status filter). */
     async counts(): Promise<{ total: number; counts: Record<string, number> }> {
         // (counted by the store while the records aren't held: a live run's tab counts stay cheap)
@@ -193,7 +216,10 @@ export class StoredRunRequests implements RequestSource {
         // (the columns only the files hold don't sort: see the top)
         const sort: RequestSort | null = query.sort && !needsFiles(query.sort.id) ? query.sort : null;
         let plan: SearchPlan | null = null;
-        if (search) plan = planSearch(parseSearchExpression(search), columns.map(c => ({ id: c.id, name: c.name, type: 'string', hidden: !!c.hidden })));
+        // A column name still being typed ("@status", no operator yet) is not a search: it was read as a plain word and
+        // every request's files were opened for it, on each pause in the typing (James, 2026-11-26: typing dragged)
+        const typingAColumn = /^@[^=~!<>\s]*$/.test(search);
+        if (search && !typingAColumn) plan = planSearch(parseSearchExpression(search), columns.map(c => ({ id: c.id, name: c.name, type: 'string', hidden: !!c.hidden })));
         let kept: RequestRow[];
         if (plan && plan.terms.some(t => t.columns.some(needsFiles))) {
             const key = JSON.stringify({ search, columns: columns.map(c => [c.id, !!c.hidden]) });
@@ -218,7 +244,7 @@ export class StoredRunRequests implements RequestSource {
             let sliceStart = Date.now();
             for (const row of rows) {
                 if (token !== this.token) return null;
-                const files = this.readFiles(byId.get(row.id)!);
+                const files = this.readFiles(byId.get(row.id)!, false, false);
                 if (matches(plan, searchRow(row, files))) ids.add(row.id);
                 if (Date.now() - sliceStart >= SLICE_MS) {
                     await yieldNow();
@@ -237,22 +263,38 @@ export class StoredRunRequests implements RequestSource {
         }
     }
 
+    /**
+     * What a finished request's files gave a row (its two previews and its response headers), kept by request: a row
+     * drawn again doesn't read its files again. Each was read and parsed whole on every page: with responses of 500
+     * records, switching to the tab, scrolling and typing all dragged (James, 2026-11-26, 487 such requests). The
+     * small summary is kept, never the bodies. A request sent again (its reprocess count) or changed is read again.
+     */
+    private summaries = new Map<string, { key: string; request: RequestRow['request']; response: RequestRow['response']; responseHeaders: HeaderPair[] }>();
+
     /** A row with what its files hold, for the page. */
     private withFiles(row: RequestRow, record: RequestRecord): RequestRow {
-        const files = this.readFiles(record);
-        const contentType = files.responseHeaders.find(h => h.name.toLowerCase() === 'content-type')?.value ?? null;
-        const full: RequestRow = {
-            ...row,
-            request: bodySummary(files.requestBody, files.requestBytes),
-            response: bodySummary(files.responseBody, files.responseBytes, contentType),
-            responseHeaders: files.responseHeaders
-        };
-        for (const h of files.responseHeaders) full[headerKey('response', h.name)] = h.value;
+        const key = `${record.status}|${record.reprocessCount ?? 0}|${record.requestFile ?? ''}|${record.responseFile ?? ''}`;
+        let held = this.summaries.get(record.id);
+        if (!held || held.key !== key) {
+            const files = this.readFiles(record);
+            const contentType = files.responseHeaders.find(h => h.name.toLowerCase() === 'content-type')?.value ?? null;
+            held = {
+                key,
+                request: bodySummary(files.requestBody, files.requestBytes),
+                response: bodySummary(files.responseBody, files.responseBytes, contentType),
+                responseHeaders: files.responseHeaders
+            };
+            // (only once it has ended and its response is there: the web app writes a run's files a moment behind)
+            if (FINISHED.has(String(record.status || '')) && files.responseBody !== null) this.summaries.set(record.id, held);
+            else this.summaries.delete(record.id);
+        }
+        const full: RequestRow = { ...row, request: held.request, response: held.response, responseHeaders: held.responseHeaders };
+        for (const h of held.responseHeaders) full[headerKey('response', h.name)] = h.value;
         return full;
     }
 
     /** A request's files. `pretty`: the response body laid out (the transaction window); else compact. */
-    private readFiles(record: RequestRecord, pretty = false): ReadFiles {
+    private readFiles(record: RequestRecord, pretty = false, sizes = true): ReadFiles {
         const { files } = this.ports;
         const read = (path: string | undefined): { text: string | null; bytes: number | null } => {
             if (!path || !files.exists(path)) return { text: null, bytes: null };
@@ -260,7 +302,8 @@ export class StoredRunRequests implements RequestSource {
                 const text = files.read(path);
                 // (TextEncoder, not Buffer: the web app has no Buffer, and its ReferenceError, caught here, made every
                 //  body there read as missing: no response in the window, nothing in Request/Response, round 38c)
-                return { text, bytes: utf8.encode(text).length };
+                // (a search has no use for the size: encoding each body to count its bytes was a cost per file)
+                return { text, bytes: sizes ? utf8.encode(text).length : null };
             } catch {
                 return { text: null, bytes: null };
             }
@@ -307,7 +350,9 @@ export function recordRow(r: RequestRecord, n: number): RequestRow {
         responseHeaders: [],
         reason: r.errorMessage || null,
         reprocessCount: r.reprocessCount ?? 0,
-        hasLogs: !!r.logPath
+        // (as the Logs window finds them: the record's log path, or the .log beside its request file; with only the
+        // first, a batch's requests offered no Logs in the window opened from this tab. James, 2026-11-26)
+        hasLogs: !!(r.logPath || r.requestFile)
     };
     for (const h of requestHeaders) row[headerKey('request', h.name)] = h.value;
     return row;
