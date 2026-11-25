@@ -37,7 +37,10 @@ async function runningBatch(page) {
     // The Requests table's count line beside the rows it draws, at every change a person could see
     await page.evaluate(() => {
         window.__countOverRows = [];
-        const check = () => {
+        // (read when the browser paints: a mutation callback also runs between two writes of one update, which no
+        // one sees; CI caught "8 rows" over 7 there once)
+        const check = () => requestAnimationFrame(painted);
+        const painted = () => {
             const panel = document.getElementById('requests-tab-content');
             const table = document.getElementById('requests-table');
             if (!panel || !table || panel.classList.contains('hidden')) return;
