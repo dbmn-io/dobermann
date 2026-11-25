@@ -6,6 +6,8 @@ All notable changes to Dobermann are documented here.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-26
+
 ### Added
 - **Query (Beta)** — A new report in **Reporting** puts results from History, and CSV or Excel files of your own, into one table in four steps: Views, Join, Columns and Results. It runs on DBMN's own engine and sends nothing. [Docs](https://dbmn.io/docs/query/)
 - **Copy and import a query** — Queries are kept in your workspace folder, so every DBMN app on that folder lists the same ones. **Copy the query** puts one on the clipboard as text; **Import a query** in Reporting opens it on another computer. [Docs](https://dbmn.io/docs/query/#copy)
@@ -48,9 +50,6 @@ All notable changes to Dobermann are documented here.
 - **A date typed in a search means that day** — On a column of ISO 8601 dates, `@created=2026-11-12` finds every time on the 12th, and `@created>2026-11-12` means after the 12th. **Behaviour change:** a saved search with a typed date may return different rows. [Docs](https://dbmn.io/docs/console/#search-dates)
 - **The last of the licence code is gone** — The Account page gets your name and Weekly Usage from a new account summary. The public backend no longer has licence or trial tables. Older versions keep working. [Docs](https://dbmn.io/docs/hub/#account)
 
-### Removed
-- **The Compare screen** — Query took its place (see **Compare is part of Query**), and the **Compare** button on the Console's Completed tab is now the database button. [Docs](https://dbmn.io/docs/query/#from-compare)
-
 ### Fixed
 - **A batch's Console shows every result, even the ones that came back before it opened** — When the first requests of a batch finished before its Console was ready (a busy computer), or while its Console was closed and before it was opened again, the run counted them ("20/20") but Completed and Errors were short of them until the run was opened again from History. The Console now reloads the run once when it opens on a run that is still going and results came in without it. The results were always saved; only the live tables missed them. Since 0.2.0, when the Console became a Hub tab.
 - **VS Code with an expired DBMN sign-in no longer shows an empty catalogue** ([#2](https://github.com/dbmn-io/dobermann/issues/2)) — When your DBMN sign-in can no longer be renewed, VS Code works on this computer's copy of your catalogue, as when signed out, and says once that the sign-in has expired; changes you make go to your account when you sign in again. Before, it showed the catalogue as empty and emptied this computer's copy of it until you signed out and in again. Nothing is asked of your account without your sign-in, and runs keep working.
@@ -74,6 +73,9 @@ All notable changes to Dobermann are documented here.
 - **Weekly Usage in the web app no longer spins for ever** — The Account page's usage numbers kept loading after they arrived. [Docs](https://dbmn.io/docs/hub/#account)
 - **Switching environment is instant** — The header changes as you pick. Switching no longer saves every environment to your DBMN account again, which took seconds with many environments. (GitHub Issue #454)
 - **No more "(copy)" environments after signing in** — With endpoints saved to your account, signing in on a second computer could keep every environment twice, the second as "<name> (copy)". (GitHub Issue #454)
+
+### Removed
+- **The Compare screen** — Query took its place (see **Compare is part of Query**), and the **Compare** button on the Console's Completed tab is now the database button. [Docs](https://dbmn.io/docs/query/#from-compare)
 
 ## [0.4.0] - 2026-11-16
 
