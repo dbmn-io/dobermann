@@ -33,6 +33,12 @@ ${read('shared/dbmn-footer.css')}</style>
   steps.addEventListener('dbmn-step', e => window.went.push(e.detail.step));
   steps.steps = ${JSON.stringify(STEPS.map(label => ({ label })))};
   window.show = (states, current) => steps.render(states, current);
+  // The fold's marks as they are this moment (the classes, how many steps show, each step's fold values)
+  window.foldState = () => ({
+    cls: steps.className,
+    visible: [...steps.querySelectorAll('.dbmn-step')].filter(e => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0 && getComputedStyle(e).visibility !== 'hidden'; }).length,
+    steps: [...steps.querySelectorAll('.dbmn-step')].map(e => ({ wait: e.style.getPropertyValue('--fold-wait'), time: e.style.getPropertyValue('--fold-time'), x: parseFloat(e.style.getPropertyValue('--fold-x')), foldFrom: e.hasAttribute('data-fold-from') }))
+  });
 </script></body></html>`;
 
 const at = current => STEPS.map((label, i) => ({
@@ -182,52 +188,62 @@ test('the highlight slides to the step that takes over, and folding is shown', a
     await expect.poll(() => left('.dbmn-steps-indicator')).toBe(await left('.dbmn-step[data-step="2"]'));
     await expect.poll(() => width('.dbmn-steps-indicator')).toBe(await width('.dbmn-step[data-step="2"]'));
 
-    // On to step 3: it is on its way before it arrives (a slide, not a cut), then sits behind step 3
-    await page.evaluate(states => window.show(states, 3), at(3));
+    // On to step 3: a slide, not a cut (the browser starts a transition on it), then it sits behind step 3.
+    // (Proved by the transition starting, not by catching it part-way: on a busy machine the slide can
+    // finish before the test looks, which failed this check under parallel workers on 2026-11-25.)
+    await page.evaluate(states => {
+        window.slides = [];
+        document.querySelector('.dbmn-steps-indicator').addEventListener('transitionrun', e => window.slides.push(e.propertyName));
+        window.show(states, 3);
+    }, at(3));
     const target = await left('.dbmn-step[data-step="3"]');
-    expect(await left('.dbmn-steps-indicator')).toBeLessThan(target);
+    await expect.poll(() => page.evaluate(() => window.slides)).toContain('transform');
     await expect.poll(() => left('.dbmn-steps-indicator')).toBe(target);
 
     // Folding: the steps are still there as the box narrows, then only the summary is
     const wide = await width('dbmn-steps');
-    await page.evaluate(states => {
+    // The fold lasts about half a second, then its marks are cleared. They are read in the same call that
+    // starts it, so nothing can end it first, however busy the machine.
+    const folding = await page.evaluate(states => {
         window.show(states, 4);
         const steps = document.getElementById('steps');
         steps.summary = ['3 views', '20 rows'];
         steps.folded = true;
+        return window.foldState();
     }, at(4));
-    await expect(page.locator('dbmn-steps')).toHaveClass(/is-folding/);
-    await expect(page.locator('.dbmn-step:visible')).toHaveCount(4);
+    expect(folding.cls).toContain('is-folding');
+    expect(folding.visible).toBe(4);
     // A cascade: the first step sets off at once, the third waits its turn, the last never moves,
     // and each is headed for the last one's place
-    const moved = n => page.locator(`.dbmn-step[data-step="${n}"]`).evaluate(e => ({ wait: e.style.getPropertyValue('--fold-wait'), time: e.style.getPropertyValue('--fold-time'), x: parseFloat(e.style.getPropertyValue('--fold-x')) }));
-    expect(await moved(1)).toMatchObject({ wait: '0ms', time: '450ms' });
-    expect(await moved(3)).toMatchObject({ wait: '300ms', time: '150ms' });
-    expect(await moved(4)).toMatchObject({ time: '0ms' });
-    expect(Math.abs((await moved(4)).x)).toBeLessThan(0.5);
-    expect((await moved(1)).x).toBeGreaterThan((await moved(2)).x);
-    expect((await moved(2)).x).toBeGreaterThan((await moved(3)).x);
+    const moved = n => folding.steps[n - 1];
+    expect(moved(1)).toMatchObject({ wait: '0ms', time: '450ms' });
+    expect(moved(3)).toMatchObject({ wait: '300ms', time: '150ms' });
+    expect(moved(4)).toMatchObject({ time: '0ms' });
+    expect(Math.abs(moved(4).x)).toBeLessThan(0.5);
+    expect(moved(1).x).toBeGreaterThan(moved(2).x);
+    expect(moved(2).x).toBeGreaterThan(moved(3).x);
     await expect(page.locator('dbmn-steps')).not.toHaveClass(/is-folding/);
     await expect(page.locator('.dbmn-step:visible')).toHaveCount(0);
     await expect(page.locator('.dbmn-steps-summary')).toBeVisible();
     expect(await width('dbmn-steps')).toBeLessThan(wide);
 
-    // And back: the steps return, the highlight behind the one asked for
-    await page.evaluate(states => {
+    // And back: the steps return, the highlight behind the one asked for (read as it starts, as above)
+    const unfolding = await page.evaluate(states => {
         // (where the highlight sets off from, noted as its slide begins)
         const indicator = document.querySelector('.dbmn-steps-indicator');
         indicator.addEventListener('transitionrun', () => { window.slidFrom = window.slidFrom ?? Math.round(indicator.getBoundingClientRect().left); });
         document.getElementById('steps').folded = false;
         window.show(states, 1);
+        return window.foldState();
     }, at(1));
-    await expect(page.locator('.dbmn-step:visible')).toHaveCount(4);
+    expect(unfolding.visible).toBe(4);
     // The fold backwards: every card starts at the last one's place and deals out, the first step travelling longest
-    await expect(page.locator('dbmn-steps')).toHaveClass(/is-unfolding/);
-    expect(await moved(1)).toMatchObject({ time: '450ms' });
-    expect(await moved(3)).toMatchObject({ time: '150ms' });
-    expect((await moved(1)).x).toBeGreaterThan((await moved(3)).x);
+    expect(unfolding.cls).toContain('is-unfolding');
+    expect(unfolding.steps[0]).toMatchObject({ time: '450ms' });
+    expect(unfolding.steps[2]).toMatchObject({ time: '150ms' });
+    expect(unfolding.steps[0].x).toBeGreaterThan(unfolding.steps[2].x);
     // In order: while they deal out, the step they were on (the last) is the tinted one...
-    await expect(page.locator('.dbmn-step[data-step="4"]')).toHaveAttribute('data-fold-from', '');
+    expect(unfolding.steps[3].foldFrom).toBe(true);
     await expect(page.locator('dbmn-steps')).not.toHaveClass(/is-unfolding/);
     // ...then the highlight leaves from behind it (still right of the first step) and slides home
     await expect.poll(() => page.evaluate(() => window.slidFrom ?? 0)).toBeGreaterThan(await left('.dbmn-step[data-step="3"]'));
