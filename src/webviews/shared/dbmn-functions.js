@@ -308,7 +308,7 @@
                 input.dataset.fnValue = piece.key;
                 if (piece.key === 'to' && !piece.number) input.placeholder = 'nothing';
                 // A box as wide as what is in it
-                const fit = () => { if (!piece.number) input.size = Math.min(30, Math.max(input.placeholder.length || 4, input.value.length + 1)); };
+                const fit = () => { if (!piece.number) input.size = Math.min(40, Math.max(16, input.placeholder.length, input.value.length + 1)); };
                 fit();
                 input.addEventListener('input', () => { fit(); step.params[piece.key] = piece.number ? Math.max(least(piece), parseInt(input.value, 10) || least(piece)) : input.value; ask(); });
                 // A value copied from a table comes with a tab or spaces around it, which would match nothing

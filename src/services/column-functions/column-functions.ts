@@ -116,7 +116,7 @@ export const COLUMN_FUNCTIONS: ColumnFnDefinition[] = [
     { id: 'ltrimZeros', label: 'Drop leading zeros', sql: ['LTRIM(', 'x', ", '0')"] },
     { id: 'first', label: 'First characters', sql: ['SUBSTR(', 'x', ', 1, ', { key: 'n', number: true, label: 'How many characters' }, ')'] },
     { id: 'last', label: 'Last characters', sql: ['SUBSTR(', 'x', ', -', { key: 'n', number: true, label: 'How many characters' }, ')'] },
-    { id: 'replace', label: 'Replace text', sql: ['REPLACE(', 'x', ", '", { key: 'from', label: 'Text to replace' }, "', '", { key: 'to', label: 'Replace with' }, "')"] },
+    { id: 'replace', label: 'Replace text', sql: ['REPLACE(', 'x', ", '", { key: 'from', label: 'Replace' }, "', '", { key: 'to', label: 'With' }, "')"] },
     // (2026-11-25: Map's and calculated columns' steps; `other`: another column of the row, or a value)
     { id: 'lower', label: 'Lower case', sql: ['LOWER(', 'x', ')'] },
     { id: 'breaks', label: 'Remove line breaks', sql: ['BREAKS(', 'x', ')'] },
