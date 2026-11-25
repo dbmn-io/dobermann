@@ -177,7 +177,7 @@ export class SupabaseCatalogStore implements CatalogStore {
             return;
         }
         await this.sendRealtimeAuth();
-        this.authTimer = setInterval(() => { void this.sendRealtimeAuth(); }, 4 * 60 * 1000);
+        this.authTimer = setInterval(() => { this.sendRealtimeAuth().catch(() => undefined); }, 4 * 60 * 1000);   // (no token: #2, next time)
         const channel = this.client.channel(`catalogue-${Math.random().toString(36).slice(2)}`);
         for (const [kind, table] of Object.entries(TABLES) as Array<[CatalogueKind, string]>) {
             channel.on('postgres_changes', { event: '*', schema: 'public', table }, payload => {

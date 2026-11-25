@@ -30,6 +30,11 @@
  *   With no copy (moved before #427, or removed), the catalogue is hidden: empty, keeps nothing.
  * - A move that fails (the copy included) leaves the device's catalogue where it is and tries
  *   again next sign-in.
+ * - #2: a sign-in that can no longer refresh (its refresh token refused) counts as signed out here: this
+ *   computer's copy, editable, sent at the next sign-in, and one Hub toast saying so (the header's #396 warning
+ *   stays). No catalogue request is ever sent without the account's token: supabase-js falls back to the
+ *   project's anonymous key, which sees no rows, and that empty answer was shown and mirrored over the copy.
+ *   A network error is not an expired sign-in. Nothing here stops a run: VS Code needs no sign-in.
  */
 import * as vscode from 'vscode';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
@@ -75,6 +80,17 @@ const SETTINGS_ADOPTED_KEY = 'settingsAdoptedAt';
 const DEVICE_MOVED_KEY = (profile: string) => `catalogue:${profile}:deviceMoved`;
 /** The user chose "Keep on this computer": the catalogue stays on the device, and nobody asks again. */
 const KEEP_ON_DEVICE_KEY = (profile: string) => `catalogue:${profile}:keepOnDevice`;
+/** #2: said once each time the DBMN sign-in expires (a Hub toast; the header keeps its own warning). */
+export const SIGN_IN_EXPIRED_MESSAGE = "Your DBMN sign-in has expired: sign in again. Until then you're working on this computer's copy; changes go to your account when you do.";
+
+/** #2: the account's token could not be had; the request is not sent (never as the anonymous user). */
+class NoAccountTokenError extends Error {
+    constructor(status: string) {
+        super(status === 'auth_error' ? 'DBMN sign-in expired: not sent' : 'DBMN could not refresh the sign-in: not sent');
+        this.name = 'NoAccountTokenError';
+    }
+}
+
 /** #427: whose catalogue the copy signed out is (the account last connected). */
 const LAST_ACCOUNT_KEY = (profile: string) => `catalogue:${profile}:lastAccount`;
 
@@ -91,6 +107,8 @@ export class VsCodeCatalogue implements vscode.Disposable {
     /** #427: signed out, working on this computer's copy of that account's catalogue. */
     private offline?: { userId: string; state: CatalogueState; copy: AccountCopy };
     private pending: Promise<void> = Promise.resolve();
+    /** #2: the expired sign-in has been said (once until it changes). */
+    private expiredSaid = false;
     private readonly subscriptions: Array<{ dispose(): void }> = [];
 
     constructor(
@@ -164,7 +182,11 @@ export class VsCodeCatalogue implements vscode.Disposable {
     private follow(): void {
         this.pending = this.pending.then(async () => {
             const session = this.auth.getSession();
-            const userId = this.auth.isAuthenticated() && session ? session.userId : undefined;
+            // #2: an expired sign-in is signed out, for the catalogue (this computer's copy until the next sign-in)
+            const expired = this.auth.isAuthenticated() && this.auth.getAuthState().connectivityStatus === 'auth_error';
+            if (expired && !this.expiredSaid) getToast()?.warn(SIGN_IN_EXPIRED_MESSAGE);
+            this.expiredSaid = expired;
+            const userId = this.auth.isAuthenticated() && session && !expired ? session.userId : undefined;
             if (userId === (this.connected?.userId ?? this.keptFor)) return;
             await this.disconnect();
             if (userId) await this.connect(userId);
@@ -172,9 +194,11 @@ export class VsCodeCatalogue implements vscode.Disposable {
     }
 
     private async connect(userId: string): Promise<void> {
+        // #2: the account's token, or nothing is sent. Given null, supabase-js sends the anonymous key instead
         const accessToken = async () => {
             const result = await this.auth.ensureValidSession();
-            return result.status === 'success' ? result.session.accessToken : null;
+            if (result.status === 'success') return result.session.accessToken;
+            throw new NoAccountTokenError(result.status);
         };
         const backend = getBackend();
         const client = createClient(backend.apiUrl, backend.anonKey, { accessToken });
@@ -207,7 +231,10 @@ export class VsCodeCatalogue implements vscode.Disposable {
             }
         } catch (error) {
             this.log('[Catalogue] could not load the account\'s catalogue, or move this device\'s to it', error);
-            getToast()?.warn('Could not save your endpoints and environments to your DBMN account. Nothing has changed; they stay on this computer, and signing in again tries again.');
+            // (an expired sign-in is said once, by follow(), which goes to this computer's copy)
+            if (this.auth.getAuthState().connectivityStatus !== 'auth_error') {
+                getToast()?.warn('Could not save your endpoints and environments to your DBMN account. Nothing has changed; they stay on this computer, and signing in again tries again.');
+            }
             await store.dispose().catch(() => undefined);
             this.notify();
             return;

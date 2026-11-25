@@ -39,7 +39,7 @@ export class SupabaseSettingsStore implements AccountSettingsStore {
     async follow(onChanged: (settings: SettingsMap) => void): Promise<void> {
         if (this.channel) return;
         await this.sendRealtimeAuth();
-        this.authTimer = setInterval(() => { void this.sendRealtimeAuth(); }, 4 * 60 * 1000);
+        this.authTimer = setInterval(() => { this.sendRealtimeAuth().catch(() => undefined); }, 4 * 60 * 1000);   // (no token: #2, next time)
         const channel = this.client.channel(`settings-${Math.random().toString(36).slice(2)}`);
         channel.on('postgres_changes', { event: '*', schema: 'public', table: 'user_settings' }, payload => {
             const row = payload.new as { settings?: unknown } | undefined;
