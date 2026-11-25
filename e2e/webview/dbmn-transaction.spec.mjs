@@ -90,6 +90,24 @@ test('the input rows in a dbmn-table filling their pane; the modes stay when it 
     await expect(p.locator('#t .dbmn-tx-reprocess')).toHaveCount(0);
 });
 
+test('no input rows (a GET from Run API): no Input pane at all, the request and response taking the height', async ({ page: p }) => {
+    await p.setContent(page());
+    // (James, 2026-11-25: "When there's no input we've got to hide the input section. So for a get, this is showing.")
+    const get = { id: 'tx-9', n: 1, status: 'completed', http: 200, timeMs: 40, sent: '21:02:11', rowStart: 1, rowEnd: 1, method: 'GET',
+        url: 'http://127.0.0.1/reference/carriers', requestHeaders: [], responseHeaders: [], responseBody: JSON.stringify([{ scac: 'WOOF' }]), previous: false, next: false };
+    await p.evaluate(g => { t.transaction = g; t.input = { columns: [], rows: [] }; }, get);
+    expect(await panes(p)).toEqual(['request', 'response']);
+    await expect(p.locator('#t')).not.toContainText('No rows');
+    // (the two panes from the top of the window's body to its bottom: no strip left where Input was)
+    const [box, request, response] = await p.locator('#t').evaluate(el => [el, el.querySelector('.dbmn-tx-pane[data-part="request"]'), el.querySelector('.dbmn-tx-pane[data-part="response"]')]
+        .map(e => { const r = e.getBoundingClientRect(); return { top: r.top, bottom: r.bottom }; }));
+    expect(Math.abs(request.bottom - response.bottom)).toBeLessThan(2);
+    expect(box.bottom - request.bottom).toBeLessThan(24);
+    // ...and an input known to have rows still shows them; before the input has come, a request with rows keeps its place
+    await p.evaluate(() => { t.transaction = sent; t.input = input; });
+    expect(await panes(p)).toEqual(['input', 'request', 'response']);
+});
+
 test('search marks what it finds in every pane and says how many; ⤢ fills the window with one pane, Esc puts it back', async ({ page: p }) => {
     await p.setContent(page());
     await p.locator('#t .dbmn-tx-search').fill('0001234560020');

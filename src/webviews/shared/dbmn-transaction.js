@@ -139,7 +139,8 @@
         set input(i) {
             const had = !!this._inputTable;
             this._input = i || null;
-            if (had) this._fillInput(); else this._drawPanes();
+            // (the pane drawn, and still to be shown: its rows filled in; shown or gone: the panes drawn again)
+            if (had && this._showing('input')) this._fillInput(); else this._drawPanes();
         }
         get input() { return this._input; }
         set editor(fn) { this._editor = typeof fn === 'function' ? fn : null; this._draw(); }
@@ -179,7 +180,9 @@
         _showing(part) {
             if (!this._tx) return false;
             if (part === 'response') return this._sent;
-            if (part === 'input') return !!(this._input && Array.isArray(this._input.rows) && this._input.rows.length) || !!this._tx.rowStart;
+            // Input: when it has rows (James, 2026-11-25: "When there's no input we've got to hide the input section. So for a
+            // get, this is showing."). Before its rows have come, a request that reads rows keeps the pane's place
+            if (part === 'input') return this._input ? Array.isArray(this._input.rows) && this._input.rows.length > 0 : !!this._tx.rowStart;
             return true;
         }
 
