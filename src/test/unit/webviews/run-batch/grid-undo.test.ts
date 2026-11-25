@@ -14,7 +14,7 @@ import * as path from 'path';
  * here the grid's side of it: what it does with the table's events and with the rows.
  */
 const SHARED = path.resolve(__dirname, '../../../../../src/webviews/shared');
-const SCRIPTS = ['dbmn-toast.js', 'icons.js', 'json-comment-stripper.js', 'template-rename.js', 'dt-data-entry-grid.js', 'dt-type-coercion.js',
+const SCRIPTS = ['dbmn-toast.js', 'icons.js', 'json-comment-stripper.js', 'template-rename.js', 'dt-data-entry-grid.js', 'date-read.js', 'dt-type-coercion.js',
     'dt-data-ingestion.js', 'dt-data-preview.js', 'dt-mismatch-repair.js', 'dt-batch-config.js', 'data-transformer.js'];
 const BODY = JSON.stringify({ lines: [{ gtin: '{{gtin:string}}', uom: '{{uom:string|upper}}', qty: '{{qty:number}}' }] });
 

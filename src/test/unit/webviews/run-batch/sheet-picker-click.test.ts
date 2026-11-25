@@ -16,7 +16,7 @@ import * as path from 'path';
 const ROOT = path.resolve(__dirname, '../../../../..');
 const SHARED = path.join(ROOT, 'src/webviews/shared');
 const SCRIPTS = ['dbmn-actions.js', 'json-comment-stripper.js', 'template-rename.js', 'batch-explainer.js', 'request-preview.js', 'dt-data-entry-grid.js',
-    'dt-type-coercion.js', 'dt-data-ingestion.js', 'dt-data-preview.js', 'dt-mismatch-repair.js', 'dt-batch-config.js', 'data-transformer.js'];
+    'date-read.js', 'dt-type-coercion.js', 'dt-data-ingestion.js', 'dt-data-preview.js', 'dt-mismatch-repair.js', 'dt-batch-config.js', 'data-transformer.js'];
 
 function sourceMarkup(): string {
     const source = fs.readFileSync(path.join(ROOT, 'src/screens/run-batch/run-batch-page.ts'), 'utf8');

@@ -23,7 +23,7 @@ import { JsonGenerator } from '../../../../data-loading/json-generator';
 import { dateOrderOf } from '../../../../data-loading/date-order';
 
 const SHARED = path.resolve(__dirname, '../../../../../src/webviews/shared');
-const SCRIPTS = ['dbmn-toast.js', 'json-comment-stripper.js', 'template-rename.js', 'dt-data-entry-grid.js', 'dt-type-coercion.js',
+const SCRIPTS = ['dbmn-toast.js', 'json-comment-stripper.js', 'template-rename.js', 'dt-data-entry-grid.js', 'date-read.js', 'dt-type-coercion.js',
     'dt-data-ingestion.js', 'dt-data-preview.js', 'dt-mismatch-repair.js', 'dt-batch-config.js', 'data-transformer.js'];
 
 /** locale: this computer's, as the host sends its date order (currentEnvironmentData); none: not known yet */

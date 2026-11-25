@@ -396,6 +396,7 @@ export function buildRunBatchPage(asset: AssetUrl, batchConfig: { endpointId: st
     <script src="${asset('shared/dbmn-table.js')}"></script>
     <script src="${lookupValueUri}"></script>
     <script src="${dtDataEntryGridUri}"></script>
+    <script src="${asset('shared/date-read.js')}"></script>
     <script src="${dtTypeCoercionUri}"></script>
     <script src="${dtDataIngestionUri}"></script>
     <script src="${dtDataPreviewUri}"></script>

@@ -80,6 +80,7 @@ export function buildEndpointPage(
         DOCUMENTATION_HELPERS_SCRIPT: asset('shared/documentation-helpers.js'),
         HELP_MODE_SCRIPT: asset('shared/help-mode.js'),
         DT_DATA_ENTRY_GRID_SCRIPT: asset('shared/dt-data-entry-grid.js'),
+        DATE_READ_SCRIPT: asset('shared/date-read.js'),
         DT_TYPE_COERCION_SCRIPT: asset('shared/dt-type-coercion.js'),
         DT_DATA_INGESTION_SCRIPT: asset('shared/dt-data-ingestion.js'),
         DT_DATA_PREVIEW_SCRIPT: asset('shared/dt-data-preview.js'),

@@ -152,6 +152,7 @@
             HELP_MODE_SCRIPT: asset(base, 'shared/help-mode.js'),
             BUTTON_CONTRAST_SCRIPT: asset(base, 'shared/button-contrast.js'),
             DT_DATA_ENTRY_GRID_SCRIPT: asset(base, 'shared/dt-data-entry-grid.js'),
+            DATE_READ_SCRIPT: asset(base, 'shared/date-read.js'),
             DT_TYPE_COERCION_SCRIPT: asset(base, 'shared/dt-type-coercion.js'),
             DT_DATA_INGESTION_SCRIPT: asset(base, 'shared/dt-data-ingestion.js'),
             DT_DATA_PREVIEW_SCRIPT: asset(base, 'shared/dt-data-preview.js'),

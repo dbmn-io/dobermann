@@ -73,7 +73,7 @@ describe('Run Batch — a refused start is never silent (#396)', () => {
 
     describe('the Batch page (the real data-transformer.js)', () => {
         const SHARED = path.resolve(__dirname, '../../../../../src/webviews/shared');
-        const SCRIPTS = ['json-comment-stripper.js', 'template-rename.js', 'dt-data-entry-grid.js', 'dt-type-coercion.js', 'dt-data-ingestion.js',
+        const SCRIPTS = ['json-comment-stripper.js', 'template-rename.js', 'dt-data-entry-grid.js', 'date-read.js', 'dt-type-coercion.js', 'dt-data-ingestion.js',
             'dt-data-preview.js', 'dt-mismatch-repair.js', 'dt-batch-config.js', 'data-transformer.js'];
 
         function page() {

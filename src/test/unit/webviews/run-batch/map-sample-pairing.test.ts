@@ -13,7 +13,7 @@ import * as path from 'path';
  * new rows' raw values (gtin "EA → 00012345600050", reorderQty "low_stock → 200").
  */
 const SHARED = path.resolve(__dirname, '../../../../../src/webviews/shared');
-const SCRIPTS = ['dbmn-toast.js', 'json-comment-stripper.js', 'template-rename.js', 'dt-data-entry-grid.js', 'dt-type-coercion.js', 'dt-data-ingestion.js',
+const SCRIPTS = ['dbmn-toast.js', 'json-comment-stripper.js', 'template-rename.js', 'dt-data-entry-grid.js', 'date-read.js', 'dt-type-coercion.js', 'dt-data-ingestion.js',
     'dt-data-preview.js', 'dt-mismatch-repair.js', 'dt-batch-config.js', 'data-transformer.js'];
 const HEADERS = ['gtin', 'uom', 'reorderQty'];
 

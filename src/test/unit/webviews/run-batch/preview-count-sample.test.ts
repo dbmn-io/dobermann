@@ -61,7 +61,7 @@ describe('Run Batch preview — Total API calls counts every row, not the sample
 
 describe('Data Transformer — which rows go to the count', () => {
     const SHARED = path.resolve(__dirname, '../../../../../src/webviews/shared');
-    const SCRIPTS = ['json-comment-stripper.js', 'dt-data-entry-grid.js', 'dt-type-coercion.js', 'dt-data-ingestion.js',
+    const SCRIPTS = ['json-comment-stripper.js', 'dt-data-entry-grid.js', 'date-read.js', 'dt-type-coercion.js', 'dt-data-ingestion.js',
         'dt-data-preview.js', 'dt-mismatch-repair.js', 'dt-batch-config.js', 'data-transformer.js'];
     const csv = [HEADERS.join(','), ...ALL_ROWS.map(r => r.join(','))].join('\n');
 
