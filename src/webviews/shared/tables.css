@@ -1721,6 +1721,7 @@ body .map-layout .variable-type[class*="data-type-"] {
 /* A column with functions: In (the file's value) above Out (what is sent), labelled; Out green when the steps changed it,
    red when a step couldn't read it (James, 2026-11-25: "in and out up and down and it's really clear") */
 .map-layout .map-sample-cell.has-fx .source-sample-cell::after { content: none; }
+.map-layout .map-sample-cell.has-fx .source-sample-cell { display: block; }
 .map-layout .map-sample-cell.has-fx .source-sample-cell,
 .map-layout .map-sample-cell.has-fx .target-sample-cell { line-height: 20px; color: var(--vscode-foreground); }
 .map-layout .map-io { display: inline-block; width: 34px; font-family: var(--vscode-font-family); font-size: 11px; color: var(--vscode-descriptionForeground); }

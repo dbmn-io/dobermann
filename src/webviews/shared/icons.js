@@ -73,6 +73,8 @@
         // Nav-collapse toggle
         'chevrons-left':   wrap('<path d="m11 17-5-5 5-5"/><path d="m18 17-5-5 5-5"/>'),
         'chevrons-right':  wrap('<path d="m6 17 5-5-5-5"/><path d="m13 17 5-5-5-5"/>'),
+        // (functions on a column: the fx button. James, 2026-11-26)
+        'square-function': wrap('<rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><path d="M9 17c2 0 2.8-1 2.8-2.8V10c0-2 1-3.3 3.2-3"/><path d="M9 11.2h5.7"/>'),
         'chevron-down':    wrap('<path d="m6 9 6 6 6-6"/>'),
         'chevron-up':      wrap('<path d="m18 15-6-6-6 6"/>'),
         'circle-chevron-left':  wrap('<circle cx="12" cy="12" r="10"/><path d="m14 16-4-4 4-4"/>'),

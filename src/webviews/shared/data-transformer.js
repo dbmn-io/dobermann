@@ -3700,7 +3700,9 @@
                 const source = row.querySelector('.source-sample-cell');
                 const target = row.querySelector('.target-sample-cell');
                 if (cell && source && target) {
-                    cell.classList.toggle('sample-same', ownText(source) === ownText(target));
+                    // (a column with functions shows In above Out always: its two cells hold labelled spans, no text of their
+                    // own, so they read as the same and In was hidden. James, 2026-11-26: "we've lost the in out")
+                    cell.classList.toggle('sample-same', !cell.classList.contains('has-fx') && ownText(source) === ownText(target));
                 }
             });
         }).observe(mappingTableBody, { childList: true, characterData: true, subtree: true });

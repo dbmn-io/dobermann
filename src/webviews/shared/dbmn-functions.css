@@ -112,14 +112,20 @@
    list's calculated-column badge (James, 2026-11-25: "a nice yellow function button that's white to add a function") */
 .dbmn-fx-btn {
     flex: none;
-    padding: 0 7px;
-    border: 1px solid currentColor;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: none;
     border-radius: 3px;
     background: none;
     color: var(--dbmn-foreground);
     font: italic 12px/18px Georgia, 'Times New Roman', serif;
     cursor: pointer;
 }
+.dbmn-fx-btn svg { width: 18px; height: 18px; }
 .dbmn-fx-btn.is-on { color: var(--dbmn-charts-yellow, #cca700); }
 .dbmn-fx-btn:hover, .dbmn-fx-btn:focus-visible { outline: 1px solid var(--dbmn-focusBorder); outline-offset: 1px; }
 @media (prefers-reduced-motion: reduce) { .dbmn-fx-row { transition: none; } }

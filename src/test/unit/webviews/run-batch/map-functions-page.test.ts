@@ -84,6 +84,10 @@ describe('Run Batch — Map with functions (fx)', () => {
         expect(cell.querySelector('.source-sample-cell')!.textContent).to.equal('In ea ');
         expect(cell.querySelector('.target-sample-cell')!.textContent).to.equal('OutEACH');
         expect(cell.querySelector('.target-sample-cell .map-io-v')!.classList.contains('is-changed')).to.equal(true);
+        // (and In stays shown once the table's watcher has run: it took the two cells, with no text of their own, for
+        // the same value and hid In. James, 2026-11-26: "we've lost the in out")
+        await new Promise(resolve => setTimeout(resolve, 10));
+        expect(cell.classList.contains('sample-same'), 'In is not hidden').to.equal(false);
         expect(row('uom').querySelector('.map-fx-slot .dbmn-fx-btn')!.classList.contains('is-on')).to.equal(true);
         expect(row('uom').querySelector('.status-cell .status-indicator')!.textContent).to.equal('✓');
         // (sku has no steps: no sample asked for it)

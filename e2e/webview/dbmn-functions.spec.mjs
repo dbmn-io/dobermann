@@ -328,14 +328,16 @@ test('a calculated column: Name and Start from above the steps; Apply waits for 
     await expect.poll(() => p.evaluate(() => window.result)).toEqual({ name: 'held', start: 'onHand', steps: [{ id: 'jointext', params: { between: '', col: 'damaged' } }] });
 });
 
-test('the fx button: white "fx" to add a function, yellow while there are some, which ones on hover', async ({ page: p }) => {
+test('the fx button: the square-function icon, white to add a function, yellow while there are some, which ones on hover', async ({ page: p }) => {
     await p.setContent(page());
     await p.evaluate(() => {
         window.clicked = 0;
         document.body.append(DbmnFunctions.button({ steps: 0, onClick: () => { window.clicked++; } }), DbmnFunctions.button({ steps: 2, words: 'Trim spaces, then Upper case' }));
     });
     const [plain, on] = [p.locator('.dbmn-fx-btn').nth(0), p.locator('.dbmn-fx-btn').nth(1)];
-    await expect(plain).toHaveText('fx');
+    // (an icon, not letters: Lucide's square-function. James, 2026-11-26)
+    await expect(plain.locator('svg')).toHaveCount(1);
+    await expect(plain).toHaveText('');
     await expect(plain).toHaveAttribute('title', 'Add a function');
     await expect(on).toHaveClass(/is-on/);
     await expect(on).toHaveAttribute('title', 'Trim spaces, then Upper case');

@@ -556,7 +556,9 @@
     function button(opts) {
         const b = opts || {};
         const on = (b.steps || 0) > 0;
-        const fx = el('button', 'dbmn-fx-btn' + (on ? ' is-on' : ''), 'fx');
+        const fx = el('button', 'dbmn-fx-btn' + (on ? ' is-on' : ''));
+        // (Lucide's square-function: the letters "fx" drew oddly beside the selects. James, 2026-11-26)
+        if (window.Icons && window.Icons.icon) fx.innerHTML = window.Icons.icon('square-function'); else fx.textContent = 'fx';
         fx.type = 'button';
         fx.title = on ? (b.words || 'Functions: click to see or change them') : 'Add a function';
         fx.setAttribute('aria-label', b.label || (on ? 'Functions on this column' : 'Add a function to this column'));
