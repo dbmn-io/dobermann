@@ -5,7 +5,7 @@ import * as sinon from 'sinon';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { SqlJsEngineLoadError, SqlJsExecutionStorage } from '../../../services/storage/sqljs-execution-storage.service';
+import { SqlJsEngineLoadError, SqlJsExecutionStorage, storedTime } from '../../../services/storage/sqljs-execution-storage.service';
 import { ExecutionMetadata } from '../../../storage/execution-metadata';
 import { tempStorageOptions } from '../fixtures/temp-storage';
 
@@ -96,6 +96,37 @@ describe('SqlJsExecutionStorage', () => {
             const runs = await storage.getExecutionsByEndpoint('endpoint-1', { runsOnly: true });
             expect(runs.map(r => r.id).sort()).to.deep.equal([single, batchId].sort());
             expect(await storage.getExecutionsByEndpoint('endpoint-1')).to.have.length(5);
+        });
+    });
+
+    describe('a claimed request\'s start time (James, 2026-11-26: Time 39,610 s on a request just sent, in Sydney)', () => {
+        it('claiming a batch\'s pending requests stamps each with now, read back as now on any computer', async () => {
+            await storage.initialize();
+            const base = {
+                environment: 'test-env', environmentId: 'env-123', organization: 'test-org',
+                endpointId: 'endpoint-1', endpointName: 'Batch Endpoint', endpointMethod: 'GET', endpointPath: '/api/batch',
+                createdAt: new Date()
+            };
+            const batchId = await storage.createExecution({ ...base, executionType: 'batch', rows: '2', status: 'running' } as Omit<ExecutionMetadata, 'id'>);
+            for (let i = 0; i < 2; i++) await storage.createExecution({ ...base, executionType: 'batch_member', batchId, rows: '1', status: 'pending' } as Omit<ExecutionMetadata, 'id'>);
+            const before = Date.now();
+            const claimed = await storage.claimPendingBatchMembers(batchId, 2);
+            const after = Date.now();
+            expect(claimed).to.have.length(2);
+            for (const c of claimed) {
+                expect(c.startedAt, 'a start time').to.be.instanceOf(Date);
+                // (within the claim itself: not out by this computer's UTC offset, the test's TZ aside)
+                expect(c.startedAt!.getTime()).to.be.within(before - 1000, after + 1000);
+            }
+            for (const r of await storage.getBatchMemberRequestRows(batchId)) expect(r.startedAt!.getTime()).to.be.within(before - 1000, after + 1000);
+        });
+
+        it('a time stored as SQLite text by an earlier version is UTC, whatever this computer\'s timezone', () => {
+            expect(storedTime('2026-11-25 20:49:09')!.toISOString()).to.equal('2026-11-25T20:49:09.000Z');
+            expect(storedTime(1795000000000)!.getTime()).to.equal(1795000000000);
+            expect(storedTime('2026-11-25T20:49:09.000Z')!.toISOString()).to.equal('2026-11-25T20:49:09.000Z');
+            expect(storedTime(null)).to.equal(undefined);
+            expect(storedTime('')).to.equal(undefined);
         });
     });
 

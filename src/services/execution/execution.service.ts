@@ -534,6 +534,8 @@ export class ExecutionService implements IExecutionService {
             await this.updateExecutionMetadata(executionId, {
                 status: executionStatus,
                 completedAt: new Date(),
+                // (the request's own time, for the Requests tab's Time: it was never kept, so every row drew a dash)
+                runTime: Date.now() - startTime,
                 httpStatus: response.status,
                 httpStatusText: response.statusText,
                 responseFile: responseFile,
@@ -646,6 +648,7 @@ export class ExecutionService implements IExecutionService {
             await this.updateExecutionMetadata(executionId, {
                 status: cancelled ? 'cancelled' : 'error',
                 completedAt: new Date(),
+                runTime: Date.now() - startTime,
                 errorMessage: errorMessage,
                 httpStatus: httpStatus,
                 httpStatusText: httpStatusText,

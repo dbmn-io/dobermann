@@ -81,6 +81,19 @@ function parseHeaders(raw: unknown): Record<string, string> | undefined {
 /** A run's kept variable values (environment_variables), for the Links tab's header values. */
 const parseVariables = parseHeaders;
 
+/**
+ * A time as the executions table holds it: epoch ms, or (rows claimed before 2026-11-26) SQLite's
+ * `datetime('now')` text, "YYYY-MM-DD HH:MM:SS", which is UTC and says so nowhere: read as UTC, never as local time.
+ */
+export function storedTime(v: unknown): Date | undefined {
+    if (v === null || v === undefined || v === '') return undefined;
+    if (typeof v === 'number') return new Date(v);
+    const text = String(v);
+    const utc = /^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2}(?:\.\d+)?)$/.exec(text);
+    if (utc) return new Date(`${utc[1]}T${utc[2]}Z`);
+    return /^\d+$/.test(text) ? new Date(Number(text)) : new Date(text);
+}
+
 export class SqlJsExecutionStorage implements IExecutionStorage {
     private db: SqlJsDatabase | null = null;
     private dbPath: string | null = null;
@@ -764,8 +777,8 @@ export class SqlJsExecutionStorage implements IExecutionStorage {
             status: row.status,
             runTime: row.run_time || undefined,
             createdAt: new Date(row.created_at),
-            startedAt: row.started_at ? new Date(row.started_at) : undefined,
-            completedAt: row.completed_at ? new Date(row.completed_at) : undefined,
+            startedAt: storedTime(row.started_at),
+            completedAt: storedTime(row.completed_at),
             requestFile: row.request_file || undefined,
             responseFile: row.response_file || undefined,
             logPath: row.log_path || undefined,
@@ -1673,7 +1686,7 @@ export class SqlJsExecutionStorage implements IExecutionStorage {
         `);
         stmt.bind({ $batch_id: batchId, $limit: Math.max(0, Math.floor(limit)), $offset: Math.max(0, Math.floor(offset)) });
         const rows: BatchMemberLogRow[] = [];
-        const when = (v: unknown) => (v === null || v === undefined || v === '' ? undefined : new Date(typeof v === 'number' ? v : String(v)));
+        const when = (v: unknown) => storedTime(v);
         const text = (v: unknown) => (v === null || v === undefined || v === '' ? undefined : String(v));
         while (stmt.step()) {
             const r = stmt.getAsObject() as Record<string, unknown>;
@@ -1701,7 +1714,7 @@ export class SqlJsExecutionStorage implements IExecutionStorage {
         `);
         stmt.bind({ $batch_id: batchId });
         const rows: BatchMemberRequestRow[] = [];
-        const when = (v: unknown) => (v === null || v === undefined || v === '' ? undefined : new Date(typeof v === 'number' ? v : String(v)));
+        const when = (v: unknown) => storedTime(v);
         const text = (v: unknown) => (v === null || v === undefined || v === '' ? undefined : String(v));
         const num = (v: unknown) => (v === null || v === undefined || v === '' ? undefined : Number(v));
         const record = (v: unknown): Record<string, string> | undefined => {
@@ -1839,11 +1852,13 @@ export class SqlJsExecutionStorage implements IExecutionStorage {
                 const updateStmt = this.db.prepare(`
                     UPDATE executions
                     SET status = 'running',
-                        started_at = datetime('now')
+                        started_at = ?
                     WHERE id IN (${placeholders})
                 `);
 
-                updateStmt.bind(idsToUpdate);
+                // (epoch ms, as every other time here: datetime('now') wrote UTC as text with no zone, which was
+                // read back as local time: Sent and a running request's time were out by the computer's UTC offset)
+                updateStmt.bind([Date.now(), ...idsToUpdate]);
                 updateStmt.run();
                 updateStmt.free();
 
