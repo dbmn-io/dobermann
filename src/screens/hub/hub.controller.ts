@@ -78,7 +78,9 @@ export class HubController {
     /** Per Console tab: progress for the strip's bar, mirrored from the Console's own messages. */
     private readonly tabProgress = new Map<string, { done: number; total: number; status?: string }>();
     /** Issue #312: the last setTabStatus per tab, for coalescing. */
-    private readonly tabStatusPosted = new Map<string, { at: number; status?: string }>();
+    private readonly tabStatusPosted = new Map<string, { at: number; status?: string; total?: number }>();
+    /** A count held back by the 250 ms window, posted when it ends (else the tab waits for the next message). */
+    private readonly tabStatusTrailing = new Map<string, ReturnType<typeof setTimeout>>();
     /** The strip as the frontend last reported it, persisted when the Hub closes. */
     private lastTabsSnapshot: HubTabsSnapshot | null = null;
     /** True once this page has held a tab: until then an empty strip must not overwrite last
@@ -1519,6 +1521,8 @@ export class HubController {
         this.savedIdByTabId.delete(tabId);
         this.tabProgress.delete(tabId);
         this.tabStatusPosted.delete(tabId);
+        clearTimeout(this.tabStatusTrailing.get(tabId));
+        this.tabStatusTrailing.delete(tabId);
         try {
             entry.tab.dispose();
         } catch {
@@ -1690,12 +1694,30 @@ export class HubController {
         const { done, total } = counter;
         if (!counter.status && done === 0 && total === 0) return;
 
-        // Issue #312: at most one post per 250 ms, unless the status changed or the run finished
+        // Issue #312: at most one post per 250 ms, unless the status or the total changed or the run finished. A count
+        // held back is posted when the window ends: a new run's first count (Fetch all on a Run API's tab: 1 of 10
+        // after its 1 of 1) was otherwise held until the next page, a second later, the tab showing 100% (2026-11-26)
         const now = Date.now();
         const last = this.tabStatusPosted.get(tabId);
         const finished = total > 0 && done >= total;
-        if (last && last.status === counter.status && !finished && now - last.at < 250) return;
-        this.tabStatusPosted.set(tabId, { at: now, status: counter.status });
+        if (last && last.status === counter.status && last.total === total && !finished && now - last.at < 250) {
+            if (!this.tabStatusTrailing.has(tabId)) {
+                this.tabStatusTrailing.set(tabId, setTimeout(() => {
+                    this.tabStatusTrailing.delete(tabId);
+                    const latest = this.tabProgress.get(tabId);
+                    if (latest) this.postTabStatus(tabId, latest);
+                }, 250 - (now - last.at)));
+            }
+            return;
+        }
+        this.postTabStatus(tabId, counter);
+    }
+
+    private postTabStatus(tabId: string, counter: { done: number; total: number; status?: string }): void {
+        clearTimeout(this.tabStatusTrailing.get(tabId));
+        this.tabStatusTrailing.delete(tabId);
+        const { done, total } = counter;
+        this.tabStatusPosted.set(tabId, { at: Date.now(), status: counter.status, total });
         this.session.post({ type: 'setTabStatus', tabId, status: counter.status, progress: { done, total } });
     }
 }

@@ -224,6 +224,31 @@ describe('HubController', () => {
         expect(last()?.status).to.equal('partial');
     });
 
+    it('#438: Fetch all on a finished Run API: its tab shows the new run at once, never the last run\'s 100%', async () => {
+        // (the Hub's messages as a browser run logged them, 2026-11-26: the tab read 100% for a second, then 30%)
+        let consoleChannel: TabChannel | undefined;
+        const page = (): HubTab => ({ html: '<p>tab</p>', handle: async () => undefined, dispose: () => undefined });
+        const h = hub({ tabs: { endpoint: async () => page(), environment: async () => page(),
+            console: async (_config, channel) => { consoleChannel = channel; return { ...page(), name: 'Inventory Report' }; } } });
+        await h.controller.openConsoleTab('run-1', false);
+        const last = () => h.of('setTabStatus').at(-1) as { status?: string; progress?: { done: number; total: number } } | undefined;
+        const post = (type: string, payload: Record<string, unknown>) => consoleChannel!.post({ type, payload });
+
+        // The Run API: its one page
+        post('progress_update', { status: 'running' });
+        post('batch_member_result_update', { totalMembers: 1, memberIndex: 1 });
+        post('status_update', { status: 'completed', progress: { completed: 1, total: 1 } });
+        // Fetch all, at once: 10 pages, the first done
+        post('progress_update', { status: 'running' });
+        post('status_update', { status: 'running', progress: { completed: 0, total: 10 } });
+        expect(last(), 'the tab, before the next page lands').to.deep.include({ status: 'running', progress: { done: 1, total: 10 } });
+        // Pages within the 250 ms: the last one is posted once the window has passed, not left until the next page
+        post('batch_member_result_update', { totalMembers: 10, memberIndex: 2 });
+        post('batch_member_result_update', { totalMembers: 10, memberIndex: 3 });
+        await new Promise(r => setTimeout(r, 400));
+        expect(last()?.progress, 'the latest count, posted after the window').to.deep.equal({ done: 3, total: 10 });
+    });
+
     it('#464: a run renamed (on its Console, or anywhere) renames its open Console tab, and only that tab', async () => {
         let fire: (execution: unknown) => void = () => undefined;
         const executions = {
