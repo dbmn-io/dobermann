@@ -9,7 +9,7 @@ import { test, expect } from '@playwright/test';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { ROOT, consolePage, requestsArrived } from './console-page.mjs';
+import { ROOT, consolePage, openFirstRequest, requestsArrived } from './console-page.mjs';
 
 const RECORDS = [
     { sku: 'DOG-001', location: 'WH1', quantity: 12 },
@@ -45,8 +45,9 @@ test('a JSONL response: a row per line in Completed; its full transaction shows 
     await expect(page.locator('#console-table .dbmn-table-body > tr.data-row')).toHaveCount(3);
     await expect(page.locator('#console-table')).toContainText('DOG-003');
 
-    // Its full transaction (B22: Raw's card is the window now; a single run's opens by itself): labelled, Lines first
+    // Its full transaction (B22: Raw's card is the window now), opened from the Requests tab: labelled, Lines first
     await requestsArrived(page);
+    await openFirstRequest(page);
     const pane = page.locator('dbmn-transaction[window] .dbmn-tx-pane[data-part="response"]');
     await expect(pane.locator('.dbmn-tx-pane-title')).toHaveText('RESPONSE (JSONL · 3 records · 1 line not JSON)', { timeout: 15_000 });
     await expect(pane.locator('.dbmn-tx-formats .raw-view-mode-btn.active')).toHaveText('Lines');

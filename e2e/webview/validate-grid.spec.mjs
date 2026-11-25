@@ -153,7 +153,7 @@ test('loaded rows: the rows to fix show first, amber, the reason on hover; Clear
     await expect(page.locator('.grid-hint')).toHaveText('5 rows, 3 to fix (highlighted).');
     // Back to the rows to fix: Status's menu, Only INVALID
     await page.locator('#validateGrid thead th[data-col="__status"] .dbmn-head-btn').click();
-    await page.locator('.dbmn-filter-menu .dbmn-filter-line', { hasText: 'INVALID' }).locator('.dbmn-filter-only input').click();
+    await page.locator('.dbmn-filter-menu .dbmn-filter-line', { hasText: 'Invalid' }).locator('.dbmn-filter-only input').click();
     await page.keyboard.press('Escape');
     await expect(body(page)).toHaveCount(3);
 
@@ -339,7 +339,7 @@ test('Status: INVALID with the columns to fix, VALID otherwise; loaded rows open
     await page.setContent(gridPage());
     await loaded(page, LOADED);
     await expect(body(page)).toHaveCount(3);
-    await expect(statusCell(page, 0).locator('.grid-status-pill.is-invalid')).toHaveText('INVALID');
+    await expect(statusCell(page, 0).locator('.grid-status-pill.is-invalid')).toHaveText('Invalid');
     await expect(statusCell(page, 0).locator('.grid-status-col')).toHaveText(['gtin']);
     await expect(statusCell(page, 1).locator('.grid-status-col')).toHaveText(['qty']);
     await expect(statusCell(page, 2).locator('.grid-status-col')).toHaveText(['gtin']);
@@ -350,10 +350,10 @@ test('Status: INVALID with the columns to fix, VALID otherwise; loaded rows open
     await head(page, 'Status').locator('.dbmn-head-btn').click();
     const menu = page.locator('.dbmn-filter-menu');
     const lines = () => menu.locator('.dbmn-filter-line:not(.dbmn-filter-heading)').evaluateAll(ls => ls.map(l => `${l.querySelector('.dbmn-filter-name').textContent.trim()} ${l.querySelector('.dbmn-filter-count').textContent.trim()}`));
-    await expect.poll(lines).toEqual(['INVALID 3', 'VALID 2']);
-    await menu.locator('.dbmn-filter-line', { hasText: 'VALID' }).last().locator('.dbmn-filter-only input').click();
+    await expect.poll(lines).toEqual(['Invalid 3', 'Valid 2']);
+    await menu.locator('.dbmn-filter-line', { hasText: 'Valid' }).last().locator('.dbmn-filter-only input').click();
     await expect(body(page).locator('td.grid-row-num')).toHaveText(['1', '3']);
-    await expect(statusCell(page, 0).locator('.grid-status-pill.is-valid')).toHaveText('VALID');
+    await expect(statusCell(page, 0).locator('.grid-status-pill.is-valid')).toHaveText('Valid');
     await expect(page.locator('.grid-hint'), 'the line says what is shown').toHaveText('Showing the 2 rows with nothing to fix, of 5.');
     await expect(menu).toBeVisible();
     await page.keyboard.press('Escape');

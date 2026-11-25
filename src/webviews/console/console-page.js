@@ -1999,8 +1999,22 @@ class DynamicReportManager {
 
         // Switch to first available tab
         const firstTab = Object.keys(classified).find(key => classified[key].length > 0);
+        // Where a Run API's Console opens: ONE switch, both choices covered by full-transaction.spec.mjs, while James
+        // decides (2026-11-25: "show Request, and show it in its current state"; also "no where are we modifying current
+        // behaviour of Run API right?"). 'requests': on Requests, the request as it stands, its Time going while it runs.
+        // 'data': as 0.4.0 did, on its data (Completed, or Error); Requests shows the same live state when opened.
+        // It only picks the first tab: when the run's rows come, the Console stays where it is.
+        // ('data' until James answers: it is 0.4.0's, what lessons 1, 4 and 5 and every extract expect)
+        // (before 'requests' becomes the default: the endpoint's DEFAULT View is made and saved when Completed is first
+        //  drawn (~createDefaultView, debouncedSaveSettings). Opened on Requests it never was, and Query then read a Run
+        //  API's result with no View, as one row (query.spec:92, round 44). Save it when the success data first lands.)
+        const RUN_API_OPENS_ON = window.DBMN_RUN_API_OPENS_ON || 'data';
+        const single = !(rawData.metadata && rawData.metadata.batchId) && !window.currentBatchId;
+        const heading = document.getElementById('run-heading');
 
-        if (firstTab) {
+        if (single && RUN_API_OPENS_ON === 'requests' && heading && heading.has && heading.has('requests')) {
+            this.switchTab('requests');
+        } else if (firstTab) {
             this.switchTab(firstTab);
         } else if (rawData.inputData !== undefined) {
             // If no responses yet, but has input data (batch preparing), switch to Input tab

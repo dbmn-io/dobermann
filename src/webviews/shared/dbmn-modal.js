@@ -15,6 +15,9 @@
  *       → Promise<void>
  *   - DbmnModal.show({ title, body, fields?, actions, dismissible?, size?, columns?, rowPaste?, maximisable? })
  *     (maximisable: a Maximise button in the header; the dialog then takes the whole window)
+ *     (headerless: the body brings its own top line, title and ✕ included, as <dbmn-transaction> does; the dialog is
+ *      still the app's one modal: backdrop, Escape, a click outside, Tab kept in, focus back after. `title` names it
+ *      for a screen reader. Close it from the body with DbmnModal.requestDismiss())
  *       → Promise<{ actionId, fields }>     // actionId === 'dismiss' on X/ESC/backdrop
  *       rowPaste: true — a footer Paste button (and Ctrl+V in any field)
  *       fills every matching field from a copied spreadsheet/CSV row, header
@@ -264,9 +267,11 @@
 
     function trapFocus(modalEl, e) {
         if (e.key !== 'Tab') return;
-        const focusables = modalEl.querySelectorAll(
+        // (only what Tab can reach now: a hidden button (a table's "Add row") or one taken out of the order (the form's
+        //  implicit submit, tabindex -1) is skipped by the browser, and as the list's last it let Tab walk out)
+        const focusables = Array.from(modalEl.querySelectorAll(
             'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
-        );
+        )).filter(el => el.tabIndex >= 0 && el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden');
         if (focusables.length === 0) return;
         const first = focusables[0];
         const last = focusables[focusables.length - 1];
@@ -316,7 +321,9 @@
             const titleId = 'dbmn-modal-title-' + Date.now();
             const modal = el('div', {
                 className: 'dbmn-modal dbmn-modal-' + (opts.size || 'md'),
-                attrs: { role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': titleId }
+                attrs: opts.headerless
+                    ? { role: 'dialog', 'aria-modal': 'true', 'aria-label': opts.title || 'Dialog' }
+                    : { role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': titleId }
             });
 
             // ── Header ────────────────────────────────────────────────
@@ -359,7 +366,7 @@
                 closeBtn.addEventListener('click', () => dismiss('dismiss'));
                 header.appendChild(closeBtn);
             }
-            modal.appendChild(header);
+            if (!opts.headerless) modal.appendChild(header);
 
             // ── Body + optional fields ───────────────────────────────
             const form = el('form', { className: 'dbmn-modal-form' });

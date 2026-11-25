@@ -1699,7 +1699,8 @@ dbmn-actions .execution-button-group,
     border-radius: 10px;
     font-size: 11px;
     font-weight: 600;
-    text-transform: uppercase;
+    /* (Title case, as the word is written everywhere: Ready, Planned, Completed, Error, Same, Diff, Valid, Invalid.
+       James, 2026-11-25: "Keep case consistent through the whole design") */
     white-space: nowrap;
 }
 

@@ -146,8 +146,15 @@ const REQUESTS_HOST = `window.__requestsHost = (function () {
   };
 })();`;
 
-/** The run's requests have landed (the host tells the page as they do): the tab's count, and a single run's window. */
+/** The run's requests have landed (the host tells the page as they do): the Requests tab's count. */
 export const requestsArrived = page => page.evaluate(() => window.__requestsHost({ type: 'console.requests.arrived' }));
+
+/** The first request's window, as a person opens it: the Requests tab, its first row clicked (a Run API opens nothing
+ *  by itself: James, 2026-11-25). */
+export async function openFirstRequest(page) {
+    await page.locator('.tab-item[data-tab="requests"]').click();
+    await page.locator('#requests-table .dbmn-table-body > tr:not(.dbmn-table-spacer) td[data-col="n"]').first().click();
+}
 
 /** A host → webview message, as console-webview-manager.ts posts it. */
 export const envelope = (type, payload, extra = {}) =>

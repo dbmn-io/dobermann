@@ -47,6 +47,8 @@
         status-… colours of Raw's cards are not used here, so nothing outranks the tone.) */
     const TONE = { planned: 'is-quiet', completed: 'is-ok', error: 'is-bad', test_failed: 'is-outlined-bad', cancelled: 'is-quiet', split: 'is-quiet', ready: 'is-quiet', pending: 'is-quiet', running: 'is-quiet' };
     function badge(status) {
+        // (the one status pill, the window's: one rule for every place a request's status shows)
+        if (window.DbmnStatusPill) return window.DbmnStatusPill.pill(status || 'pending');
         const b = el('span', `raw-status-badge status-pill-generic ${TONE[status] || 'is-quiet'}`, STATUS_LABEL[status] || status || 'Pending');
         b.dataset.status = String(status || 'pending');
         return b;
@@ -74,6 +76,24 @@
     const time = ms => (ms === null || ms === undefined ? '—' : ms < 1000 ? `${Math.round(ms)}ms` : `${(ms / 1000).toFixed(1)}s`);
     const headers = id => ({ noun: 'header', count: row => (row[id] || []).length, rows: row => (row[id] || []).map(h => ({ name: h.name, value: h.value })) });
 
+    /** A running request's time so far: one timer for every such cell on the page, stopped when none is left. */
+    let ticker = null;
+    function tick() {
+        const cells = document.querySelectorAll('.requests-elapsed');
+        if (!cells.length) { clearInterval(ticker); ticker = null; return; }
+        const now = Date.now();
+        cells.forEach(c => { const ms = now - Number(c.dataset.since); c.textContent = time(Math.max(0, ms)); });
+    }
+    function running(sent) {
+        const since = Date.parse(sent);
+        if (!Number.isFinite(since)) return el('span', 'requests-none', '—');
+        const cell = el('span', 'requests-elapsed', time(Math.max(0, Date.now() - since)));
+        cell.dataset.since = String(since);
+        cell.title = 'Running: its time so far';
+        if (!ticker) ticker = setInterval(tick, 1000);
+        return cell;
+    }
+
     function mount(container, opts) {
         const o = Object.assign({ label: 'Requests', canReprocess: row => FAILED.has(row.status) }, opts || {});
         const post = message => { if (typeof o.post === 'function') o.post(message); };
@@ -95,7 +115,8 @@
                 { id: 'n', name: '#', render: v => pad(v) },
                 { id: 'status', name: 'Status', render: v => badge(v), filter: statusFilter() },
                 { id: 'http', name: 'HTTP', render: v => httpBadge(v) },
-                { id: 'timeMs', name: 'Time', render: v => time(v) },
+                // (a request still running: its time so far, going up each second until its answer lands)
+                { id: 'timeMs', name: 'Time', render: (v, row) => (row && row.status === 'running' && row.sent && (v === null || v === undefined) ? running(row.sent) : time(v)) },
                 { id: 'sent', name: 'Sent', render: v => sentAt(v) },
                 { id: 'rowStart', name: 'Input rows', render: (v, row) => (v === null || v === undefined ? '—' : v === row.rowEnd ? String(v) : `${v}–${row.rowEnd}`) },
                 { id: 'request', name: 'Request', render: v => body(v), sortable: false },
@@ -207,10 +228,11 @@
         }
 
         function windowFor() {
-            if (state.tx && document.body.contains(state.tx)) return state.tx;
+            if (state.tx && state.tx.isConnected) return state.tx;
             const tx = document.createElement('dbmn-transaction');
             tx.setAttribute('window', '');
-            tx.addEventListener('dbmn-transaction-close', () => { tx.remove(); state.tx = null; });
+            // (in the app's one modal: DbmnModal, headerless; its ✕, Esc and a click outside all close it there)
+            tx.addEventListener('dbmn-transaction-close', () => { if (window.DbmnModal && window.DbmnModal.requestDismiss) window.DbmnModal.requestDismiss(); else { tx.remove(); state.tx = null; } });
             tx.addEventListener('dbmn-transaction-move', event => move(event.detail && event.detail.by));
             // (the request the window holds: one opened from another tab has no place in the table, -1)
             tx.addEventListener('dbmn-transaction-logs', () => { const r = state.txRow || state.at.get(state.txIndex); if (r && o.logs) o.logs(r); });
@@ -219,8 +241,11 @@
             //  until it has loaded, then drawn again in it)
             if (o.editor) tx.editor = o.editor;
             if (typeof o.whenEditorReady === 'function') o.whenEditorReady(() => { if (state.tx === tx && tx.refreshEditors) tx.refreshEditors(); });
-            document.body.appendChild(tx);
             state.tx = tx;
+            if (window.DbmnModal && window.DbmnModal.show) {
+                Promise.resolve(window.DbmnModal.show({ title: 'Transaction', headerless: true, body: tx, size: 'transaction', actions: [], dismissible: true }))
+                    .finally(() => { if (state.tx === tx) state.tx = null; tx.remove(); });
+            } else document.body.appendChild(tx);
             // (focused, so Esc and ↑ ↓ work at once: its keys are its own)
             setTimeout(() => tx.focus(), 0);
             return tx;

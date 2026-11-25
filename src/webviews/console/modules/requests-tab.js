@@ -4,17 +4,18 @@
  * The Console's Requests tab (#466): the shared Requests table (shared/dbmn-requests.js, the same one Run Batch's
  * Review shows) on the stored run (console.controller.ts handleRequests). What is the Console's own is here: the
  * tab (createDynamicTabs lists it, switchTab → onSwitchTab), its count on the heading, the logs window (the Raw
- * tab's), Reprocess, the input rows from the Input tab's data, and a single run opening its one request at once.
+ * tab's), Reprocess, the input rows from the Input tab's data. A Run API opens nothing by itself: its request opens when clicked.
  * Raw stays beside it until the transaction window has its card's views.
  */
 (function () {
-    /** A single run's request opens by itself, as Raw showed its card (B22: Raw is gone). */
-    const OPEN_SINGLE_RUN = true;
     'use strict';
+    // (a Run API just opens the Console: nothing opens over it by itself. The window opens when a request is clicked,
+    //  on Review or the Requests tab. James, 2026-11-25: "Run API is different to Batch. Run API should just open
+    //  console." The auto-open was ours, copied from Raw's card, never his)
 
     const post = message => window.vscode && window.vscode.postMessage(message);
     const pad = n => String(n ?? '').padStart(3, '0');
-    const state = { requests: null, total: 0, openedSingle: false, onTab: false };
+    const state = { requests: null, total: 0, onTab: false };
 
     function panel() {
         let node = document.getElementById('requests-tab-content');
@@ -27,12 +28,6 @@
             host.appendChild(node);
         }
         return node;
-    }
-
-    /** A Run API's Console (no batch), not a batch of one page. */
-    function isSingleRun() {
-        const raw = window.dynamicReportManager && window.dynamicReportManager.rawData;
-        return !(raw && raw.metadata && raw.metadata.batchId) && !window.currentBatchId;
     }
 
     /** Its input rows, from the Input tab's data: columns and values. */
@@ -64,16 +59,9 @@
         state.total = total;
         const heading = document.getElementById('run-heading');
         if (heading && heading.has && heading.has('requests') && heading.setCount) heading.setCount('requests', total);
-        // A single run: its one request opens at once, as Raw showed its card (design system, 2026-11-24)
-        // (only once Raw is gone, B22: while Raw is still beside Requests it shows the single run's card, and a window
-        //  opening over the Console by itself would cover it)
-        if (OPEN_SINGLE_RUN && !state.openedSingle && total === 1 && isSingleRun()) {
-            state.openedSingle = true;
-            requests().open(0);
-        }
     }
 
-    /** The table: made the first time it is needed (the tab, or a single run's request), inside the tab's panel. */
+    /** The table: made the first time it is needed (the tab), inside the tab's panel. */
     function requests() {
         if (state.requests) return state.requests;
         const node = panel();

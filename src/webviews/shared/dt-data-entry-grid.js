@@ -956,8 +956,8 @@
         return {
             label: 'Status',
             items: [
-                { value: 'invalid', label: 'INVALID', node: pill('error', 'INVALID'), on: !f || f.includes('invalid'), count: narrowed ? `${invalid.toLocaleString()} of ${allInvalid.toLocaleString()}` : invalid },
-                { value: 'valid', label: 'VALID', node: pill('success', 'VALID'), on: !f || f.includes('valid'), count: valid }
+                { value: 'invalid', label: 'Invalid', node: pill('error', 'Invalid'), on: !f || f.includes('invalid'), count: narrowed ? `${invalid.toLocaleString()} of ${allInvalid.toLocaleString()}` : invalid },
+                { value: 'valid', label: 'Valid', node: pill('success', 'Valid'), on: !f || f.includes('valid'), count: valid }
             ]
         };
     }
@@ -971,7 +971,7 @@
         box.className = 'grid-status';
         const pill = document.createElement('span');
         pill.className = `grid-status-pill status-pill-generic ${names.length ? 'is-invalid is-warn' : 'is-valid is-quiet'}`;
-        pill.textContent = names.length ? 'INVALID' : 'VALID';
+        pill.textContent = names.length ? 'Invalid' : 'Valid';
         box.appendChild(pill);
         names.forEach(name => { const t = document.createElement('span'); t.className = 'grid-status-col'; t.textContent = name; box.appendChild(t); });
         if (names.length) box.title = `To fix: ${names.join(', ')}`;

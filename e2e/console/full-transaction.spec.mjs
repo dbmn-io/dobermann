@@ -10,7 +10,7 @@ import { test, expect } from '@playwright/test';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { ROOT, consolePage, envelope, requestsArrived } from './console-page.mjs';
+import { ROOT, consolePage, envelope, requestsArrived, openFirstRequest } from './console-page.mjs';
 
 /** A response as the host hands it to the page (sourceFile is what Raw maps IDs by). */
 const response = (n, status, data) => ({
@@ -45,20 +45,56 @@ async function openConsole(page, { reportType, batchId = '', executionId = '', e
 const send = (page, message) => page.evaluate(m => window.postMessage(m, '*'), message);
 const posted = (page, type) => page.evaluate(t => window.__posted.filter(m => m.type === t), type);
 
-test('one GET transaction: its window opens by itself, every part side by side, the response shown', async ({ page }) => {
+test('one GET transaction (a Run API): nothing opens by itself; its request, clicked, shows every part side by side', async ({ page }) => {
     const pageErrors = await openConsole(page, { reportType: 'individual', executionId: 'exec_1', endpoint: 'GET https://api.test/items' });
     await page.evaluate(r => window.dynamicReportManager.initialize({
         responses: [r], requests: [], logContent: [], metadata: { executionId: 'exec_1' }
     }), response(1, 'completed', { items: [{ sku: 'A' }] }));
     await requestsArrived(page);
-
+    await page.waitForTimeout(400);
     const tx = page.locator('dbmn-transaction[window]');
+    await expect(tx, 'a Run API just opens the Console (James, 2026-11-25)').toHaveCount(0);
+    // (where it opens is RUN_API_OPENS_ON, 'data' as 0.4.0 until James answers: Completed in front)
+    await expect(page.locator('#run-heading .tab-item[data-tab="success"]')).toHaveClass(/active/);
+    await openFirstRequest(page);
     await expect(tx).toHaveCount(1);
     await expect(tx.locator('.dbmn-tx-title')).toHaveText('Transaction #001');
     // (every part side by side, no Show buttons: a GET's request as its Details)
     await expect(tx.locator('.dbmn-tx-seg-btn')).toHaveCount(0);
     await expect(tx.locator('.dbmn-tx-pane[data-part="response"]')).toContainText('"sku"', { timeout: 15_000 });
     await expect(tx.locator('.dbmn-tx-pane[data-part="request"]')).toHaveCount(1);
+    expect(pageErrors, 'uncaught errors in the page').toEqual([]);
+});
+
+test('a Run API still running, the switch on Requests: Running, its Time counting up each second', async ({ page }) => {
+    const pageErrors = await openConsole(page, { reportType: 'individual', executionId: 'exec_1', endpoint: 'GET https://api.test/items' });
+    await page.evaluate(() => {
+        window.DBMN_RUN_API_OPENS_ON = 'requests';
+        const started = new Date(Date.now() - 2500).toISOString();
+        window.dynamicReportManager.initialize({ responses: [{ httpStatus: null, status: 'running', data: null, headers: {},
+            metadata: { executionId: 'exec_1', status: 'running', memberIndex: 1, timestamp: started, responseTime: null } }], requests: [], logContent: [], metadata: { executionId: 'exec_1' } });
+    });
+    await requestsArrived(page);
+    await expect(page.locator('#run-heading .tab-item[data-tab="requests"]')).toHaveClass(/active/);
+    const row = page.locator('#requests-table .dbmn-table-body > tr:not(.dbmn-table-spacer)').first();
+    await expect(row.locator('.raw-status-badge')).toHaveText('Running');
+    const time = row.locator('td[data-col="timeMs"] .requests-elapsed');
+    await expect(time).toHaveText(/^\d+(\.\d)?s$/);
+    const seconds = async () => Number((await time.textContent()).replace('s', ''));
+    const first = await seconds();
+    await expect.poll(seconds, { timeout: 4000 }).toBeGreaterThan(first);
+    expect(pageErrors, 'uncaught errors in the page').toEqual([]);
+});
+
+test('the Run API landing switch, the other choice: on Requests (James\'s answer pending)', async ({ page }) => {
+    const pageErrors = await openConsole(page, { reportType: 'individual', executionId: 'exec_1', endpoint: 'GET https://api.test/items' });
+    await page.evaluate(r => { window.DBMN_RUN_API_OPENS_ON = 'requests'; window.dynamicReportManager.initialize({
+        responses: [r], requests: [], logContent: [], metadata: { executionId: 'exec_1' }
+    }); }, response(1, 'completed', { items: [{ sku: 'A' }] }));
+    await requestsArrived(page);
+    await expect(page.locator('#run-heading .tab-item[data-tab="requests"]')).toHaveClass(/active/);
+    await expect(page.locator('dbmn-transaction[window]'), 'nothing opens by itself').toHaveCount(0);
+    await expect(page.locator('#requests-table .dbmn-table-body > tr:not(.dbmn-table-spacer)')).toHaveCount(1);
     expect(pageErrors, 'uncaught errors in the page').toEqual([]);
 });
 
@@ -160,7 +196,7 @@ test('right-click an Error row: its full transaction, with its input row, reason
 
     const tx = page.locator('dbmn-transaction[window]');
     await expect(tx.locator('.dbmn-tx-title')).toHaveText('Transaction #003');
-    await expect(tx.locator('.dbmn-tx-head .raw-status-badge')).toHaveText('ERROR');
+    await expect(tx.locator('.dbmn-tx-head .raw-status-badge')).toHaveText('Error');
     // (why it failed, as the Error tab says it: the fixture has no error message of its own, so its HTTP status)
     await expect(tx.locator('.raw-card-reason-text')).toContainText('HTTP 422');
     // its input row (the design system's table), shown though no other tab was opened
@@ -179,7 +215,7 @@ test('right-click an Error row: its full transaction, with its input row, reason
     // The result comes back through the live update: the open window follows it (as Raw's card did)
     const done = response(3, 'completed', { ok: 1 });
     await send(page, { type: 'batch_member_result_update', payload: { result: done, classification: 'success', batchId: 'batch-1', totalMembers: 3 } });
-    await expect(tx.locator('.dbmn-tx-head .raw-status-badge')).toHaveText('COMPLETED', { timeout: 10_000 });
+    await expect(tx.locator('.dbmn-tx-head .raw-status-badge')).toHaveText('Completed', { timeout: 10_000 });
 
     // ⤢ fills the window with a pane; the first Esc puts it back, the second closes the window
     const pane = () => tx.locator('.dbmn-tx-pane[data-part="response"]');

@@ -320,7 +320,7 @@
     border-radius: 10px;
     font-size: 11px;
     font-weight: 600;
-    text-transform: uppercase;
+    /* (Title case, as everywhere: James, 2026-11-25) */
 }
 
 .raw-status-badge.status-completed {
@@ -1119,14 +1119,7 @@
 /* <dbmn-transaction> (dbmn-transaction.js): one request in full, the same window for the Console and Run Batch's
    Review. The badges and the Body / Details buttons are the card's own (above); `window` draws it over the screen */
 dbmn-transaction { display: flex; flex-direction: column; gap: 8px; min-height: 0; color: var(--dbmn-foreground); outline: none; }
-/* The window's backdrop: the page under it dimmed and out of reach (clicks close the window) */
-/* (above the screen's footer, 1000–1002, so Back and Execute are covered too; under menus and the app's windows) */
-.dbmn-tx-backdrop { position: fixed; inset: 0; z-index: 1010; background-color: rgba(0, 0, 0, 0.5); }
-dbmn-transaction[window] {
-    position: fixed; inset: 64px max(24px, calc((100% - var(--dbmn-band, 1280px)) / 2)) 72px; z-index: 1011; padding: 10px 14px 12px;
-    background: var(--dbmn-editor-background); border: 1px solid var(--dbmn-panel-border); border-radius: 6px;
-    box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.45), 0 12px 32px rgba(0, 0, 0, 0.4);
-}
+/* (as a window it is the body of the app's modal, DbmnModal headerless, size "transaction": modals.css) */
 /* (one line across the top: title, state, what it was, the search, ↑ ↓, the actions, ✕; the facts give way first) */
 .dbmn-tx-head { display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; min-width: 0; }
 .dbmn-tx-head > * { flex: none; }
@@ -1147,6 +1140,14 @@ dbmn-transaction[window] {
 .dbmn-tx-reason { margin: 0; }
 .dbmn-tx-search { width: 240px; max-width: 30vw; height: 26px; }
 .dbmn-tx-panes { flex: 1; min-height: 0; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 10px; }
+/* Before a response (Ready, Planned, not sent): the input rows and the request side by side, as first designed. Once
+   the response is back: the input rows across the top, the request and the response side by side below (James,
+   2026-11-25: "For a ready request, we should show Input and Request Side by side… When we get response back, THEN
+   request response side by side, with Rows across top") */
+.dbmn-tx-panes:not(.has-max):has(> .dbmn-tx-pane[data-part="input"]:not([hidden])):has(> .dbmn-tx-pane[data-part="response"]:not([hidden])) {
+    grid-auto-flow: row; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: minmax(140px, 36%) minmax(0, 1fr);
+}
+.dbmn-tx-panes:not(.has-max):has(> .dbmn-tx-pane[data-part="response"]:not([hidden])) > .dbmn-tx-pane[data-part="input"] { grid-column: 1 / -1; }
 .dbmn-tx-panes.has-max { grid-auto-flow: row; }
 .dbmn-tx-pane { display: flex; flex-direction: column; min-height: 0; min-width: 0; border: 1px solid var(--dbmn-panel-border); border-radius: 4px; }
 .dbmn-tx-pane[hidden] { display: none; }
@@ -1164,6 +1165,6 @@ dbmn-transaction[window] {
 .dbmn-tx-pane > dbmn-table.dbmn-tx-input thead th { background-color: var(--dbmn-editor-background); }
 .dbmn-tx-pane > dbmn-table.dbmn-tx-input thead th:hover { background-image: linear-gradient(var(--dbmn-list-hoverBackground), var(--dbmn-list-hoverBackground)); }
 .dbmn-tx-none { color: var(--dbmn-descriptionForeground); }
-@media (max-width: 900px) { .dbmn-tx-panes { grid-auto-flow: row; } dbmn-transaction[window] { inset: 12px; } }
+@media (max-width: 900px) { .dbmn-tx-panes { grid-auto-flow: row; } }
 .dbmn-tx-formats { margin-left: 4px; } .dbmn-tx-render { overflow: auto; }
 .dbmn-tx-editor.dbmn-tx-monaco { overflow: hidden; min-height: 180px; }

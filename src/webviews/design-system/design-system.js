@@ -193,7 +193,7 @@
         ['<dbmn-steps>', 'A wizard\'s steps in one line, and the summary they fold into', C, 'Query, Run Batch', 'shared/dbmn-footer.js'],
         ['<dbmn-progress>', 'The system\'s progress: the box is the bar', C, 'Console', 'shared/dbmn-footer.js'],
         ['<dbmn-status>', 'A few words of status (Saved, Not saved yet)', C, 'Edit Endpoint, Edit Environment', 'shared/dbmn-footer.js'],
-        ['DbmnModal', 'Dialogs: a question, a form, an alert', M, 'Every screen', 'shared/dbmn-modal.js'],
+        ['DbmnModal', 'Dialogs: a question, a form, an alert; headerless, a body with its own top line (a request in full, <dbmn-transaction>, size "transaction")', M, 'Every screen', 'shared/dbmn-modal.js'],
         ['Lanes', 'One grid every line shares: a gutter, a lane per view split into its runs, an end column; spreadsheet cells', S, 'Design system; Query next', 'shared/dbmn-lanes.css, shared/dbmn-lanes.js'],
         ['<dbmn-map>', 'Which column in each source is which, a line at a time: key, functions, how many agree', C, 'Design system; Run Batch next', 'shared/dbmn-map.js'],
         ['DbmnFunctions', 'Functions on a column, ticked in order, tried on its values before and after', M, 'Design system; Query and Run Batch next', 'shared/dbmn-functions.js'],
@@ -449,9 +449,18 @@
         tx.addEventListener('dbmn-transaction-logs', () => say('Logs: the screen opens this request\'s logs'));
         tx.addEventListener('dbmn-transaction-reprocess', () => say('Reprocess: the screen asks the host'));
         tx.addEventListener('dbmn-transaction-copied', e => say(e.detail.ok ? `Copied (${e.detail.what})` : 'Not copied'));
-        tx.addEventListener('dbmn-transaction-close', () => { tx.removeAttribute('window'); tx.connectedCallback(); say('Closed'); });
+        // (as a window: the same request in the app's one modal, DbmnModal headerless, as the Requests table opens it)
+        tx.addEventListener('dbmn-transaction-close', () => { say('Closed'); });
         const win = $('dsTxWindow');
-        if (win) win.addEventListener('click', () => { tx.setAttribute('window', ''); tx.connectedCallback(); tx.focus(); });
+        if (win) win.addEventListener('click', () => {
+            const w = document.createElement('dbmn-transaction');
+            w.setAttribute('window', '');
+            w.addEventListener('dbmn-transaction-close', () => { if (window.DbmnModal) window.DbmnModal.requestDismiss(); say('Closed'); });
+            if (window.DbmnModal) window.DbmnModal.show({ title: 'Transaction', headerless: true, body: w, size: 'transaction', actions: [], dismissible: true }).then(() => w.remove());
+            w.transaction = tx.transaction;
+            w.input = tx.input;
+            w.focus();
+        });
         const other = $('dsTxReady');
         if (other) other.addEventListener('click', () => { isReady = !isReady; other.textContent = isReady ? 'Show a sent request' : 'Show a Ready request'; show(); });
     }

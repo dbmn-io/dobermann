@@ -39,10 +39,10 @@ ${SCRIPTS0.concat(['shared/dbmn-transaction.js']).map(rel => `<script>${read(rel
 const heard = p => p.evaluate(() => window.heard.splice(0));
 const panes = p => p.locator('#t .dbmn-tx-pane:not([hidden])').evaluateAll(list => list.map(el => el.dataset.part));
 
-test('a sent transaction: its figures, the reason, every part side by side (Input, Request, Response), JSON indented and coloured; Body / Details and Body / Headers', async ({ page: p }) => {
+test('a sent transaction: its figures, the reason, once answered the input rows across the top and the request and response side by side below (before, input and request side by side), JSON indented and coloured; Body / Details and Body / Headers', async ({ page: p }) => {
     await p.setContent(page());
     await expect(p.locator('#t .dbmn-tx-title')).toHaveText('Transaction #002');
-    await expect(p.locator('#t .raw-status-badge')).toHaveText('ERROR');
+    await expect(p.locator('#t .raw-status-badge')).toHaveText('Error');
     await expect(p.locator('#t .raw-http-status')).toHaveText('422');
     await expect(p.locator('#t .dbmn-tx-facts')).toHaveText('96ms · 20:14:02 · input rows 201–202');
     await expect(p.locator('#t .dbmn-tx-reason')).toContainText('uom_check');
@@ -57,9 +57,19 @@ test('a sent transaction: its figures, the reason, every part side by side (Inpu
     await expect(p.locator('#t .dbmn-tx-pane[data-part="request"] pre')).toContainText('upsert = true');
     await p.locator('#t .dbmn-tx-pane[data-part="response"] .raw-view-mode-btn[data-mode="headers"]').click();
     await expect(p.locator('#t .dbmn-tx-pane[data-part="response"] pre')).toHaveText('x-request-id: 9e3779b1');
-    // The panes side by side
-    const tops = await p.locator('#t .dbmn-tx-pane').evaluateAll(l => l.map(e => e.getBoundingClientRect().top));
-    expect(Math.max(...tops) - Math.min(...tops)).toBeLessThan(2);
+    // The input rows across the top, the request and the response side by side below (James, 2026-11-25)
+    const box = part => p.locator(`#t .dbmn-tx-pane[data-part="${part}"]`).evaluate(e => { const r = e.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, bottom: r.bottom }; });
+    const [inp, req, res] = [await box('input'), await box('request'), await box('response')];
+    expect(req.y, 'request below the input rows').toBeGreaterThanOrEqual(inp.bottom);
+    expect(Math.abs(req.y - res.y), 'request and response side by side').toBeLessThan(2);
+    expect(res.x, 'response right of request').toBeGreaterThan(req.x);
+    expect(inp.w, 'input rows the whole width').toBeGreaterThan(req.w + res.w);
+    // Before a response (a Ready request): the input rows and the request side by side
+    await p.evaluate(() => { t.transaction = ready; t.input = input; });
+    const [inp2, req2] = [await box('input'), await box('request')];
+    expect(Math.abs(inp2.y - req2.y), 'input and request side by side').toBeLessThan(2);
+    expect(req2.x, 'request right of the input rows').toBeGreaterThan(inp2.x);
+    await p.evaluate(() => { t.transaction = sent; t.input = input; });
 });
 
 test('the input rows in a dbmn-table filling their pane; the modes stay when it moves to another; a Ready request has no Response', async ({ page: p }) => {
@@ -72,7 +82,7 @@ test('the input rows in a dbmn-table filling their pane; the modes stay when it 
     await expect(p.locator('#t .dbmn-tx-pane[data-part="request"] .raw-view-mode-btn.active')).toHaveText('Details');
     await p.evaluate(() => { t.transaction = ready; t.input = input; });
     await expect(p.locator('#t .dbmn-tx-title')).toHaveText('Request #003');
-    await expect(p.locator('#t .raw-status-badge')).toHaveText('READY');
+    await expect(p.locator('#t .raw-status-badge')).toHaveText('Ready');
     expect(await panes(p)).toEqual(['input', 'request']);
     // (the table as tall as its pane)
     const [pane, table] = await p.locator('#t .dbmn-tx-pane[data-part="input"]').evaluate(e => [e.getBoundingClientRect().bottom, e.querySelector('dbmn-table').getBoundingClientRect().bottom]);
@@ -93,7 +103,7 @@ test('search marks what it finds in every pane and says how many; ⤢ fills the 
     expect(await heard(p)).toEqual([]);   // Esc put the pane back; it did not close (not a window)
 });
 
-test('the buttons and keys say what was asked: ↓ (↑ off at the first), Logs, Reprocess; as a window ✕, Esc and a click outside close, the page under it out of reach', async ({ page: p }) => {
+test('the buttons and keys say what was asked: ↓ (↑ off at the first), Logs, Reprocess; as a window ✕ and Esc close', async ({ page: p }) => {
     await p.setContent(page());
     await expect(p.locator('#t .dbmn-tx-prev')).toBeDisabled();
     await p.locator('#t .dbmn-tx-next').click();
@@ -107,25 +117,57 @@ test('the buttons and keys say what was asked: ↓ (↑ off at the first), Logs,
     await p.evaluate(() => { t.setAttribute('window', ''); t.connectedCallback(); t.focus(); });
     await p.keyboard.press('Escape');
     await p.locator('#t .dbmn-tx-close').click();
-    // a modal: the page under it out of reach, a click outside closes it; Tab never leaves it
-    await expect(p.locator('.dbmn-tx-backdrop')).toHaveCount(1);
-    // (over the screen's footer too: a fixed footer at its usual level, 1000, is under the backdrop)
+    expect((await heard(p)).map(x => x[0])).toEqual(['dbmn-transaction-close', 'dbmn-transaction-close']);
+});
+
+test('as a window it is the app\'s one modal (DbmnModal, headerless): the footer covered, a click outside closes it, Tab stays in, nothing left after', async ({ page: p }) => {
+    await p.setContent(page());
+    // (opened as the Requests table opens it: dbmn-requests.js windowFor)
+    await p.evaluate(() => {
+        const w = document.createElement('dbmn-transaction');
+        w.id = 'w';
+        w.setAttribute('window', '');
+        w.addEventListener('dbmn-transaction-close', () => window.DbmnModal.requestDismiss());
+        window.txClosed = 0;
+        window.DbmnModal.show({ title: 'Transaction', headerless: true, body: w, size: 'transaction', actions: [], dismissible: true }).then(() => { window.txClosed++; w.remove(); });
+        w.transaction = sent;
+        w.focus();
+    });
+    const modal = p.locator('.dbmn-modal.dbmn-modal-transaction');
+    await expect(modal).toHaveCount(1);
+    await expect(modal.locator('.dbmn-modal-header'), 'its own top line, not the modal\'s').toHaveCount(0);
+    await expect(modal.locator('#w .dbmn-tx-title')).toHaveText('Transaction #002');
+    // (over the screen's footer: a fixed footer at its usual level, 1000, is under the modal's backdrop)
     const covered = await p.evaluate(() => {
-        const f = document.createElement('div'); f.id = 'foot';
-        Object.assign(f.style, { position: 'fixed', left: '0', right: '0', bottom: '0', height: '40px', zIndex: '1000' });
+        const f = document.createElement('div');
+        Object.assign(f.style, { position: 'fixed', left: '0', right: '0', bottom: '0', height: '40px', zIndex: '1002' });
         document.body.append(f);
         const hit = document.elementFromPoint(10, window.innerHeight - 10);
         f.remove();
         return hit && hit.className;
     });
-    expect(covered, 'the footer is under the backdrop').toBe('dbmn-tx-backdrop');
-    await p.mouse.click(4, 4);
-    await p.locator('#t .dbmn-tx-close').focus();
+    expect(covered, 'the footer is under the backdrop').toBe('dbmn-modal-backdrop');
+    // Tab never leaves it; Enter in its search does not close it
+    await p.locator('#w .dbmn-tx-close').focus();
     for (let i = 0; i < 12; i++) await p.keyboard.press('Tab');
-    expect(await p.evaluate(() => document.getElementById('t').contains(document.activeElement)), 'Tab stays in the window').toBe(true);
-    expect((await heard(p)).map(x => x[0])).toEqual(['dbmn-transaction-close', 'dbmn-transaction-close', 'dbmn-transaction-close']);
-    await p.evaluate(() => t.remove());
-    await expect(p.locator('.dbmn-tx-backdrop'), 'gone with the window').toHaveCount(0);
+    expect(await p.evaluate(() => document.querySelector('.dbmn-modal').contains(document.activeElement)), 'Tab stays in the window').toBe(true);
+    await p.locator('#w .dbmn-tx-search').fill('SKU');
+    await p.locator('#w .dbmn-tx-search').press('Enter');
+    await expect(modal).toHaveCount(1);
+    // a click outside closes it, and nothing of it is left
+    await p.mouse.click(4, 4);
+    await expect(modal).toHaveCount(0);
+    expect(await p.evaluate(() => [window.txClosed, document.querySelectorAll('dbmn-transaction#w, .dbmn-modal-backdrop').length])).toEqual([1, 0]);
+    // its ✕ closes it the same way
+    await p.evaluate(() => {
+        const w = document.createElement('dbmn-transaction');
+        w.id = 'w2'; w.setAttribute('window', '');
+        w.addEventListener('dbmn-transaction-close', () => window.DbmnModal.requestDismiss());
+        window.DbmnModal.show({ title: 'Transaction', headerless: true, body: w, size: 'transaction', actions: [], dismissible: true }).then(() => w.remove());
+        w.transaction = sent;
+    });
+    await p.locator('#w2 .dbmn-tx-close').click();
+    await expect(p.locator('.dbmn-modal-backdrop')).toHaveCount(0);
 });
 
 test('reads as Raw\'s card did: JSON Lines as Lines or Pretty with its record count; HTML as Raw, Render or Text; a GET\'s request as its Details', async ({ page: p }) => {
@@ -179,7 +221,7 @@ ${SCRIPTS0.concat(['shared/dbmn-transaction.js', 'shared/dbmn-code-pane.js']).ma
       tx.transaction = full;
       return true;
   };
-  window.live = () => ({ windows: document.querySelectorAll('dbmn-transaction').length, backdrops: document.querySelectorAll('.dbmn-tx-backdrop').length,
+  window.live = () => ({ windows: document.querySelectorAll('dbmn-transaction').length, backdrops: document.querySelectorAll('.dbmn-modal-backdrop').length,
       editors: window.monaco ? monaco.editor.getEditors().length : -1, models: window.monaco ? monaco.editor.getModels().length : -1 });
 </script></body></html>`;
 

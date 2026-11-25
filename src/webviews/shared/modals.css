@@ -1185,6 +1185,11 @@
 .dbmn-modal-lg { max-width: min(calc(100vw - 48px), 820px); }
 /* Issue #271: wide viewer for the console cell-detail modal (maximised text). */
 .dbmn-modal-cell-detail { max-width: min(calc(100vw - 48px), 1120px); }
+/* A request in full (<dbmn-transaction>, headerless): the screen's band wide, the window's height less a margin; the
+   window's own panes scroll inside (James, 2026-11-25: "you built a custom modal… use existing one") */
+.dbmn-modal-transaction { width: min(calc(100vw - 48px), var(--dbmn-band, 1280px)); max-width: none; height: calc(100vh - 120px); }
+.dbmn-modal-transaction .dbmn-modal-body { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 10px 14px 12px; overflow: hidden; }
+.dbmn-modal-transaction .dbmn-modal-body > dbmn-transaction { flex: 1; min-height: 0; }
 /* The cell window holding rows (an Input rows cell): the table as tall as the window allows, scrolling inside */
 .cell-detail-rows { display: flex; flex-direction: column; height: min(65vh, 640px); min-height: 240px; }
 .cell-detail-rows > dbmn-table { flex: 1; min-height: 0; display: flex; flex-direction: column; }

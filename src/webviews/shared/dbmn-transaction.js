@@ -63,8 +63,21 @@
         return b;
     }
     const pad = n => String(n ?? '').padStart(3, '0');
-    const statusClass = s => ({ completed: 'status-completed', error: 'status-error', test_failed: 'status-test-failed', running: 'status-running',
-        split: 'status-split', cancelled: 'status-cancelled' }[s] || 'status-pending');
+    /** A status as the word is written everywhere, Title case (James, 2026-11-25): Ready, Planned, Test failed… */
+    function statusWord(st) {
+        if (st === 'test_failed') return 'Test failed';
+        const w = String(st || '').replace(/_/g, ' ');
+        return w.charAt(0).toUpperCase() + w.slice(1);
+    }
+    /** A status as the shared pill (core.css .status-pill-generic and its tone), the same in this window's top line and
+        in every Requests table (dbmn-requests.js uses this one): Ready and Planned quiet, Completed green, Error red. */
+    const TONE = { planned: 'is-quiet', ready: 'is-quiet', pending: 'is-quiet', running: 'is-quiet', cancelled: 'is-quiet', split: 'is-quiet',
+        completed: 'is-ok', error: 'is-bad', failed: 'is-bad', test_failed: 'is-outlined-bad' };
+    function statusPill(st) {
+        const pill = make('span', `raw-status-badge status-pill-generic ${TONE[st] || 'is-quiet'}`, statusWord(st));
+        pill.dataset.status = String(st || 'ready');
+        return pill;
+    }
     const httpClass = code => {
         const c = Number(code);
         if (!c) return 'http-other';
@@ -141,31 +154,19 @@
             // As a window, Esc from anywhere on the page: focus is often left on the row clicked to open it, or on the
             // page after a redraw, and the window's own keydown never heard it (Esc failed 18 times in 20, 2026-11-25)
             if (this.hasAttribute('window')) document.addEventListener('keydown', this._onPageKey, true);
-            this._backdropFor();
             this._draw();
         }
         disconnectedCallback() {
             this.removeEventListener('keydown', this._onKey);
             document.removeEventListener('keydown', this._onPageKey, true);
             this._dropEditors();
-            this._backdropFor(true);
         }
 
-        /**
-         * As a window it is a modal (James, 2026-11-25: "modal has gotta be a modal and block all the under buttons"):
-         * a dim layer over the whole page, its footer too, takes every click outside the window and closes it, as the
-         * app's other windows do. Gone with the window (removed, or no longer a window).
+        /*
+         * As a window it is shown in the app's one modal (DbmnModal, headerless: James, 2026-11-25: "you built a custom
+         * modal, and did NOT create a modal component!… Or use existing one!"). The modal owns the backdrop, the click
+         * outside, Tab and focus; this keeps its own top line, Esc's first job (a full-window pane back) and its keys.
          */
-        _backdropFor(gone) {
-            const want = !gone && this.isConnected && this.hasAttribute('window');
-            if (!want) { if (this._backdrop) { this._backdrop.remove(); this._backdrop = null; } return; }
-            if (this._backdrop && this._backdrop.isConnected) return;
-            this._backdrop = make('div', 'dbmn-tx-backdrop');
-            this._backdrop.setAttribute('aria-hidden', 'true');
-            this._backdrop.addEventListener('mousedown', e => e.preventDefault());
-            this._backdrop.addEventListener('click', () => this._say('dbmn-transaction-close'));
-            this.before(this._backdrop);
-        }
 
         /** Focus inside the window (a button about to be drawn again)? Then it stays in the window, so Esc and ↑ ↓
             still reach it (a redrawn button takes focus away to the page: Esc did nothing after a Show toggle). */
@@ -190,9 +191,16 @@
         _pageKey(e) {
             if (e.key !== 'Escape' || !this.isConnected || !this.hasAttribute('window')) return;
             const at = e.target && e.target.closest ? e.target : null;
-            if (at && !this.contains(at) && at.closest('[role="dialog"], [aria-modal="true"]')) return;
             if (at && at.closest('.find-widget')) return;
-            if (document.querySelector('[aria-modal="true"]:not(dbmn-transaction)')) return;
+            // (the logs window opened from this one is on top: Esc closes that, and this stays)
+            const logs = document.querySelector('.raw-logs-modal-overlay');
+            if (logs) {
+                e.preventDefault(); e.stopPropagation();
+                if (window.rawTabHandler && window.rawTabHandler.closeLogsModal) window.rawTabHandler.closeLogsModal(); else logs.remove();
+                return;
+            }
+            // (a window opened over this one, a cell's value: Esc closes that one, on top; this one's own modal holds it)
+            if ([...document.querySelectorAll('[aria-modal="true"]')].some(m => !m.contains(this) && m !== this)) return;
             e.preventDefault();
             e.stopPropagation();
             if (this._max) { this._zoom(null); return; }
@@ -205,16 +213,6 @@
                 // (a window hears Esc on the page: _pageKey)
                 if (this.hasAttribute('window')) return;
                 if (this._max) { this._zoom(null); e.stopPropagation(); }
-                return;
-            }
-            // (Tab stays in the window: it never walks out to the page's buttons under it)
-            if (e.key === 'Tab' && this.hasAttribute('window')) {
-                const stops = [...this.querySelectorAll('button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex="-1"])')].filter(el => el.offsetParent !== null);
-                if (stops.length) {
-                    const at = stops.indexOf(document.activeElement);
-                    const next = e.shiftKey ? (at <= 0 ? stops.length - 1 : at - 1) : (at === -1 || at === stops.length - 1 ? 0 : at + 1);
-                    if ((e.shiftKey && at <= 0) || (!e.shiftKey && (at === -1 || at === stops.length - 1))) { e.preventDefault(); stops[next].focus(); }
-                }
                 return;
             }
             if (typing) return;
@@ -248,7 +246,7 @@
             const head = make('div', 'dbmn-tx-head');
             head.append(make('b', 'dbmn-tx-title', `${this._sent ? 'Transaction' : 'Request'} #${pad(t.n)}`));
             const st = t.testFailed ? 'test_failed' : (t.status || 'ready');
-            head.append(make('span', `raw-status-badge ${statusClass(st)}`, st === 'test_failed' ? 'TEST FAILED' : String(st).toUpperCase()));
+            head.append(statusPill(st));
             if (t.http) {
                 const http = make('span', `raw-http-status ${httpClass(t.http)}`, String(t.http));
                 if (t.httpText) http.title = t.httpText;
@@ -270,6 +268,8 @@
             find.setAttribute('aria-label', 'Search this transaction');
             find.value = this._search;
             find.addEventListener('input', () => { this._search = find.value; this._searchPanes(); });
+            // (Enter searches on, it never submits: in the modal's form it would close the window)
+            find.addEventListener('keydown', e => { if (e.key === 'Enter') e.preventDefault(); });
             this._foundEl = make('span', 'dbmn-tx-found');
             this._foundEl.setAttribute('role', 'status');
             head.append(find, this._foundEl);
@@ -494,4 +494,5 @@
         }
     }
     customElements.define('dbmn-transaction', DbmnTransaction);
+    window.DbmnStatusPill = { pill: statusPill, word: statusWord };
 })();

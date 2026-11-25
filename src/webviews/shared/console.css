@@ -3415,6 +3415,8 @@ html[data-tab-colour="stopped"] .report-title { --title-c: var(--vscode-descript
 .requests-tab-content > dbmn-table .dbmn-table-scroll { flex: 1; min-height: 0; max-height: none; }
 .requests-table .requests-none { color: var(--vscode-descriptionForeground); }
 .requests-table .requests-later { color: var(--vscode-descriptionForeground); font-style: italic; }
+.requests-table .requests-elapsed { color: var(--vscode-foreground); font-variant-numeric: tabular-nums; }
+.requests-table .requests-elapsed::after { content: " …"; color: var(--vscode-descriptionForeground); }
 .requests-table .requests-body { display: inline-flex; gap: 8px; align-items: baseline; min-width: 0; max-width: 100%; }
 .requests-table .requests-preview { font-family: var(--vscode-editor-font-family); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .requests-table .requests-items { flex: none; color: var(--vscode-descriptionForeground); font-size: 11px; }

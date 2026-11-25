@@ -5,11 +5,12 @@
  * Ready rows, made from the batch plan a page at a time (data-loading/batch-plan.ts planRequests), as Execute will
  * send them. No response, no HTTP, no time, no sent: the Console's stored-run source takes over at Execute.
  *
- * Every request is listed, PLANNED: its number and the rows behind it (planRanges, nothing built). Only the first
- * SAMPLE are built, with their bodies, as samples (James, 2026-11-25, by question: "All rows, first 5 built" and
- * "PLANNED"; "Execution engine is responsible for this": the engine builds the rest as it sends them). A planned row
- * past the samples says so in its Request cell; its window shows its input rows and says the same. A search looks
- * through the samples' bodies and every row's number and input rows.
+ * Every request is listed: the first SAMPLE built, with their bodies, READY; the rest PLANNED, their numbers and a
+ * pointer to their rows (planRanges, nothing built). James, 2026-11-25: "GENERATE the JSON for the first 5, have them
+ * at status Ready, and fill in the table for the rest, as "planned" status… KISS"; a grouped template the same ("generate
+ * the first 5 sample PO's. And plan the other 8"); "Execution engine is responsible for" the rest, as it sends them.
+ * A planned row says it is built when the batch runs; its window shows its input rows. A search looks through the
+ * samples' bodies and every row's number and input rows.
  */
 import * as searchMatcherScript from '../../../webviews/shared/search-matcher.js';
 import { sharedScript } from '../../../utils/shared-script';
@@ -51,7 +52,11 @@ export class PlannedBatchRequests implements RequestSource {
 
     async counts(): Promise<{ total: number; counts: Record<string, number> }> {
         const total = this.ports.input() ? this.ports.total() : 0;
-        return { total, counts: total ? { planned: total } : {} };
+        const ready = Math.min(SAMPLE, total);
+        const counts: Record<string, number> = {};
+        if (ready) counts.ready = ready;
+        if (total > ready) counts.planned = total - ready;
+        return { total, counts };
     }
 
     async page(query: RequestPageQuery): Promise<RequestPage & { error?: string }> {
@@ -60,9 +65,18 @@ export class PlannedBatchRequests implements RequestSource {
         const of = this.ports.total();
         const offset = Math.max(0, query.offset || 0);
         const limit = Math.max(0, Math.min(query.limit || 0, of - offset));
-        // (every request on Review is Planned: a Status filter without Planned shows none)
-        if (Array.isArray(query.statuses) && !query.statuses.includes('planned')) return { rows: [], total: 0, of };
+        // (a Status filter: Ready is the samples, Planned the rest)
+        const wants = Array.isArray(query.statuses) ? query.statuses : null;
+        if (wants && !wants.includes('ready') && !wants.includes('planned')) return { rows: [], total: 0, of };
         const search = (query.search || '').trim();
+        if (!search && !wants) return { rows: await this.rows(input, offset, limit), total: of, of };
+        if (!search && wants && !(wants.includes('ready') && wants.includes('planned'))) {
+            // (only one of them: Ready is rows 1–SAMPLE, Planned the rest; both are a range, nothing searched)
+            const start = wants.includes('ready') ? 0 : Math.min(SAMPLE, of);
+            const count = wants.includes('ready') ? Math.min(SAMPLE, of) : Math.max(0, of - SAMPLE);
+            const take = Math.max(0, Math.min(limit || 0, count - offset));
+            return { rows: await this.rows(input, start + offset, take), total: count, of };
+        }
         if (!search) return { rows: await this.rows(input, offset, limit), total: of, of };
         // A search: the samples by their bodies, every row by its number and input rows (nothing more is built)
         const columns = query.columns && query.columns.length ? query.columns : DEFAULT_COLUMNS;
@@ -117,7 +131,7 @@ export class PlannedBatchRequests implements RequestSource {
         const requestHeaders: HeaderPair[] = headerPairs(enabledOnly(this.ports.headers()));
         const text = built && r.body !== null ? this.ports.bodyText(r.body) : null;
         const row: RequestRow = {
-            id: `plan-${r.index}`, n: r.index, status: 'planned', http: null, httpText: null, timeMs: null, sent: null,
+            id: `plan-${r.index}`, n: r.index, status: built ? 'ready' : 'planned', http: null, httpText: null, timeMs: null, sent: null,
             rowStart: r.rowRange.start, rowEnd: r.rowRange.end, method: r.method, url: r.url, query: { ...r.queryParams },
             request: !built ? { preview: BUILT_LATER, items: null, bytes: null, later: true } : text === null ? null : bodySummary(text, r.size), response: null,
             requestHeaders, responseHeaders: [], reason: null, reprocessCount: 0, hasLogs: false
