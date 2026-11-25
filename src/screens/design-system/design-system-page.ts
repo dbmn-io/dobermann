@@ -366,11 +366,20 @@ DbmnContextMenu.show(button, [{ id: 'left', label: 'Left join', detail: 'All of 
             <button type="button" class="btn btn-secondary" data-click="ds:functions">Functions on sku</button>
             <span class="form-hint" id="dsFunctionsSaid"></span>
         </div>
+        <p>The fx button opens it wherever a value can have functions (Map's columns, the Join's, Columns' cells): white to add one, yellow while there are some, which ones on hover (James, 2026-11-25). A function can be in the chain twice. A step can take another column of the row, or a value ("A value…"): Join text, Plus, Minus. A calculated column is the same window with its Name and Start from above the steps, never a formula: Start from Reserved, Plus Damaged, Divide into quantityOnHand.</p>
+        <div class="ds-demo ds-row">
+            <span id="dsFxButtons" class="ds-row"></span>
+            <button type="button" class="btn btn-secondary" data-click="ds:calc">A calculated column</button>
+            <span class="form-hint" id="dsCalcSaid"></span>
+        </div>
         <pre class="ds-code"><code>const applied = await DbmnFunctions.open({ column: 'uom', functions, applied, defaults: { n: 4 },
     baseLabel: 'BL',                                    // "93% agree with BL"; leave out: no column to compare with
     sample: async (applied, { steps }) =&gt; ({ rows: [{ before, steps: [out1, out2…], after, base, missing?, missingAt? }], agree: 0.93 }),
     onAddLookupRow, onNewLookup, onOpenLookup });       // a Translate's + Add, + New lookup table…, Open
 // [{ id, params }] in the chain's order, or null
+DbmnFunctions.button({ steps: 2, words: 'Trim spaces, then Upper case', onClick })   // the fx button
+{ key: 'other', label: 'Minus', kind: 'other' }   // another column (columns: [{ id, label }]) or "A value…": params { col } or { value }
+await DbmnFunctions.open({ calc: { name, start, starts }, columns, functions, sample })   // → { name, start, steps }
 { id: 'first', label: 'First characters', sql: ['SUBSTR(', 'x', ', 1, ', { key: 'n', label: 'Count', number: true }, ')'] }   // only its values are read
 { key: 'table', label: 'Table', kind: 'lookup', options: [{ id, name, count, columns }] }   // Table, then From and To</code></pre>
     </section>

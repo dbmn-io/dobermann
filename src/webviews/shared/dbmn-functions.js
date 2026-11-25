@@ -41,6 +41,19 @@
  *   });
  *   // [{ id, params }] in the chain's order, or null when cancelled
  *
+ * Since 2026-11-25 (James: one window for Map, the Join and calculated columns; steps in sequence, never nested):
+ *   - a function can be in the chain more than once (+ Add a step always lists every one);
+ *   - a piece { key: 'other', kind: 'other', label } is another column of the row or a value typed in: a picker of
+ *     `columns: [{ id, label }]` (or names) and "A value…"; its step's params are { col } or { value };
+ *   - a number piece's `min` is its least (Round's places: 0; else 1);
+ *   - a sample row may say a step couldn't read its value: { failedAt, failed } (shown at that step, nothing after);
+ *   - `calc: { name, start, starts: [{ id, label }] }` opens it for a calculated column: Name and Start from above
+ *     the chain, Apply only with a name; the answer is then { name, start, steps } (steps as above).
+ *     `sample(applied, { steps, start })` is asked with the column it starts from.
+ *
+ *   DbmnFunctions.button({ steps, words, onClick, label })   // the fx button: white "fx" with no steps (add one),
+ *                                                            // yellow with some; `words` on hover (e.g. written(…))
+ *
  * It draws and asks; it holds no rules about what a function does. Needs dbmn-modal.js and, for
  * + Add a step, dbmn-context-menu.js. Styles: shared/dbmn-functions.css.
  */
@@ -56,7 +69,8 @@
     const GRIP = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>';
 
     /** A function's line, written with the column's name and its values: what the dialog shows, and what a chip's hover says. */
-    function written(functions, applied, column) {
+    function written(functions, applied, column, columns) {
+        const colName = id => { const c = (columns || []).find(x => (x && x.id !== undefined ? x.id : x) === id); return c && c.label !== undefined ? c.label : id; };
         let text = column;
         (applied || []).forEach(a => {
             const def = (functions || []).find(f => f.id === a.id);
@@ -65,6 +79,7 @@
                 if (piece === 'x') return text;
                 if (typeof piece === 'string') return piece;
                 const value = a.params ? a.params[piece.key] : '';
+                if (piece.kind === 'other') return a.params && a.params.col !== undefined ? colName(a.params.col) : show(a.params ? a.params.value : '');
                 if (piece.kind === 'lookup') {
                     const option = (piece.options || []).find(o => o.id === value);
                     // (a table that has gone is said to be missing: nothing is looked up in its place)
@@ -83,17 +98,28 @@
         const o = opts || {};
         const functions = Array.isArray(o.functions) ? o.functions : [];
         const defaults = o.defaults || {};
-        const column = o.column || 'column';
+        let column = o.column || 'column';
         const withBase = !!o.baseLabel;
         const pieces = def => (def.sql || []).filter(p => p && typeof p === 'object');
         const defOf = id => functions.find(f => f.id === id);
         const tablesOf = def => { const p = pieces(def).find(x => x.kind === 'lookup'); return p ? (p.options || []) : []; };
+        // Another column of the row, for a step's `other` value: { id, label } (or a name, as both)
+        const columns = (Array.isArray(o.columns) ? o.columns : []).map(c => (c && typeof c === 'object' ? { id: c.id, label: c.label !== undefined ? c.label : c.id } : { id: c, label: c }));
+        // A number box's least: Count's 1 unless the piece says (Round's places: 0)
+        const least = piece => (piece.min !== undefined ? piece.min : 1);
 
         /** A step's values to start from: what it had, else the defaults; a lookup's From and To, else the table's first two columns. */
         function startParams(def, had) {
             const params = {};
             pieces(def).forEach(piece => {
                 const was = had && had.params ? had.params[piece.key] : undefined;
+                if (piece.kind === 'other') {
+                    const col = had && had.params ? had.params.col : undefined, value = had && had.params ? had.params.value : undefined;
+                    if (col !== undefined) params.col = col;
+                    else if (value !== undefined || !columns.length) params.value = value !== undefined ? value : '';
+                    else params.col = columns[0].id;
+                    return;
+                }
                 params[piece.key] = was !== undefined ? was : defaults[piece.key] !== undefined ? defaults[piece.key] : '';
                 if (piece.kind === 'lookup') {
                     const table = (piece.options || []).find(t => t.id === params[piece.key]);
@@ -106,9 +132,8 @@
             });
             return params;
         }
-        // The chain: [{ id, params }], in order (a function once)
+        // The chain: [{ id, params }], in order; a function can be there more than once (James, 2026-11-25), each step its own
         let steps = (o.applied || []).filter(a => a && defOf(a.id)).map(a => ({ id: a.id, params: startParams(defOf(a.id), a) }));
-        steps = steps.filter((s, i) => steps.findIndex(x => x.id === s.id) === i);
         let at = 0;              // the sample value followed down the chain
         let got = { rows: [] };  // the last answer
         let lookupAsked = null, newLookupAsked = false, dragFrom = null;
@@ -134,6 +159,32 @@
         under.append(plus, clear);
         const agree = el('p', 'form-hint dbmn-fx-agree', '');
         const note = el('p', 'form-hint dbmn-fx-note', '');
+        // A calculated column (o.calc: { name, start, starts: [{ id, label }] }): the same window, its Name and Start from
+        // above the chain; the chain starts from that column instead of the one clicked (James, 2026-11-25: steps, no formula)
+        const calc = o.calc ? { name: o.calc.name || '', start: o.calc.start, starts: Array.isArray(o.calc.starts) ? o.calc.starts : [] } : null;
+        const startLabel = () => { const hit = calc && calc.starts.find(c => c.id === calc.start); return hit ? hit.label : column; };
+        const okButton = () => { const box = body.closest('.dbmn-modal'); return box && box.querySelector('[data-action-id="ok"]'); };
+        const nameNeeded = () => { const b = okButton(); if (b) b.disabled = !!calc && !calc.name.trim(); };
+        if (calc) {
+            column = startLabel();
+            const top = el('div', 'dbmn-fx-calc');
+            const nameField = el('label', 'dbmn-fx-field');
+            const nameBox = el('input', 'dbmn-modal-input dbmn-fx-value dbmn-fx-calc-name');
+            nameBox.value = calc.name;
+            nameBox.placeholder = 'e.g. variance';
+            nameBox.spellcheck = false;
+            nameBox.addEventListener('input', () => { calc.name = nameBox.value; nameNeeded(); });
+            nameField.append(el('span', '', 'Name'), nameBox);
+            const startField = el('label', 'dbmn-fx-field');
+            const startPick = el('select', 'dbmn-modal-input dbmn-fx-value dbmn-fx-calc-start');
+            calc.starts.forEach(c => { const op = el('option', '', c.label); op.value = c.id; startPick.appendChild(op); });
+            if (calc.start !== undefined) startPick.value = calc.start;
+            calc.start = startPick.value;
+            startPick.addEventListener('change', () => { calc.start = startPick.value; column = startLabel(); draw(); ask(); });
+            startField.append(el('span', '', 'Start from'), startPick);
+            top.append(nameField, startField);
+            body.append(top);
+        }
         body.append(nav, chain, under, agree, note);
 
         const rowsNow = () => (Array.isArray(got.rows) ? got.rows : []);
@@ -143,6 +194,37 @@
         function fieldsOf(step, def) {
             const fields = el('div', 'dbmn-fx-fields');
             pieces(def).forEach(piece => {
+                if (piece.kind === 'other') {
+                    const field = el('label', 'dbmn-fx-field');
+                    const pick = el('select', 'dbmn-modal-input dbmn-fx-other');
+                    columns.forEach(c => { const op = el('option', '', c.label); op.value = 'col:' + c.id; pick.appendChild(op); });
+                    const typed = el('option', '', 'A value…');
+                    typed.value = 'value';
+                    pick.appendChild(typed);
+                    const box = el('input', 'dbmn-modal-input dbmn-fx-value');
+                    box.type = 'text';
+                    box.placeholder = 'value';
+                    box.spellcheck = false;
+                    box.setAttribute('aria-label', `${piece.label || 'Value'}: the value`);
+                    const fit = () => { box.size = Math.min(30, Math.max(5, box.value.length + 1)); };
+                    const showMode = () => {
+                        const isValue = step.params.col === undefined;
+                        pick.value = isValue ? 'value' : 'col:' + step.params.col;
+                        box.hidden = !isValue;
+                        box.value = isValue ? show(step.params.value) : '';
+                        fit();
+                    };
+                    pick.addEventListener('change', () => {
+                        if (pick.value === 'value') { delete step.params.col; step.params.value = ''; showMode(); box.focus(); }
+                        else { delete step.params.value; step.params.col = pick.value.slice(4); showMode(); }
+                        ask();
+                    });
+                    box.addEventListener('input', () => { fit(); step.params.value = box.value; ask(); });
+                    showMode();
+                    field.append(el('span', '', piece.label || 'Value'), pick, box);
+                    fields.append(field);
+                    return;
+                }
                 if (piece.kind === 'lookup') {
                     const tableField = el('label', 'dbmn-fx-field');
                     const pick = el('select', 'dbmn-modal-input dbmn-fx-lookup');
@@ -207,14 +289,14 @@
                 const field = el('label', 'dbmn-fx-field');
                 const input = el('input', 'dbmn-modal-input dbmn-fx-value');
                 input.type = piece.number ? 'number' : 'text';
-                if (piece.number) input.min = '1';
+                if (piece.number) input.min = String(least(piece));
                 input.value = show(step.params[piece.key]);
                 input.dataset.fnValue = piece.key;
                 if (piece.key === 'to' && !piece.number) input.placeholder = 'nothing';
                 // A box as wide as what is in it
                 const fit = () => { if (!piece.number) input.size = Math.min(30, Math.max(input.placeholder.length || 4, input.value.length + 1)); };
                 fit();
-                input.addEventListener('input', () => { fit(); step.params[piece.key] = piece.number ? Math.max(1, parseInt(input.value, 10) || 1) : input.value; ask(); });
+                input.addEventListener('input', () => { fit(); step.params[piece.key] = piece.number ? Math.max(least(piece), parseInt(input.value, 10) || least(piece)) : input.value; ask(); });
                 // A value copied from a table comes with a tab or spaces around it, which would match nothing
                 input.addEventListener('paste', e => {
                     const text = e.clipboardData ? e.clipboardData.getData('text') : '';
@@ -233,7 +315,7 @@
         function draw() {
             const src = el('div', 'dbmn-fx-row is-source');
             src.setAttribute('role', 'listitem');
-            src.append(el('span', ''), el('span', ''), (() => { const w = el('div', 'dbmn-fx-what'); w.append(el('span', 'dbmn-fx-name', `Source column: ${column}`)); return w; })(), el('div', 'dbmn-fx-out'), el('span', ''));
+            src.append(el('span', ''), el('span', ''), (() => { const w = el('div', 'dbmn-fx-what'); w.append(el('span', 'dbmn-fx-name', calc ? `Start from: ${column}` : `Source column: ${column}`)); return w; })(), el('div', 'dbmn-fx-out'), el('span', ''));
             const rows = [src];
             steps.forEach((step, i) => {
                 const def = defOf(step.id);
@@ -286,7 +368,7 @@
             const linked = [];
             rows.forEach((r, i) => { if (i) linked.push(el('div', 'dbmn-fx-link')); linked.push(r); });
             chain.replaceChildren(...linked);
-            plus.disabled = !functions.some(f => !steps.some(s => s.id === f.id));
+            plus.disabled = !functions.length;
             clear.hidden = !steps.length;
             drawValues();
         }
@@ -313,6 +395,8 @@
                 const i = n - 1;
                 const stepsOut = Array.isArray(r.steps) ? r.steps : null;
                 const before = i === 0 ? show(r.before) : stepsOut ? show(stepsOut[i - 1]) : null;
+                if (r.failedAt === i) { out.append(value(show(r.failed) || 'not read', 'is-missing')); return; }
+                if (r.failedAt !== undefined && i > r.failedAt) { out.append(value('nothing (stopped above)', 'is-stopped')); return; }
                 if (r.missing && (r.missingAt === i || (r.missingAt === undefined && i === steps.length - 1))) {
                     const looked = r.looked === undefined ? (before === null ? show(r.before) : before) : show(r.looked);
                     const names = lookupNamesOf(steps[i]);
@@ -392,9 +476,9 @@
             return b;
         }
 
-        // + Add a step: the functions not in the chain yet, in the screen's order
+        // + Add a step: every function, in the screen's order (one already in the chain can be added again)
         plus.addEventListener('click', () => {
-            const left = functions.filter(f => !steps.some(s => s.id === f.id));
+            const left = functions;
             if (!left.length) return;
             const addStep = id => { const def = defOf(id); if (!def) return; steps.push({ id, params: startParams(def, null) }); draw(); ask(); };
             if (window.DbmnContextMenu) window.DbmnContextMenu.show(plus, left.map(f => ({ id: f.id, label: f.label })), addStep);
@@ -407,7 +491,8 @@
                 const def = defOf(s.id);
                 const params = {};
                 pieces(def).forEach(piece => {
-                    params[piece.key] = piece.number ? Math.max(1, parseInt(s.params[piece.key], 10) || 1) : s.params[piece.key];
+                    if (piece.kind === 'other') { if (s.params.col !== undefined) params.col = s.params.col; else params.value = s.params.value; return; }
+                    params[piece.key] = piece.number ? Math.max(least(piece), parseInt(s.params[piece.key], 10) || least(piece)) : s.params[piece.key];
                     if (piece.kind === 'lookup') ['from', 'to'].forEach(k => { params[k] = s.params[k]; });
                 });
                 return { id: s.id, params };
@@ -420,15 +505,16 @@
             const mine = seq;
             if (typeof o.sample !== 'function') return;
             let answer;
-            try { answer = o.sample(picked(), { steps: true }); } catch (error) { answer = { error: error && error.message ? error.message : String(error) }; }
+            try { answer = o.sample(picked(), calc ? { steps: true, start: calc.start } : { steps: true }); } catch (error) { answer = { error: error && error.message ? error.message : String(error) }; }
             Promise.resolve(answer).then(a => { if (mine === seq && a) { got = a; drawValues(); } },
                 error => { if (mine === seq) { got = { rows: [], error: error && error.message ? error.message : String(error) }; drawValues(); } });
         }
 
         draw();
         ask();
+        setTimeout(nameNeeded, 0);
         const answer = await window.DbmnModal.show({
-            title: 'Functions',
+            title: calc ? (o.calc.name ? 'Calculated column' : 'Add a calculated column') : 'Functions',
             body,
             size: 'lg',
             actions: [
@@ -446,8 +532,23 @@
             return null;
         }
         if (!answer || answer.actionId !== 'ok') return null;
-        return picked();
+        return calc ? { name: calc.name.trim(), start: calc.start, steps: picked() } : picked();
     }
 
-    window.DbmnFunctions = { open, written };
+    /**
+     * The fx button, everywhere a value can have functions (Map's columns, the Join's, Columns' cells): white "fx" to add
+     * one, yellow while it has some (the Columns list's calculated-column badge; James, 2026-11-25), which on hover.
+     */
+    function button(opts) {
+        const b = opts || {};
+        const on = (b.steps || 0) > 0;
+        const fx = el('button', 'dbmn-fx-btn' + (on ? ' is-on' : ''), 'fx');
+        fx.type = 'button';
+        fx.title = on ? (b.words || 'Functions: click to see or change them') : 'Add a function';
+        fx.setAttribute('aria-label', b.label || (on ? 'Functions on this column' : 'Add a function to this column'));
+        if (typeof b.onClick === 'function') fx.addEventListener('click', event => { event.stopPropagation(); b.onClick(event); });
+        return fx;
+    }
+
+    window.DbmnFunctions = { open, written, button };
 })();

@@ -31,9 +31,14 @@ ${SCRIPTS.map(rel => `<script>${read(rel)}</script>`).join('\n')}</head><body>
     { id: 'trim', label: 'Trim spaces', sql: ['TRIM(', 'x', ')'] },
     { id: 'upper', label: 'Upper case', sql: ['UPPER(', 'x', ')'] },
     { id: 'first', label: 'First characters', sql: ['SUBSTR(', 'x', ', 1, ', { key: 'n', number: true, label: 'Count' }, ')'] },
-    { id: 'replace', label: 'Replace text', sql: ['REPLACE(', 'x', ", '", { key: 'from', label: 'Replace' }, "', '", { key: 'to', label: 'With' }, "')"] }
+    { id: 'replace', label: 'Replace text', sql: ['REPLACE(', 'x', ", '", { key: 'from', label: 'Replace' }, "', '", { key: 'to', label: 'With' }, "')"] },
+    { id: 'jointext', label: 'Join text', sql: ['CONCAT(', 'x', ', ', { key: 'between', label: 'Between' }, ', ', { key: 'other', label: 'With', kind: 'other' }, ')'] },
+    { id: 'round', label: 'Round', sql: ['ROUND(', 'x', ', ', { key: 'places', label: 'Places', number: true, min: 0 }, ')'] }
   ];
-  const fns = { trim: v => v.trim(), upper: v => v.toUpperCase(), first: (v, p) => v.slice(0, p.n), replace: (v, p) => v.split(p.from || '\\u0000').join(p.to || '') };
+  // Other columns of the same rows (a step's other value)
+  window.OTHER = { bin: ['A-01', 'A-02', 'B-01', 'B-02'], site: ['North', 'North', 'South', 'West'] };
+  const fns = { trim: v => v.trim(), upper: v => v.toUpperCase(), first: (v, p) => v.slice(0, p.n), replace: (v, p) => v.split(p.from || '\\u0000').join(p.to || ''),
+    jointext: (v, p, r) => v + (p.between || '') + (p.col !== undefined ? window.OTHER[p.col][r] : String(p.value)), round: v => v };
   window.asked = [];
   // The steps' values, as Query's host gives them: each step's out, or where a Translate didn't find it
   window.sampleOf = applied => ({
@@ -50,7 +55,7 @@ ${SCRIPTS.map(rel => `<script>${read(rel)}</script>`).join('\n')}</head><body>
           if (hits.length > 1) return Object.assign({ before: v, steps: steps.concat(applied.slice(i + 1).map(() => now)), after: now, twice: true, twiceAt: i, base: base[r] });
           continue;
         }
-        now = fns[a.id](now, a.params);
+        now = fns[a.id](now, a.params, r);
         steps.push(now);
       }
       return { before: v, steps, after: now, base: base[r] };
@@ -128,7 +133,7 @@ test('+ Add a step, × removes one, Remove all steps; a field changed asks again
     await open(p, []);
     expect(await names(p)).toEqual(['Source column: uom']);
     await p.getByRole('button', { name: '+ Add a step' }).click();
-    // The functions not in the chain yet, in the screen's order: Translate values first
+    // Every function, in the screen's order (one in the chain can be added again): Translate values first
     const menu = p.locator('.dbmn-context-menu');
     await expect(menu.locator('.dbmn-context-menu-item').first()).toHaveText('Translate values');
     await menu.getByText('First characters').click();
@@ -242,4 +247,100 @@ test('Escape in the + Add a step menu closes the menu only; a second Escape clos
     await p.keyboard.press('Escape');
     await expect(p.locator('.dbmn-modal')).toHaveCount(0);
     await expect.poll(() => p.evaluate(() => window.result)).toBe(null);
+});
+
+/* ---------- One window for Map, the Join and calculated columns (James, 2026-11-25) ---------- */
+
+test('a function can be in the chain twice: + Add a step still lists it, and both come back in order', async ({ page: p }) => {
+    await open(p, [{ id: 'replace', params: { from: '-', to: '' } }, { id: 'replace', params: { from: 'x', to: 'y' } }]);
+    // (both kept when it opens: none dropped as a repeat)
+    expect(await names(p)).toEqual(['Source column: uom', 'Replace text', 'Replace text']);
+    await p.getByRole('button', { name: '+ Add a step' }).click();
+    const menu = p.locator('.dbmn-context-menu');
+    await expect(menu.getByText('Replace text')).toBeVisible();
+    await menu.getByText('Replace text').click();
+    expect(await names(p)).toEqual(['Source column: uom', 'Replace text', 'Replace text', 'Replace text']);
+    await p.getByRole('button', { name: 'Apply' }).click();
+    await expect.poll(() => p.evaluate(() => (window.result || []).map(a => a.id))).toEqual(['replace', 'replace', 'replace']);
+});
+
+test('a step\'s other value: a column of the row from the picker, or "A value…" typed in; it comes back as col or value', async ({ page: p }) => {
+    await p.setContent(page());
+    await p.evaluate(() => window.openIt({ applied: [{ id: 'jointext', params: { between: ' · ', col: 'site' } }], columns: [{ id: 'bin', label: 'bin' }, { id: 'site', label: 'site' }] }));
+    await expect(rows(p).first()).toBeVisible();
+    const pick = rows(p).nth(1).locator('select.dbmn-fx-other');
+    await expect(pick).toHaveValue('col:site');
+    await expect.poll(() => vals(p)).toEqual([' ea ', ' ea  · North']);
+    await pick.selectOption('col:bin');
+    await expect.poll(() => vals(p)).toEqual([' ea ', ' ea  · A-01']);
+    // A value: its box shows; what is typed is the value
+    await pick.selectOption('value');
+    const box = rows(p).nth(1).locator('input.dbmn-fx-value').last();
+    await expect(box).toBeVisible();
+    await box.fill('EACH');
+    await expect.poll(() => vals(p)).toEqual([' ea ', ' ea  · EACH']);
+    await p.getByRole('button', { name: 'Apply' }).click();
+    await expect.poll(() => p.evaluate(() => window.result)).toEqual([{ id: 'jointext', params: { between: ' · ', value: 'EACH' } }]);
+});
+
+test('a number box takes its piece\'s least: Round\'s places can be 0', async ({ page: p }) => {
+    await open(p, [{ id: 'round', params: { places: 2 } }]);
+    const places = rows(p).nth(1).locator('input[type="number"]');
+    await expect(places).toHaveAttribute('min', '0');
+    await places.fill('0');
+    await p.getByRole('button', { name: 'Apply' }).click();
+    await expect.poll(() => p.evaluate(() => window.result)).toEqual([{ id: 'round', params: { places: 0 } }]);
+});
+
+test('a step that couldn\'t read its value says so on its row; the steps after it show nothing for it', async ({ page: p }) => {
+    await p.setContent(page());
+    await p.evaluate(() => {
+        window.sampleOf = () => ({ rows: [{ before: '31/02/2026', steps: ['31/02/2026'], failedAt: 1, failed: '31/02/2026 is not a date as DD/MM/YYYY' }] });
+        window.openIt({ applied: [{ id: 'trim', params: {} }, { id: 'upper', params: {} }, { id: 'first', params: { n: 4 } }] });
+    });
+    await expect(rows(p).first()).toBeVisible();
+    await expect.poll(() => vals(p)).toEqual(['31/02/2026', '31/02/2026', '31/02/2026 is not a date as DD/MM/YYYY', 'nothing (stopped above)']);
+    await expect(rows(p).nth(2).locator('.dbmn-fx-val')).toHaveClass(/is-missing/);
+});
+
+test('a calculated column: Name and Start from above the steps; Apply waits for a name; the answer is its name, start and steps', async ({ page: p }) => {
+    await p.setContent(page());
+    await p.evaluate(() => {
+        window.starts = [];
+        window.sampleOf = () => ({ rows: [{ before: '120', steps: ['128'], after: '128' }] });
+        DbmnFunctions.open({
+            calc: { name: '', start: 'reserved', starts: [{ id: 'onHand', label: 'quantityOnHand' }, { id: 'reserved', label: 'Reserved' }] },
+            columns: [{ id: 'damaged', label: 'Damaged' }], functions: window.FUNCTIONS, applied: [{ id: 'jointext', params: { between: '', col: 'damaged' } }],
+            sample: (applied, how) => { window.starts.push(how.start); return window.sampleOf(applied); }
+        }).then(r => { window.result = r; });
+    });
+    await expect(p.locator('.dbmn-modal')).toContainText('Add a calculated column');
+    expect(await names(p)).toEqual(['Start from: Reserved', 'Join text']);
+    const apply = p.getByRole('button', { name: 'Apply' });
+    await expect(apply).toBeDisabled();
+    await p.locator('.dbmn-fx-calc-name').fill('held');
+    await expect(apply).toBeEnabled();
+    // Start from another column: the source row says it, and the sample is asked with it
+    await p.locator('.dbmn-fx-calc-start').selectOption('onHand');
+    expect(await names(p)).toEqual(['Start from: quantityOnHand', 'Join text']);
+    await expect.poll(() => p.evaluate(() => window.starts[window.starts.length - 1])).toBe('onHand');
+    await apply.click();
+    await expect.poll(() => p.evaluate(() => window.result)).toEqual({ name: 'held', start: 'onHand', steps: [{ id: 'jointext', params: { between: '', col: 'damaged' } }] });
+});
+
+test('the fx button: white "fx" to add a function, yellow while there are some, which ones on hover', async ({ page: p }) => {
+    await p.setContent(page());
+    await p.evaluate(() => {
+        window.clicked = 0;
+        document.body.append(DbmnFunctions.button({ steps: 0, onClick: () => { window.clicked++; } }), DbmnFunctions.button({ steps: 2, words: 'Trim spaces, then Upper case' }));
+    });
+    const [plain, on] = [p.locator('.dbmn-fx-btn').nth(0), p.locator('.dbmn-fx-btn').nth(1)];
+    await expect(plain).toHaveText('fx');
+    await expect(plain).toHaveAttribute('title', 'Add a function');
+    await expect(on).toHaveClass(/is-on/);
+    await expect(on).toHaveAttribute('title', 'Trim spaces, then Upper case');
+    const colour = l => l.evaluate(e => getComputedStyle(e).color);
+    expect(await colour(plain)).not.toBe(await colour(on));
+    await plain.click();
+    expect(await p.evaluate(() => window.clicked)).toBe(1);
 });

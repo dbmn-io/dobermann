@@ -101,4 +101,25 @@
 .dbmn-fx-open { font-size: 12px; }
 .dbmn-fx-plus:hover:not(:disabled), .dbmn-fx-clear:hover, .dbmn-fx-open:hover { text-decoration: underline; }
 .dbmn-fx-plus:disabled { color: var(--dbmn-descriptionForeground); cursor: default; }
+/* A calculated column: its Name and Start from, above the chain */
+.dbmn-fx-calc { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; margin-bottom: 4px; }
+.dbmn-fx-calc-name { min-width: 14ch; }
+/* A step's other value: a column of the row, or "A value…" and its box */
+.dbmn-fx-other { max-width: 28ch; }
+.dbmn-fx-other + .dbmn-fx-value { margin-left: 6px; }
+
+/* The fx button (DbmnFunctions.button): white "fx" to add a function, yellow while there are some, as the Columns
+   list's calculated-column badge (James, 2026-11-25: "a nice yellow function button that's white to add a function") */
+.dbmn-fx-btn {
+    flex: none;
+    padding: 0 7px;
+    border: 1px solid currentColor;
+    border-radius: 3px;
+    background: none;
+    color: var(--dbmn-foreground);
+    font: italic 12px/18px Georgia, 'Times New Roman', serif;
+    cursor: pointer;
+}
+.dbmn-fx-btn.is-on { color: var(--dbmn-charts-yellow, #cca700); }
+.dbmn-fx-btn:hover, .dbmn-fx-btn:focus-visible { outline: 1px solid var(--dbmn-focusBorder); outline-offset: 1px; }
 @media (prefers-reduced-motion: reduce) { .dbmn-fx-row { transition: none; } }

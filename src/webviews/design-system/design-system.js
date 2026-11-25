@@ -196,7 +196,7 @@
         ['DbmnModal', 'Dialogs: a question, a form, an alert; headerless, a body with its own top line (a request in full, <dbmn-transaction>, size "transaction")', M, 'Every screen', 'shared/dbmn-modal.js'],
         ['Lanes', 'One grid every line shares: a gutter, a lane per view split into its runs, an end column; spreadsheet cells', S, 'Design system; Query next', 'shared/dbmn-lanes.css, shared/dbmn-lanes.js'],
         ['<dbmn-map>', 'Which column in each source is which, a line at a time: key, functions, how many agree', C, 'Design system; Run Batch next', 'shared/dbmn-map.js'],
-        ['DbmnFunctions', 'Functions on a column, ticked in order, tried on its values before and after', M, 'Design system; Query and Run Batch next', 'shared/dbmn-functions.js'],
+        ['DbmnFunctions', 'Functions on a column as steps, tried on its values; a calculated column in the same window; the fx button', M, 'Design system; Query and Run Batch next', 'shared/dbmn-functions.js'],
         ['LookupNew', 'New lookup table: a name, then up to 5 columns, each named differently, all equal', M, 'Hub (Reporting), Query (the functions\' table picker)', 'shared/lookup-new.js'],
         ['DbmnToast', 'Messages in the corner', M, 'Every screen', 'shared/dbmn-toast.js'],
         ['DbmnContextMenu', 'A right-click menu, or a menu under a button; an item may carry a picture and a quiet second line; a summary of what it is about may come first', M, 'Hub lists, tables; Query\'s join kind and slots', 'shared/dbmn-context-menu.js'],
@@ -658,8 +658,10 @@
             upper: v => v.toUpperCase(),
             ltrimZeros: v => v.replace(/^0+/, ''),
             first: (v, p) => v.slice(0, p.n),
-            replace: (v, p) => v.split(p.from || '').join(p.to || '')
+            replace: (v, p) => v.split(p.from || '').join(p.to || ''),
+            jointext: (v, p, r) => v + (p.between || '') + (p.col !== undefined ? OTHER[p.col][r] : String(p.value || ''))
         };
+        const OTHER = { bin: ['A-01', 'A-02', 'B-01', 'B-02', 'C-01'], uom: ['EA', 'EA', 'CS', 'EA', 'PK'] };
         const applied = await window.DbmnFunctions.open({
             column: 'sku',
             // (the screen's list and order: Translate values first; short labels for the values)
@@ -669,9 +671,12 @@
                 { id: 'upper', label: 'Upper case', sql: ['UPPER(', 'x', ')'] },
                 { id: 'ltrimZeros', label: 'Drop leading zeros', sql: ['LTRIM(', 'x', ", '0')"] },
                 { id: 'first', label: 'First characters', sql: ['SUBSTR(', 'x', ', 1, ', { key: 'n', number: true, label: 'Count' }, ')'] },
-                { id: 'replace', label: 'Replace text', sql: ['REPLACE(', 'x', ", '", { key: 'from', label: 'Replace' }, "', '", { key: 'to', label: 'With' }, "')"] }
+                { id: 'replace', label: 'Replace text', sql: ['REPLACE(', 'x', ", '", { key: 'from', label: 'Replace' }, "', '", { key: 'to', label: 'With' }, "')"] },
+                // (another column of the row, or a value: the steps Map and calculated columns use)
+                { id: 'jointext', label: 'Join text', sql: ['CONCAT(', 'x', ', ', { key: 'between', label: 'Between' }, ', ', { key: 'other', label: 'With', kind: 'other' }, ')'] }
             ],
-            defaults: { n: 4, from: '-', to: '' },
+            columns: [{ id: 'bin', label: 'bin' }, { id: 'uom', label: 'uom' }],
+            defaults: { n: 4, from: '-', to: '', between: ' · ' },
             baseLabel: 'BL',
             // Each value through the steps, as Query's host answers: every step's value, or where a Translate didn't find it
             sample: applied => new Promise(done => setTimeout(() => {
@@ -684,7 +689,7 @@
                             const hit = (LOOKUP_ROWS[a.params.table] || []).find(x => x[a.params.from] === now);
                             if (!hit) return { before: v, steps, after: v, missing: true, missingAt: i, base: base[r] };
                             now = hit[a.params.to];
-                        } else if (fns[a.id]) now = fns[a.id](now, a.params);
+                        } else if (fns[a.id]) now = fns[a.id](now, a.params, r);
                         steps.push(now);
                     }
                     return { before: v, steps, after: now, base: base[r] };
@@ -694,6 +699,55 @@
             onOpenLookup: id => window.DbmnToast && window.DbmnToast.info(`Would open the lookup table "${id}" in Reporting`)
         });
         $('dsFunctionsSaid').textContent = applied ? `Applied: ${applied.map(a => a.id).join(', ') || 'none'}` : 'Cancelled';
+        functionsDemoSteps = applied ? applied.length : functionsDemoSteps;
+        drawFxButtons();
+    }
+
+    /* The fx button (DbmnFunctions.button): white with no functions, yellow with some (the demo's count, after Apply) */
+    let functionsDemoSteps = 0;
+    function drawFxButtons() {
+        const box = $('dsFxButtons');
+        if (!box || !window.DbmnFunctions.button) return;
+        box.replaceChildren(
+            window.DbmnFunctions.button({ steps: 0, onClick: openFunctionsDemo }),
+            window.DbmnFunctions.button({ steps: 2, words: 'Trim spaces, then Upper case', onClick: openFunctionsDemo }),
+            window.DbmnFunctions.button({ steps: functionsDemoSteps, words: `${functionsDemoSteps} step(s) on sku`, onClick: openFunctionsDemo }));
+    }
+    drawFxButtons();
+
+    /* A calculated column: the same window, its Name and Start from above the steps; a step takes another column */
+    async function openCalcDemo() {
+        const COLS = { onHand: [1428, 1111, 860, 412, 2045], reserved: [120, 40, 75, 10, 64], damaged: [8, 0, 5, 2, 0] };
+        const n = v => Number(v);
+        const step = {
+            plus: (v, p, r) => n(v) + n(p.col !== undefined ? COLS[p.col][r] : p.value),
+            minus: (v, p, r) => n(v) - n(p.col !== undefined ? COLS[p.col][r] : p.value),
+            divinto: (v, p, r) => { const o = n(p.col !== undefined ? COLS[p.col][r] : p.value); return n(v) === 0 ? null : o / n(v); },
+            round: (v, p) => (v === null ? null : Number(n(v).toFixed(p.places)))
+        };
+        const made = await window.DbmnFunctions.open({
+            calc: { name: '', start: 'reserved', starts: [{ id: 'onHand', label: 'quantityOnHand' }, { id: 'reserved', label: 'Reserved' }, { id: 'damaged', label: 'Damaged' }] },
+            columns: [{ id: 'onHand', label: 'quantityOnHand' }, { id: 'reserved', label: 'Reserved' }, { id: 'damaged', label: 'Damaged' }],
+            functions: [
+                { id: 'plus', label: 'Plus', sql: ['(', 'x', ' + ', { key: 'other', label: 'Plus', kind: 'other' }, ')'] },
+                { id: 'minus', label: 'Minus', sql: ['(', 'x', ' - ', { key: 'other', label: 'Minus', kind: 'other' }, ')'] },
+                { id: 'divinto', label: 'Divide into', sql: ['(', { key: 'other', label: 'Divide into', kind: 'other' }, ' / ', 'x', ')'] },
+                { id: 'round', label: 'Round', sql: ['ROUND(', 'x', ', ', { key: 'places', label: 'Places', number: true, min: 0 }, ')'] }
+            ],
+            defaults: { places: 1 },
+            applied: [{ id: 'plus', params: { col: 'damaged' } }, { id: 'divinto', params: { col: 'onHand' } }, { id: 'round', params: { places: 1 } }],
+            // (the screen answers from where the column starts: its Start from, as the window says it)
+            sample: (applied, { start }) => {
+                const rows = COLS.onHand.map((_, r) => {
+                    let now = COLS[start || 'reserved'][r];
+                    const before = now;
+                    const steps = applied.map(a => (now = step[a.id] ? step[a.id](now, a.params, r) : now));
+                    return { before, steps, after: now };
+                });
+                return { rows };
+            }
+        });
+        $('dsCalcSaid').textContent = made ? `${made.name}: ${made.start}, then ${made.steps.map(a => a.id).join(', ') || 'nothing'}` : 'Cancelled';
     }
 
     /* Made-up lookup tables for the Functions demo: several columns, a value looked up in one, becoming another's */
@@ -873,6 +927,7 @@
             if (made && window.DbmnToast) window.DbmnToast.success(`${made.name}: ${made.columns.join(', ')}`);
         },
         'ds:functions': openFunctionsDemo,
+        'ds:calc': openCalcDemo,
         'ds:confirm': () => {
             window.DbmnModal.confirm({ title: 'Delete the query?', body: 'Only the report is deleted: the data in History stays.', confirmLabel: 'Delete', confirmVariant: 'danger' })
                 .then(yes => window.DbmnToast.info(yes ? 'You chose Delete' : 'Nothing was deleted'));
