@@ -129,6 +129,40 @@ test.describe('Hub search box (#444)', () => {
         await expect.poll(shown).toBe(3);
     });
 
+    test('History finds a run by the header values the host read for it, and by @headers: a run that kept none, an environment since gone', async ({ dbmn, page }) => {
+        // James, 2026-11-26 (platform #477): "the search ONLY works in Query builder… if we can get @org=xxx in Hub
+        // history"; "i tried searching @headers~840-SIT and that did not work in Hub"
+        dbmn.seed.environments[0] = { ...dbmn.seed.environments[0], headerVariables: [] } as typeof dbmn.seed.environments[0];
+        const run = (id: string, more: Record<string, unknown>) => ({ id, endpointId: 'test-endpoint-002', endpointName: 'Minimal Test Endpoint', status: 'completed', createdAt: '2026-11-26T10:00:00Z', ...more });
+        dbmn.seed.transactions = [
+            // (no values kept on the run: the host worked them out from the request it sent, as Query does)
+            run('tx-sit', { headerValues: { org: '840-SIT · Brisbane', version: '2' }, headersText: 'org: 840-SIT · Brisbane\nversion: 2\nX-Org: 840-SIT' }),
+            run('tx-uat', { headerValues: { org: '840-UAT' }, headersText: 'org: 840-UAT\nX-Org: 840-UAT' }),
+            run('tx-none', {})
+        ] as typeof dbmn.seed.transactions;
+        await dbmn.openHub();
+        await openList(page, 'transactions');
+        const box = page.locator('#transactionsSearch');
+        await box.click();
+        await box.pressSequentially('@');
+        const texts = await page.locator('.column-suggest-option .column-suggest-text').allTextContents();
+        // (no environment has these header variables now: the names come from the runs)
+        expect(texts).toContain('@org');
+        expect(texts).toContain('@version');
+        expect(texts).toContain('@headers');
+        const shown = () => page.locator('#transactionsList .tx-row').count();
+        await box.fill('@org=840-SIT');
+        await expect.poll(shown).toBe(1);
+        await box.fill('@org=Brisbane');
+        await expect.poll(shown).toBe(1);
+        await box.fill('@org~840');
+        await expect.poll(shown).toBe(2);
+        await box.fill('@headers~840-SIT');
+        await expect.poll(shown).toBe(1);
+        await box.fill('');
+        await expect.poll(shown).toBe(3);
+    });
+
     // James, 2026-11-23: "that saved search should be everywhere where we have a search box"
     test('the ★ beside each list\'s box: saved in the Hub\'s preferences, one list each; picked, it searches', async ({ dbmn, page }) => {
         await dbmn.openHub();

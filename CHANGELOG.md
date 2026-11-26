@@ -6,6 +6,9 @@ All notable changes to Dobermann are documented here.
 
 ## [Unreleased]
 
+### Changed
+- **History finds a run by its header values** — In the Hub's History, `@org=…` (each header variable by its own name) now finds every run Query finds, including older runs and batches, by the value or its option's label. `@headers~…` searches everything a run was sent with.
+
 ## [0.5.0] - 2026-11-26
 
 ### Added

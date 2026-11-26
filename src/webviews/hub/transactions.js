@@ -610,18 +610,27 @@
      * named as one of the run's own fields (env, status…) is @header.env: the run's own keeps its name.
      */
     function headerFields(state) {
-        const own = ['title', 'endpoint', 'status', 'method', 'env', 'environment', 'http', 'name', 'path', 'tag', 'system', 'error', 'ran', 'body'];
+        const own = ['title', 'endpoint', 'status', 'method', 'env', 'environment', 'http', 'name', 'path', 'tag', 'system', 'error', 'ran', 'body', 'headers'];
         const names = [];
-        (state.environments || []).forEach(e => (Array.isArray(e.headerVariables) ? e.headerVariables : []).forEach(v => {
-            const name = v && String(v.name || '').trim();
+        const add = raw => {
+            const name = String(raw || '').trim();
             if (name && !names.some(n => n.toLowerCase() === name.toLowerCase())) names.push(name);
-        }));
+        };
+        (state.environments || []).forEach(e => (Array.isArray(e.headerVariables) ? e.headerVariables : []).forEach(v => add(v && v.name)));
+        // (and the names the runs themselves have: a run of an environment since changed or deleted stays findable)
+        (state.transactions || []).forEach(t => Object.keys((t && t.headerValues) || {}).forEach(add));
         if (!names.some(n => n.toLowerCase() === 'org') && (state.transactions || []).some(t => t && t.organization)) names.push('org');
         return names.map(name => {
             const id = own.includes(name.toLowerCase()) ? `header.${name}` : name;
             const legacy = name.toLowerCase() === 'org';
-            return { id, hidden: true, get: t => String((t.environmentVariables && t.environmentVariables[name]) || (legacy ? t.organization || '' : '')) };
-        });
+            // (the host's reading first: the values the run kept, else what its request shows, as Query's Add a view
+            // has them, platform #477; then the run's own record, for a list from before the host sent them)
+            // (a value with its option's label, "840 · Brisbane", answers to either: @org=840, @org=Brisbane)
+            return { id, hidden: true, get: t => String((t.headerValues && t.headerValues[name]) || (t.environmentVariables && t.environmentVariables[name]) || (legacy ? t.organization || '' : '')).split(' · ') };
+        }).concat([
+            // @headers~840-SIT: everything the run was sent with, when the variable's name isn't known
+            { id: 'headers', hidden: true, get: t => String(t.headersText || '') }
+        ]);
     }
     /** The box's fields, shown and not, for its colours and `@` list. */
     function boxFields() {

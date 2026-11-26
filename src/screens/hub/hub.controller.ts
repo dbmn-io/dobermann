@@ -12,6 +12,7 @@ import { createQuery, duplicateQuery, getQuery, importQueryCopy, isQueryId, quer
 import { loadQueryFolder } from '../../services/query/query-folder';
 import { queryFromCompare } from '../../services/query/query-from-compare';
 import { isDraft } from '../../services/compare/compare-store';
+import { withRunHeaderSearch } from '../../services/compare/run-header-values';
 import { validateShortIdentifier } from '../../data-loading/system-schema';
 import type { Disposable } from '../../platform/events';
 import type { ChainHandoff } from '../../services/chain/chain-types';
@@ -318,7 +319,8 @@ export class HubController {
                 break;
             case 'historyAll':
                 // History searches every run, not only the newest sent with the state
-                this.session.post({ type: 'historyAll', transactions: await this.readHistory() });
+                this.session.post({ type: 'historyAll', transactions: withRunHeaderSearch(
+                    (await this.readHistory()) as never[], await this.ports.environments.getAllEnvironments() as never[], await this.ports.endpoints.getAllEndpoints() as never[]) });
                 break;
             case 'searchTransactionContent':
                 // #444: each typed word on its own (`terms`); `term` is the one-piece search from before
@@ -445,7 +447,8 @@ export class HubController {
             environments: withHeaderVariables,
             activeEnvironmentId: active?.id,
             activeSystemId: active?.systemId,
-            transactions: transactions.slice(0, TRANSACTION_LIMIT),
+            // (each with its header values, read as Query reads them: @org=… and @headers~… in History, platform #477)
+            transactions: withRunHeaderSearch(transactions.slice(0, TRANSACTION_LIMIT) as never[], environments as never[], endpoints as never[]),
             transactionsTotal: transactions.length,
             compares: this.ports.compares ? savedCompares(this.ports.compares.state()).filter(c => !listQueries(this.ports.compares!.state()).some(q => q.fromCompare === c.id)) : [],
             queries: this.ports.compares ? listQueries(this.ports.compares.state()) : [],
