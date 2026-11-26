@@ -270,11 +270,15 @@
             formatModifier = parts.slice(2).join(':').trim(); // Join in case format has colons
         }
 
+        // A number's rules written after the type's colon are rules too, as the run reads them (modifier-parser.ts takes
+        // everything after the type): {{qty:number:int|>=0}} is a whole number, 0 or more. Validate dropped the `int`
+        // there and passed 175.5, which the run then refused (James, 2026-11-26).
+        const isNumber = dataType === 'number' || dataType === 'integer' || dataType === 'int';
         return {
             varName,
             dataType,
             formatModifier,
-            modifierString
+            modifierString: isNumber && formatModifier ? (modifierString ? `${formatModifier}|${modifierString}` : formatModifier) : modifierString
         };
     }
 
