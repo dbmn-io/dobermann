@@ -73,20 +73,36 @@ function textOf(item: string | { value?: string } | undefined): string | undefin
  * anything and names nothing. Nothing when the sent text does not fit the template.
  */
 export function valuesFromTemplate(template: string, sent: string): Record<string, string> {
+    // The template as its fixed text and the variables between: text, variable, text, … variable, text
     const names: (string | undefined)[] = [];
-    let pattern = '';
+    const fixed: string[] = [];
     let last = 0;
     for (const match of template.matchAll(PLACEHOLDER)) {
-        pattern += template.slice(last, match.index).replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(.*?)';
+        fixed.push(template.slice(last, match.index));
         const inner = match[1].replace(/^ENV:/i, '').trim();
         names.push(inner.includes(':') ? undefined : inner);
         last = (match.index ?? 0) + match[0].length;
     }
     if (!names.length) return {};
-    pattern += template.slice(last).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const found = new RegExp(`^${pattern}$`, 's').exec(sent);
+    fixed.push(template.slice(last));
+    // Each variable takes the shortest text that lets the rest fit: the next fixed text where it first comes, the
+    // last one at the very end. One pass along what was sent: a pattern that tried every split instead took 20 s
+    // on 800 comma items that didn't fit, and froze the page on more (History, 2026-11-26).
+    const tail = fixed[names.length];
+    if (!sent.startsWith(fixed[0]) || !sent.endsWith(tail)) return {};
+    const found: string[] = [];
+    let at = fixed[0].length;
+    const end = sent.length - tail.length;
+    for (let i = 1; i < names.length; i++) {
+        const next = sent.indexOf(fixed[i], at);
+        if (next < 0 || next + fixed[i].length > end) return {};
+        found.push(sent.slice(at, next));
+        at = next + fixed[i].length;
+    }
+    if (at > end) return {};
+    found.push(sent.slice(at, end));
     const values: Record<string, string> = {};
-    names.forEach((name, i) => { if (name && found && found[i + 1] && !found[i + 1].includes('{{') && !(name in values)) values[name] = found[i + 1]; });
+    names.forEach((name, i) => { if (name && found[i] && !found[i].includes('{{') && !(name in values)) values[name] = found[i]; });
     return values;
 }
 

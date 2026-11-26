@@ -55,6 +55,45 @@ describe('Compare runs: header values', () => {
         expect(valuesFromTemplate('plain', 'plain')).to.deep.equal({});
     });
 
+    it('a long value that does not fit its template is answered at once', () => {
+        // Measured on 0.5.0: this template against 800 comma items took 20 s, 1,600 never finished (the page froze)
+        const sent = Array.from({ length: 20000 }, (_, i) => `v${i}`).join(',');
+        const started = Date.now();
+        expect(valuesFromTemplate('{{a}},{{b}},{{c}},{{d}};', sent)).to.deep.equal({});
+        expect(valuesFromTemplate('{{a}},{{b}},{{c}},{{d}};', `${sent};`)).to.include({ a: 'v0', b: 'v1', c: 'v2' });
+        expect(Date.now() - started).to.be.lessThan(500);
+    });
+
+    it('gives each variable what the pattern it replaced gave, piece for piece', () => {
+        // The old way, kept here as the answer to check against: every variable the shortest text that fits, in order
+        const old = (template: string, sent: string): Record<string, string> => {
+            const names: (string | undefined)[] = [];
+            let pattern = '';
+            let last = 0;
+            for (const match of template.matchAll(/\{\{\s*([^{}]+?)\s*\}\}/g)) {
+                pattern += template.slice(last, match.index).replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(.*?)';
+                const inner = match[1].replace(/^ENV:/i, '').trim();
+                names.push(inner.includes(':') ? undefined : inner);
+                last = (match.index ?? 0) + match[0].length;
+            }
+            if (!names.length) return {};
+            pattern += template.slice(last).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const found = new RegExp(`^${pattern}$`, 's').exec(sent);
+            const values: Record<string, string> = {};
+            names.forEach((name, i) => { if (name && found && found[i + 1] && !found[i + 1].includes('{{') && !(name in values)) values[name] = found[i + 1]; });
+            return values;
+        };
+        const pieces = ['{{a}}', '{{ b }}', '{{ENV:c}}', '{{A8:date}}', '{{a}}', '-', 'ab', 'a', 'b', '/', '.', '\n', ''];
+        const letters = ['a', 'b', '-', '/', '.', '\n', 'ab', '{{', ''];
+        let seed = 7;
+        const next = (n: number) => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed % n; };
+        for (let i = 0; i < 4000; i++) {
+            const template = Array.from({ length: 1 + next(6) }, () => pieces[next(pieces.length)]).join('');
+            const sent = Array.from({ length: next(9) }, () => letters[next(letters.length)]).join('');
+            expect(valuesFromTemplate(template, sent), `${JSON.stringify(template)} against ${JSON.stringify(sent)}`).to.deep.equal(old(template, sent));
+        }
+    });
+
     it('works out an older single run\'s header values from its headers, query parameters or path', () => {
         const env = { ...environment, variableSettings: { ...environment.variableSettings, site: { showInHeader: true } }, headers: { Organization: { value: '{{org}}' } } };
         const endpoint = { path: '/sites/{{ENV:site}}/stock', queryParams: {} };
