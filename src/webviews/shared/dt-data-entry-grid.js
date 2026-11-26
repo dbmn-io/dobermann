@@ -1015,21 +1015,19 @@
         pill.className = `grid-status-pill status-pill-generic ${names.length ? 'is-invalid is-warn' : 'is-valid is-quiet'}`;
         pill.textContent = names.length ? 'Invalid' : 'Valid';
         box.appendChild(pill);
-        names.forEach(name => { const t = document.createElement('span'); t.className = 'grid-status-col'; t.textContent = name; box.appendChild(t); });
+        // (the pill alone: the columns to fix are its hover, and each has its own count on its heading. James, 2026-11-26:
+        // "would rather we just show invalid, and HOVER shows columns that are invalid. if we have 5 columns… its going
+        // to get messy")
         if (names.length) box.title = `To fix: ${names.join(', ')}`;
         return box;
     }
     /**
-     * Status's width, as Results' is sized: INVALID with the longest column name (any column may come to need fixing,
-     * and the table keeps a column's first width), measured off screen, plus the cell's padding; a row with several
-     * columns to fix wraps onto a second line rather than widening it. The heading (name, ▾, funnel) needs ~120px.
+     * Status's width: its pill, measured off screen, plus the cell's padding. The heading (name, ▾, funnel) needs ~120px.
      */
     function statusWidth() {
-        const names = gridVariables().map(v => (v && v.name) || '');
-        const longest = names.sort((a, b) => b.length - a.length)[0];
         const probe = document.createElement('div');
         probe.className = 'grid-status-probe';
-        probe.appendChild(statusOf(longest ? [longest] : []));
+        probe.appendChild(statusOf(['x']));
         // (inside the table, so it is measured in the cells' font)
         const host = document.getElementById('validateGrid') || document.getElementById('csvGridEntry') || document.body;
         host.appendChild(probe);

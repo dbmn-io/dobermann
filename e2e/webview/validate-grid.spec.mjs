@@ -340,9 +340,12 @@ test('Status: INVALID with the columns to fix, VALID otherwise; loaded rows open
     await loaded(page, LOADED);
     await expect(body(page)).toHaveCount(3);
     await expect(statusCell(page, 0).locator('.grid-status-pill.is-invalid')).toHaveText('Invalid');
-    await expect(statusCell(page, 0).locator('.grid-status-col')).toHaveText(['gtin']);
-    await expect(statusCell(page, 1).locator('.grid-status-col')).toHaveText(['qty']);
-    await expect(statusCell(page, 2).locator('.grid-status-col')).toHaveText(['gtin']);
+    // (the pill alone, on one line; the columns to fix are in its hover: James, 2026-11-26, "would rather we just show
+    // invalid, and HOVER shows columns that are invalid. if we have 5 columns… its going to get messy")
+    await expect(statusCell(page, 0).locator('.grid-status')).toHaveText('Invalid');
+    await expect(statusCell(page, 0).locator('.grid-status')).toHaveAttribute('title', 'To fix: gtin');
+    await expect(statusCell(page, 1).locator('.grid-status')).toHaveAttribute('title', 'To fix: qty');
+    await expect(statusCell(page, 2).locator('.grid-status')).toHaveAttribute('title', 'To fix: gtin');
     await expect(head(page, 'Status').locator('.dbmn-head-funnel')).toBeVisible();
     await expect(page.locator('#gridClearFilters')).toBeEnabled();
     await page.screenshot({ path: join(ROOT, '.dev-local', 'validate-status.png') });
@@ -433,9 +436,9 @@ test('the Input tab\'s amber count is the rows to fix; its click shows only them
     expect((await page.evaluate(() => window.issuesSet)).pop()).toEqual(['input', 3]);
     await page.evaluate(() => document.getElementById('run-heading').dispatchEvent(new CustomEvent('dbmn-run-heading-issues', { bubbles: true, detail: { id: 'input' } })));
     await expect(body(page)).toHaveCount(3);
-    await expect(statusCell(page, 1).locator('.grid-status-col')).toHaveText(['qty']);
-    // (the tag and the pill on one line: Status measured for INVALID and its longest column name)
-    const [pill, tag] = await Promise.all([statusCell(page, 1).locator('.grid-status-pill').boundingBox(), statusCell(page, 1).locator('.grid-status-col').boundingBox()]);
-    expect(Math.abs(pill.y - tag.y), 'one line').toBeLessThan(4);
+    await expect(statusCell(page, 1).locator('.grid-status')).toHaveAttribute('title', 'To fix: qty');
+    // (a row is one line however many columns it has to fix: its Status is the pill, as tall as a Valid row's)
+    const heights = await body(page).evaluateAll(rows => rows.map(r => Math.round(r.getBoundingClientRect().height)));
+    expect(Math.max(...heights) - Math.min(...heights), `row heights ${heights}`).toBeLessThanOrEqual(1);
     await expect(head(page, 'Status')).not.toHaveText(/…/);
 });

@@ -2194,10 +2194,8 @@ body:has(#csvBatchContainer) .webview-footer.named-footer .footer-content {
 /* How many rows show, by the search box (Results' "1 of 1,000 rows") */
 .grid-tools .grid-row-count { color: var(--vscode-descriptionForeground); font-size: 12px; white-space: nowrap; }
 /* Status's pills and a heading's count, in the mock's colours (James's v18): INVALID and the counts amber, filled;
-   VALID quiet, outlined; each column to fix as an amber-outlined tag in its own case. The theme's warning colour */
+   VALID quiet, outlined; the columns to fix are the pill's hover. The theme's warning colour */
 /* (the pill is .status-pill-generic with its tone, as Compare's: core.css) */
-.grid-status-col { font-family: var(--vscode-editor-font-family, monospace); font-size: 10px; color: var(--vscode-editorWarning-foreground);
-    border: 1px solid color-mix(in srgb, var(--vscode-editorWarning-foreground) 55%, transparent); border-radius: 3px; padding: 0 4px; white-space: nowrap; }
 #validateGrid .dbmn-head-count:not(.is-active) { color: var(--vscode-editor-background); background: var(--vscode-editorWarning-foreground); font-weight: 600; }
 /* (measured off screen for Status's width) */
 .grid-status-probe { position: absolute; left: -9999px; top: 0; visibility: hidden; white-space: nowrap; }
