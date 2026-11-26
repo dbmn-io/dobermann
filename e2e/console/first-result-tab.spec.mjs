@@ -46,8 +46,15 @@ async function runningBatch(page) {
             if (!panel || !table || panel.classList.contains('hidden')) return;
             const said = Number(((table.querySelector('.dbmn-table-count') || {}).textContent || '').replace(/[^\d]/g, '')) || 0;
             const drawn = table.querySelectorAll('.dbmn-table-body > tr:not(.dbmn-table-spacer)').length;
-            if (said > drawn) window.__countOverRows.push(`"${said} rows" over ${drawn}`);
+            // (the count a few frames ahead of its rows is how a slow machine draws one update, and no one sees it: CI
+            // had "8 rows" over 7 for about five frames. A count that STAYS ahead is the fault: over a second)
+            if (said <= drawn) { aheadSince = 0; return; }
+            if (!aheadSince) { aheadSince = performance.now(); return; }
+            if (performance.now() - aheadSince > 1000 && !window.__countOverRows.length) window.__countOverRows.push(`"${said} rows" over ${drawn} for over a second`);
         };
+        let aheadSince = 0;
+        // (a count left ahead with nothing more changing is still seen)
+        setInterval(painted, 250);
         new MutationObserver(check).observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['class'] });
     });
 }
