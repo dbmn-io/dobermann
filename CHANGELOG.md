@@ -6,16 +6,6 @@ All notable changes to Dobermann are documented here.
 
 ## [Unreleased]
 
-### Added
-- **In and Out on Validate** — A mapped column with functions shows its name over two columns on Run Batch's Validate step: **In**, the value in the file, and **Out**, the value that is sent. (GitHub Issue #18)
-- **The web app says what it was doing when it stopped** — When the page stops responding, Logs now says for how long and what it was handling, and the next start reports a page that never came back.
-
-### Fixed
-- **A long header or query value no longer freezes the app** — Reading a run's header values from a long value that did not fit its endpoint's template could hold History and Query for seconds, or for good.
-
-### Changed
-- **History finds a run by its header values** — In the Hub's History, `@org=…` (each header variable by its own name) now finds every run Query finds, including older runs and batches, by the value or its option's label. `@headers~…` searches everything a run was sent with.
-
 ## [0.5.0] - 2026-11-26
 
 ### Added
@@ -37,6 +27,8 @@ All notable changes to Dobermann are documented here.
 - **Rename from the Hub** — Right-click **Rename** in Endpoints, Environments, History and Reporting. If the item is open in an editor, the editor shows the new name.
 - **Select and delete several reports** — **Select** in the Reporting list turns on tick boxes to delete several queries at once. Only the reports go: the data in History stays. [Docs](https://dbmn.io/docs/query/#saved)
 - **Signing in to VS Code also signs in the web app, if you want it** — After a VS Code sign-in, the browser tab's "Open DBMN in your browser" link opens the web app signed in, with a sign-in of its own: signing out of one leaves the other.
+- **In and Out on Validate** — A mapped column with functions shows its name over two columns on Run Batch's Validate step: **In**, the value in the file, and **Out**, the value that is sent. (GitHub Issue #18)
+- **The web app says what it was doing when it stopped** — When the page stops responding, Logs now says for how long and what it was handling, and the next start reports a page that never came back.
 
 ### Changed
 - **A run's details link to its endpoint** — In the Console, the endpoint named under **ⓘ** is a link that opens it. The **Files and every setting** link is gone.
@@ -59,6 +51,7 @@ All notable changes to Dobermann are documented here.
 - **One heading for every table** — The Console, Query, Logs and Run Batch's Validate grid use the same column headings. Click the icon to sort, drag the name to move a column, drag the edge to resize it, or right-click for every option.
 - **A date typed in a search means that day** — On a column of ISO 8601 dates, `@created=2026-11-12` finds every time on the 12th, and `@created>2026-11-12` means after the 12th. **Behaviour change:** a saved search with a typed date may return different rows. [Docs](https://dbmn.io/docs/console/#search-dates)
 - **The last of the licence code is gone** — The Account page gets your name and Weekly Usage from a new account summary. The public backend no longer has licence or trial tables. Older versions keep working. [Docs](https://dbmn.io/docs/hub/#account)
+- **History finds a run by its header values** — In the Hub's History, `@org=…` (each header variable by its own name) now finds every run Query finds, including older runs and batches, by the value or its option's label. `@headers~…` searches everything a run was sent with.
 
 ### Fixed
 - **A batch's Console shows every result, even the ones that came back before it opened** — When the first requests of a batch finished before its Console was ready (a busy computer), or while its Console was closed and before it was opened again, the run counted them ("20/20") but Completed and Errors were short of them until the run was opened again from History. The Console now reloads the run once when it opens on a run that is still going and results came in without it. The results were always saved; only the live tables missed them. Since 0.2.0, when the Console became a Hub tab.
@@ -83,6 +76,8 @@ All notable changes to Dobermann are documented here.
 - **Weekly Usage in the web app no longer spins for ever** — The Account page's usage numbers kept loading after they arrived. [Docs](https://dbmn.io/docs/hub/#account)
 - **Switching environment is instant** — The header changes as you pick. Switching no longer saves every environment to your DBMN account again, which took seconds with many environments. (GitHub Issue #454)
 - **No more "(copy)" environments after signing in** — With endpoints saved to your account, signing in on a second computer could keep every environment twice, the second as "<name> (copy)". (GitHub Issue #454)
+- **A long header or query value no longer freezes the app** — Reading a run's header values from a long value that did not fit its endpoint's template could hold History and Query for seconds, or for good.
+- **Validate honours a whole-number rule written `number:int`** — A decimal passed Validate when the rule followed the type's colon, as in `{{qty:number:int}}`, and was then refused when sent. Validate now reads it as the run does. (GitHub Issue #29)
 
 ### Removed
 - **The Compare screen** — Query took its place (see **Compare is part of Query**), and the **Compare** button on the Console's Completed tab is now the database button. [Docs](https://dbmn.io/docs/query/#from-compare)
