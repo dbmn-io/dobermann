@@ -29,6 +29,7 @@ import { buildDesignSystemPage } from '../../../src/screens/design-system/design
 import { buildLogsPage } from '../../../src/screens/logs/logs-page';
 import { LogsController } from '../../../src/screens/logs/logs.controller';
 import { appLog } from './app-log';
+import { noted } from './black-box';
 import { runHistory } from '../../../src/screens/logs/run-history';
 import { LogReader } from '../../../src/services/logging/log-reader';
 import { remoteEngineHost, type EngineHost } from '../../../src/services/engine/engine-host';
@@ -100,8 +101,10 @@ function tab(html: string, session: ScreenSession, screen: Screen): HubTab {
     return {
         html,
         handle: async message => {
-            if (await session.handleShared(message)) return;
-            await screen.handle(message);
+            await noted('Tab', message, async () => {
+                if (await session.handleShared(message)) return;
+                await screen.handle(message);
+            });
         },
         dispose: () => {
             session.dismissAll();

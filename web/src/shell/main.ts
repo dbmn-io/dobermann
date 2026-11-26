@@ -11,6 +11,7 @@
 // First, before any other module is evaluated: the page's backend (#377)
 import '../backend';
 import { appLog, startAppLog } from './app-log';
+import { noted, startBlackBox } from './black-box';
 import { chooseSystemTheme, chooseTheme, currentThemeMenu, endThemeHint, onThemeChanged, startTheme, themeHintDue } from './theme';
 import { getBackend } from '../../../src/services/dbmn-backend/backend-config';
 import { APIEndpointManager } from '../../../src/apiEndpointManager';
@@ -97,6 +98,8 @@ async function start(): Promise<void> {
     // Dobermann issue 7: this user's log from before, kept in this browser from now on
     await startAppLog();
     appLog.write({ level: 'info', source: 'start-up', message: `DBMN ${__DBMN_APP_VERSION__} started in ${desktopBridge() ? 'the desktop app' : 'the browser'}` });
+    // What an earlier page was handling when it stopped, and this page's own notes from here on
+    startBlackBox();
 
     // The Hub's page gets messages the way a webview does: as window message events
     const hubSession = new ScreenSession({ post: message => window.postMessage(message, location.origin) }, screenHost);
@@ -514,8 +517,8 @@ async function start(): Promise<void> {
                 if (message.mode === 'light' || message.mode === 'dark') chooseSystemTheme(message.mode, String(message.id ?? ''));
                 return;
             }
-            if (await hubSession.handleShared(message)) return;
-            await hub.handle(message);
+            if (await noted('Hub', message, () => hubSession.handleShared(message))) return;
+            await noted('Hub', message, () => hub.handle(message));
             // The Hub's page is wired and has its state: what tests (and anything else) wait for
             if (message.type === 'ready') {
                 offerThemes();
