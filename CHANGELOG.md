@@ -6,6 +6,13 @@ All notable changes to Dobermann are documented here.
 
 ## [Unreleased]
 
+### Added
+- **In and Out on Validate** — A mapped column with functions shows its name over two columns on Run Batch's Validate step: **In**, the value in the file, and **Out**, the value that is sent. (GitHub Issue #18)
+- **The web app says what it was doing when it stopped** — When the page stops responding, Logs now says for how long and what it was handling, and the next start reports a page that never came back.
+
+### Fixed
+- **A long header or query value no longer freezes the app** — Reading a run's header values from a long value that did not fit its endpoint's template could hold History and Query for seconds, or for good.
+
 ### Changed
 - **History finds a run by its header values** — In the Hub's History, `@org=…` (each header variable by its own name) now finds every run Query finds, including older runs and batches, by the value or its option's label. `@headers~…` searches everything a run was sent with.
 

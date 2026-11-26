@@ -633,6 +633,25 @@
         return table && typeof table.write === 'function' ? table : null;
     }
     function gridVariables() { return csvState.gridTemplateVariables || []; }
+    /* ---------- A column with functions: the file's value (In) beside the value sent (Out) ----------
+     * Dobermann issue 18 (James, 2026-11-26: "a heading column, which is the column name that we've mapped. And then under
+     * that, we have two columns, the in and out underneath… the same as what we've done from compare"). In is the file's
+     * value for the row as it was loaded (csvState.inputOriginals, kept at Next to Validate): shown, never edited, never
+     * part of what the grid hands on. A row typed or pasted in here has no file value: its In is empty. */
+    const IN = 'in:';
+    function isInColumn(id) { return typeof id === 'string' && id.indexOf(IN) === 0; }
+    /** Each loaded row's place in the file, for its In (a row added here has none). */
+    let fileRowOf = new WeakMap();
+    function fileValues(v) {
+        const kept = csvState.inputOriginals && v ? csvState.inputOriginals[v.name] : null;
+        return Array.isArray(kept) ? kept : null;
+    }
+    function inValue(v, row) {
+        const kept = fileValues(v);
+        const at = fileRowOf.get(row);
+        const value = kept && at !== undefined ? kept[at] : '';
+        return value === null || value === undefined ? '' : String(value);
+    }
     function isBooleanVar(v) { return !!v && (v.dataType === 'boolean' || v.dataType === 'bool'); }
     function isNumberVar(v) { return !!v && (v.dataType === 'number' || v.dataType === 'integer' || v.dataType === 'int'); }
     function isOptionalVar(v) { return !!(v && v.modifiers && (v.modifiers.isOptional || v.modifiers.isNullable || v.modifiers.ifBlank !== null && v.modifiers.ifBlank !== undefined)); }
@@ -705,7 +724,8 @@
         table.addEventListener('dbmn-table-paste', event => {
             event.preventDefault();
             const held = table.held;
-            if (held) pasteIntoGrid(event.detail.text, placeOf(held.row), held.id === ROW_NUMBER ? 0 : Number(held.id));
+            // (onto a column's In: into its Out, the one that is edited)
+            if (held) pasteIntoGrid(event.detail.text, placeOf(held.row), held.id === ROW_NUMBER ? 0 : Number(isInColumn(held.id) ? held.id.slice(IN.length) : held.id));
         });
         // Leaving the grid: the rows to fix are shown again in full (see scheduleGridIssueRefresh)
         table.addEventListener('focusout', event => {
@@ -818,8 +838,30 @@
             } else if (v.dataType === 'time') {
                 column.editor = { type: 'time', step: 1, value: formatValueForTimeInput };
             }
-            return column;
-        }));
+            const kept = fileValues(v);
+            if (!kept) return column;
+            // Its name over In and Out, as a compared column's over its results
+            const group = {
+                id: `io:${col}`, name: v.name,
+                head: th => {
+                    th.classList.add('grid-io-head');
+                    const fx = document.createElement('span');
+                    fx.className = 'grid-io-fx';
+                    fx.title = 'This column has functions: In is the value in the file, Out is the value sent';
+                    if (window.Icons && window.Icons.icon) fx.innerHTML = window.Icons.icon('square-function'); else fx.textContent = 'fx';
+                    (th.querySelector('.column-name') || th).appendChild(fx);
+                }
+            };
+            column.name = 'Out';
+            column.group = group;
+            const file = {
+                // (In and Out are drawn alike: James, 2026-11-26, "There's no need to format it differently")
+                id: IN + col, name: 'In', group, editable: false, removable: false,
+                render: (value, row) => inValue(v, row),
+                head: th => { th.title = `${v.name} as it is in the file. Not sent, and not edited here`; }
+            };
+            return [file, column];
+        }).reduce((all, c) => all.concat(c), []));
     }
 
     function rowNumberCell(row) {
@@ -1003,12 +1045,12 @@
         const counts = columnIssueCounts();
         if (csvState.gridInvalidColsOnly) {
             const want = Object.keys(counts).filter(k => counts[k] > 0).map(String).sort().join(',');
-            const have = table.columns.map(c => c.id).filter(id => id !== ROW_NUMBER && id !== STATUS).sort().join(',');
+            const have = table.columns.map(c => c.id).filter(id => id !== ROW_NUMBER && id !== STATUS && !isInColumn(id)).sort().join(',');
             if (want !== have) { table.columns = gridColumns(gridVariables()); return; }
         }
         table.columns.forEach(spec => {
             if (spec.id === STATUS) spec.filter = statusFilter();
-            else if (spec.id !== ROW_NUMBER) spec.count = columnCount(Number(spec.id), counts);
+            else if (spec.id !== ROW_NUMBER && !isInColumn(spec.id)) spec.count = columnCount(Number(spec.id), counts);
         });
         if (table.redrawHeads) table.redrawHeads();
     }
@@ -1163,6 +1205,8 @@
         if (key === 'Shift' || key === 'Control' || key === 'Alt' || key === 'Meta') return false;
         const rows = modelRows();
         const place = placeOf(held.row);
+        // (a column's In is read only: the table's own keys move across it, the grid's do nothing there)
+        if (isInColumn(held.id)) return false;
         const col = held.id === ROW_NUMBER ? -1 : Number(held.id);
         const lastCol = gridVariables().length - 1;
         const mod = event.ctrlKey || event.metaKey;
@@ -1989,6 +2033,9 @@
         csvState.gridBlankCells = null;
         csvState.gridLoadErrors = [];
         cancelProgressiveCopy();
+        // (the columns again: which of them have functions is known only once the file's rows are here)
+        const table = gridTable();
+        if (table) table.columns = gridColumns(gridVariables());
         showGridRows();
         updateGridRowCount(rows.length, rows.length);
     }
@@ -2008,7 +2055,8 @@
             return;
         }
         const sources = gridColumnSources(parsedData.headers || csvState.currentHeaders || [], templateVariables);
-        startGridRows((parsedData.rows || []).map(row => gridRowFrom(row, sources)));
+        fileRowOf = new WeakMap();
+        startGridRows((parsedData.rows || []).map((row, r) => { const made = gridRowFrom(row, sources); fileRowOf.set(made, r); return made; }));
         validateDataModelInBackground();
     }
 
@@ -2553,12 +2601,13 @@
         }
         const sources = gridColumnSources(parsedData.headers || csvState.currentHeaders || [], templateVariables);
         const rows = parsedData.rows || [];
+        fileRowOf = new WeakMap();
         const gridData = [];
         const BATCH_SIZE = 5000;
         let offset = 0;
         function processBatch() {
             const end = Math.min(offset + BATCH_SIZE, rows.length);
-            for (let r = offset; r < end; r++) gridData.push(gridRowFrom(rows[r], sources));
+            for (let r = offset; r < end; r++) { const made = gridRowFrom(rows[r], sources); fileRowOf.set(made, r); gridData.push(made); }
             offset = end;
             if (onProgress) onProgress(offset, rows.length);
             if (offset < rows.length) {

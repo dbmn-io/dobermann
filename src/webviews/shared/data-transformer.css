@@ -2201,3 +2201,7 @@ body:has(#csvBatchContainer) .webview-footer.named-footer .footer-content {
 #validateGrid .dbmn-head-count:not(.is-active) { color: var(--vscode-editor-background); background: var(--vscode-editorWarning-foreground); font-weight: 600; }
 /* (measured off screen for Status's width) */
 .grid-status-probe { position: absolute; left: -9999px; top: 0; visibility: hidden; white-space: nowrap; }
+
+/* A column with functions on Validate (issue 18): its name over In (the file's value) and Out (the value sent), drawn alike */
+.validate-grid .grid-io-fx { display: inline-flex; vertical-align: -3px; margin-left: 6px; color: var(--vscode-editorWarning-foreground); }
+.validate-grid .grid-io-fx svg { width: 14px; height: 14px; }
